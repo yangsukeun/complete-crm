@@ -1,0 +1,121 @@
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import prisma from "@/lib/prisma";
+import { hash } from "bcryptjs";
+import { z } from "zod";
+
+const createUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(4),
+  name: z.string().min(1),
+  role: z.enum(["USER", "TEAM_LEAD"]).optional(),
+  phone: z.string().optional(),
+  workPhone: z.string().optional(),
+  workEmail: z.string().email().optional().or(z.literal("")),
+  bankAccount: z.string().optional(),
+  residentId: z.string().optional(),
+  address: z.string().optional(),
+  department: z.string().optional(),
+  position: z.string().optional(),
+  joinDate: z.string().optional(),
+});
+
+export async function GET() {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // 대표/관리자: 직원 목록(이체 담당자 지정 등)용으로 모든 역할 포함. 그 외: 전체.
+    const users = await prisma.user.findMany({
+      where: {},
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+        position: true,
+        currentProject: { select: { id: true, name: true, brand: { select: { name: true } } } },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return NextResponse.json(users);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "직원 목록을 불러올 수 없습니다." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const parsed = createUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "입력값이 올바르지 않습니다.", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { email: parsed.data.email.trim() },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: "이미 사용 중인 이메일(아이디)입니다." },
+        { status: 400 }
+      );
+    }
+
+    const hashedPassword = await hash(parsed.data.password, 10);
+    const joinDate = parsed.data.joinDate
+      ? new Date(parsed.data.joinDate)
+      : new Date();
+
+    const user = await prisma.user.create({
+      data: {
+        email: parsed.data.email.trim(),
+        password: hashedPassword,
+        name: parsed.data.name.trim(),
+        role: parsed.data.role ?? "USER",
+        phone: parsed.data.phone?.trim() || null,
+        workPhone: parsed.data.workPhone?.trim() || null,
+        workEmail: parsed.data.workEmail?.trim() || null,
+        bankAccount: parsed.data.bankAccount?.trim() || null,
+        residentId: parsed.data.residentId?.trim() || null,
+        address: parsed.data.address?.trim() || null,
+        department: parsed.data.department?.trim() || null,
+        position: parsed.data.position?.trim() || null,
+        joinDate,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        department: true,
+        position: true,
+        joinDate: true,
+      },
+    });
+
+    return NextResponse.json({
+      ...user,
+      joinDate: user.joinDate.toISOString().slice(0, 10),
+    });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "계정 생성에 실패했습니다." },
+      { status: 500 }
+    );
+  }
+}

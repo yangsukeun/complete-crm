@@ -1,0 +1,84 @@
+/* 일정표 툴바: 월/년 클릭 시 리스트 표시 */
+.rbc-toolbar .rbc-toolbar-label:hover {
+  background: var(--muted);
+}
+
+/* 대한민국 달력: 법정공휴일 빨간색, 토요일 파란색 */
+
+/* 날짜 숫자: 법정공휴일 = 빨간색 */
+.rbc-date-cell .rbc-date-cell--legal-holiday,
+.rbc-date-cell--legal-holiday {
+  color: #dc2626 !important; /* red-600 */
+  font-weight: 500;
+}
+
+/* 날짜 숫자: 토요일 = 파란색 */
+.rbc-date-cell .rbc-date-cell--saturday,
+.rbc-date-cell--saturday {
+  color: #2563eb !important; /* blue-600 */
+}
+
+/* 공휴일 이벤트 라벨 (달력 셀 안 표기) */
+.rbc-event--holiday {
+  background: rgba(220, 38, 38, 0.12) !important;
+  border-color: rgba(220, 38, 38, 0.4) !important;
+  color: #b91c1c !important;
+  font-size: 0.75rem;
+}
+
+.rbc-event--holiday.rbc-event-label {
+  font-weight: 500;
+}
+
+/* Google 캘린더 연동 이벤트 */
+.rbc-event--google {
+  background: rgba(66, 133, 244, 0.2) !important;
+  border-color: rgba(66, 133, 244, 0.5) !important;
+  color: #1a73e8;
+}
+
+/* 내 일정 (퍼스널 워크스페이스) */
+.rbc-event--personal {
+  background: rgba(59, 130, 246, 0.2) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  color: #1d4ed8;
+}
+
+/* 팀/회사 일정 */
+.rbc-event--team {
+  background: rgba(34, 197, 94, 0.2) !important;
+  border-color: rgba(34, 197, 94, 0.5) !important;
+  color: #15803d;
+}
+
+/* 캘린더 레이어 체크박스 옆 색상 점 */
+.rbc-calendar-layer-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* 날짜 셀 래퍼: 휴가자 이름 표시 영역 */
+.rbc-date-cell-wrapper-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 휴가자 이름: 작게, 파란색 */
+.rbc-date-cell-leave-names {
+  margin-top: 2px;
+  padding: 0 2px;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: #2563eb;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.rbc-date-cell-leave-name {
+  color: #2563eb;
+}

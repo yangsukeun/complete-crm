@@ -1,0 +1,56 @@
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { PageHeadline } from "@/components/page-headline";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Users,
+  FileText,
+  Layers,
+  FolderKanban,
+  Building2,
+  Image,
+  Settings,
+} from "lucide-react";
+
+const menuItems = [
+  { href: "/admin/employees", label: "직원 관리", description: "직원 계정 추가·수정·역할 관리", icon: Users },
+  { href: "/admin/logs", label: "업무일지 조회", description: "직원별 업무일지 조회", icon: FileText },
+  { href: "/admin/departments-positions", label: "부서·직책", description: "부서·직책 마스터 관리", icon: Layers },
+  { href: "/admin/projects", label: "브랜드/프로젝트", description: "브랜드·프로젝트 관리", icon: FolderKanban },
+  { href: "/admin/company", label: "회사 정보", description: "견적서용 회사 정보·도장", icon: Building2 },
+  { href: "/admin/settings/logo", label: "로고 설정", description: "헤더 로고 이미지 변경", icon: Image },
+];
+
+export default async function AdminPage() {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
+
+  return (
+    <div className="flex flex-col gap-6 p-4 md:p-6 max-w-4xl mx-auto">
+      <PageHeadline
+        title="관리"
+        description="회사·직원·설정을 관리합니다. 메뉴를 선택하세요."
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {menuItems.map(({ href, label, description, icon: Icon }) => (
+          <Link key={href} href={href}>
+            <Card className="h-full transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/50">
+              <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
+                  <Icon className="size-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">{label}</CardTitle>
+                  <CardDescription className="text-sm">{description}</CardDescription>
+                </div>
+              </CardHeader>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}

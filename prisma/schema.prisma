@@ -1,0 +1,623 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  USER
+  TEAM_LEAD   // 팀장: 휴가 1차 승인, 자금이체 결재(확인)
+  EXECUTIVE   // 대표/임원: 휴가 2차 승인, 자금이체 완료 내역만 조회, 회사/직원 관리
+  ADMIN       // 레거시: 코드에서 EXECUTIVE와 동일 취급
+}
+
+enum TaskPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  LATE
+}
+
+enum LeaveType {
+  ANNUAL    // 연차
+  HALF_AM   // 오전 반차
+  HALF_PM   // 오후 반차
+  QUARTER_AM  // 오전 반반차
+  QUARTER_PM  // 오후 반반차
+}
+
+enum LeaveRequestStatus {
+  PENDING            // 신청됨 → 팀장 1차 승인 대기
+  TEAM_LEAD_APPROVED // 팀장 1차 승인 → 대표 2차 승인 대기
+  APPROVED           // 대표 2차 승인 (최종)
+  REJECTED
+}
+
+enum ScheduleInviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum PaymentRequestStatus {
+  PENDING             // 신청됨 → 팀장 승인 대기
+  TEAM_LEAD_APPROVED  // 팀장 승인됨 → 이체 담당자 이체 대기
+  COMPLETED           // 이체 담당자가 이체 완료 처리
+  REJECTED
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+// 접속 로그 타입 (향후 LOGOUT 등 확장)
+enum AccessLogType {
+  LOGIN
+}
+
+// 자동 업무일지용 활동 타입
+enum ActivityLogActionType {
+  TASK_CREATED
+  TASK_COMPLETED
+  COMMENT_ADDED
+  LOGIN
+  CHECK_IN   // 출근
+  CHECK_OUT  // 퇴근
+}
+
+// 업무일지 제출 상태
+enum DailyWorkLogStatus {
+  DRAFT      // 작성 중
+  SUBMITTED  // 제출됨
+}
+
+// 알림 타입
+enum NotificationType {
+  DEADLINE   // 마감 임박
+  ASSIGNED   // 업무 배정
+  COMMENT    // 댓글
+  STAGNANT   // 장기 미진행
+}
+
+// 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
+enum WorkspaceScope {
+  TEAM
+  PERSONAL
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(USER)
+  department    String?
+  position      String?   // 직책
+  currentProjectId String?
+  currentProject   Project? @relation(fields: [currentProjectId], references: [id], onDelete: SetNull)
+  joinDate      DateTime  @default(now())
+  birthDate     DateTime? // 생년월일
+  emailVerified DateTime?
+  image         String?
+  phone         String?   // 연락처
+  workPhone     String?   // 업무 연락처
+  workEmail     String?   // 업무 이메일
+  bankAccount   String?   // 은행계좌번호
+  residentId    String?   // 주민번호
+  address       String?   // 주소지
+  permissions   String?   // 계정별 사용 가능 기능 (JSON 배열, 없으면 역할 기본값 사용)
+  badgePreset   String?   // 헤더 뱃지/아바타 스타일: default | violet | amber | emerald | blue
+  preferredAiProvider String?   // AI 비서: gemini | openai | notebook (null이면 서버 기본값)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  attendances      Attendance[]
+  schedules        Schedule[]         @relation("ScheduleOwner")
+  assignedTasks    Task[]             @relation("TaskAssignee")
+  createdTasks     Task[]             @relation("TaskCreator")
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+  taskComments     TaskComment[]
+  chatParticipants ChatParticipant[]
+  chatMessages     ChatMessage[]
+  scheduleInvitesSent    ScheduleInvite[] @relation("ScheduleInviteFrom")
+  scheduleInvitesReceived ScheduleInvite[] @relation("ScheduleInviteTo")
+  dailyMemos             DailyMemo[]
+  googleCalendar         GoogleCalendarIntegration?
+  paymentRequests        PaymentRequest[]
+  paymentRequestAlerts   PaymentRequestAlert[]
+  quotations            Quotation[]
+  announcements         Announcement[]
+  boardPosts            BoardPost[]
+  accessLogs            AccessLog[]
+  activityLogs          ActivityLog[]
+  dailyWorkLogs         DailyWorkLog[]
+  notifications         Notification[]
+  @@index([currentProjectId])
+}
+
+model GoogleCalendarIntegration {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([userId])
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  projects  Project[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([brandId, name])
+  @@index([brandId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Attendance {
+  id       String           @id @default(cuid())
+  userId   String
+  date     DateTime
+  checkIn  DateTime?
+  checkOut DateTime?
+  status   AttendanceStatus @default(PRESENT)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model DailyMemo {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // YYYY-MM-DD
+  content   String   @default("")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model Schedule {
+  id          String         @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  isAllDay    Boolean        @default(false)
+  userId      String
+  user        User           @relation("ScheduleOwner", fields: [userId], references: [id], onDelete: Cascade)
+  scope       WorkspaceScope @default(TEAM)
+  invites     ScheduleInvite[]
+  @@index([userId])
+  @@index([startTime])
+  @@index([scope])
+}
+
+model ScheduleInvite {
+  id         String               @id @default(cuid())
+  scheduleId String
+  schedule   Schedule             @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  fromUserId String
+  fromUser   User                 @relation("ScheduleInviteFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId   String
+  toUser     User                 @relation("ScheduleInviteTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  status     ScheduleInviteStatus @default(PENDING)
+  createdAt  DateTime             @default(now())
+  @@unique([scheduleId, toUserId])
+  @@index([toUserId])
+}
+
+// 업무 대분류/하위 계층 (스킬트리처럼 접기·펼치기, 이름·순서 변경)
+model TaskCategory {
+  id          String         @id @default(cuid())
+  name        String
+  parentId    String?
+  parent      TaskCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    TaskCategory[] @relation("CategoryTree")
+  sortOrder   Int            @default(0)
+  isCollapsed Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  tasks       Task[]
+  @@index([parentId])
+}
+
+model Task {
+  id           String         @id @default(cuid())
+  title        String
+  description  String?
+  dueDate      DateTime
+  isCompleted  Boolean        @default(false)
+  status       TaskStatus     @default(TODO)
+  priority     TaskPriority   @default(MEDIUM)
+  parentId     String?
+  parent       Task?          @relation("TaskTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Task[]         @relation("TaskTree")
+  categoryId   String?
+  category     TaskCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  orderIndex   Int            @default(0)
+  isCollapsed  Boolean        @default(false)
+  scope        WorkspaceScope @default(TEAM)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  assignedToId String
+  createdById  String
+  assignedTo   User           @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
+  createdBy   User           @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  attachments TaskAttachment[]
+  comments    TaskComment[]
+  // 추가 부모 연결 (다대다: 하나의 업무가 여러 대분류에 연결 가능)
+  additionalParents TaskLink[] @relation("TaskLinkChild")
+  additionalChildren TaskLink[] @relation("TaskLinkParent")
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([parentId])
+  @@index([categoryId])
+  @@index([dueDate])
+  @@index([scope])
+}
+
+// 업무 간 추가 연결 (다대다 관계 - 하나의 하위 업무가 여러 상위 업무에 연결)
+model TaskLink {
+  id        String   @id @default(cuid())
+  parentId  String
+  childId   String
+  parent    Task     @relation("TaskLinkParent", fields: [parentId], references: [id], onDelete: Cascade)
+  child     Task     @relation("TaskLinkChild", fields: [childId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([parentId, childId])
+  @@index([parentId])
+  @@index([childId])
+}
+
+model TaskAttachment {
+  id       String   @id @default(cuid())
+  taskId   String
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  type     String   // LINK, VIDEO, FILE
+  url      String
+  name     String?
+  createdAt DateTime @default(now())
+  @@index([taskId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+  @@index([taskId])
+}
+
+model LeaveRequest {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      LeaveType
+  startDate DateTime
+  endDate   DateTime
+  status    LeaveRequestStatus @default(PENDING)
+  reason    String?
+  createdAt DateTime          @default(now())
+  @@index([userId])
+  @@index([startDate])
+}
+
+model LeaveBalance {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year            Int
+  annualTotal     Float    @default(15)  // 연차 부여 일수
+  annualUsed      Float    @default(0)   // 시스템에서 승인된 사용일
+  manualDeduction Float    @default(0)   // 실제 사용한 일수 (최초 1회만 설정 가능)
+  @@unique([userId, year])
+  @@index([userId])
+}
+
+model Chat {
+  id        String   @id @default(cuid())
+  isGroup   Boolean  @default(false)
+  name      String?  // 그룹명
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  participants ChatParticipant[]
+  messages   ChatMessage[]
+}
+
+model ChatParticipant {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+  isDeleted Boolean  @default(false)
+  @@index([chatId])
+  @@index([userId])
+}
+
+// 회사 공지사항 (팀장 이상 작성) — 일정·투표 등 모임 기능 지원
+model Announcement {
+  id           String    @id @default(cuid())
+  title        String
+  content      String
+  createdById  String
+  createdBy    User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  // 일정(달력) — 모임 날짜/시간/장소
+  eventDate    DateTime?
+  eventEndDate DateTime?
+  location     String?
+  // 투표 — JSON: [{ "text": "선택지", "voterIds": ["userId1", ...] }]
+  pollData     String?   // JSON string
+  @@index([createdAt])
+}
+
+// 자료실 게시판 — 회사 자료·교육자료 등 (첨부파일 URL 배열)
+model BoardPost {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @default("")
+  category    String   // "COMPANY" | "TRAINING"
+  attachments String   @default("[]") // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  @@index([createdAt])
+  @@index([category])
+}
+
+// 실시간 알림
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  message   String
+  link      String           @default("")
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// 접속 로그 (하루 최초 접속·IP 기록, 출근 보조용)
+model AccessLog {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress   String
+  userAgent   String
+  loggedInAt  DateTime      @default(now())
+  type        AccessLogType @default(LOGIN)
+  @@index([userId])
+  @@index([loggedInAt])
+}
+
+// 자동 업무일지용 활동 로그 (업무 생성/완료/댓글/로그인/출퇴근 등)
+model ActivityLog {
+  id          String               @id @default(cuid())
+  userId      String
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionType  ActivityLogActionType
+  targetTitle String               // 관련 업무 제목 등 (예: '출근')
+  timestamp   DateTime             @default(now())
+  ipAddress   String?              // 출퇴근 시 기록 (수정 불가용)
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// 자동 업무일지 (일별, 마크다운 내용 + 제출 상태)
+model DailyWorkLog {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String            // YYYY-MM-DD
+  content   String            @default("") // 마크다운, 사용자 수정 가능
+  status    DailyWorkLogStatus @default(DRAFT)
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model Vendor {
+  id            String   @id @default(cuid())
+  name          String   // 업체명
+  bankName      String   // 은행명
+  accountNumber String   // 계좌번호
+  ownerName     String   // 예금주 (입금자)
+  contactPerson String?  // 담당자 (입금자와 다를 수 있음)
+  category      String   // 인쇄/식대/용역 등
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  paymentRequests PaymentRequest[]
+}
+
+model PaymentRequest {
+  id          String              @id @default(cuid())
+  amount      Int                 // 금액 (원)
+  status      PaymentRequestStatus @default(PENDING)
+  requestedAt DateTime           @default(now())
+  completedAt DateTime?
+  description String?             // 입금자명 변경 요청, 메모 등
+  attachment  String?             // 견적서/영수증 이미지 URL
+  requesterId String
+  requester   User                @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  vendorId    String
+  vendor      Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  alerts      PaymentRequestAlert[]
+  @@index([requesterId])
+  @@index([vendorId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+// 자금이체 등록 시 결재 담당자(팀장)에게 알람
+model PaymentRequestAlert {
+  id        String          @id @default(cuid())
+  requestId String
+  request   PaymentRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt    DateTime?
+  createdAt DateTime        @default(now())
+  @@unique([requestId, userId])
+  @@index([userId])
+}
+
+model Quotation {
+  id              String          @id @default(cuid())
+  quotationNumber String          @unique // EST-YYYYMMDD-001
+  title           String         // 건명
+  clientName      String         // 거래처명
+  validUntil      DateTime       // 유효기간
+  totalAmount     Int            // 공급가액 (원)
+  vatAmount       Int            // 부가세 (원)
+  finalAmount     Int            // 총합계 (원)
+  status          QuotationStatus @default(DRAFT)
+  issuedById     String
+  issuedBy        User           @relation(fields: [issuedById], references: [id], onDelete: Cascade)
+  issuedAt        DateTime       @default(now()) // 발행일시
+  remarks         String?        // 특이사항/비고
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  items           QuotationItem[]
+  @@index([issuedById])
+  @@index([quotationNumber])
+  @@index([status])
+}
+
+model QuotationItem {
+  id           String    @id @default(cuid())
+  quotationId  String
+  quotation    Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  description  String   // 품목명
+  quantity     Int      // 수량
+  unitPrice    Int      // 단가 (원)
+  amount       Int      // 공급가액 (원)
+  sortOrder    Int      @default(0) // 표시 순서
+  @@index([quotationId])
+}
+
+// 견적서 폼(템플릿) - 품목 기본값으로 새 견적서에 불러오기
+model QuotationForm {
+  id        String   @id @default(cuid())
+  name      String   // 폼명 (예: 인쇄물 견적, 웹 개발 견적)
+  itemsJson String   // JSON 배열: [{ description, quantity, unitPrice }]
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 부서/직책 마스터 (관리자가 생성, 기본정보에서 선택)
+model Department {
+  id        String   @id @default(cuid())
+  name      String   // 부서명
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Position {
+  id        String   @id @default(cuid())
+  name      String   // 직책명
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// 견적서 등에 표시할 회사 정보 (싱글톤, 관리자만 수정)
+model CompanyInfo {
+  id                   String   @id @default(cuid())
+  name                 String   // 회사명
+  businessNumber       String?  // 사업자등록번호
+  representative       String?  // 대표자명
+  address              String?  // 주소
+  phone                String?  // 전화
+  email                String?  // 이메일
+  fax                  String?  // 팩스
+  stampImageUrl        String?  // 도장 이미지 URL (견적서 발행용)
+  logoUrl              String?  // 헤더 로고 이미지 URL (관리자 설정)
+  transferExecutorIds   String?  // 이체 담당자 user id 목록 (JSON array: ["id1","id2"])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}

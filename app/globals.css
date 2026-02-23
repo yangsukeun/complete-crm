@@ -1,0 +1,513 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(100% 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.072 27.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.171 62.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+}
+
+/* MY Workspace: Teal/Emerald (Calm/Private) */
+[data-workspace="MY"] {
+  --primary: oklch(0.45 0.12 175);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.55 0.12 175);
+}
+html.dark[data-workspace="MY"] {
+  --primary: oklch(0.65 0.14 175);
+  --primary-foreground: oklch(0.2 0 0);
+  --ring: oklch(0.6 0.12 175);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  }
+}
+
+/* ========================================
+   BlockNote Editor - Notion Style CSS
+   ======================================== */
+
+/* 에디터 컨테이너 */
+.notion-editor-wrapper {
+  background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
+  border: 1px solid #e5e5e5;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notion-editor-wrapper:focus-within {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+}
+
+/* Pretendard 폰트 적용 */
+.bn-editor,
+.bn-block-content,
+.bn-inline-content,
+.bn-suggestion-menu,
+.bn-formatting-toolbar,
+.mantine-Menu-item,
+.mantine-Menu-itemLabel,
+[data-tippy-root] {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+}
+
+/* 에디터 기본 타이포그래피 */
+.bn-editor {
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+}
+
+.bn-block-content {
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+}
+
+.bn-inline-content {
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+}
+
+/* ================================================
+   서식 툴바 - Sheet/Dialog 내부에서도 클릭 가능하게
+   ================================================ */
+
+/* 서식 툴바 (Formatting Toolbar) - 최상위 레이어 */
+.bn-formatting-toolbar {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
+  /* 최상위 z-index - Sheet(50)보다 훨씬 높게 */
+  z-index: 2147483647 !important;
+  /* 새로운 스태킹 컨텍스트 생성 */
+  isolation: isolate !important;
+  position: relative !important;
+  /* 그림자와 배경 - 노션 스타일 */
+  background: white !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  padding: 4px 6px !important;
+  /* 클릭 영역 확보 - 가장 중요! */
+  pointer-events: auto !important;
+  /* 마우스 인터랙션 */
+  cursor: default !important;
+  /* 투명 영역 없음 */
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* ================================================
+   모든 포털/팝오버 컨테이너 - 최상위 레이어
+   ================================================ */
+
+/* Tippy 루트 - 모든 팝오버의 부모 */
+[data-tippy-root] {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  position: fixed !important;
+}
+
+/* Tippy 박스 */
+.tippy-box {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  /* 툴바와 텍스트 사이 간격 보완 */
+  margin-bottom: -4px !important;
+}
+
+/* Tippy 컨텐츠 영역 */
+.tippy-content {
+  padding: 0 !important;
+  pointer-events: auto !important;
+  z-index: 2147483647 !important;
+}
+
+/* Mantine/Floating UI 포털 */
+[data-floating-ui-portal],
+.mantine-Popover-dropdown,
+.mantine-Menu-dropdown {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+/* Radix UI 포털 (Shadcn) */
+[data-radix-popper-content-wrapper] {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+/* 툴바 호버 영역 확장 - 마우스 이탈 방지 */
+.bn-formatting-toolbar::before {
+  content: "";
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  right: -15px;
+  bottom: -20px;
+  pointer-events: auto;
+  z-index: -1;
+}
+
+/* ================================================
+   Sheet/Dialog 내부 에디터 - 툴바 탈출 허용
+   ================================================ */
+
+/* Sheet 컨텐츠 - overflow 허용 */
+[data-state="open"][role="dialog"],
+.sheet-content,
+[vaul-drawer] {
+  overflow: visible !important;
+}
+
+/* Sheet 내부 스크롤 영역 - overflow-x만 hidden */
+[data-radix-scroll-area-viewport] {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+/* 에디터 래퍼 - 새로운 스태킹 컨텍스트 */
+.notion-editor-wrapper {
+  isolation: isolate;
+  overflow: visible !important;
+  position: relative;
+}
+
+/* BlockNote 내부 컨테이너들 - overflow 허용 */
+.bn-container,
+.bn-mantine,
+.bn-editor {
+  overflow: visible !important;
+}
+
+/* 툴바 버튼들 - 클릭 가능하게 */
+.bn-formatting-toolbar button,
+.bn-formatting-toolbar [role="button"],
+.bn-formatting-toolbar select {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px !important;
+  border-radius: 4px !important;
+  transition: background-color 0.1s ease !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  user-select: none !important;
+  position: relative;
+  z-index: 1;
+}
+
+.bn-formatting-toolbar button:hover,
+.bn-formatting-toolbar [role="button"]:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.bn-formatting-toolbar button[data-state="on"],
+.bn-formatting-toolbar button[aria-pressed="true"] {
+  background-color: #ede9fe !important;
+  color: #7c3aed !important;
+}
+
+/* 툴바 드롭다운 메뉴 안정화 */
+.bn-formatting-toolbar [data-radix-popper-content-wrapper],
+.bn-toolbar [data-radix-popper-content-wrapper] {
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+}
+
+/* 색상 선택 드롭다운 */
+.bn-color-picker,
+.bn-color-picker-dropdown {
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+  background: white !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.bn-color-picker button {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+/* 사이드 메뉴 (드래그 핸들) */
+.bn-side-menu {
+  z-index: 9998 !important;
+  pointer-events: auto !important;
+}
+
+.bn-side-menu button {
+  border-radius: 4px !important;
+  transition: background-color 0.15s ease;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.bn-side-menu button:hover {
+  background-color: #f3f4f6 !important;
+}
+
+/* 슬래시 메뉴 (Suggestion Menu) */
+.bn-suggestion-menu {
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+  background: white !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.bn-suggestion-menu-item {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.bn-suggestion-menu-item:hover,
+.bn-suggestion-menu-item[data-highlighted="true"] {
+  background-color: #f5f3ff !important;
+}
+
+/* 블록 스타일 */
+.bn-block-outer {
+  padding: 2px 0;
+  transition: background-color 0.15s ease;
+}
+
+.bn-block-outer:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* 체크박스 (할 일 목록) */
+.bn-checkbox {
+  accent-color: #8b5cf6;
+  width: 16px;
+  height: 16px;
+}
+
+/* 코드 블록 */
+.bn-code-block {
+  background-color: #1e1e1e !important;
+  border-radius: 8px !important;
+  font-family: "JetBrains Mono", "Fira Code", monospace !important;
+}
+
+/* 인라인 코드 */
+.bn-inline-content code {
+  background-color: #f3f4f6;
+  color: #7c3aed;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* 링크 스타일 */
+.bn-inline-content a {
+  color: #7c3aed;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bn-inline-content a:hover {
+  color: #6d28d9;
+}
+
+/* 테이블 스타일 */
+.bn-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.bn-table th,
+.bn-table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+}
+
+.bn-table th {
+  background-color: #f9fafb;
+  font-weight: 600;
+}
+
+/* 이미지 블록 */
+.bn-image-block {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.bn-image-block img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 플레이스홀더 텍스트 */
+.bn-is-empty.bn-has-anchor::before {
+  color: #9ca3af !important;
+  font-style: italic;
+}
+
+/* 선택 영역 스타일 */
+::selection {
+  background-color: rgba(139, 92, 246, 0.2);
+}
+
+/* 스크롤바 스타일 */
+.bn-suggestion-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.bn-suggestion-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bn-suggestion-menu::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 3px;
+}
+
+.bn-suggestion-menu::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
+/* 새 공지사항 반짝임 */
+@keyframes announcement-shine {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15), 0 0 12px 2px rgba(245, 158, 11, 0.1);
+  }
+}
+
+@keyframes announcement-sparkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.1);
+  }
+}
+
+.announcement-new {
+  animation: announcement-shine 2s ease-in-out infinite;
+}
+
+.announcement-sparkle {
+  display: inline-block;
+  animation: announcement-sparkle 1.2s ease-in-out infinite;
+}
