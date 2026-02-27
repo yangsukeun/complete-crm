@@ -57,7 +57,7 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
 
   if (original.attachments.length > 0) {
     await prisma.taskAttachment.createMany({
-      data: original.attachments.map((a) => ({
+      data: original.attachments.map((a: any) => ({
         taskId: newTask.id,
         type: a.type,
         url: a.url,

@@ -80,9 +80,9 @@ export function AdminEmployeesClient({
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/settings/departments").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/settings/positions").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/permissions/features").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/settings/departments").then((r: any) => (r.ok ? r.json() : [])),
+      fetch("/api/settings/positions").then((r: any) => (r.ok ? r.json() : [])),
+      fetch("/api/permissions/features").then((r: any) => (r.ok ? r.json() : [])),
     ]).then(([depts, pos, feats]) => {
       setDepartments(Array.isArray(depts) ? depts : []);
       setPositions(Array.isArray(pos) ? pos : []);
@@ -150,7 +150,7 @@ export function AdminEmployeesClient({
         throw new Error(msg);
       }
       const updated = await res.json();
-      setEmployees((prev) =>
+      setEmployees((prev: any) =>
         prev.map((p: any) =>
           p.id === editing.id
             ? ({
@@ -249,7 +249,7 @@ export function AdminEmployeesClient({
         </Table>
       </div>
 
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog open={!!editing} onOpenChange={(open: any) => !open && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>직원 정보 수정</DialogTitle>
@@ -265,12 +265,12 @@ export function AdminEmployeesClient({
                 <Input
                   id="edit-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e: any) => setName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>역할 (직책에 따른 기능)</Label>
-                <Select value={role} onValueChange={(v) => setRole(v as "USER" | "TEAM_LEAD")}>
+                <Select value={role} onValueChange={(v: any) => setRole(v as "USER" | "TEAM_LEAD")}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -287,7 +287,7 @@ export function AdminEmployeesClient({
               </div>
               <div className="space-y-2">
                 <Label>부서</Label>
-                <Select value={department || "none"} onValueChange={(v) => setDepartment(v === "none" ? "" : v)}>
+                <Select value={department || "none"} onValueChange={(v: any) => setDepartment(v === "none" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
@@ -303,7 +303,7 @@ export function AdminEmployeesClient({
               </div>
               <div className="space-y-2">
                 <Label>직책</Label>
-                <Select value={position || "none"} onValueChange={(v) => setPosition(v === "none" ? "" : v)}>
+                <Select value={position || "none"} onValueChange={(v: any) => setPosition(v === "none" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
@@ -322,7 +322,7 @@ export function AdminEmployeesClient({
                 <Input
                   id="edit-address"
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  onChange={(e: any) => setAddress(e.target.value)}
                   placeholder="주소를 입력하세요"
                 />
               </div>
@@ -331,7 +331,7 @@ export function AdminEmployeesClient({
                 <Input
                   id="edit-bankAccount"
                   value={bankAccount}
-                  onChange={(e) => setBankAccount(e.target.value)}
+                  onChange={(e: any) => setBankAccount(e.target.value)}
                   placeholder="은행명 계좌번호"
                 />
               </div>
@@ -340,7 +340,7 @@ export function AdminEmployeesClient({
                 <Input
                   id="edit-workPhone"
                   value={workPhone}
-                  onChange={(e) => setWorkPhone(e.target.value)}
+                  onChange={(e: any) => setWorkPhone(e.target.value)}
                   placeholder="업무용 전화번호"
                 />
               </div>
@@ -350,7 +350,7 @@ export function AdminEmployeesClient({
                   id="edit-workEmail"
                   type="email"
                   value={workEmail}
-                  onChange={(e) => setWorkEmail(e.target.value)}
+                  onChange={(e: any) => setWorkEmail(e.target.value)}
                   placeholder="업무용 이메일 (선택)"
                 />
               </div>
@@ -360,7 +360,7 @@ export function AdminEmployeesClient({
                   id="edit-joindate"
                   type="date"
                   value={joinDate}
-                  onChange={(e) => setJoinDate(e.target.value)}
+                  onChange={(e: any) => setJoinDate(e.target.value)}
                 />
               </div>
               <div className="space-y-2 border-t pt-4">
@@ -370,7 +370,7 @@ export function AdminEmployeesClient({
                     <input
                       type="checkbox"
                       checked={useCustomPermissions}
-                      onChange={(e) => {
+                      onChange={(e: any) => {
                         setUseCustomPermissions(e.target.checked);
                         if (!e.target.checked) setSelectedPermissions([]);
                       }}
@@ -386,9 +386,9 @@ export function AdminEmployeesClient({
                         <input
                           type="checkbox"
                           checked={selectedPermissions.includes(f.key)}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedPermissions((prev) => [...prev, f.key]);
-                            else setSelectedPermissions((prev) => prev.filter((k: any) => k !== f.key));
+                          onChange={(e: any) => {
+                            if (e.target.checked) setSelectedPermissions((prev: any) => [...prev, f.key]);
+                            else setSelectedPermissions((prev: any) => prev.filter((k: any) => k !== f.key));
                           }}
                           className="rounded border-gray-300"
                         />

@@ -63,17 +63,17 @@ export default function NewQuotationPage() {
 
   useEffect(() => {
     fetch("/api/quotations/forms")
-      .then((r) => (r.ok ? r.json() : []))
+      .then((r: any) => (r.ok ? r.json() : []))
       .then((list: FormOption[]) => setForms(Array.isArray(list) ? list : []))
       .catch(() => setForms([]));
   }, []);
 
   useEffect(() => {
     if (!formIdFromUrl || forms.length === 0) return;
-    const form = forms.find((f) => f.id === formIdFromUrl);
+    const form = forms.find((f: any) => f.id === formIdFromUrl);
     if (form && form.items.length > 0) {
       setItems(
-        form.items.map((i) => ({
+        form.items.map((i: any) => ({
           description: i.description,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -85,10 +85,10 @@ export default function NewQuotationPage() {
   }, [formIdFromUrl, forms]);
 
   const applyForm = (formId: string) => {
-    const form = forms.find((f) => f.id === formId);
+    const form = forms.find((f: any) => f.id === formId);
     if (form && form.items.length > 0) {
       setItems(
-        form.items.map((i) => ({
+        form.items.map((i: any) => ({
           description: i.description,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -100,7 +100,7 @@ export default function NewQuotationPage() {
   };
 
   const updateItem = (index: number, patch: Partial<QuotationItemInput>) => {
-    setItems((prev) => {
+    setItems((prev: any) => {
       const next = [...prev];
       const row = { ...next[index], ...patch };
       if ("quantity" in patch || "unitPrice" in patch) {
@@ -111,10 +111,10 @@ export default function NewQuotationPage() {
     });
   };
 
-  const addRow = () => setItems((prev) => [...prev, defaultItem()]);
+  const addRow = () => setItems((prev: any) => [...prev, defaultItem()]);
   const removeRow = (index: number) => {
     if (items.length <= 1) return;
-    setItems((prev) => prev.filter((_, i) => i !== index));
+    setItems((prev: any) => prev.filter((_: any, i: any) => i !== index));
   };
 
   const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
@@ -130,7 +130,7 @@ export default function NewQuotationPage() {
       toast.error("거래처명을 입력하세요.");
       return;
     }
-    const validItems = items.filter((i) => i.description.trim() !== "" || i.amount > 0);
+    const validItems = items.filter((i: any) => i.description.trim() !== "" || i.amount > 0);
     if (validItems.length === 0) {
       toast.error("품목을 1개 이상 입력하세요.");
       return;
@@ -141,7 +141,7 @@ export default function NewQuotationPage() {
         title: title.trim(),
         clientName: clientName.trim(),
         validUntil,
-        items: validItems.map((i) => ({
+        items: validItems.map((i: any) => ({
           description: i.description.trim() || "(품목)",
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -190,7 +190,7 @@ export default function NewQuotationPage() {
               <Input
                 id="title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e: any) => setTitle(e.target.value)}
                 placeholder="예: ○○ 프로젝트 인쇄물"
               />
             </div>
@@ -199,7 +199,7 @@ export default function NewQuotationPage() {
               <Input
                 id="clientName"
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
+                onChange={(e: any) => setClientName(e.target.value)}
                 placeholder="(주)○○"
               />
             </div>
@@ -210,7 +210,7 @@ export default function NewQuotationPage() {
               id="validUntil"
               type="date"
               value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
+              onChange={(e: any) => setValidUntil(e.target.value)}
             />
           </div>
 
@@ -224,7 +224,7 @@ export default function NewQuotationPage() {
                       <SelectValue placeholder="폼 불러오기" />
                     </SelectTrigger>
                     <SelectContent>
-                      {forms.map((f) => (
+                      {forms.map((f: any) => (
                         <SelectItem key={f.id} value={f.id}>
                           <span className="flex items-center gap-2">
                             <LayoutTemplate className="size-3.5" />
@@ -261,7 +261,7 @@ export default function NewQuotationPage() {
                         <Input
                           className="h-9 border-0 bg-transparent focus-visible:ring-1"
                           value={row.description}
-                          onChange={(e) => updateItem(idx, { description: e.target.value })}
+                          onChange={(e: any) => updateItem(idx, { description: e.target.value })}
                           placeholder="품목명"
                         />
                       </TableCell>
@@ -271,7 +271,7 @@ export default function NewQuotationPage() {
                           min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
                           value={row.quantity || ""}
-                          onChange={(e) => updateItem(idx, { quantity: parseInt(e.target.value, 10) || 0 })}
+                          onChange={(e: any) => updateItem(idx, { quantity: parseInt(e.target.value, 10) || 0 })}
                         />
                       </TableCell>
                       <TableCell className="text-right">
@@ -280,7 +280,7 @@ export default function NewQuotationPage() {
                           min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
                           value={row.unitPrice || ""}
-                          onChange={(e) => updateItem(idx, { unitPrice: parseInt(e.target.value, 10) || 0 })}
+                          onChange={(e: any) => updateItem(idx, { unitPrice: parseInt(e.target.value, 10) || 0 })}
                         />
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
@@ -318,7 +318,7 @@ export default function NewQuotationPage() {
             <Textarea
               id="remarks"
               value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
+              onChange={(e: any) => setRemarks(e.target.value)}
               onFocus={() =>
                 aiCtx?.register({
                   getValue: () => remarksRef.current,

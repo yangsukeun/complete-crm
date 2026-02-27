@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 
 const TaskBodyEditor = dynamic(
-  () => import("./task-body-editor").then((m) => m.TaskBodyEditor),
+  () => import("./task-body-editor").then((m: any) => m.TaskBodyEditor),
   { ssr: false }
 );
 
@@ -25,9 +25,7 @@ export function TaskBodyEditorDynamic({
     <div className={cn("w-full", className)}>
       <TaskBodyEditor
         key={taskId}
-        taskId={taskId}
-        initialDescription={initialDescription}
-        onSaved={onSaved}
+        {...({ taskId, initialDescription, onSaved } as any)}
       />
     </div>
   );

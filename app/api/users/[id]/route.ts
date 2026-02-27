@@ -14,11 +14,11 @@ const updateSchema = z.object({
   workEmail: z
     .union([z.string(), z.literal(""), z.null(), z.undefined()])
     .optional()
-    .transform((v) => {
+    .transform((v: any) => {
       if (v == null || (typeof v === "string" && v.trim() === "")) return null;
       return String(v).trim();
     })
-    .refine((v) => v === null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "올바른 이메일 형식이 아닙니다."),
+    .refine((v: any) => v === null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "올바른 이메일 형식이 아닙니다."),
   currentProjectId: z.string().nullable().optional(),
   joinDate: z.string().optional(), // YYYY-MM-DD or ISO
   permissions: z.array(z.string()).optional().nullable(), // 사용 가능 기능 키 목록, null = 역할 기본값

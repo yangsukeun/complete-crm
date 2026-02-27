@@ -12,13 +12,13 @@ type WorkspaceState = {
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
-    (set) => ({
-      currentWorkspace: "TEAM",
-      setWorkspace: (currentWorkspace) => set({ currentWorkspace }),
+    (set: any) => ({
+      currentWorkspace: "TEAM" as Workspace,
+      setWorkspace: (currentWorkspace: Workspace) => set({ currentWorkspace }),
     }),
     {
       name: STORAGE_KEY,
-      partialize: (state) => ({ currentWorkspace: state.currentWorkspace }),
+      partialize: (state: any) => ({ currentWorkspace: state.currentWorkspace }),
     }
   )
 );

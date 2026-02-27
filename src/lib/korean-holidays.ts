@@ -62,8 +62,8 @@ export function getKoreanHolidays(year: number): HolidayItem[] {
 
   const lunar = LUNAR_HOLIDAYS[year];
   if (lunar) {
-    lunar.설날.forEach((d) => list.push({ date: d, name: "설날", type: "legal" }));
-    lunar.추석.forEach((d) => list.push({ date: d, name: "추석", type: "legal" }));
+    lunar.설날.forEach((d: any) => list.push({ date: d, name: "설날", type: "legal" }));
+    lunar.추석.forEach((d: any) => list.push({ date: d, name: "추석", type: "legal" }));
   }
 
   for (const [date, name] of Object.entries(TEMPORARY_HOLIDAYS)) {
@@ -93,27 +93,27 @@ function getLegalHolidayName(month: number, day: number): string {
 export function isLegalHoliday(date: Date): boolean {
   const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const list = getKoreanHolidays(date.getFullYear());
-  return list.some((h) => h.date === key && h.type === "legal");
+  return list.some((h: any) => h.date === key && h.type === "legal");
 }
 
 /** 날짜가 임시공휴일인지 */
 export function isTemporaryHoliday(date: Date): boolean {
   const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const list = getKoreanHolidays(date.getFullYear());
-  return list.some((h) => h.date === key && h.type === "temporary");
+  return list.some((h: any) => h.date === key && h.type === "temporary");
 }
 
 /** 날짜가 공휴일인지 (법정 또는 임시) */
 export function isHoliday(date: Date): boolean {
   const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const list = getKoreanHolidays(date.getFullYear());
-  return list.some((h) => h.date === key);
+  return list.some((h: any) => h.date === key);
 }
 
 /** 해당 날짜의 공휴일 이름 (없으면 null) */
 export function getHolidayName(date: Date): string | null {
   const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const list = getKoreanHolidays(date.getFullYear());
-  const found = list.find((h) => h.date === key);
+  const found = list.find((h: any) => h.date === key);
   return found ? found.name : null;
 }

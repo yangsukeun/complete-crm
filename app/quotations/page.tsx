@@ -51,7 +51,7 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const statusLabel: Record<string, string> = Object.fromEntries(
-  STATUS_OPTIONS.map((o) => [o.value, o.label])
+  STATUS_OPTIONS.map((o: any) => [o.value, o.label])
 );
 
 function StatusBadge({ status }: { status: string }) {
@@ -139,8 +139,8 @@ export default function QuotationsPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "변경 실패");
       }
-      setList((prev) =>
-        prev.map((q) => (q.id === quotationId ? { ...q, status: newStatus } : q))
+      setList((prev: any) =>
+        prev.map((q: any) => (q.id === quotationId ? { ...q, status: newStatus } : q))
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "상태 변경에 실패했습니다.");
@@ -184,7 +184,7 @@ export default function QuotationsPage() {
 
       {/* 상태별 필터 탭 */}
       <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50/50 p-1 dark:border-slate-800 dark:bg-slate-900/30">
-        {FILTER_TABS.map((tab) => (
+        {FILTER_TABS.map((tab: any) => (
           <Button
             key={tab.value || "all"}
             variant={statusFilter === tab.value ? "secondary" : "ghost"}
@@ -228,7 +228,7 @@ export default function QuotationsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.map((q) => (
+              {list.map((q: any) => (
                 <TableRow key={q.id} className="border-slate-200 dark:border-slate-800">
                   <TableCell className="font-mono text-sm">{q.quotationNumber}</TableCell>
                   <TableCell className="font-medium">{q.title}</TableCell>
@@ -239,7 +239,7 @@ export default function QuotationsPage() {
                   <TableCell>
                     <Select
                       value={q.status}
-                      onValueChange={(v) => handleStatusChange(q.id, v)}
+                      onValueChange={(v: any) => handleStatusChange(q.id, v)}
                       disabled={updatingId === q.id}
                     >
                       <SelectTrigger className="h-8 w-[140px] border-0 bg-transparent shadow-none hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -250,7 +250,7 @@ export default function QuotationsPage() {
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {STATUS_OPTIONS.map((opt) => (
+                        {STATUS_OPTIONS.map((opt: any) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
                           </SelectItem>

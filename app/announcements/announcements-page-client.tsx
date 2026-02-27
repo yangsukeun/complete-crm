@@ -101,7 +101,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
     }
     setSubmitLoading(true);
     try {
-      const opts = pollOptions.map((s) => s.trim()).filter(Boolean);
+      const opts = pollOptions.map((s: any) => s.trim()).filter(Boolean);
       const body: Record<string, unknown> = {
         title: title.trim(),
         content: content.trim(),
@@ -166,7 +166,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
               <Input
                 id="announcement-title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e: any) => setTitle(e.target.value)}
                 placeholder="공지 제목을 입력하세요"
                 maxLength={200}
                 className="border-gray-200"
@@ -185,7 +185,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
               <Textarea
                 id="announcement-content"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e: any) => setContent(e.target.value)}
                 onFocus={() =>
                   aiCtx?.register({
                     getValue: () => contentRef.current,
@@ -211,7 +211,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                   <Input
                     type="datetime-local"
                     value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
+                    onChange={(e: any) => setEventDate(e.target.value)}
                     className="border-gray-200"
                   />
                 </div>
@@ -220,7 +220,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                   <Input
                     type="datetime-local"
                     value={eventEndDate}
-                    onChange={(e) => setEventEndDate(e.target.value)}
+                    onChange={(e: any) => setEventEndDate(e.target.value)}
                     className="border-gray-200"
                   />
                 </div>
@@ -231,7 +231,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                 </Label>
                 <Input
                   value={location}
-                  onChange={(e) => setLocation(e.target.value)}
+                  onChange={(e: any) => setLocation(e.target.value)}
                   placeholder="예: 회의실 A, 줌 링크 등"
                   maxLength={500}
                   className="border-gray-200"
@@ -252,7 +252,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                   <div key={i} className="flex gap-2">
                     <Input
                       value={opt}
-                      onChange={(e) => setPollOptionAt(i, e.target.value)}
+                      onChange={(e: any) => setPollOptionAt(i, e.target.value)}
                       placeholder={`선택지 ${i + 1}`}
                       maxLength={200}
                       className="border-gray-200"
@@ -313,7 +313,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
           </div>
         ) : (
           <ul className="space-y-3">
-            {list.map((a) => {
+            {list.map((a: any) => {
               const newAnnouncement = isNew(a.createdAt);
               return (
                 <li
@@ -365,7 +365,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                         투표
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {a.pollOptions.map((opt, idx) => (
+                        {a.pollOptions.map((opt: any, idx: any) => (
                           <Button
                             key={idx}
                             type="button"

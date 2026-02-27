@@ -96,7 +96,7 @@ export default function QuotationFormsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.map((f) => (
+              {list.map((f: any) => (
                 <TableRow key={f.id} className="border-slate-200 dark:border-slate-800">
                   <TableCell className="font-medium">{f.name}</TableCell>
                   <TableCell className="text-muted-foreground">{f.items.length}개</TableCell>

@@ -112,7 +112,7 @@ export default async function DashboardPage() {
               다가오는 일정
             </h2>
             <ul className="space-y-2">
-              {upcomingSchedules.map((s) => (
+              {upcomingSchedules.map((s: any) => (
                 <li key={s.id}>
                   <Link
                     href="/schedule"
@@ -200,7 +200,7 @@ export default async function DashboardPage() {
       }),
     ]);
 
-    const completedTasks = tasksCreatedByMe.filter((t) => t.isCompleted);
+    const completedTasks = tasksCreatedByMe.filter((t: any) => t.isCompleted);
     const progressPercent =
       tasksCreatedByMe.length > 0
         ? Math.round((completedTasks.length / tasksCreatedByMe.length) * 100)
@@ -208,7 +208,7 @@ export default async function DashboardPage() {
     const used = adminLeaveBalance?.annualUsed ?? 0;
     const manual = adminLeaveBalance?.manualDeduction ?? 0;
     const remaining = Math.max(0, annualTotal - used - manual);
-    const incompleteCount = tasksCreatedByMe.filter((t) => !t.isCompleted).length;
+    const incompleteCount = tasksCreatedByMe.filter((t: any) => !t.isCompleted).length;
     const salesStats = await getDashboardSalesStats();
 
     return (
@@ -310,7 +310,7 @@ export default async function DashboardPage() {
             </div>
             <p className="mt-2 text-2xl font-semibold">{todayAttendances.length}명</p>
             <ul className="text-muted-foreground mt-2 text-xs">
-              {todayAttendances.slice(0, 3).map((a) => (
+              {todayAttendances.slice(0, 3).map((a: any) => (
                 <li key={a.id}>
                   {formatUserName(a.user)}
                   {a.checkIn ? ` ${format(new Date(a.checkIn), "HH:mm", { locale: ko })} 출근` : ""}
@@ -328,7 +328,7 @@ export default async function DashboardPage() {
               다가오는 일정
             </h2>
             <ul className="space-y-2">
-              {adminUpcomingSchedules.map((s) => (
+              {adminUpcomingSchedules.map((s: any) => (
                 <li key={s.id}>
                   <Link
                     href="/schedule"
@@ -511,7 +511,7 @@ export default async function DashboardPage() {
             다가오는 일정
           </h2>
           <ul className="space-y-2">
-            {upcomingSchedules.map((s) => (
+            {upcomingSchedules.map((s: any) => (
               <li key={s.id}>
                 <Link
                   href="/schedule"
@@ -542,7 +542,7 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <ul className="space-y-2">
-            {myTasks.map((task) => {
+            {myTasks.map((task: any) => {
               const due = new Date(task.dueDate);
               const urgent = isDueSoonOrOverdue(due);
               return (

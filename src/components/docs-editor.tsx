@@ -50,7 +50,7 @@ export function DocsEditor({ className }: DocsEditorProps) {
       <input
         type="text"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e: any) => setTitle(e.target.value)}
         placeholder="제목 없음"
         className="mb-2 w-full resize-none border-0 bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-muted-foreground md:text-4xl"
       />

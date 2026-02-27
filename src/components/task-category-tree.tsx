@@ -207,12 +207,12 @@ export function TaskCategoryTree({
           {isEditing ? (
             <Input
               value={editName}
-              onChange={(e) => setEditName(e.target.value)}
+              onChange={(e: any) => setEditName(e.target.value)}
               onBlur={() => {
                 if (editName.trim()) updateCategory(cat.id, { name: editName.trim() });
                 setEditingId(null);
               }}
-              onKeyDown={(e) => {
+              onKeyDown={(e: any) => {
                 if (e.key === "Enter") {
                   if (editName.trim()) updateCategory(cat.id, { name: editName.trim() });
                   setEditingId(null);
@@ -325,14 +325,14 @@ export function TaskCategoryTree({
       </div>
       <DragDropContext onDragEnd={handleDragEnd}>
         <Droppable droppableId="top-categories">
-          {(provided) => (
+          {(provided: any) => (
             <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0">
               {topLevel.map((cat, index) => {
                 const full = tree.find((c: any) => c.id === cat.id);
                 if (!full) return null;
                 return (
                   <Draggable key={cat.id} draggableId={cat.id} index={index}>
-                    {(providedDrag) => (
+                    {(providedDrag: any) => (
                       <div ref={providedDrag.innerRef} {...providedDrag.draggableProps} className="flex items-start gap-0">
                         <div {...providedDrag.dragHandleProps} className="pt-2.5 cursor-grab active:cursor-grabbing">
                           <GripVertical className="size-4 text-muted-foreground" />

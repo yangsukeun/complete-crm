@@ -146,7 +146,7 @@ export function WorkLogTab() {
         <p className="text-muted-foreground mb-1.5 text-xs font-medium">추가 작성 (수정 가능)</p>
         <Textarea
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e: any) => setContent(e.target.value)}
           onFocus={() =>
             aiCtx?.register({
               getValue: () => contentRef.current,

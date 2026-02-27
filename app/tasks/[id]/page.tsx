@@ -91,7 +91,7 @@ export default function TaskDetailPage() {
         body: JSON.stringify({ isCompleted: !task.isCompleted }),
       });
       if (!res.ok) throw new Error("Failed");
-      setTask((prev) => (prev ? { ...prev, isCompleted: !prev.isCompleted } : null));
+      setTask((prev: any) => (prev ? { ...prev, isCompleted: !prev.isCompleted } : null));
     } catch {
       toast.error("완료 상태 변경에 실패했습니다.");
     } finally {
@@ -296,7 +296,7 @@ export default function TaskDetailPage() {
               </button>
             ) : (
               <div className="space-y-2">
-                {task.attachments.map((a) => (
+                {task.attachments.map((a: any) => (
                   <a
                     key={a.id}
                     href={a.url}
@@ -312,7 +312,7 @@ export default function TaskDetailPage() {
                 {showAddAttach ? (
                   <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
                     <div className="flex flex-wrap gap-2">
-                      <Select value={attachType} onValueChange={(v) => setAttachType(v as "LINK" | "VIDEO" | "FILE")}>
+                      <Select value={attachType} onValueChange={(v: any) => setAttachType(v as "LINK" | "VIDEO" | "FILE")}>
                         <SelectTrigger className="h-8 w-24 text-xs">
                           <SelectValue />
                         </SelectTrigger>
@@ -322,8 +322,8 @@ export default function TaskDetailPage() {
                           <SelectItem value="FILE">파일</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Input placeholder="URL" value={attachUrl} onChange={(e) => setAttachUrl(e.target.value)} className="h-8 min-w-[120px] flex-1 text-sm" />
-                      <Input placeholder="이름 (선택)" value={attachName} onChange={(e) => setAttachName(e.target.value)} className="h-8 w-28 text-sm" />
+                      <Input placeholder="URL" value={attachUrl} onChange={(e: any) => setAttachUrl(e.target.value)} className="h-8 min-w-[120px] flex-1 text-sm" />
+                      <Input placeholder="이름 (선택)" value={attachName} onChange={(e: any) => setAttachName(e.target.value)} className="h-8 w-28 text-sm" />
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={handleAddAttachment} disabled={addingAttach}>추가</Button>
@@ -346,7 +346,7 @@ export default function TaskDetailPage() {
               댓글 {task.comments.length > 0 && `(${task.comments.length})`}
             </div>
             <ul className="space-y-4">
-              {task.comments.map((c) => (
+              {task.comments.map((c: any) => (
                 <li key={c.id} className="flex gap-3">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                     {(c.user.name ?? "?").slice(0, 1)}
@@ -362,7 +362,7 @@ export default function TaskDetailPage() {
               ))}
             </ul>
             <div className="mt-4 flex gap-2">
-              <Textarea placeholder="댓글을 입력하세요..." value={commentBody} onChange={(e) => setCommentBody(e.target.value)} rows={2} className="min-h-[72px] resize-none text-[15px]" />
+              <Textarea placeholder="댓글을 입력하세요..." value={commentBody} onChange={(e: any) => setCommentBody(e.target.value)} rows={2} className="min-h-[72px] resize-none text-[15px]" />
               <Button onClick={handleAddComment} disabled={addingComment || !commentBody.trim()} className="shrink-0 self-end">
                 {addingComment ? "등록 중..." : "등록"}
               </Button>

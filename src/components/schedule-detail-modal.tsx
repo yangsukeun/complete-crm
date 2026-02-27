@@ -139,7 +139,7 @@ export function ScheduleDetailModal({
             <Input
               id="modal-title"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e: any) => setTitle(e.target.value)}
               placeholder="일정 제목"
             />
           </div>
@@ -148,7 +148,7 @@ export function ScheduleDetailModal({
             <Textarea
               id="modal-desc"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e: any) => setDescription(e.target.value)}
               placeholder="설명 (선택)"
               rows={3}
             />
@@ -159,7 +159,7 @@ export function ScheduleDetailModal({
               <Input
                 type="datetime-local"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={(e: any) => setStartTime(e.target.value)}
                 disabled={isAllDay}
               />
             </div>
@@ -168,7 +168,7 @@ export function ScheduleDetailModal({
               <Input
                 type="datetime-local"
                 value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                onChange={(e: any) => setEndTime(e.target.value)}
                 disabled={isAllDay}
               />
             </div>
@@ -177,7 +177,7 @@ export function ScheduleDetailModal({
             <Checkbox
               id="modal-allday"
               checked={isAllDay}
-              onCheckedChange={(v) => setIsAllDay(v === true)}
+              onCheckedChange={(v: any) => setIsAllDay(v === true)}
             />
             <Label htmlFor="modal-allday" className="cursor-pointer">
               종일

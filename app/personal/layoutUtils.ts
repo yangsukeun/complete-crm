@@ -20,17 +20,17 @@ export function getLayoutedNodes(
     marginy: 20,
   });
 
-  nodes.forEach((node) => {
+  nodes.forEach((node: any) => {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   });
 
-  edges.forEach((edge) => {
+  edges.forEach((edge: any) => {
     g.setEdge(edge.source, edge.target);
   });
 
   dagre.layout(g);
 
-  return nodes.map((node) => {
+  return nodes.map((node: any) => {
     const n = g.node(node.id);
     return {
       ...node,

@@ -20,7 +20,7 @@ function setMode(mode: "company" | "personal") {
 
 export default function ChooseModePage() {
   const router = useRouter();
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
+  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
 
   const handleSelect = async (mode: "company" | "personal") => {
     setMode(mode);

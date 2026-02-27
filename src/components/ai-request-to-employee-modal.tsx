@@ -43,7 +43,7 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
       setAction("chat");
       setMessage("");
       fetch("/api/users/list")
-        .then((r) => (r.ok ? r.json() : []))
+        .then((r: any) => (r.ok ? r.json() : []))
         .then((list: User[]) => setUsers(Array.isArray(list) ? list : []))
         .catch(() => setUsers([]));
     }
@@ -166,7 +166,7 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
               <Textarea
                 id="req-msg"
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={(e: any) => setMessage(e.target.value)}
                 placeholder="보낼 메시지를 입력하세요"
                 rows={3}
                 className="resize-none"

@@ -144,8 +144,8 @@ export function QuotationView({
               type="email"
               placeholder="client@example.com"
               value={toEmail}
-              onChange={(e) => setToEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMail()}
+              onChange={(e: any) => setToEmail(e.target.value)}
+              onKeyDown={(e: any) => e.key === "Enter" && handleSendMail()}
             />
           </div>
           <DialogFooter>

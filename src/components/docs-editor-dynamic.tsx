@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 
-const DocsEditor = dynamic(() => import("./docs-editor").then((m) => m.DocsEditor), {
+const DocsEditor = dynamic(() => import("./docs-editor").then((m: any) => m.DocsEditor), {
   ssr: false,
   loading: () => (
     <div className="flex min-h-[400px] items-center justify-center text-muted-foreground text-sm">
@@ -19,7 +19,7 @@ type DocsEditorDynamicProps = {
 export function DocsEditorDynamic({ className }: DocsEditorDynamicProps) {
   return (
     <div className={cn("w-full", className)}>
-      <DocsEditor className={className} />
+      <DocsEditor {...({ className } as any)} />
     </div>
   );
 }

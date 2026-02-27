@@ -140,17 +140,17 @@ function getLayoutedElements(
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({ rankdir: direction, nodesep: 50, ranksep: 80 });
 
-  nodes.forEach((node) => {
+  nodes.forEach((node: any) => {
     dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   });
 
-  edges.forEach((edge) => {
+  edges.forEach((edge: any) => {
     dagreGraph.setEdge(edge.source, edge.target);
   });
 
   dagre.layout(dagreGraph);
 
-  const layoutedNodes = nodes.map((node) => {
+  const layoutedNodes = nodes.map((node: any) => {
     const nodeWithPosition = dagreGraph.node(node.id);
     return {
       ...node,
@@ -283,7 +283,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
           {/* Collapse Toggle */}
           {hasChildren && (
             <button
-              onClick={(e) => {
+              onClick={(e: any) => {
                 e.stopPropagation();
                 onToggleCollapse(id);
               }}
@@ -303,8 +303,8 @@ function TaskNode({ data, id, selected }: NodeProps) {
               <div className="flex items-center gap-1">
                 <Input
                   value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  onKeyDown={(e) => {
+                  onChange={(e: any) => setEditTitle(e.target.value)}
+                  onKeyDown={(e: any) => {
                     if (e.key === "Enter") handleSave();
                     if (e.key === "Escape") handleCancel();
                   }}
@@ -360,7 +360,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
             size="sm"
             variant="ghost"
             className="h-6 px-2 text-xs"
-            onClick={(e) => {
+            onClick={(e: any) => {
               e.stopPropagation();
               onAddChild(task.id);
             }}
@@ -464,9 +464,9 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       toast.error("먼저 스타일을 변경할 노드를 선택하세요.");
       return;
     }
-    setNodeStylesMap((prev) => {
+    setNodeStylesMap((prev: any) => {
       const next = { ...prev };
-      selectedNodeIds.forEach((id) => {
+      selectedNodeIds.forEach((id: any) => {
         next[id] = { ...(prev[id] || DEFAULT_NODE_STYLE), ...updates };
       });
       return next;
@@ -480,9 +480,9 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       toast.error("먼저 초기화할 노드를 선택하세요.");
       return;
     }
-    setNodeStylesMap((prev) => {
+    setNodeStylesMap((prev: any) => {
       const next = { ...prev };
-      selectedNodeIds.forEach((id) => {
+      selectedNodeIds.forEach((id: any) => {
         delete next[id];
       });
       return next;
@@ -492,8 +492,8 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
 
   // Define handlers FIRST using useCallback
   const handleToggleCollapse = useCallback((id: string) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
+    setCollapsedIds((prev: any) => {
+      const next = new Set<string>(prev);
       if (next.has(id)) {
         next.delete(id);
       } else {
@@ -543,7 +543,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
     const hiddenIds = new Set<string>();
 
     function hideChildren(parentId: string) {
-      allTasks.forEach((t) => {
+      allTasks.forEach((t: any) => {
         if (t.parentId === parentId) {
           hiddenIds.add(t.id);
           hideChildren(t.id);
@@ -551,14 +551,14 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       });
     }
 
-    collapsed.forEach((id) => hideChildren(id));
+    collapsed.forEach((id: any) => hideChildren(id));
 
-    return allTasks.filter((t) => !hiddenIds.has(t.id));
+    return allTasks.filter((t: any) => !hiddenIds.has(t.id));
   }, []);
 
   // Handle selection change
   const handleSelectionChange = useCallback(({ nodes }: OnSelectionChangeParams) => {
-    setSelectedNodeIds(nodes.map((n) => n.id));
+    setSelectedNodeIds(nodes.map((n: any) => n.id));
   }, []);
 
   // Delete selected tasks
@@ -607,7 +607,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       // Add new task to staged roots if no parent
       if (!parentId) {
         const newTask = await res.json();
-        setStagedRootIds((prev) => new Set([...prev, newTask.id]));
+        setStagedRootIds((prev: any) => new Set([...prev, newTask.id]));
       }
       
       onRefresh();
@@ -631,15 +631,15 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
 
   // Split tasks: tree tasks (have parent OR have children OR staged as root OR has additional links) vs uncategorized
   const { treeTasks, uncategorizedTasks } = useMemo(() => {
-    const parentIds = new Set(tasks.filter((t) => t.parentId).map((t) => t.parentId!));
+    const parentIds = new Set(tasks.filter((t: any) => t.parentId).map((t: any) => t.parentId!));
     // Tasks that have additional parent links
-    const linkedChildIds = new Set(taskLinks.map((l) => l.childId));
-    const linkedParentIds = new Set(taskLinks.map((l) => l.parentId));
+    const linkedChildIds = new Set(taskLinks.map((l: any) => l.childId));
+    const linkedParentIds = new Set(taskLinks.map((l: any) => l.parentId));
     
     const tree: TaskData[] = [];
     const uncategorized: TaskData[] = [];
 
-    tasks.forEach((task) => {
+    tasks.forEach((task: any) => {
       const hasParent = task.parentId !== null;
       const hasChildren = parentIds.has(task.id);
       const isStagedRoot = stagedRootIds.has(task.id);
@@ -658,11 +658,11 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
   // Build nodes and edges from tree tasks
   const { layoutedNodes, layoutedEdges } = useMemo(() => {
     const visibleTasks = getVisibleTasks(treeTasks, collapsedIds);
-    const visibleTaskIds = new Set(visibleTasks.map((t) => t.id));
+    const visibleTaskIds = new Set(visibleTasks.map((t: any) => t.id));
 
-    const nodes: Node[] = visibleTasks.map((task) => {
-      const hasChildren = treeTasks.some((t) => t.parentId === task.id) ||
-        taskLinks.some((l) => l.parentId === task.id);
+    const nodes: Node[] = visibleTasks.map((task: any) => {
+      const hasChildren = treeTasks.some((t: any) => t.parentId === task.id) ||
+        taskLinks.some((l: any) => l.parentId === task.id);
       return {
         id: task.id,
         type: "taskNode",
@@ -682,8 +682,8 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
 
     // Primary parent edges (solid purple)
     const primaryEdges: Edge[] = visibleTasks
-      .filter((t) => t.parentId && visibleTaskIds.has(t.parentId))
-      .map((t) => ({
+      .filter((t: any) => t.parentId && visibleTaskIds.has(t.parentId))
+      .map((t: any) => ({
         id: `e-${t.parentId}-${t.id}`,
         source: t.parentId!,
         target: t.id,
@@ -694,8 +694,8 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
 
     // Additional parent edges (dashed green) - for multi-parent connections
     const additionalEdges: Edge[] = taskLinks
-      .filter((l) => visibleTaskIds.has(l.parentId) && visibleTaskIds.has(l.childId))
-      .map((l) => ({
+      .filter((l: any) => visibleTaskIds.has(l.parentId) && visibleTaskIds.has(l.childId))
+      .map((l: any) => ({
         id: `link-${l.parentId}-${l.childId}`,
         source: l.parentId,
         target: l.childId,
@@ -732,15 +732,15 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       const { taskId, targetNodeId } = (e as CustomEvent).detail;
       
       // Remove from staged roots if it was there
-      setStagedRootIds((prev) => {
-        const next = new Set(prev);
+      setStagedRootIds((prev: any) => {
+        const next = new Set<string>(prev);
         next.delete(taskId);
         return next;
       });
       
       // Also add target to staged roots if it wasn't in tree
-      setStagedRootIds((prev) => {
-        const next = new Set(prev);
+      setStagedRootIds((prev: any) => {
+        const next = new Set<string>(prev);
         next.add(targetNodeId);
         return next;
       });
@@ -777,7 +777,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
         return;
       }
 
-      setStagedRootIds((prev) => new Set([...prev, taskId]));
+      setStagedRootIds((prev: any) => new Set([...prev, taskId]));
       toast.success("업무가 루트 노드로 추가되었습니다! 🌱", {
         description: "다른 업무를 이 노드 위에 드롭하면 하위 노드가 됩니다.",
       });
@@ -832,8 +832,8 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       if (!connection.source || !connection.target) return;
       if (connection.source === connection.target) return;
 
-      const childTask = tasks.find((t) => t.id === connection.target);
-      const parentTask = tasks.find((t) => t.id === connection.source);
+      const childTask = tasks.find((t: any) => t.id === connection.target);
+      const parentTask = tasks.find((t: any) => t.id === connection.source);
       
       if (!childTask || !parentTask) return;
 
@@ -845,7 +845,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
 
       // Check if additional link already exists
       const existingLink = taskLinks.find(
-        (l) => l.parentId === connection.source && l.childId === connection.target
+        (l: any) => l.parentId === connection.source && l.childId === connection.target
       );
       if (existingLink) {
         toast.info("이미 추가 연결되어 있습니다.");
@@ -901,8 +901,8 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
             ref={quickInputRef}
             placeholder={selectedNodeIds.length === 1 ? "하위 업무 빠르게 추가..." : "새 업무 빠르게 추가..."}
             value={quickTitle}
-            onChange={(e) => setQuickTitle(e.target.value)}
-            onKeyDown={(e) => {
+            onChange={(e: any) => setQuickTitle(e.target.value)}
+            onKeyDown={(e: any) => {
               if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 handleQuickCreate();
@@ -950,7 +950,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
               <div className="space-y-2">
                 <Label className="text-xs font-medium">노드 배경색</Label>
                 <div className="flex gap-1 flex-wrap">
-                  {NODE_BG_OPTIONS.map((opt) => (
+                  {NODE_BG_OPTIONS.map((opt: any) => (
                     <button
                       key={opt.value}
                       onClick={() => updateSelectedNodesStyle({ nodeBgColor: opt.value })}
@@ -968,7 +968,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
               <div className="space-y-2">
                 <Label className="text-xs font-medium">글씨 색상</Label>
                 <div className="flex gap-1 flex-wrap">
-                  {TEXT_COLOR_OPTIONS.map((opt) => (
+                  {TEXT_COLOR_OPTIONS.map((opt: any) => (
                     <button
                       key={opt.value}
                       onClick={() => updateSelectedNodesStyle({ nodeTextColor: opt.value })}
@@ -987,7 +987,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
               <div className="space-y-2">
                 <Label className="text-xs font-medium">글씨 크기</Label>
                 <div className="flex gap-1">
-                  {FONT_SIZE_OPTIONS.map((opt) => (
+                  {FONT_SIZE_OPTIONS.map((opt: any) => (
                     <button
                       key={opt.value}
                       onClick={() => updateSelectedNodesStyle({ fontSize: opt.value as NodeStyle["fontSize"] })}
@@ -1007,7 +1007,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
               <div className="space-y-2">
                 <Label className="text-xs font-medium">캔버스 배경 (전체)</Label>
                 <div className="flex gap-1 flex-wrap">
-                  {CANVAS_BG_OPTIONS.map((opt) => (
+                  {CANVAS_BG_OPTIONS.map((opt: any) => (
                     <button
                       key={opt.value}
                       onClick={() => setCanvasBgColor(opt.value)}
@@ -1118,7 +1118,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto">
-            {uncategorizedTasks.map((task) => (
+            {uncategorizedTasks.map((task: any) => (
               <UncategorizedTaskItem
                 key={task.id}
                 task={task}

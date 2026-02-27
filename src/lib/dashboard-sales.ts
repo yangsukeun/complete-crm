@@ -39,16 +39,16 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
   });
 
   const currentMonthQuotations = quotations.filter(
-    (q) => q.issuedAt >= thisMonthStart && q.issuedAt <= thisMonthEnd
+    (q: any) => q.issuedAt >= thisMonthStart && q.issuedAt <= thisMonthEnd
   );
 
   const currentMonth = {
     totalQuotation: currentMonthQuotations.reduce((sum, q) => sum + q.finalAmount, 0),
     paymentCompleted: currentMonthQuotations
-      .filter((q) => q.status === "PAYMENT_COMPLETED")
+      .filter((q: any) => q.status === "PAYMENT_COMPLETED")
       .reduce((sum, q) => sum + q.finalAmount, 0),
     awaitingPayment: currentMonthQuotations
-      .filter((q) => q.status === "AWAITING_PAYMENT")
+      .filter((q: any) => q.status === "AWAITING_PAYMENT")
       .reduce((sum, q) => sum + q.finalAmount, 0),
   };
 

@@ -99,7 +99,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
     if (!taskId) return;
     setLoadingUsers(true);
     fetch("/api/users")
-      .then((res) => res.ok ? res.json() : [])
+      .then((res: any) => res.ok ? res.json() : [])
       .then(setUsers)
       .catch(() => setUsers([]))
       .finally(() => setLoadingUsers(false));
@@ -117,7 +117,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
       });
       if (!res.ok) throw new Error("수정 실패");
       const updated = await res.json();
-      setTask((prev) => prev ? { ...prev, ...updated } : null);
+      setTask((prev: any) => prev ? { ...prev, ...updated } : null);
       toast.success("수정되었습니다.");
       onUpdate();
     } catch {
@@ -165,7 +165,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
         body: JSON.stringify({ isCompleted: !task.isCompleted }),
       });
       if (!res.ok) throw new Error("Failed");
-      setTask((prev) => (prev ? { ...prev, isCompleted: !prev.isCompleted } : null));
+      setTask((prev: any) => (prev ? { ...prev, isCompleted: !prev.isCompleted } : null));
       onUpdate();
     } catch {
       toast.error("완료 상태 변경에 실패했습니다.");
@@ -318,7 +318,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
         : "bg-muted text-muted-foreground";
 
   return (
-    <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={!!taskId} onOpenChange={(open: any) => !open && onClose()}>
       <SheetContent
         side="right"
         showCloseButton={true}
@@ -383,8 +383,8 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                     <div className="flex items-center gap-2">
                       <Input
                         value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onKeyDown={(e) => {
+                        onChange={(e: any) => setEditTitle(e.target.value)}
+                        onKeyDown={(e: any) => {
                           if (e.key === "Enter") handleSaveTitle();
                           if (e.key === "Escape") setIsEditingTitle(false);
                         }}
@@ -473,7 +473,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                       <Input
                         type="datetime-local"
                         defaultValue={format(new Date(task.dueDate), "yyyy-MM-dd'T'HH:mm")}
-                        onChange={(e) => {
+                        onChange={(e: any) => {
                           if (e.target.value) {
                             updateTask({ dueDate: new Date(e.target.value).toISOString() });
                           }
@@ -553,7 +553,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                 multiple
                 className="hidden"
                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                onChange={(e) => handleFiles(e.target.files)}
+                onChange={(e: any) => handleFiles(e.target.files)}
               />
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
                 <Link2 className="size-4" />
@@ -608,7 +608,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                   {showAddAttach ? (
                     <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                       <div className="flex flex-wrap gap-2">
-                        <Select value={attachType} onValueChange={(v) => setAttachType(v as "LINK" | "VIDEO" | "FILE")}>
+                        <Select value={attachType} onValueChange={(v: any) => setAttachType(v as "LINK" | "VIDEO" | "FILE")}>
                           <SelectTrigger className="w-24 h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
@@ -621,13 +621,13 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                         <Input
                           placeholder="URL"
                           value={attachUrl}
-                          onChange={(e) => setAttachUrl(e.target.value)}
+                          onChange={(e: any) => setAttachUrl(e.target.value)}
                           className="h-8 flex-1 min-w-[120px] text-sm"
                         />
                         <Input
                           placeholder="이름 (선택)"
                           value={attachName}
-                          onChange={(e) => setAttachName(e.target.value)}
+                          onChange={(e: any) => setAttachName(e.target.value)}
                           className="h-8 w-28 text-sm"
                         />
                       </div>
@@ -695,7 +695,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                 <Textarea
                   placeholder="댓글을 입력하세요..."
                   value={commentBody}
-                  onChange={(e) => setCommentBody(e.target.value)}
+                  onChange={(e: any) => setCommentBody(e.target.value)}
                   rows={2}
                   className="min-h-[72px] resize-none text-[15px]"
                 />

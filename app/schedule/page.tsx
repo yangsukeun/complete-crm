@@ -147,7 +147,7 @@ function createDateCellWrapper(leaveByDate: Record<string, string[]>) {
         {children}
         {names.length > 0 && (
           <div className="rbc-date-cell-leave-names" aria-label={`휴가: ${names.join(", ")}`}>
-            {names.map((name) => (
+            {names.map((name: any) => (
               <span key={name} className="rbc-date-cell-leave-name">
                 {name}
               </span>
@@ -241,7 +241,7 @@ function ScheduleToolbar({ label, date, view, views, onNavigate, onView, localiz
         <button
           type="button"
           className="rbc-toolbar-label rounded px-3 py-1.5 text-center font-medium hover:bg-muted min-w-[140px]"
-          onClick={() => setPickerOpen((o) => !o)}
+          onClick={() => setPickerOpen((o: any) => !o)}
           aria-expanded={pickerOpen}
           aria-haspopup="listbox"
         >
@@ -279,7 +279,7 @@ function ScheduleToolbar({ label, date, view, views, onNavigate, onView, localiz
 
       {views.length > 1 && (
         <span className="rbc-btn-group flex gap-1">
-          {views.map((v) => (
+          {views.map((v: any) => (
             <button
               type="button"
               key={v}
@@ -456,7 +456,7 @@ export default function SchedulePage() {
 
   useEffect(() => {
     fetch("/api/integrations/google-calendar")
-      .then((r) => (r.ok ? r.json() : { connected: false }))
+      .then((r: any) => (r.ok ? r.json() : { connected: false }))
       .then((d: { connected: boolean }) => setGoogleConnected(d.connected))
       .catch(() => setGoogleConnected(false));
   }, []);
@@ -471,10 +471,10 @@ export default function SchedulePage() {
     const timeMin = rangeStart.toISOString();
     const timeMax = rangeEnd.toISOString();
     fetch(`/api/integrations/google-calendar/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`)
-      .then((r) => (r.ok ? r.json() : []))
+      .then((r: any) => (r.ok ? r.json() : []))
       .then((list: { id: string; title: string; start: string; end: string; isAllDay: boolean }[]) => {
         setGoogleEvents(
-          list.map((e) => ({
+          list.map((e: any) => ({
             id: e.id,
             title: `📅 ${e.title}`,
             start: new Date(e.start),
@@ -607,7 +607,7 @@ export default function SchedulePage() {
   /** 날짜별 휴가자 이름 (yyyy-MM-dd -> 표시명[]) */
   const leaveByDate = useMemo(() => {
     const map: Record<string, string[]> = {};
-    const approved = leaveRequests.filter((r) => r.status === "APPROVED");
+    const approved = leaveRequests.filter((r: any) => r.status === "APPROVED");
     for (const r of approved) {
       const start = startOfDay(new Date(r.startDate));
       const end = endOfDay(new Date(r.endDate));
@@ -624,7 +624,7 @@ export default function SchedulePage() {
   }, [leaveRequests]);
 
   const setVisibleCalendar = useCallback((layer: CalendarLayerId, visible: boolean) => {
-    setVisibleCalendars((prev) => {
+    setVisibleCalendars((prev: any) => {
       const next = { ...prev, [layer]: visible };
       try {
         localStorage.setItem(CALENDAR_LAYERS_STORAGE_KEY, JSON.stringify(next));
@@ -635,15 +635,15 @@ export default function SchedulePage() {
 
   const displayEvents = useMemo(() => {
     const all = [...personalEvents, ...teamEvents, ...holidayEvents, ...googleEvents];
-    return all.filter((e) => (e.calendarId ? visibleCalendars[e.calendarId] !== false : true));
+    return all.filter((e: any) => (e.calendarId ? (visibleCalendars as any)[e.calendarId] !== false : true));
   }, [personalEvents, teamEvents, holidayEvents, googleEvents, visibleCalendars]);
 
   const diaryDayStart = startOfDay(new Date(diaryDate));
   const diaryDayEnd = endOfDay(new Date(diaryDate));
   const eventsOnDay = displayEvents.filter(
-    (e) => (e.start >= diaryDayStart && e.start <= diaryDayEnd) || (e.end >= diaryDayStart && e.end <= diaryDayEnd) || (e.start <= diaryDayStart && e.end >= diaryDayEnd)
+    (e: any) => (e.start >= diaryDayStart && e.start <= diaryDayEnd) || (e.end >= diaryDayStart && e.end <= diaryDayEnd) || (e.start <= diaryDayStart && e.end >= diaryDayEnd)
   );
-  const tasksOnDay = tasks.filter((t) => {
+  const tasksOnDay = tasks.filter((t: any) => {
     const d = new Date(t.dueDate);
     return isSameDay(d, new Date(diaryDate));
   });
@@ -735,14 +735,14 @@ export default function SchedulePage() {
               </p>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-x-6 gap-y-2 pt-0">
-              {(["personal", "team", "holiday", "google"] as CalendarLayerId[]).map((layer) => (
+              {(["personal", "team", "holiday", "google"] as CalendarLayerId[]).map((layer: any) => (
                 <label
                   key={layer}
                   className="flex cursor-pointer items-center gap-2 text-sm"
                 >
                   <Checkbox
-                    checked={visibleCalendars[layer] !== false}
-                    onCheckedChange={(checked) => setVisibleCalendar(layer, checked === true)}
+                    checked={(visibleCalendars as any)[layer] !== false}
+                    onCheckedChange={(checked: any) => setVisibleCalendar(layer, checked === true)}
                   />
                   <span
                     className="rbc-calendar-layer-dot"
@@ -757,7 +757,7 @@ export default function SchedulePage() {
                               : "var(--rbc-google, #ec4899)",
                     }}
                   />
-                  {CALENDAR_LAYER_LABELS[layer]}
+                  {(CALENDAR_LAYER_LABELS as any)[layer]}
                 </label>
               ))}
             </CardContent>
@@ -773,7 +773,7 @@ export default function SchedulePage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {invites.map((inv) => (
+                  {invites.map((inv: any) => (
                     <li
                       key={inv.id}
                       className="flex flex-wrap items-center justify-between gap-2 rounded border p-3"
@@ -831,13 +831,13 @@ export default function SchedulePage() {
                 toolbar: ScheduleToolbar as any,
                 dateCellWrapper: createDateCellWrapper(leaveByDate) as any,
               } as any}
-              dayPropGetter={(d) => {
+              dayPropGetter={(d: any) => {
                 const legal = isLegalHoliday(d);
                 const sat = getDay(d) === 6;
                 const cls = legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : "";
                 return cls ? { className: cls } : {};
               }}
-              eventPropGetter={(event) => {
+              eventPropGetter={(event: any) => {
                 const e = event as ScheduleEvent;
                 if (e.calendarId === "holiday" || (typeof e.id === "string" && e.id.startsWith("hol-"))) {
                   return { className: "rbc-event--holiday" };
@@ -886,7 +886,7 @@ export default function SchedulePage() {
               <p className="text-muted-foreground py-6 text-center text-sm">할일이 없습니다. 위 &#39;내 할일 추가&#39;로 등록하세요.</p>
             ) : (
               <ul className="space-y-2">
-                {tasks.map((t) => (
+                {tasks.map((t: any) => (
                   <li key={t.id} className="flex items-center gap-2 rounded border px-3 py-2">
                     <input
                       type="checkbox"
@@ -921,7 +921,7 @@ export default function SchedulePage() {
             <input
               type="date"
               value={diaryDate}
-              onChange={(e) => setDiaryDate(e.target.value)}
+              onChange={(e: any) => setDiaryDate(e.target.value)}
               className="border-input bg-background rounded-md border px-3 py-2 text-sm"
             />
           </div>
@@ -935,7 +935,7 @@ export default function SchedulePage() {
                   <p className="text-muted-foreground text-sm">해당 날짜에 일정이 없습니다.</p>
                 ) : (
                   <ul className="space-y-2">
-                    {eventsOnDay.map((e) => (
+                    {eventsOnDay.map((e: any) => (
                       <li key={e.id} className="rounded border px-3 py-2 text-sm">
                         <span className="font-medium">{e.title}</span>
                         <span className="text-muted-foreground ml-2">
@@ -958,7 +958,7 @@ export default function SchedulePage() {
                   <p className="text-muted-foreground text-sm">해당 날짜에 마감인 할일이 없습니다.</p>
                 ) : (
                   <ul className="space-y-2">
-                    {tasksOnDay.map((t) => (
+                    {tasksOnDay.map((t: any) => (
                       <li key={t.id} className="flex items-center gap-2 rounded border px-3 py-2 text-sm">
                         <input type="checkbox" checked={t.isCompleted} readOnly className="size-4 rounded" />
                         <span className={t.isCompleted ? "text-muted-foreground line-through" : ""}>{t.title}</span>
@@ -980,7 +980,7 @@ export default function SchedulePage() {
                 <Textarea
                   placeholder="메모를 입력하세요..."
                   value={memoContent}
-                  onChange={(e) => setMemoContent(e.target.value)}
+                  onChange={(e: any) => setMemoContent(e.target.value)}
                   rows={6}
                   className="resize-none"
                 />

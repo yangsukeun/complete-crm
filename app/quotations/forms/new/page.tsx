@@ -46,7 +46,7 @@ export default function NewQuotationFormPage() {
   }, [session, canAddForm, router]);
 
   const updateItem = (index: number, patch: Partial<ItemRow>) => {
-    setItems((prev) => {
+    setItems((prev: any) => {
       const next = [...prev];
       const row = { ...next[index], ...patch };
       if ("quantity" in patch || "unitPrice" in patch) {
@@ -57,10 +57,10 @@ export default function NewQuotationFormPage() {
     });
   };
 
-  const addRow = () => setItems((prev) => [...prev, defaultItem()]);
+  const addRow = () => setItems((prev: any) => [...prev, defaultItem()]);
   const removeRow = (index: number) => {
     if (items.length <= 1) return;
-    setItems((prev) => prev.filter((_, i) => i !== index));
+    setItems((prev: any) => prev.filter((_: any, i: any) => i !== index));
   };
 
   const handleSave = async () => {
@@ -68,9 +68,9 @@ export default function NewQuotationFormPage() {
       toast.error("폼명을 입력하세요.");
       return;
     }
-    const validItems = items.filter((i) => i.description.trim() !== "" || i.amount > 0);
+    const validItems = items.filter((i: any) => i.description.trim() !== "" || i.amount > 0);
     const payload = validItems.length
-      ? validItems.map((i) => ({
+      ? validItems.map((i: any) => ({
           description: i.description.trim() || "(품목)",
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -132,7 +132,7 @@ export default function NewQuotationFormPage() {
             <Input
               id="formName"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e: any) => setName(e.target.value)}
               placeholder="예: 인쇄물 견적, 웹 개발 기본"
             />
           </div>
@@ -164,7 +164,7 @@ export default function NewQuotationFormPage() {
                         <Input
                           className="h-9 border-0 bg-transparent focus-visible:ring-1"
                           value={row.description}
-                          onChange={(e) => updateItem(idx, { description: e.target.value })}
+                          onChange={(e: any) => updateItem(idx, { description: e.target.value })}
                           placeholder="품목명"
                         />
                       </TableCell>
@@ -174,7 +174,7 @@ export default function NewQuotationFormPage() {
                           min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
                           value={row.quantity || ""}
-                          onChange={(e) => updateItem(idx, { quantity: parseInt(e.target.value, 10) || 0 })}
+                          onChange={(e: any) => updateItem(idx, { quantity: parseInt(e.target.value, 10) || 0 })}
                         />
                       </TableCell>
                       <TableCell className="text-right">
@@ -183,7 +183,7 @@ export default function NewQuotationFormPage() {
                           min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
                           value={row.unitPrice || ""}
-                          onChange={(e) => updateItem(idx, { unitPrice: parseInt(e.target.value, 10) || 0 })}
+                          onChange={(e: any) => updateItem(idx, { unitPrice: parseInt(e.target.value, 10) || 0 })}
                         />
                       </TableCell>
                       <TableCell>

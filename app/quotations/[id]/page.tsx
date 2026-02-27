@@ -47,7 +47,7 @@ export default async function QuotationPage({
     remarks: quotation.remarks,
     issuedBy: quotation.issuedBy,
     issuedById: quotation.issuedById,
-    items: quotation.items.map((i) => ({
+    items: quotation.items.map((i: any) => ({
       description: i.description,
       quantity: i.quantity,
       unitPrice: i.unitPrice,

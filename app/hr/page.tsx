@@ -144,7 +144,7 @@ export default function HrPage() {
 
   useEffect(() => {
     if (!isAdmin || !session?.user?.id || todayAll.length === 0) return;
-    const my = todayAll.find((r) => r.userId === session.user?.id);
+    const my = todayAll.find((r: any) => r.userId === session.user?.id);
     setTodayRecord(my ?? null);
   }, [isAdmin, session?.user?.id, todayAll]);
 
@@ -246,7 +246,7 @@ export default function HrPage() {
 
   const handleLeaveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const option = LEAVE_TYPE_OPTIONS.find((o) => o.value === leaveType);
+    const option = LEAVE_TYPE_OPTIONS.find((o: any) => o.value === leaveType);
     const days = option?.days ?? 1;
     const start = leaveStart.trim();
     const end = leaveEnd.trim() || start;
@@ -336,12 +336,12 @@ export default function HrPage() {
 
   const myLeavesInfo = leaveData?.kind === "user" ? leaveData.myLeaves : null;
   const adminList = leaveData?.kind === "admin" ? leaveData.list : [];
-  const noHireDateCount = adminList.filter((u) => !u.hireDate).length;
+  const noHireDateCount = adminList.filter((u: any) => !u.hireDate).length;
   const myDisplayInfo =
     leaveData?.kind === "user"
       ? myLeavesInfo
       : leaveData?.kind === "admin"
-        ? adminList.find((u) => u.id === session?.user?.id)
+        ? adminList.find((u: any) => u.id === session?.user?.id)
         : null;
 
   return (
@@ -424,7 +424,7 @@ export default function HrPage() {
                           </td>
                         </tr>
                       ) : (
-                        todayAll.map((r) => (
+                        todayAll.map((r: any) => (
                           <tr key={r.id} className="border-b border-slate-700/50 hover:bg-slate-800/50">
                             <td className="px-4 py-3 text-slate-200">{r.user?.name ?? "-"}</td>
                             <td className="px-4 py-3 text-slate-400">{r.user?.email ?? "-"}</td>
@@ -459,7 +459,7 @@ export default function HrPage() {
                 {monthRecords.length === 0 ? (
                   <p className="text-slate-500 py-4">기록이 없습니다.</p>
                 ) : (
-                  monthRecords.map((r) => (
+                  monthRecords.map((r: any) => (
                     <div
                       key={r.id}
                       className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-700/50 bg-slate-800/30 px-4 py-3"
@@ -504,7 +504,7 @@ export default function HrPage() {
                           <Input
                             type="date"
                             value={myHireDateInput}
-                            onChange={(e) => setMyHireDateInput(e.target.value)}
+                            onChange={(e: any) => setMyHireDateInput(e.target.value)}
                             className="h-9 w-44 bg-slate-800 border-slate-600 text-slate-100"
                           />
                           <Button
@@ -594,7 +594,7 @@ export default function HrPage() {
                     <div>
                       <p className="text-slate-400 text-sm mb-2">종류 선택</p>
                       <div className="flex flex-wrap gap-4">
-                        {LEAVE_TYPE_OPTIONS.map((opt) => (
+                        {LEAVE_TYPE_OPTIONS.map((opt: any) => (
                           <label
                             key={opt.value}
                             className="flex items-center gap-2 cursor-pointer"
@@ -629,7 +629,7 @@ export default function HrPage() {
                         <Input
                           type="date"
                           value={leaveStart}
-                          onChange={(e) => setLeaveStart(e.target.value)}
+                          onChange={(e: any) => setLeaveStart(e.target.value)}
                           className="bg-slate-800 border-slate-600 text-slate-100"
                         />
                       </div>
@@ -640,7 +640,7 @@ export default function HrPage() {
                         <Input
                           type="date"
                           value={leaveEnd}
-                          onChange={(e) => setLeaveEnd(e.target.value)}
+                          onChange={(e: any) => setLeaveEnd(e.target.value)}
                           className="bg-slate-800 border-slate-600 text-slate-100"
                         />
                       </div>
@@ -649,7 +649,7 @@ export default function HrPage() {
                       <label className="block text-slate-400 text-sm mb-1">사유 (메모)</label>
                       <Input
                         value={leaveReason}
-                        onChange={(e) => setLeaveReason(e.target.value)}
+                        onChange={(e: any) => setLeaveReason(e.target.value)}
                         placeholder="오전 반차, 개인용무 등"
                         className="bg-slate-800 border-slate-600 text-slate-100 placeholder:text-slate-500"
                       />
@@ -686,7 +686,7 @@ export default function HrPage() {
                               </td>
                             </tr>
                           ) : (
-                            leaveData.requests.map((r) => (
+                            leaveData.requests.map((r: any) => (
                               <tr key={r.id} className="border-b border-slate-700/50">
                                 <td className="px-4 py-3 text-slate-200">
                                   {formatDateOnly(r.startDate)}
@@ -744,7 +744,7 @@ export default function HrPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {adminList.map((u) => (
+                          {adminList.map((u: any) => (
                             <tr
                               key={u.id}
                               className={`border-b border-slate-700/50 hover:bg-slate-800/50 ${!u.hireDate ? "bg-amber-500/5" : ""}`}
@@ -754,8 +754,8 @@ export default function HrPage() {
                                 <Input
                                   type="date"
                                   value={adminHireDateEdit[u.id] ?? ""}
-                                  onChange={(e) =>
-                                    setAdminHireDateEdit((prev) => ({
+                                  onChange={(e: any) =>
+                                    setAdminHireDateEdit((prev: any) => ({
                                       ...prev,
                                       [u.id]: e.target.value,
                                     }))

@@ -107,7 +107,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     fetchProfile();
     const fallback = setTimeout(() => {
-      setLoading((prev) => {
+      setLoading((prev: any) => {
         if (prev) return false;
         return prev;
       });
@@ -117,8 +117,8 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/settings/departments").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/settings/positions").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/settings/departments").then((r: any) => (r.ok ? r.json() : [])),
+      fetch("/api/settings/positions").then((r: any) => (r.ok ? r.json() : [])),
     ]).then(([depts, pos]) => {
       setDepartments(Array.isArray(depts) ? depts : []);
       setPositions(Array.isArray(pos) ? pos : []);
@@ -232,7 +232,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                 <Input
                   id="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e: any) => setName(e.target.value)}
                   placeholder="이름을 입력하세요"
                   required
                   className="h-10 border bg-background"
@@ -244,7 +244,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e: any) => setEmail(e.target.value)}
                   placeholder="email@example.com"
                   required
                   className="h-10 border bg-background"
@@ -256,7 +256,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                   id="password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e: any) => setPassword(e.target.value)}
                   placeholder="변경 시에만 입력 (4자 이상)"
                   className="h-10 border bg-background"
                 />
@@ -267,7 +267,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                   id="passwordConfirm"
                   type="password"
                   value={passwordConfirm}
-                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                  onChange={(e: any) => setPasswordConfirm(e.target.value)}
                   placeholder="비밀번호 변경 시 재입력"
                   className="h-10 border bg-background"
                 />
@@ -277,7 +277,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                 <Input
                   id="phone"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e: any) => setPhone(e.target.value)}
                   placeholder="010-0000-0000"
                   className="h-10 border bg-background"
                 />
@@ -287,7 +287,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                 <Input
                   id="workPhone"
                   value={workPhone}
-                  onChange={(e) => setWorkPhone(e.target.value)}
+                  onChange={(e: any) => setWorkPhone(e.target.value)}
                   placeholder="업무용 전화번호"
                   className="h-10 border bg-background"
                 />
@@ -298,7 +298,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                   id="workEmail"
                   type="email"
                   value={workEmail}
-                  onChange={(e) => setWorkEmail(e.target.value)}
+                  onChange={(e: any) => setWorkEmail(e.target.value)}
                   placeholder="업무용 이메일 (선택)"
                   className="h-10 border bg-background"
                 />
@@ -308,7 +308,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                 <Input
                   id="bankAccount"
                   value={bankAccount}
-                  onChange={(e) => setBankAccount(e.target.value)}
+                  onChange={(e: any) => setBankAccount(e.target.value)}
                   placeholder="은행명 계좌번호"
                   className="h-10 border bg-background"
                 />
@@ -318,7 +318,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                 <Input
                   id="address"
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  onChange={(e: any) => setAddress(e.target.value)}
                   placeholder="주소를 입력하세요"
                   className="h-10 border bg-background"
                 />
@@ -328,20 +328,20 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                 <Input
                   id="residentId"
                   value={residentId}
-                  onChange={(e) => setResidentId(e.target.value)}
+                  onChange={(e: any) => setResidentId(e.target.value)}
                   placeholder="000000-0000000"
                   className="h-10 border bg-background max-w-xs"
                 />
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">부서</Label>
-                <Select value={department || "none"} onValueChange={(v) => setDepartment(v === "none" ? "" : v)}>
+                <Select value={department || "none"} onValueChange={(v: any) => setDepartment(v === "none" ? "" : v)}>
                   <SelectTrigger className="h-10 border bg-background">
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {departments.map((d) => (
+                    {departments.map((d: any) => (
                       <SelectItem key={d.id} value={d.name}>
                         {d.name}
                       </SelectItem>
@@ -351,13 +351,13 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">직책</Label>
-                <Select value={position || "none"} onValueChange={(v) => setPosition(v === "none" ? "" : v)}>
+                <Select value={position || "none"} onValueChange={(v: any) => setPosition(v === "none" ? "" : v)}>
                   <SelectTrigger className="h-10 border bg-background">
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {positions.map((p) => (
+                    {positions.map((p: any) => (
                       <SelectItem key={p.id} value={p.name}>
                         {p.name}
                       </SelectItem>
@@ -410,7 +410,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                   id="joinDate"
                   type="date"
                   value={joinDate}
-                  onChange={(e) => setJoinDate(e.target.value)}
+                  onChange={(e: any) => setJoinDate(e.target.value)}
                   disabled={!isAdmin}
                   className={`h-10 border bg-background ${!isAdmin ? "bg-muted cursor-not-allowed" : ""}`}
                 />
@@ -446,7 +446,7 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
                   min={0}
                   step={0.5}
                   value={manualDeduction}
-                  onChange={(e) => setManualDeduction(e.target.value)}
+                  onChange={(e: any) => setManualDeduction(e.target.value)}
                   placeholder="0"
                   className="h-10 w-32 border bg-background"
                 />

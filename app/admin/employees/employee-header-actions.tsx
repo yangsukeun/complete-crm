@@ -91,7 +91,7 @@ export function EmployeeHeaderActions() {
         엑셀 업로드
       </Button>
 
-      <Dialog open={uploadOpen} onOpenChange={(open) => !open && closeUpload()}>
+      <Dialog open={uploadOpen} onOpenChange={(open: any) => !open && closeUpload()}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>직원 정보 엑셀 업로드</DialogTitle>

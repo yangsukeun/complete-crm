@@ -87,7 +87,7 @@ function LoginForm() {
                 type="email"
                 placeholder="you@company.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e: any) => setEmail(e.target.value)}
                 autoComplete="email"
                 required
                 disabled={loading}
@@ -100,7 +100,7 @@ function LoginForm() {
                 name="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e: any) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
                 disabled={loading}

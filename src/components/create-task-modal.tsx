@@ -50,7 +50,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
     if (!open) return;
     setLoadingUsers(true);
     fetch("/api/users")
-      .then((res) => res.ok ? res.json() : [])
+      .then((res: any) => res.ok ? res.json() : [])
       .then(setUsers)
       .catch(() => setUsers([]))
       .finally(() => setLoadingUsers(false));
@@ -116,7 +116,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
             <Label htmlFor="task-assignee">담당 직원 (선택)</Label>
             <Select
               value={assignedToId || "__none__"}
-              onValueChange={(v) => setAssignedToId(v === "__none__" ? "" : v)}
+              onValueChange={(v: any) => setAssignedToId(v === "__none__" ? "" : v)}
               disabled={loadingUsers}
             >
               <SelectTrigger id="task-assignee">
@@ -137,7 +137,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
             <Input
               id="task-title"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e: any) => setTitle(e.target.value)}
               placeholder="업무 제목"
               required
             />
@@ -147,7 +147,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
             <Textarea
               id="task-desc"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e: any) => setDescription(e.target.value)}
               placeholder="설명 (선택)"
               rows={3}
             />
@@ -158,7 +158,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
               id="task-due"
               type="datetime-local"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e: any) => setDueDate(e.target.value)}
               required
             />
           </div>
@@ -166,7 +166,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
             <Label>우선순위</Label>
             <Select
               value={priority}
-              onValueChange={(v) => setPriority(v as "HIGH" | "MEDIUM" | "LOW")}
+              onValueChange={(v: any) => setPriority(v as "HIGH" | "MEDIUM" | "LOW")}
             >
               <SelectTrigger>
                 <SelectValue />

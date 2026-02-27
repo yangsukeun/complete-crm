@@ -125,16 +125,16 @@ export function BoardPageClient({
   }, []);
 
   const unifiedList: UnifiedItem[] = (() => {
-    const ann: UnifiedItem[] = announcements.map((a) => ({ type: "ANNOUNCEMENT", data: a }));
-    const board: UnifiedItem[] = boardList.map((b) => ({ type: "BOARD", data: b }));
+    const ann: UnifiedItem[] = announcements.map((a: any) => ({ type: "ANNOUNCEMENT", data: a }));
+    const board: UnifiedItem[] = boardList.map((b: any) => ({ type: "BOARD", data: b }));
     const merged = [...ann, ...board];
     merged.sort((a, b) => {
       const tA = a.type === "ANNOUNCEMENT" ? a.data.createdAt : a.data.createdAt;
       const tB = b.type === "ANNOUNCEMENT" ? b.data.createdAt : b.data.createdAt;
       return new Date(tB).getTime() - new Date(tA).getTime();
     });
-    if (filter === "ANNOUNCEMENT") return merged.filter((x) => x.type === "ANNOUNCEMENT");
-    if (filter === "COMPANY" || filter === "TRAINING") return merged.filter((x) => x.type === "BOARD" && x.data.category === filter);
+    if (filter === "ANNOUNCEMENT") return merged.filter((x: any) => x.type === "ANNOUNCEMENT");
+    if (filter === "COMPANY" || filter === "TRAINING") return merged.filter((x: any) => x.type === "BOARD" && x.data.category === filter);
     return merged;
   })();
 
@@ -215,7 +215,7 @@ export function BoardPageClient({
         const res = await fetch("/api/upload", { method: "POST", body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "업로드 실패");
-        setAttachments((prev) => [...prev, { url: data.url, name: data.name ?? file.name }]);
+        setAttachments((prev: any) => [...prev, { url: data.url, name: data.name ?? file.name }]);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "파일 업로드에 실패했습니다.");
@@ -226,7 +226,7 @@ export function BoardPageClient({
   };
 
   const removeAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
+    setAttachments((prev: any) => prev.filter((_: any, i: any) => i !== index));
   };
 
   const handleDeleteBoard = async (id: string) => {
@@ -351,7 +351,7 @@ export function BoardPageClient({
           </div>
         ) : (
           <ul className="space-y-3">
-            {unifiedList.map((item) => {
+            {unifiedList.map((item: any) => {
               if (item.type === "ANNOUNCEMENT") {
                 const a = item.data;
                 const preview = stripMarkdownPreview(a.content, 120);
@@ -431,7 +431,7 @@ export function BoardPageClient({
                   )}
                   {b.attachments.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {b.attachments.map((att, idx) => (
+                      {b.attachments.map((att: any, idx: any) => (
                         <a
                           key={idx}
                           href={att.url}
@@ -457,7 +457,7 @@ export function BoardPageClient({
       </section>
 
       {/* 공지 등록 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
-      <Dialog open={openAnnouncement} onOpenChange={(o) => !o && resetAnnouncementForm()}>
+      <Dialog open={openAnnouncement} onOpenChange={(o: any) => !o && resetAnnouncementForm()}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>공지사항 등록</DialogTitle>
@@ -468,7 +468,7 @@ export function BoardPageClient({
               <Input
                 id="announcement-title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e: any) => setTitle(e.target.value)}
                 placeholder="공지 제목"
                 maxLength={200}
               />
@@ -497,7 +497,7 @@ export function BoardPageClient({
       </Dialog>
 
       {/* 자료 올리기 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
-      <Dialog open={openBoard} onOpenChange={(o) => !o && resetBoardForm()}>
+      <Dialog open={openBoard} onOpenChange={(o: any) => !o && resetBoardForm()}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>자료 올리기</DialogTitle>
@@ -508,7 +508,7 @@ export function BoardPageClient({
               <Input
                 id="board-title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e: any) => setTitle(e.target.value)}
                 placeholder="제목을 입력하세요"
                 maxLength={200}
               />
@@ -518,7 +518,7 @@ export function BoardPageClient({
               <select
                 id="board-category"
                 value={category}
-                onChange={(e) => setCategory(e.target.value as "COMPANY" | "TRAINING")}
+                onChange={(e: any) => setCategory(e.target.value as "COMPANY" | "TRAINING")}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="COMPANY">회사 자료</option>

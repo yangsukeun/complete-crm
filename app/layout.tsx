@@ -43,7 +43,7 @@ export default async function RootLayout({
       session.user.id,
       getClientIp(h),
       h.get("user-agent") ?? ""
-    ).catch((e) => console.error("[AccessLog] 기록 실패:", e));
+    ).catch((e: any) => console.error("[AccessLog] 기록 실패:", e));
   }
 
   return (

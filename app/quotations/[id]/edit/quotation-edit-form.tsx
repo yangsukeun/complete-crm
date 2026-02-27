@@ -49,7 +49,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
   const [remarks, setRemarks] = useState(initial.remarks ?? "");
   const [items, setItems] = useState<QuotationItemInput[]>(
     initial.items.length > 0
-      ? initial.items.map((i) => ({
+      ? initial.items.map((i: any) => ({
           description: i.description,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -60,7 +60,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
   const [saving, setSaving] = useState(false);
 
   const updateItem = (index: number, patch: Partial<QuotationItemInput>) => {
-    setItems((prev) => {
+    setItems((prev: any) => {
       const next = [...prev];
       const row = { ...next[index], ...patch };
       if ("quantity" in patch || "unitPrice" in patch) {
@@ -72,10 +72,10 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
   };
 
   const addRow = () =>
-    setItems((prev) => [...prev, { description: "", quantity: 1, unitPrice: 0, amount: 0 }]);
+    setItems((prev: any) => [...prev, { description: "", quantity: 1, unitPrice: 0, amount: 0 }]);
   const removeRow = (index: number) => {
     if (items.length <= 1) return;
-    setItems((prev) => prev.filter((_, i) => i !== index));
+    setItems((prev: any) => prev.filter((_: any, i: any) => i !== index));
   };
 
   const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
@@ -91,7 +91,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
       toast.error("거래처명을 입력하세요.");
       return;
     }
-    const validItems = items.filter((i) => i.description.trim() !== "" || i.amount > 0);
+    const validItems = items.filter((i: any) => i.description.trim() !== "" || i.amount > 0);
     if (validItems.length === 0) {
       toast.error("품목을 1개 이상 입력하세요.");
       return;
@@ -105,7 +105,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
           title: title.trim(),
           clientName: clientName.trim(),
           validUntil,
-          items: validItems.map((i) => ({
+          items: validItems.map((i: any) => ({
             description: i.description.trim() || "(품목)",
             quantity: i.quantity,
             unitPrice: i.unitPrice,
@@ -160,7 +160,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
               <Input
                 id="title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e: any) => setTitle(e.target.value)}
                 placeholder="예: ○○ 프로젝트 인쇄물"
               />
             </div>
@@ -169,7 +169,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
               <Input
                 id="clientName"
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
+                onChange={(e: any) => setClientName(e.target.value)}
                 placeholder="(주)○○"
               />
             </div>
@@ -180,7 +180,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
               id="validUntil"
               type="date"
               value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
+              onChange={(e: any) => setValidUntil(e.target.value)}
             />
           </div>
 
@@ -212,7 +212,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
                         <Input
                           className="h-9 border-0 bg-transparent focus-visible:ring-1"
                           value={row.description}
-                          onChange={(e) => updateItem(idx, { description: e.target.value })}
+                          onChange={(e: any) => updateItem(idx, { description: e.target.value })}
                           placeholder="품목명"
                         />
                       </TableCell>
@@ -222,7 +222,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
                           min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
                           value={row.quantity || ""}
-                          onChange={(e) =>
+                          onChange={(e: any) =>
                             updateItem(idx, { quantity: parseInt(e.target.value, 10) || 0 })
                           }
                         />
@@ -233,7 +233,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
                           min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
                           value={row.unitPrice || ""}
-                          onChange={(e) =>
+                          onChange={(e: any) =>
                             updateItem(idx, { unitPrice: parseInt(e.target.value, 10) || 0 })
                           }
                         />
@@ -276,7 +276,7 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
             <Textarea
               id="remarks"
               value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
+              onChange={(e: any) => setRemarks(e.target.value)}
               placeholder="선택 입력"
               rows={2}
               className="resize-none"

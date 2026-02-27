@@ -146,7 +146,7 @@ export function DepartmentsPositionsClient() {
           <form onSubmit={handleAddDepartment} className="flex gap-2">
             <Input
               value={newDept}
-              onChange={(e) => setNewDept(e.target.value)}
+              onChange={(e: any) => setNewDept(e.target.value)}
               placeholder="예: 개발팀, 영업팀"
               className="flex-1"
             />
@@ -184,7 +184,7 @@ export function DepartmentsPositionsClient() {
           <form onSubmit={handleAddPosition} className="flex gap-2">
             <Input
               value={newPos}
-              onChange={(e) => setNewPos(e.target.value)}
+              onChange={(e: any) => setNewPos(e.target.value)}
               placeholder="예: 사원, 대리, 과장"
               className="flex-1"
             />

@@ -42,7 +42,7 @@ export type ActivityForDisplay = {
 function formatActivitiesAsMarkdown(
   activities: ActivityForDisplay[]
 ): string {
-  const lines = activities.map((a) => {
+  const lines = activities.map((a: any) => {
     const time = format(new Date(a.timestamp), "HH:mm");
     const label =
       a.actionType === "TASK_CREATED"
@@ -86,7 +86,7 @@ export async function getActivitiesForDate(
     orderBy: { timestamp: "asc" },
     select: { actionType: true, targetTitle: true, timestamp: true, ipAddress: true },
   });
-  return list.map((a) => ({
+  return list.map((a: any) => ({
     actionType: a.actionType,
     targetTitle: a.targetTitle,
     timestamp: a.timestamp,

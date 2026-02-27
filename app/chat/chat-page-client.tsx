@@ -92,7 +92,7 @@ export function ChatPageClient() {
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
       const list = data as ChatItem[];
-      setChats((prev) => {
+      setChats((prev: any) => {
         if (prev.length !== list.length) return list;
         const same = list.every(
           (c, i) =>
@@ -115,7 +115,7 @@ export function ChatPageClient() {
             next[c.id] = 1;
           }
         }
-        setUnreadCounts((prevCounts) => {
+        setUnreadCounts((prevCounts: any) => {
           const prevKeys = Object.keys(prevCounts).sort().join();
           const nextKeys = Object.keys(next).sort().join();
           if (prevKeys !== nextKeys) return next;
@@ -142,7 +142,7 @@ export function ChatPageClient() {
         if (!res.ok) throw new Error("Failed");
         const data = await res.json() as Message[];
         if (silent) {
-          setMessages((prev) => {
+          setMessages((prev: any) => {
             if (prev.length !== data.length) return data;
             if (data.length === 0) return prev;
             if (prev[0]?.id !== data[0]?.id || prev[prev.length - 1]?.id !== data[data.length - 1]?.id)
@@ -176,7 +176,7 @@ export function ChatPageClient() {
   useEffect(() => {
     if (selectedChatId) {
       fetchMessages(selectedChatId);
-      setUnreadCounts((counts) => {
+      setUnreadCounts((counts: any) => {
         const next = { ...counts };
         delete next[selectedChatId];
         return next;
@@ -200,7 +200,7 @@ export function ChatPageClient() {
   useEffect(() => {
     if (modalOpen) {
       fetch("/api/users/list")
-        .then((r) => (r.ok ? r.json() : []))
+        .then((r: any) => (r.ok ? r.json() : []))
         .then(setUsers)
         .catch(() => setUsers([]));
       setSelectedUserIds([]);
@@ -211,7 +211,7 @@ export function ChatPageClient() {
   useEffect(() => {
     if (scheduleModalOpen) {
       fetch("/api/schedules")
-        .then((r) => (r.ok ? r.json() : []))
+        .then((r: any) => (r.ok ? r.json() : []))
         .then(setSchedules)
         .catch(() => setSchedules([]));
     }
@@ -220,7 +220,7 @@ export function ChatPageClient() {
   useEffect(() => {
     if (mentionOpen && users.length === 0) {
       fetch("/api/users/list")
-        .then((r) => (r.ok ? r.json() : []))
+        .then((r: any) => (r.ok ? r.json() : []))
         .then(setUsers)
         .catch(() => setUsers([]));
     }
@@ -272,7 +272,7 @@ export function ChatPageClient() {
         position: (session.user as { position?: string | null }).position ?? undefined,
       },
     };
-    setMessages((prev) => [...prev, optimisticMessage]);
+    setMessages((prev: any) => [...prev, optimisticMessage]);
     requestAnimationFrame(() => scrollToBottom());
     setSending(true);
     setTimeout(() => messageInputRef.current?.focus(), 0);
@@ -284,12 +284,12 @@ export function ChatPageClient() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "전송 실패");
-      setMessages((prev) =>
-        prev.map((m) => (m.id === optimisticId ? data : m))
+      setMessages((prev: any) =>
+        prev.map((m: any) => (m.id === optimisticId ? data : m))
       );
       fetchChats();
     } catch (e) {
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      setMessages((prev: any) => prev.filter((m: any) => m.id !== optimisticId));
       toast.error(e instanceof Error ? e.message : "전송에 실패했습니다.");
     } finally {
       setSending(false);
@@ -302,8 +302,8 @@ export function ChatPageClient() {
         const res = await fetch(`/api/chats/${chatId}/messages/${messageId}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "삭제 실패");
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, isDeleted: true } : m))
+        setMessages((prev: any) =>
+          prev.map((m: any) => (m.id === messageId ? { ...m, isDeleted: true } : m))
         );
         fetchChats();
       } catch (e) {
@@ -368,7 +368,7 @@ export function ChatPageClient() {
       const url = data.url as string;
       const name = (data.name as string) || file.name;
       const append = isImage ? `\n![](${url})` : `\n[${name}](${url})`;
-      setNewMessage((prev) => prev + append);
+      setNewMessage((prev: any) => prev + append);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "업로드에 실패했습니다.");
     } finally {
@@ -399,34 +399,34 @@ export function ChatPageClient() {
     [uploadFileAndAppend]
   );
 
-  const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const selectedChat = chats.find((c: any) => c.id === selectedChatId);
   const mentionCandidates = (() => {
     const participants = selectedChat?.participants ?? [];
     const all = [...participants];
     const myId = session?.user?.id;
-    const rest = users.filter((u) => !all.some((p) => p.id === u.id));
-    all.push(...rest.map((p) => ({ id: p.id, name: p.name, position: p.position ?? null })));
-    const uniq = all.filter((p, i) => all.findIndex((x) => x.id === p.id) === i && p.id !== myId);
+    const rest = users.filter((u: any) => !all.some((p: any) => p.id === u.id));
+    all.push(...rest.map((p: any) => ({ id: p.id, name: p.name, position: p.position ?? null })));
+    const uniq = all.filter((p, i) => all.findIndex((x: any) => x.id === p.id) === i && p.id !== myId);
     const q = mentionQuery.trim().toLowerCase();
     if (!q) return uniq.slice(0, 8);
-    return uniq.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+    return uniq.filter((p: any) => p.name.toLowerCase().includes(q)).slice(0, 8);
   })();
   const isParticipant = Boolean(
-    selectedChat && session?.user?.id && selectedChat.participants.some((p) => p.id === session.user.id)
+    selectedChat && session?.user?.id && selectedChat.participants.some((p: any) => p.id === session.user.id)
   );
   const chatTitle = selectedChat
     ? selectedChat.isGroup && selectedChat.name
       ? selectedChat.name
-      : selectedChat.participants.map((p) => formatUserName(p)).join(", ")
+      : selectedChat.participants.map((p: any) => formatUserName(p)).join(", ")
     : "";
 
   const chatSearchTrim = chatSearch.trim().toLowerCase();
   const filteredChats =
     !chatSearchTrim
       ? chats
-      : chats.filter((c) => {
+      : chats.filter((c: any) => {
           const nameMatch = Boolean(c.isGroup && c.name && c.name.toLowerCase().includes(chatSearchTrim));
-          const participantMatch = c.participants.some((p) => formatUserName(p).toLowerCase().includes(chatSearchTrim));
+          const participantMatch = c.participants.some((p: any) => formatUserName(p).toLowerCase().includes(chatSearchTrim));
           return nameMatch || participantMatch;
         });
 
@@ -450,7 +450,7 @@ export function ChatPageClient() {
                   <Input
                     placeholder="대화 검색 (이름, 그룹명)"
                     value={chatSearch}
-                    onChange={(e) => setChatSearch(e.target.value)}
+                    onChange={(e: any) => setChatSearch(e.target.value)}
                     className="h-9 pl-8"
                   />
                 </div>
@@ -469,7 +469,7 @@ export function ChatPageClient() {
                 </p>
               ) : (
                 <ul className="divide-y">
-                  {filteredChats.map((chat) => (
+                  {filteredChats.map((chat: any) => (
                   <li key={chat.id}>
                     <button
                       type="button"
@@ -482,7 +482,7 @@ export function ChatPageClient() {
                         <span className="truncate">
                           {chat.isGroup && chat.name
                             ? chat.name
-                            : chat.participants.map((p) => formatUserName(p)).join(", ")}
+                            : chat.participants.map((p: any) => formatUserName(p)).join(", ")}
                         </span>
                         {(unreadCounts[chat.id] ?? 0) > 0 && (
                           <span
@@ -529,7 +529,7 @@ export function ChatPageClient() {
                   </p>
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden">
-                    {messages.map((m) => {
+                    {messages.map((m: any) => {
                       const isMine = session?.user?.id === m.user.id;
                       const canDelete =
                         isMine &&
@@ -562,7 +562,7 @@ export function ChatPageClient() {
                               {m.body
                                 .split(/(!\[[^\]]*\]\([^)]+\)|https?:\/\/[^\s]+)/g)
                                 .filter(Boolean)
-                                .map((part, i) => {
+                                .map((part: any, i: any) => {
                                   const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
                                   if (imgMatch) {
                                     const src = imgMatch[2];
@@ -605,7 +605,7 @@ export function ChatPageClient() {
                         value={newMessage}
                         rows={1}
                         className="min-h-10 max-h-32 resize-none py-2 pr-8"
-                        onChange={(e) => {
+                        onChange={(e: any) => {
                           const el = e.target;
                           const val = el.value;
                           const pos = el.selectionStart;
@@ -621,16 +621,16 @@ export function ChatPageClient() {
                             if (pos <= start || !val.slice(start).startsWith("@")) setMentionOpen(false);
                           }
                         }}
-                        onKeyDown={(e) => {
+                        onKeyDown={(e: any) => {
                           if (mentionOpen && mentionCandidates.length > 0) {
                             if (e.key === "ArrowDown") {
                               e.preventDefault();
-                              setMentionSelectedIndex((i) => Math.min(i + 1, mentionCandidates.length - 1));
+                              setMentionSelectedIndex((i: any) => Math.min(i + 1, mentionCandidates.length - 1));
                               return;
                             }
                             if (e.key === "ArrowUp") {
                               e.preventDefault();
-                              setMentionSelectedIndex((i) => Math.max(i - 1, 0));
+                              setMentionSelectedIndex((i: any) => Math.max(i - 1, 0));
                               return;
                             }
                             if (e.key === "Enter" || e.key === "Tab") {
@@ -665,7 +665,7 @@ export function ChatPageClient() {
                             key={u.id}
                             type="button"
                             className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${i === mentionSelectedIndex ? "bg-accent" : "hover:bg-muted/50"}`}
-                            onMouseDown={(e) => {
+                            onMouseDown={(e: any) => {
                               e.preventDefault();
                               insertMention(u.name);
                             }}
@@ -724,17 +724,17 @@ export function ChatPageClient() {
           </DialogHeader>
           <div className="max-h-64 overflow-y-auto space-y-1">
             {schedules.length === 0 && <p className="text-muted-foreground py-2 text-center text-sm">일정이 없습니다.</p>}
-            {schedules.map((s) => (
+            {schedules.map((s: any) => (
               <button
                 key={s.id}
                 type="button"
                 className="flex w-full flex-col items-start rounded-lg border p-2 text-left hover:bg-muted/50"
-                onMouseDown={(e) => {
+                onMouseDown={(e: any) => {
                   e.preventDefault();
                   const start = format(new Date(s.startTime), "yyyy-MM-dd HH:mm", { locale: ko });
                   const end = format(new Date(s.endTime), "HH:mm", { locale: ko });
                   const line = `\n📅 [${s.title}] ${start}~${end}\n/schedule`;
-                  setNewMessage((prev) => prev + line);
+                  setNewMessage((prev: any) => prev + line);
                   setScheduleModalOpen(false);
                   setTimeout(() => messageInputRef.current?.focus(), 0);
                 }}
@@ -758,16 +758,16 @@ export function ChatPageClient() {
             <div className="space-y-2">
               <Label>대화 상대 선택</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded border p-2">
-                {users.map((u) => (
+                {users.map((u: any) => (
                   <label
                     key={u.id}
                     className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
                   >
                     <Checkbox
                       checked={selectedUserIds.includes(u.id)}
-                      onCheckedChange={(checked) =>
-                        setSelectedUserIds((prev) =>
-                          checked ? [...prev, u.id] : prev.filter((id) => id !== u.id)
+                      onCheckedChange={(checked: any) =>
+                        setSelectedUserIds((prev: any) =>
+                          checked ? [...prev, u.id] : prev.filter((id: any) => id !== u.id)
                         )
                       }
                     />
@@ -785,7 +785,7 @@ export function ChatPageClient() {
                 <Input
                   id="group-name"
                   value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
+                  onChange={(e: any) => setGroupName(e.target.value)}
                   placeholder="그룹 채팅 이름"
                 />
               </div>

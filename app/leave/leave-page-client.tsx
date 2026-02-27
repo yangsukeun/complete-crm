@@ -197,7 +197,7 @@ export function LeavePageClient({
     if (s === "APPROVED") return "승인";
     return "반려";
   };
-  const typeLabel = (t: string) => LEAVE_TYPES.find((x) => x.value === t)?.label ?? t;
+  const typeLabel = (t: string) => LEAVE_TYPES.find((x: any) => x.value === t)?.label ?? t;
 
   if (loading) {
     return (
@@ -263,7 +263,7 @@ export function LeavePageClient({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LEAVE_TYPES.map((opt) => (
+                  {LEAVE_TYPES.map((opt: any) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -277,7 +277,7 @@ export function LeavePageClient({
                 id="start"
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e: any) => setStartDate(e.target.value)}
                 required
               />
             </div>
@@ -287,7 +287,7 @@ export function LeavePageClient({
                 id="end"
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e: any) => setEndDate(e.target.value)}
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
@@ -295,7 +295,7 @@ export function LeavePageClient({
               <Textarea
                 id="reason"
                 value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                onChange={(e: any) => setReason(e.target.value)}
                 placeholder="사유를 입력하세요"
                 rows={2}
               />
@@ -331,7 +331,7 @@ export function LeavePageClient({
                   </tr>
                 </thead>
                 <tbody>
-                  {requests.map((r) => (
+                  {requests.map((r: any) => (
                     <tr key={r.id} className="border-b">
                       {canApprove && r.user && (
                         <td className="py-2 pr-2">

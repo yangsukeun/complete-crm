@@ -72,7 +72,7 @@ export function DashboardSalesSection({ data }: { data: DashboardSalesStats }) {
               />
               <YAxis
                 tick={{ fontSize: 12 }}
-                tickFormatter={(v) => (v >= 10000 ? `${v / 10000}만` : String(v))}
+                tickFormatter={(v: any) => (v >= 10000 ? `${v / 10000}만` : String(v))}
                 className="text-slate-600 dark:text-slate-400"
               />
               <Tooltip

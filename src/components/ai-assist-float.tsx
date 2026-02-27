@@ -105,7 +105,7 @@ export function AIAssistFloat() {
     if (!text || loading) return;
 
     const userMsg: ChatMessage = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev: any) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
     cancelRequestedRef.current = false;
@@ -134,11 +134,11 @@ export function AIAssistFloat() {
       const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
       if (!res.ok) {
         toast.error(data.error ?? "AI 처리에 실패했습니다.");
-        setMessages((prev) => prev.slice(0, -1));
+        setMessages((prev: any) => prev.slice(0, -1));
         return;
       }
       if (data.text) {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.text! }]);
+        setMessages((prev: any) => [...prev, { role: "assistant", content: data.text! }]);
       }
     } catch (e) {
       abortControllerRef.current = null;
@@ -150,7 +150,7 @@ export function AIAssistFloat() {
       } else {
         toast.error("AI 처리에 실패했습니다.");
       }
-      setMessages((prev) => prev.slice(0, -1));
+      setMessages((prev: any) => prev.slice(0, -1));
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);
@@ -313,7 +313,7 @@ export function AIAssistFloat() {
               <Textarea
                 placeholder="메시지를 입력하세요..."
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e: any) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={loading}
                 rows={1}
@@ -349,7 +349,7 @@ export function AIAssistFloat() {
         type="button"
         size="lg"
         className="h-14 rounded-full shadow-lg bg-violet-600 hover:bg-violet-700 text-white gap-2 px-5"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((o: any) => !o)}
       >
         <Sparkles className="size-5" />
         <span className="font-medium">AI 비서</span>

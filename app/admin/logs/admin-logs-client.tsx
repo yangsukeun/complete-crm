@@ -83,7 +83,7 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
             <input
               type="date"
               value={dateStr}
-              onChange={(e) => setDateStr(e.target.value)}
+              onChange={(e: any) => setDateStr(e.target.value)}
               className="border-input w-full rounded-md border bg-transparent py-2 pl-9 pr-3 text-sm"
             />
           </div>

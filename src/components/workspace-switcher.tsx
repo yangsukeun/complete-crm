@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
 export function WorkspaceSwitcher() {
   const pathname = usePathname();
   const router = useRouter();
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
+  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
+  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
 
   const handleClick = useCallback(
     async (workspace: Workspace) => {
@@ -74,8 +74,8 @@ export function WorkspaceSwitcher() {
 
 /** html[data-workspace] 동기화 + 초기 로드 시 쿠키와 스토어 동기화 */
 export function WorkspaceThemeSync() {
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
+  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
+  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
   const urlMode = useSearchParams().get("mode");
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export function WorkspaceThemeSync() {
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
       fetch("/api/mode")
-        .then((r) => (r.ok ? r.json() : { mode: null }))
+        .then((r: any) => (r.ok ? r.json() : { mode: null }))
         .then((d: any) => {
           if (cancelled) return;
           setWorkspace(modeToWorkspace(d.mode ?? null));

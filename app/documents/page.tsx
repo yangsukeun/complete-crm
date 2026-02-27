@@ -113,7 +113,7 @@ export default function DocumentsPage() {
           <span className="text-slate-500 text-sm shrink-0">경로</span>
           <Input
             value={addressInput}
-            onChange={(e) => setAddressInput(e.target.value)}
+            onChange={(e: any) => setAddressInput(e.target.value)}
             placeholder="C:\ 또는 경로 입력 후 Enter"
             className="flex-1 h-9 bg-slate-800/80 border-slate-600 text-slate-100 font-mono text-sm placeholder:text-slate-500 focus-visible:ring-cyan-500"
           />
@@ -188,7 +188,7 @@ export default function DocumentsPage() {
                       <td className="py-2 px-3 text-slate-500">—</td>
                     </tr>
                   )}
-                  {entries.map((entry) => (
+                  {entries.map((entry: any) => (
                     <tr
                       key={entry.name}
                       className="border-b border-slate-700/30 last:border-0 hover:bg-slate-800/60 cursor-pointer"

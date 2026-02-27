@@ -52,8 +52,8 @@ export default function PersonalSkillTreePage() {
 
   const handleSaveLabel = useCallback(() => {
     if (editingNodeId == null || !editLabel.trim()) return;
-    setNodes((prev) =>
-      prev.map((n) =>
+    setNodes((prev: any) =>
+      prev.map((n: any) =>
         n.id === editingNodeId
           ? { ...n, data: { ...n.data, label: editLabel.trim() } }
           : n
@@ -121,8 +121,8 @@ export default function PersonalSkillTreePage() {
             <label className="text-sm text-slate-300">노드 이름</label>
             <Input
               value={editLabel}
-              onChange={(e) => setEditLabel(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSaveLabel()}
+              onChange={(e: any) => setEditLabel(e.target.value)}
+              onKeyDown={(e: any) => e.key === "Enter" && handleSaveLabel()}
               className="border-slate-600 bg-slate-800 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-500"
               placeholder="이름 입력"
             />

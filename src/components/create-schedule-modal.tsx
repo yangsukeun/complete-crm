@@ -61,7 +61,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
       setDescription("");
       setInviteUserIds(Array.isArray(defaultInviteUserIds) ? defaultInviteUserIds : []);
       fetch("/api/users/list")
-        .then((r) => (r.ok ? r.json() : []))
+        .then((r: any) => (r.ok ? r.json() : []))
         .then(setUsers)
         .catch(() => setUsers([]));
     }
@@ -113,7 +113,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
             <Input
               id="s-title"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e: any) => setTitle(e.target.value)}
               placeholder="일정 제목"
               required
             />
@@ -123,7 +123,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
             <Textarea
               id="s-desc"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e: any) => setDescription(e.target.value)}
               placeholder="설명 (선택)"
               rows={2}
             />
@@ -134,7 +134,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
               <Input
                 type="datetime-local"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={(e: any) => setStartTime(e.target.value)}
                 disabled={isAllDay}
                 required
               />
@@ -144,7 +144,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
               <Input
                 type="datetime-local"
                 value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                onChange={(e: any) => setEndTime(e.target.value)}
                 disabled={isAllDay}
                 required
               />
@@ -154,7 +154,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
             <Checkbox
               id="s-allday"
               checked={isAllDay}
-              onCheckedChange={(v) => setIsAllDay(v === true)}
+              onCheckedChange={(v: any) => setIsAllDay(v === true)}
             />
             <Label htmlFor="s-allday">종일</Label>
           </div>
@@ -171,8 +171,8 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
                 >
                   <Checkbox
                     checked={inviteUserIds.includes(u.id)}
-                    onCheckedChange={(checked) =>
-                      setInviteUserIds((prev) =>
+                    onCheckedChange={(checked: any) =>
+                      setInviteUserIds((prev: any) =>
                         checked ? [...prev, u.id] : prev.filter((id: any) => id !== u.id)
                       )
                     }

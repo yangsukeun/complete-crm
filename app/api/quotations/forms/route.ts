@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
     const maxOrder = await prisma.quotationForm
       .aggregate({ _max: { sortOrder: true } })
-      .then((r) => r._max.sortOrder ?? -1);
+      .then((r: any) => (r?._max?.sortOrder ?? -1));
 
     const form = await prisma.quotationForm.create({
       data: {

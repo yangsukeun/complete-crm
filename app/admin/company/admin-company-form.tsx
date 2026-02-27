@@ -153,7 +153,7 @@ export function AdminCompanyForm() {
         <Input
           id="name"
           value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          onChange={(e: any) => setForm((f: any) => ({ ...f, name: e.target.value }))}
           placeholder="(주)회사명"
           required
         />
@@ -163,7 +163,7 @@ export function AdminCompanyForm() {
         <Input
           id="businessNumber"
           value={form.businessNumber}
-          onChange={(e) => setForm((f) => ({ ...f, businessNumber: e.target.value }))}
+          onChange={(e: any) => setForm((f: any) => ({ ...f, businessNumber: e.target.value }))}
           placeholder="000-00-00000"
         />
       </div>
@@ -172,7 +172,7 @@ export function AdminCompanyForm() {
         <Input
           id="representative"
           value={form.representative}
-          onChange={(e) => setForm((f) => ({ ...f, representative: e.target.value }))}
+          onChange={(e: any) => setForm((f: any) => ({ ...f, representative: e.target.value }))}
           placeholder="홍길동"
         />
       </div>
@@ -181,7 +181,7 @@ export function AdminCompanyForm() {
         <Input
           id="address"
           value={form.address}
-          onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+          onChange={(e: any) => setForm((f: any) => ({ ...f, address: e.target.value }))}
           placeholder="서울시 ○○구 ○○로 00"
         />
       </div>
@@ -191,7 +191,7 @@ export function AdminCompanyForm() {
           <Input
             id="phone"
             value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            onChange={(e: any) => setForm((f: any) => ({ ...f, phone: e.target.value }))}
             placeholder="02-0000-0000"
           />
         </div>
@@ -200,7 +200,7 @@ export function AdminCompanyForm() {
           <Input
             id="fax"
             value={form.fax}
-            onChange={(e) => setForm((f) => ({ ...f, fax: e.target.value }))}
+            onChange={(e: any) => setForm((f: any) => ({ ...f, fax: e.target.value }))}
             placeholder="02-0000-0000"
           />
         </div>
@@ -211,7 +211,7 @@ export function AdminCompanyForm() {
           id="email"
           type="email"
           value={form.email}
-          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          onChange={(e: any) => setForm((f: any) => ({ ...f, email: e.target.value }))}
           placeholder="contact@company.com"
         />
       </div>
@@ -225,7 +225,7 @@ export function AdminCompanyForm() {
               <input
                 type="checkbox"
                 checked={form.transferExecutorIds.includes(u.id)}
-                onChange={(e) => {
+                onChange={(e: any) => {
                   setForm((f: any) =>
                     e.target.checked
                       ? { ...f, transferExecutorIds: [...f.transferExecutorIds, u.id] }
@@ -253,7 +253,7 @@ export function AdminCompanyForm() {
           type="file"
           accept="image/jpeg,image/png,image/gif,image/webp"
           className="hidden"
-          onChange={async (e) => {
+          onChange={async (e: any) => {
             const file = e.target.files?.[0];
             if (!file) return;
             setUploadingStamp(true);
@@ -267,7 +267,7 @@ export function AdminCompanyForm() {
               }
               const { url } = await res.json();
               if (mountedRef.current) {
-                setForm((f) => ({ ...f, stampImageUrl: url }));
+                setForm((f: any) => ({ ...f, stampImageUrl: url }));
                 toast.success("도장 이미지가 등록되었습니다.");
               }
             } catch (err) {
@@ -302,7 +302,7 @@ export function AdminCompanyForm() {
                   variant="ghost"
                   size="sm"
                   className="text-red-600 hover:text-red-700"
-                  onClick={() => setForm((f) => ({ ...f, stampImageUrl: "" }))}
+                  onClick={() => setForm((f: any) => ({ ...f, stampImageUrl: "" }))}
                 >
                   <X className="size-4" />
                   제거

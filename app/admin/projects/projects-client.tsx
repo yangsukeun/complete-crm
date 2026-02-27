@@ -164,7 +164,7 @@ export function AdminProjectsClient() {
               <Input
                 id="brand-name"
                 value={newBrandName}
-                onChange={(e) => setNewBrandName(e.target.value)}
+                onChange={(e: any) => setNewBrandName(e.target.value)}
                 placeholder="예: A브랜드"
               />
             </div>
@@ -182,7 +182,7 @@ export function AdminProjectsClient() {
               <select
                 className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
                 value={selectedBrandId}
-                onChange={(e) => setSelectedBrandId(e.target.value)}
+                onChange={(e: any) => setSelectedBrandId(e.target.value)}
               >
                 <option value="">브랜드 선택...</option>
                 {brands.map((b: any) => (
@@ -197,7 +197,7 @@ export function AdminProjectsClient() {
               <Input
                 id="project-name"
                 value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
+                onChange={(e: any) => setNewProjectName(e.target.value)}
                 placeholder="예: 2026 SS 런칭"
               />
             </div>
@@ -219,7 +219,7 @@ export function AdminProjectsClient() {
               <select
                 className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
                 value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
+                onChange={(e: any) => setSelectedUserId(e.target.value)}
               >
                 <option value="">담당자 선택...</option>
                 {users.map((u: any) => (
@@ -242,7 +242,7 @@ export function AdminProjectsClient() {
               <select
                 className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
                 value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
+                onChange={(e: any) => setSelectedProjectId(e.target.value)}
               >
                 <option value="">프로젝트 선택...</option>
                 {projectsInBrand.map((p: any) => (

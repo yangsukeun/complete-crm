@@ -72,10 +72,10 @@ export function NotificationBell() {
       if (!n.isRead) {
         try {
           await fetch(`/api/notifications/${n.id}/read`, { method: "PATCH" });
-          setList((prev) =>
+          setList((prev: any) =>
             prev.map((x: any) => (x.id === n.id ? { ...x, isRead: true } : x))
           );
-          setUnreadCount((c) => Math.max(0, c - 1));
+          setUnreadCount((c: any) => Math.max(0, c - 1));
         } catch {
           // ignore
         }

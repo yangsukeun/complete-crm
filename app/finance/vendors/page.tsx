@@ -209,7 +209,7 @@ export default function FinanceVendorsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vendors.map((v) => (
+              {vendors.map((v: any) => (
                 <TableRow key={v.id} className="border-slate-200 dark:border-slate-800">
                   <TableCell>
                     <div className="font-medium">{v.name}</div>
@@ -252,7 +252,7 @@ export default function FinanceVendorsPage() {
               <Input
                 id="vendor-name"
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e: any) => setForm((f: any) => ({ ...f, name: e.target.value }))}
                 placeholder="(주)○○인쇄"
               />
             </div>
@@ -261,7 +261,7 @@ export default function FinanceVendorsPage() {
               <Input
                 id="vendor-bank"
                 value={form.bankName}
-                onChange={(e) => setForm((f) => ({ ...f, bankName: e.target.value }))}
+                onChange={(e: any) => setForm((f: any) => ({ ...f, bankName: e.target.value }))}
                 placeholder="국민은행"
               />
             </div>
@@ -270,7 +270,7 @@ export default function FinanceVendorsPage() {
               <Input
                 id="vendor-account"
                 value={form.accountNumber}
-                onChange={(e) => setForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                onChange={(e: any) => setForm((f: any) => ({ ...f, accountNumber: e.target.value }))}
                 placeholder="123-456-789012"
               />
             </div>
@@ -279,7 +279,7 @@ export default function FinanceVendorsPage() {
               <Input
                 id="vendor-owner"
                 value={form.ownerName}
-                onChange={(e) => setForm((f) => ({ ...f, ownerName: e.target.value }))}
+                onChange={(e: any) => setForm((f: any) => ({ ...f, ownerName: e.target.value }))}
                 placeholder="홍길동"
               />
             </div>
@@ -288,18 +288,18 @@ export default function FinanceVendorsPage() {
               <Input
                 id="vendor-contact"
                 value={form.contactPerson}
-                onChange={(e) => setForm((f) => ({ ...f, contactPerson: e.target.value }))}
+                onChange={(e: any) => setForm((f: any) => ({ ...f, contactPerson: e.target.value }))}
                 placeholder="담당자명 (입금자와 다를 수 있음)"
               />
             </div>
             <div className="grid gap-2">
               <Label>분류</Label>
-              <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v }))}>
+              <Select value={form.category} onValueChange={(v: any) => setForm((f: any) => ({ ...f, category: v }))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((c) => (
+                  {CATEGORIES.map((c: any) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>

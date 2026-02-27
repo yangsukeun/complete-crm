@@ -72,7 +72,7 @@ export function AppNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
+  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
   const [mode, setMode] = useState<"company" | "personal" | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
@@ -91,7 +91,7 @@ export function AppNav() {
       timeoutId = setTimeout(fn, 0);
     };
     fetch("/api/mode")
-      .then((r) => r.json())
+      .then((r: any) => r.json())
       .then((d: any) => schedule(() => setMode(d?.mode ?? null)))
       .catch(() => schedule(() => setMode(null)));
     return () => {
@@ -104,7 +104,7 @@ export function AppNav() {
     if (!session?.user || pathname === "/login" || pathname === "/choose-mode") return;
     const load = () => {
       fetch("/api/settings/logo")
-        .then((r) => (r.ok ? r.json() : { logoUrl: null }))
+        .then((r: any) => (r.ok ? r.json() : { logoUrl: null }))
         .then((d: any) => setLogoUrl(d?.logoUrl ?? null))
         .catch(() => setLogoUrl(null));
     };
@@ -121,7 +121,7 @@ export function AppNav() {
     }
     const run = () => {
       fetch("/api/chats")
-        .then((r) => (r.ok ? r.json() : []))
+        .then((r: any) => (r.ok ? r.json() : []))
         .then((list: any) => {
           let count = 0;
           for (const c of list) {
@@ -143,7 +143,7 @@ export function AppNav() {
     const onRead = () => {
       if (session?.user?.id && effectiveMode === "company") {
         fetch("/api/chats")
-          .then((r) => (r.ok ? r.json() : []))
+          .then((r: any) => (r.ok ? r.json() : []))
           .then((list: any) => {
             let count = 0;
             for (const c of list) {
@@ -168,7 +168,7 @@ export function AppNav() {
     }
     const run = () => {
       fetch("/api/finance/alerts/count", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
-        .then((r) => (r.ok ? r.json() : { count: 0 }))
+        .then((r: any) => (r.ok ? r.json() : { count: 0 }))
         .then((d: any) => setPaymentAlertCount(d?.count ?? 0))
         .catch(() => setPaymentAlertCount(0));
     };
@@ -198,11 +198,11 @@ export function AppNav() {
   };
 
   const mainLinks = mainGroupLinks.filter(
-    (l) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
+    (l: any) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
   );
   const workLinks = workGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
   const hrLinks = hrGroupLinks.filter(
-    (l) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
+    (l: any) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
   );
   const financeLinks = financeGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
 

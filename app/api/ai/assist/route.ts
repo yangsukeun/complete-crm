@@ -31,27 +31,27 @@ const ACTION_PROMPTS: Record<
   expand: {
     system:
       "당신은 글쓰기 조수입니다. 사용자가 준 짧은 문장을 바탕으로 내용을 풍부하게 확장합니다. 한국어로만 답하고, 원문의 톤과 의도를 유지합니다.",
-    user: (text) => `다음 내용을 2~3배 길이로 확장해 주세요. 핵심은 유지합니다.\n\n${text}`,
+    user: (text: any) => `다음 내용을 2~3배 길이로 확장해 주세요. 핵심은 유지합니다.\n\n${text}`,
   },
   shorten: {
     system:
       "당신은 요약 전문가입니다. 주어진 글을 핵심만 남겨 짧게 요약합니다. 한국어로만 답합니다.",
-    user: (text) => `다음 내용을 핵심만 남겨 2~3문장으로 요약해 주세요.\n\n${text}`,
+    user: (text: any) => `다음 내용을 핵심만 남겨 2~3문장으로 요약해 주세요.\n\n${text}`,
   },
   formal: {
     system:
       "당신은 문어체·경어 변환 전문가입니다. 주어진 글을 정중하고 격식 있는 톤(존댓말, ~합니다체)으로 바꿉니다. 한국어로만 답합니다.",
-    user: (text) => `다음 내용을 정중한 격식체(합니다체)로 바꿔 주세요.\n\n${text}`,
+    user: (text: any) => `다음 내용을 정중한 격식체(합니다체)로 바꿔 주세요.\n\n${text}`,
   },
   casual: {
     system:
       "당신은 말투 변환 전문가입니다. 주어진 글을 부드러운 구어체(~해요, ~네요)로 바꿉니다. 한국어로만 답합니다.",
-    user: (text) => `다음 내용을 친근한 구어체(해요체)로 바꿔 주세요.\n\n${text}`,
+    user: (text: any) => `다음 내용을 친근한 구어체(해요체)로 바꿔 주세요.\n\n${text}`,
   },
   translate_en: {
     system:
       "You are a translator. Translate the given Korean text into natural English. Output only the translation, no explanation.",
-    user: (text) => `Translate to English:\n\n${text}`,
+    user: (text: any) => `Translate to English:\n\n${text}`,
   },
 };
 

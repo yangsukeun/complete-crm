@@ -106,8 +106,8 @@ export default function FinanceRequestsPage() {
   useEffect(() => {
     if (!modalOpen) return;
     fetch("/api/quotations")
-      .then((res) => res.json())
-      .then((data) => {
+      .then((res: any) => res.json())
+      .then((data: any) => {
         if (Array.isArray(data)) {
           setQuotations(
             data.map((q: { id: string; quotationNumber: string; title: string; finalAmount: number; clientName: string }) => ({
@@ -205,7 +205,7 @@ export default function FinanceRequestsPage() {
     fetch("/api/finance/alerts/read", { method: "POST" }).then(() => fetchRequests());
   }, [authStatus, paymentAlertUnreadCount, fetchRequests]);
 
-  const selectedVendor = vendors.find((v) => v.id === form.vendorId);
+  const selectedVendor = vendors.find((v: any) => v.id === form.vendorId);
 
   const openVendorCreate = () => {
     setVendorForm({
@@ -250,7 +250,7 @@ export default function FinanceRequestsPage() {
       setVendorModalOpen(false);
       await fetchVendors();
       if (data?.id) {
-        setForm((f) => ({ ...f, vendorId: String(data.id) }));
+        setForm((f: any) => ({ ...f, vendorId: String(data.id) }));
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "거래처 등록에 실패했습니다.");
@@ -395,7 +395,7 @@ export default function FinanceRequestsPage() {
   const canApproveReject = isTeamLead; // 팀장: 승인/반려
   const canComplete = isTransferExecutor; // 이체 담당자(또는 대표+이체담당자): 이체완료
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
-  const pendingTotal = pendingList.filter((r) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
+  const pendingTotal = pendingList.filter((r: any) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
   const showTwoSections =
     isExecutiveTransferExecutor || (isExecutive && !loading && requests.length === 0);
 
@@ -479,7 +479,7 @@ export default function FinanceRequestsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendingRequests.map((r) => (
+                    {pendingRequests.map((r: any) => (
                       <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                         <TableCell className="text-muted-foreground text-sm">
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
@@ -578,7 +578,7 @@ export default function FinanceRequestsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {completedRequests.map((r) => (
+                    {completedRequests.map((r: any) => (
                       <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                         <TableCell className="text-muted-foreground text-sm">
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
@@ -648,7 +648,7 @@ export default function FinanceRequestsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {requests.map((r) => (
+              {requests.map((r: any) => (
                 <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
@@ -760,12 +760,12 @@ export default function FinanceRequestsPage() {
                   거래처 추가
                 </Button>
               </div>
-              <Select value={form.vendorId} onValueChange={(v) => setForm((f) => ({ ...f, vendorId: v }))} required>
+              <Select value={form.vendorId} onValueChange={(v: any) => setForm((f: any) => ({ ...f, vendorId: v }))} required>
                 <SelectTrigger>
                   <SelectValue placeholder="거래처 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vendors.map((v) => (
+                  {vendors.map((v: any) => (
                     <SelectItem key={v.id} value={v.id}>
                       {v.name} ({v.category})
                     </SelectItem>
@@ -787,9 +787,9 @@ export default function FinanceRequestsPage() {
                 type="text"
                 inputMode="numeric"
                 value={form.amount}
-                onChange={(e) => {
+                onChange={(e: any) => {
                   const v = e.target.value.replace(/[^0-9]/g, "");
-                  setForm((f) => ({ ...f, amount: v }));
+                  setForm((f: any) => ({ ...f, amount: v }));
                 }}
                 placeholder="100000"
               />
@@ -801,14 +801,14 @@ export default function FinanceRequestsPage() {
               <Label>견적서 연결 (선택)</Label>
               <Select
                 value={form.quotationId || "none"}
-                onValueChange={(v) => setForm((f) => ({ ...f, quotationId: v === "none" ? "" : v }))}
+                onValueChange={(v: any) => setForm((f: any) => ({ ...f, quotationId: v === "none" ? "" : v }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="정산 시 참고할 견적서 선택" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">연결 안 함</SelectItem>
-                  {quotations.map((q) => (
+                  {quotations.map((q: any) => (
                     <SelectItem key={q.id} value={q.id}>
                       {q.quotationNumber} — {q.title} ({new Intl.NumberFormat("ko-KR").format(q.finalAmount)}원)
                     </SelectItem>
@@ -822,7 +822,7 @@ export default function FinanceRequestsPage() {
               <Textarea
                 id="req-desc"
                 value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                onChange={(e: any) => setForm((f: any) => ({ ...f, description: e.target.value }))}
                 placeholder="선택 입력"
                 rows={2}
               />
@@ -850,7 +850,7 @@ export default function FinanceRequestsPage() {
               <Input
                 id="vendor-create-name"
                 value={vendorForm.name}
-                onChange={(e) => setVendorForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e: any) => setVendorForm((f: any) => ({ ...f, name: e.target.value }))}
                 placeholder="(주)○○인쇄"
               />
             </div>
@@ -859,7 +859,7 @@ export default function FinanceRequestsPage() {
               <Input
                 id="vendor-create-bank"
                 value={vendorForm.bankName}
-                onChange={(e) => setVendorForm((f) => ({ ...f, bankName: e.target.value }))}
+                onChange={(e: any) => setVendorForm((f: any) => ({ ...f, bankName: e.target.value }))}
                 placeholder="국민은행"
               />
             </div>
@@ -868,7 +868,7 @@ export default function FinanceRequestsPage() {
               <Input
                 id="vendor-create-account"
                 value={vendorForm.accountNumber}
-                onChange={(e) => setVendorForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                onChange={(e: any) => setVendorForm((f: any) => ({ ...f, accountNumber: e.target.value }))}
                 placeholder="123-456-789012"
               />
             </div>
@@ -877,7 +877,7 @@ export default function FinanceRequestsPage() {
               <Input
                 id="vendor-create-owner"
                 value={vendorForm.ownerName}
-                onChange={(e) => setVendorForm((f) => ({ ...f, ownerName: e.target.value }))}
+                onChange={(e: any) => setVendorForm((f: any) => ({ ...f, ownerName: e.target.value }))}
                 placeholder="홍길동"
               />
             </div>
@@ -886,7 +886,7 @@ export default function FinanceRequestsPage() {
               <Input
                 id="vendor-create-contact"
                 value={vendorForm.contactPerson}
-                onChange={(e) => setVendorForm((f) => ({ ...f, contactPerson: e.target.value }))}
+                onChange={(e: any) => setVendorForm((f: any) => ({ ...f, contactPerson: e.target.value }))}
                 placeholder="선택 입력"
               />
             </div>
@@ -894,13 +894,13 @@ export default function FinanceRequestsPage() {
               <Label>분류</Label>
               <Select
                 value={vendorForm.category}
-                onValueChange={(v) => setVendorForm((f) => ({ ...f, category: v }))}
+                onValueChange={(v: any) => setVendorForm((f: any) => ({ ...f, category: v }))}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {VENDOR_CATEGORIES.map((c) => (
+                  {VENDOR_CATEGORIES.map((c: any) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>

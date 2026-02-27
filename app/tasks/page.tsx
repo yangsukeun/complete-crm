@@ -91,25 +91,25 @@ type CategoryItem = { id: string; name: string; parentId: string | null; sortOrd
 function tasksFetcher(key: unknown): Promise<Task[]> {
   const [url, workspace] = Array.isArray(key) && key.length >= 2 ? key : [];
   if (!url || !workspace) return Promise.resolve([]);
-  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r) => (r.ok ? r.json() : []));
+  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r: any) => (r.ok ? r.json() : []));
 }
 function categoriesFetcher(key: unknown): Promise<CategoryItem[]> {
   const [url, workspace] = Array.isArray(key) && key.length >= 2 ? key : [];
   if (!url || !workspace) return Promise.resolve([]);
-  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r) => (r.ok ? r.json() : []));
+  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r: any) => (r.ok ? r.json() : []));
 }
 function linksFetcher(key: unknown): Promise<TaskLink[]> {
   const [url, workspace] = Array.isArray(key) && key.length >= 2 ? key : [];
   if (!url || !workspace) return Promise.resolve([]);
-  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r) => (r.ok ? r.json() : []));
+  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r: any) => (r.ok ? r.json() : []));
 }
 
 export default function TasksPage() {
   const searchParams = useSearchParams();
   const { data: session, status: authStatus } = useSession();
   const { mutate: globalMutate } = useSWRConfig();
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
+  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
+  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
 
   const urlMode = searchParams.get("mode");
   const mode: "TEAM" | "MY" = urlMode === "MY" || urlMode === "TEAM" ? urlMode : currentWorkspace;
@@ -192,7 +192,7 @@ export default function TasksPage() {
       if (!result.destination) return;
       const newStatus = result.destination.droppableId as TaskStatus;
       const taskId = result.draggableId;
-      if (getEffectiveStatus(tasks.find((t) => t.id === taskId)!) !== newStatus) {
+      if (getEffectiveStatus(tasks.find((t: any) => t.id === taskId)!) !== newStatus) {
         updateTaskStatus(taskId, newStatus);
       }
     },
@@ -210,9 +210,9 @@ export default function TasksPage() {
   }
 
   const tasksByStatus = {
-    TODO: tasks.filter((t) => getEffectiveStatus(t) === "TODO"),
-    IN_PROGRESS: tasks.filter((t) => getEffectiveStatus(t) === "IN_PROGRESS"),
-    DONE: tasks.filter((t) => getEffectiveStatus(t) === "DONE"),
+    TODO: tasks.filter((t: any) => getEffectiveStatus(t) === "TODO"),
+    IN_PROGRESS: tasks.filter((t: any) => getEffectiveStatus(t) === "IN_PROGRESS"),
+    DONE: tasks.filter((t: any) => getEffectiveStatus(t) === "DONE"),
   };
 
   return (
@@ -223,7 +223,7 @@ export default function TasksPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Tabs
             value={view}
-            onValueChange={(v) => setView(v as "board" | "table" | "tree" | "logs")}
+            onValueChange={(v: any) => setView(v as "board" | "table" | "tree" | "logs")}
             className="w-auto"
           >
             <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5">
@@ -277,7 +277,7 @@ export default function TasksPage() {
         </div>
       ) : view === "tree" ? (
         <TaskTreeView
-          tasks={tasks.map((t) => ({
+          tasks={tasks.map((t: any) => ({
             id: t.id,
             title: t.title,
             description: t.description,
@@ -291,8 +291,8 @@ export default function TasksPage() {
           }))}
           taskLinks={taskLinks}
           onRefresh={refreshTasks}
-          onTaskClick={(taskId) => setDetailTaskId(taskId)}
-          onCreateTask={(parentId) => {
+          onTaskClick={(taskId: any) => setDetailTaskId(taskId)}
+          onCreateTask={(parentId: any) => {
             setCreateParentId(parentId);
             setCreateOpen(true);
           }}
@@ -323,7 +323,7 @@ export default function TasksPage() {
                     >
                       {tasksByStatus[value].map((task, index) => (
                         <Draggable key={task.id} draggableId={task.id} index={index}>
-                          {(provided) => (
+                          {(provided: any) => (
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
@@ -377,7 +377,7 @@ export default function TasksPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tasks.map((task) => (
+              {tasks.map((task: any) => (
                 <TableRow
                   key={task.id}
                   className="border-gray-200 cursor-pointer transition-colors hover:bg-muted/50"
@@ -393,17 +393,17 @@ export default function TasksPage() {
                       {task.title}
                     </span>
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell onClick={(e: any) => e.stopPropagation()}>
                     <Select
                       value={getEffectiveStatus(task)}
-                      onValueChange={(v) => updateTaskStatus(task.id, v as TaskStatus)}
+                      onValueChange={(v: any) => updateTaskStatus(task.id, v as TaskStatus)}
                       disabled={updatingStatusId === task.id}
                     >
                       <SelectTrigger className="h-8 border-gray-200 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {STATUS_LIST.map((s) => (
+                        {STATUS_LIST.map((s: any) => (
                           <SelectItem key={s.value} value={s.value}>
                             {s.label}
                           </SelectItem>
@@ -439,7 +439,7 @@ export default function TasksPage() {
       {/* 스킬트리 (대분류) */}
       <TaskCategoryTree
         categories={categories}
-        tasks={tasks.map((t) => ({
+        tasks={tasks.map((t: any) => ({
           id: t.id,
           title: t.title,
           dueDate: t.dueDate,
@@ -456,7 +456,7 @@ export default function TasksPage() {
 
       <CreateTaskModal
         open={createOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: any) => {
           setCreateOpen(open);
           if (!open) setCreateParentId(null);
         }}
