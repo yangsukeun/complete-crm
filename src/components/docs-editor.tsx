@@ -12,7 +12,8 @@ type DocsEditorProps = {
   className?: string;
 };
 
-const uploadFile = useCallback(async (file: File): Promise<string> => {
+export function DocsEditor({ className }: DocsEditorProps) {
+  const uploadFile = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
     const res = await fetch("/api/upload", { method: "POST", body: formData });
