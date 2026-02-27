@@ -7,11 +7,11 @@ const AUTH_TIMEOUT_MS = 10000;
  * 지연 시 null을 반환해 화면이 계속 로딩만 되는 현상을 방지합니다.
  * JWTSessionError 등 세션 오류 시에도 null을 반환해 레이아웃이 깨지지 않도록 합니다.
  */
-export async function authWithTimeout(): Promise<Awaited<ReturnType<typeof auth>>> {
+export async function authWithTimeout(): Promise<any> {
   try {
-    return await Promise.race([
-      auth(),
-      new Promise<Awaited<ReturnType<typeof auth>>>((_, reject) =>
+    return await Promise.race<any>([
+      auth() as any,
+      new Promise<any>((_, reject) =>
         setTimeout(() => reject(new Error("auth_timeout")), AUTH_TIMEOUT_MS)
       ),
     ]);

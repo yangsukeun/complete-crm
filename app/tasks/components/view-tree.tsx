@@ -1079,7 +1079,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.3}
             maxZoom={1.5}
-            selectionMode={1}
+            selectionMode={1 as any}
             selectNodesOnDrag={false}
             defaultEdgeOptions={{
               type: "smoothstep",

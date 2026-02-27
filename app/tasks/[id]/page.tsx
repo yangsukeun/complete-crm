@@ -216,11 +216,11 @@ export default function TaskDetailPage() {
               onClick={async () => {
                 setCopyingToPersonal(true);
                 try {
-                  const result = await copyTaskToPersonal(task.id);
-                  if (result.ok) {
+                  const result = (await copyTaskToPersonal(task.id)) as any;
+                  if (result?.ok) {
                     toast.success("개인 업무로 저장되었습니다.");
                   } else {
-                    toast.error(result.error);
+                    toast.error(result?.error ?? "개인 업무로 저장에 실패했습니다.");
                   }
                 } finally {
                   setCopyingToPersonal(false);

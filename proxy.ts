@@ -3,10 +3,10 @@ import NextAuth from "next-auth";
 import { authConfig } from "@/auth.config";
 
 // Edge에서 실행되므로 auth.config.ts만 사용 (Prisma/bcrypt 미사용)
-const { auth } = NextAuth(authConfig);
+const { auth } = NextAuth(authConfig as any) as any;
 
 export function proxy(request: NextRequest) {
-  return auth(request);
+  return (auth as any)(request);
 }
 
 export const config = {

@@ -76,7 +76,10 @@ export function DashboardSalesSection({ data }: { data: DashboardSalesStats }) {
                 className="text-slate-600 dark:text-slate-400"
               />
               <Tooltip
-                formatter={(value: number | undefined, name: string) => [formatAmount(value ?? 0), name]}
+                formatter={((value: number | undefined, name: string | undefined) => [
+                  formatAmount(value ?? 0),
+                  name ?? "",
+                ]) as any}
                 labelFormatter={(_, payload) => payload?.[0]?.payload?.monthLabel ?? ""}
                 contentStyle={{ borderRadius: 8 }}
               />

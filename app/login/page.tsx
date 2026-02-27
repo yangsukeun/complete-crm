@@ -38,12 +38,12 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await signIn("credentials", {
+      const res: any = await signIn("credentials", {
         email,
         password,
         callbackUrl: callbackUrl.startsWith("/") ? callbackUrl : "/choose-mode",
         redirect: true,
-      });
+      } as any);
 
       if (res?.error) {
         setError(ERROR_MESSAGES[res.error] ?? ERROR_MESSAGES.Default);

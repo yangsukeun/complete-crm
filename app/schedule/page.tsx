@@ -827,10 +827,10 @@ export default function SchedulePage() {
               views={["month", "week"]}
               culture="ko-KR"
               components={{
-                dateHeader: CustomDateHeader,
-                toolbar: ScheduleToolbar,
-                dateCellWrapper: createDateCellWrapper(leaveByDate),
-              }}
+                dateHeader: CustomDateHeader as any,
+                toolbar: ScheduleToolbar as any,
+                dateCellWrapper: createDateCellWrapper(leaveByDate) as any,
+              } as any}
               dayPropGetter={(d) => {
                 const legal = isLegalHoliday(d);
                 const sat = getDay(d) === 6;

@@ -298,7 +298,7 @@ export default function TasksPage() {
           }}
         />
       ) : view === "board" ? (
-        <DragDropContext onDragEnd={handleDragEnd}>
+        <DragDropContext onDragEnd={handleDragEnd as any}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {STATUS_LIST.map(({ value, label }) => (
               <div
