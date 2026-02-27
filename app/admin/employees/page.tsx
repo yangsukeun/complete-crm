@@ -47,7 +47,7 @@ export default async function AdminEmployeesPage() {
       : [];
 
       const employees = rows.map((e: any) => {
-    const proj = projects.find((p) => p.id === e.currentProjectId);
+        const proj = projects.find((p: any) => p.id === e.currentProjectId);
     return {
       id: e.id,
       name: e.name,
