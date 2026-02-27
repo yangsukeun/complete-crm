@@ -29,7 +29,7 @@ export default async function AdminLogsPage() {
         description="직원을 선택하고 날짜를 지정하면 해당 날짜의 자동 생성된 업무일지를 볼 수 있습니다."
       />
       <AdminLogsClient
-        employees={employees.map((e) => ({
+      employees={employees.map((e: any) => ({
           id: e.id,
           name: e.name,
           email: e.email,
