@@ -35,7 +35,7 @@ export default async function AdminPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {menuItems.map((item: { href: string; label: string; description: string; icon: typeof Users }) => (
+        {menuItems.map((item: any) => (
           <Link key={item.href} href={item.href}>
             <Card className="h-full transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/50">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">

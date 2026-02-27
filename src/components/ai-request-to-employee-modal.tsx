@@ -49,7 +49,7 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
     }
   }, [open]);
 
-  const selectedUser = users.find((u: { id: string }) => u.id === selectedUserId);
+  const selectedUser = users.find((u: any) => u?.id === selectedUserId);
 
   const handleSendChat = async () => {
     if (!selectedUserId || !message.trim()) {
@@ -118,7 +118,7 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
                 <SelectValue placeholder="직원을 선택하세요" />
               </SelectTrigger>
               <SelectContent>
-                {users.map((u: { id: string; name: string }) => (
+                {users.map((u: any) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.name}
                     {u.position ? ` · ${u.position}` : ""}

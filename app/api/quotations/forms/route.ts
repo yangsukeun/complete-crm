@@ -15,7 +15,7 @@ export async function GET() {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       select: { id: true, name: true, itemsJson: true, sortOrder: true, createdAt: true },
     });
-    const list = forms.map((f: { id: string; name: string; itemsJson: string | null; sortOrder: number; createdAt: Date }) => ({
+    const list = forms.map((f: any) => ({
       id: f.id,
       name: f.name,
       items: parseItemsJson(f.itemsJson),
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
           (typeof (i as { quantity?: number }).quantity === "number" || (i as { quantity?: number }).quantity === undefined) &&
           (typeof (i as { unitPrice?: number }).unitPrice === "number" || (i as { unitPrice?: number }).unitPrice === undefined)
       )
-      .map((i: { description: string; quantity?: number; unitPrice?: number }) => ({
+      .map((i: any) => ({
         description: String(i.description ?? "").trim() || "(품목)",
         quantity: Number((i.quantity ?? 1)) || 0,
         unitPrice: Number((i.unitPrice ?? 0)) || 0,
@@ -84,7 +84,7 @@ function parseItemsJson(json: string): QuotationFormItem[] {
   try {
     const arr = JSON.parse(json);
     if (!Array.isArray(arr)) return [];
-    return arr.map((i: unknown) => ({
+    return arr.map((i: any) => ({
       description: typeof (i as { description?: string })?.description === "string" ? (i as { description: string }).description : "",
       quantity: typeof (i as { quantity?: number })?.quantity === "number" ? (i as { quantity: number }).quantity : 1,
       unitPrice: typeof (i as { unitPrice?: number })?.unitPrice === "number" ? (i as { unitPrice: number }).unitPrice : 0,

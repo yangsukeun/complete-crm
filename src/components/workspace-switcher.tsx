@@ -93,7 +93,7 @@ export function WorkspaceThemeSync() {
       if (cancelled) return;
       fetch("/api/mode")
         .then((r) => (r.ok ? r.json() : { mode: null }))
-        .then((d: { mode?: string | null }) => {
+        .then((d: any) => {
           if (cancelled) return;
           setWorkspace(modeToWorkspace(d.mode ?? null));
         })

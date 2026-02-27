@@ -31,14 +31,14 @@ type Employee = {
   name: string;
   email: string;
   role: string;
-  department: string;
-  position: string;
+  department?: string;
+  position?: string;
   bankAccount?: string;
   address?: string;
   workPhone?: string;
   workEmail?: string;
   currentProject?: { id: string; name: string; brand?: { name: string } | null } | null;
-  joinDate: string;
+  joinDate?: string;
   permissions?: string | null;
 };
 
@@ -104,7 +104,7 @@ export function AdminEmployeesClient({
     if (e.permissions != null && e.permissions !== "") {
       try {
         const arr = JSON.parse(e.permissions) as unknown;
-        setSelectedPermissions(Array.isArray(arr) ? arr.filter((x: unknown): x is string => typeof x === "string") : []);
+        setSelectedPermissions(Array.isArray(arr) ? arr.filter((x: any) => typeof x === "string") : []);
         setUseCustomPermissions(true);
       } catch {
         setSelectedPermissions([]);
@@ -151,24 +151,24 @@ export function AdminEmployeesClient({
       }
       const updated = await res.json();
       setEmployees((prev) =>
-        prev.map((p: { id: string; [key: string]: unknown }) =>
+        prev.map((p: any) =>
           p.id === editing.id
-            ? {
+            ? ({
                 ...p,
-                name: updated.name,
-                role: updated.role ?? p.role,
-                department: updated.department ?? "",
-                position: updated.position ?? "",
-                bankAccount: updated.bankAccount ?? "",
-                address: updated.address ?? "",
-                workPhone: updated.workPhone ?? "",
-                workEmail: updated.workEmail ?? "",
-                currentProject: updated.currentProject ?? null,
-                joinDate: updated.joinDate
-                  ? new Date(updated.joinDate).toISOString().slice(0, 10)
+                name: (updated as any).name ?? p.name,
+                role: (updated as any).role ?? p.role,
+                department: (updated as any).department ?? "",
+                position: (updated as any).position ?? "",
+                bankAccount: (updated as any).bankAccount ?? "",
+                address: (updated as any).address ?? "",
+                workPhone: (updated as any).workPhone ?? "",
+                workEmail: (updated as any).workEmail ?? "",
+                currentProject: (updated as any).currentProject ?? null,
+                joinDate: (updated as any).joinDate
+                  ? new Date((updated as any).joinDate).toISOString().slice(0, 10)
                   : p.joinDate,
-                permissions: updated.permissions ?? null,
-              }
+                permissions: (updated as any).permissions ?? null,
+              } as any)
             : p
         )
       );
@@ -208,10 +208,10 @@ export function AdminEmployeesClient({
                 </TableCell>
               </TableRow>
             ) : (
-              employees.map((emp: { id: string; name: string; email: string; role: string; [key: string]: unknown }) => (
+              employees.map((emp: any) => (
                 <TableRow key={emp.id}>
                   <TableCell className="font-medium">{formatUserName(emp)}</TableCell>
-                  <TableCell>{emp.email}</TableCell>
+                  <TableCell>{emp.email ?? ""}</TableCell>
                   <TableCell>{emp.role === "TEAM_LEAD" ? "팀장" : "직원"}</TableCell>
                   <TableCell>
                     {emp.department ? (
@@ -231,7 +231,7 @@ export function AdminEmployeesClient({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell>{emp.joinDate}</TableCell>
+                  <TableCell>{emp.joinDate ?? "—"}</TableCell>
                   <TableCell>
                     <Button
                       variant="ghost"
@@ -293,7 +293,7 @@ export function AdminEmployeesClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {departments.map((d: { id: string; name: string }) => (
+                    {departments.map((d: any) => (
                       <SelectItem key={d.id} value={d.name}>
                         {d.name}
                       </SelectItem>
@@ -309,7 +309,7 @@ export function AdminEmployeesClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {positions.map((p: { id: string; name: string }) => (
+                    {positions.map((p: any) => (
                       <SelectItem key={p.id} value={p.name}>
                         {p.name}
                       </SelectItem>
@@ -381,14 +381,14 @@ export function AdminEmployeesClient({
                 </div>
                 {useCustomPermissions && (
                   <div className="max-h-48 overflow-y-auto rounded border bg-muted/30 p-3 space-y-2">
-{features.map((f: { key: string; label: string }) => (
+{features.map((f: any) => (
                         <label key={f.key} className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
                           type="checkbox"
                           checked={selectedPermissions.includes(f.key)}
                           onChange={(e) => {
                             if (e.target.checked) setSelectedPermissions((prev) => [...prev, f.key]);
-                            else setSelectedPermissions((prev) => prev.filter((k: string) => k !== f.key));
+                            else setSelectedPermissions((prev) => prev.filter((k: any) => k !== f.key));
                           }}
                           className="rounded border-gray-300"
                         />

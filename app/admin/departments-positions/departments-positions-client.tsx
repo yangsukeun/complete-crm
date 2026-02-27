@@ -159,7 +159,7 @@ export function DepartmentsPositionsClient() {
             {departments.length === 0 ? (
               <li className="text-muted-foreground text-sm py-2 text-center">등록된 부서가 없습니다.</li>
             ) : (
-              departments.map((d: { id: string; name: string }) => (
+              departments.map((d: any) => (
                 <li key={d.id} className="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-background">
                   <span>{d.name}</span>
                   <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => handleDeleteDepartment(d.id)} aria-label="삭제">
@@ -197,7 +197,7 @@ export function DepartmentsPositionsClient() {
             {positions.length === 0 ? (
               <li className="text-muted-foreground text-sm py-2 text-center">등록된 직책이 없습니다.</li>
             ) : (
-              positions.map((p: { id: string; name: string }) => (
+              positions.map((p: any) => (
                 <li key={p.id} className="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-background">
                   <span>{p.name}</span>
                   <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => handleDeletePosition(p.id)} aria-label="삭제">

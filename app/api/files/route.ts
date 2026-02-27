@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     }
 
     const names = fs.readdirSync(resolved, { withFileTypes: true });
-    const entries = names.map((dirent: fs.Dirent) => {
+    const entries = names.map((dirent: any) => {
       const fullPath = path.join(resolved, dirent.name);
       let size = 0;
       let mtime: string | null = null;

@@ -61,7 +61,7 @@ export function AdminCompanyForm() {
         if (data.transferExecutorIds) {
           try {
             const arr = JSON.parse(data.transferExecutorIds) as unknown;
-            ids = Array.isArray(arr) ? arr.filter((x: unknown): x is string => typeof x === "string") : [];
+            ids = Array.isArray(arr) ? arr.filter((x: any) => typeof x === "string") : [];
           } catch {
             ids = [];
           }
@@ -93,7 +93,7 @@ export function AdminCompanyForm() {
       if (!res.ok) return;
       const data = await res.json();
       if (mountedRef.current && Array.isArray(data)) {
-        setUsers(data.map((u: { id: string; name: string; email: string; position: string | null }) => ({ id: u.id, name: u.name, email: u.email, position: u.position ?? null })));
+        setUsers(data.map((u: any) => ({ id: u?.id ?? "", name: u?.name ?? "", email: u?.email ?? "", position: u?.position ?? null })));
       }
     } catch {
       // ignore
@@ -220,24 +220,24 @@ export function AdminCompanyForm() {
         <Label>이체 담당자 (자금이체 팀장 승인 후 실제 이체·이체완료 처리할 담당자)</Label>
         <p className="text-muted-foreground text-sm">팀장이 승인하면 선택한 담당자에게 알림이 가며, 담당자가 이체 후 이체완료 버튼을 누릅니다.</p>
         <div className="flex flex-wrap gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-900/30">
-          {users.map((u: { id: string; name: string; email: string; position: string | null }) => (
+          {users.map((u: any) => (
             <label key={u.id} className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={form.transferExecutorIds.includes(u.id)}
                 onChange={(e) => {
-                  setForm((f) =>
+                  setForm((f: any) =>
                     e.target.checked
                       ? { ...f, transferExecutorIds: [...f.transferExecutorIds, u.id] }
-                      : { ...f, transferExecutorIds: f.transferExecutorIds.filter((id: string) => id !== u.id) }
+                      : { ...f, transferExecutorIds: f.transferExecutorIds.filter((id: any) => id !== u.id) }
                   );
                 }}
                 className="h-4 w-4 rounded border-slate-300"
               />
               <span className="text-sm">
-                {u.name}
-                {u.position && <span className="text-muted-foreground ml-1">({u.position})</span>}
-                <span className="text-muted-foreground ml-1">{u.email}</span>
+                {u?.name ?? ""}
+                {u?.position != null && u.position !== "" && <span className="text-muted-foreground ml-1">({u.position})</span>}
+                <span className="text-muted-foreground ml-1">{u?.email ?? ""}</span>
               </span>
             </label>
           ))}

@@ -164,7 +164,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
               선택한 직원에게 일정 공유 초대가 전송됩니다. 동의 시 해당 직원 일정표에 추가됩니다.
             </p>
             <div className="max-h-32 space-y-1 overflow-y-auto rounded border p-2">
-              {users.map((u: { id: string; name: string }) => (
+              {users.map((u: any) => (
                 <label
                   key={u.id}
                   className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
@@ -173,7 +173,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
                     checked={inviteUserIds.includes(u.id)}
                     onCheckedChange={(checked) =>
                       setInviteUserIds((prev) =>
-                        checked ? [...prev, u.id] : prev.filter((id: string) => id !== u.id)
+                        checked ? [...prev, u.id] : prev.filter((id: any) => id !== u.id)
                       )
                     }
                   />

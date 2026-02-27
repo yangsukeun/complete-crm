@@ -68,11 +68,11 @@ export function AdminProjectsClient() {
 
   const projectsInBrand = useMemo(() => {
     if (!selectedBrandId) return projects;
-    return projects.filter((p: { brand: { id: string } }) => p.brand.id === selectedBrandId);
+    return projects.filter((p: any) => p?.brand?.id === selectedBrandId);
   }, [projects, selectedBrandId]);
 
-  const selectedUser = users.find((u: { id: string }) => u.id === selectedUserId) ?? null;
-  const selectedProject = projects.find((p: { id: string }) => p.id === selectedProjectId) ?? null;
+  const selectedUser = users.find((u: any) => u?.id === selectedUserId) ?? null;
+  const selectedProject = projects.find((p: any) => p?.id === selectedProjectId) ?? null;
 
   const handleCreateBrand = async () => {
     const name = newBrandName.trim();
@@ -185,7 +185,7 @@ export function AdminProjectsClient() {
                 onChange={(e) => setSelectedBrandId(e.target.value)}
               >
                 <option value="">브랜드 선택...</option>
-                {brands.map((b: { id: string; name: string }) => (
+                {brands.map((b: any) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
@@ -222,7 +222,7 @@ export function AdminProjectsClient() {
                 onChange={(e) => setSelectedUserId(e.target.value)}
               >
                 <option value="">담당자 선택...</option>
-                {users.map((u: { id: string; name: string }) => (
+                {users.map((u: any) => (
                   <option key={u.id} value={u.id}>
                     {formatUserName(u)}
                     {u.department ? ` · ${u.department}` : ""}
@@ -245,7 +245,7 @@ export function AdminProjectsClient() {
                 onChange={(e) => setSelectedProjectId(e.target.value)}
               >
                 <option value="">프로젝트 선택...</option>
-                {projectsInBrand.map((p: { id: string; name: string }) => (
+                {projectsInBrand.map((p: any) => (
                   <option key={p.id} value={p.id}>
                     {projectLabel(p)}
                   </option>

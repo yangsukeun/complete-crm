@@ -73,10 +73,10 @@ export async function GET() {
         } catch (_) {}
       }
       const completedRequests = allRequests
-        .filter((r: { status: string; completedAt: Date | null }) => r.status === "COMPLETED")
-        .sort((a: { completedAt: Date | null }, b: { completedAt: Date | null }) => (b.completedAt ? b.completedAt.getTime() : 0) - (a.completedAt ? a.completedAt.getTime() : 0));
+        .filter((r: any) => r.status === "COMPLETED")
+        .sort((a: any, b: any) => (b.completedAt ? b.completedAt.getTime() : 0) - (a.completedAt ? a.completedAt.getTime() : 0));
       const pendingRequests = allRequests.filter(
-        (r: { status: string }) => r.status === "PENDING" || r.status === "TEAM_LEAD_APPROVED"
+        (r: any) => r.status === "PENDING" || r.status === "TEAM_LEAD_APPROVED"
       );
       return NextResponse.json(
         {
@@ -109,7 +109,7 @@ export async function GET() {
          LEFT JOIN Quotation q ON pr.quotationId = q.id
          ORDER BY pr.requestedAt DESC`
       );
-      const requests = rawRows.map((r: Row) => ({
+      const requests = rawRows.map((r: any) => ({
         id: r.id,
         status: r.status,
         amount: r.amount,
@@ -125,7 +125,7 @@ export async function GET() {
           ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
           : null,
       }));
-      const pendingIds = requests.filter((r: { status: string }) => r.status === "PENDING").map((r: { id: string }) => r.id);
+      const pendingIds = requests.filter((r: any) => r.status === "PENDING").map((r: any) => r.id);
       const now = new Date().toISOString();
       const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
       if (pendingIds.length > 0) {
@@ -136,7 +136,7 @@ export async function GET() {
             session.user.id,
             ...pendingIds
           );
-const existingSet = new Set(existingRows.map((e: { requestId: string }) => e.requestId));
+const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       for (const requestId of pendingIds) {
             if (existingSet.has(requestId)) continue;
             try {
@@ -187,7 +187,7 @@ const existingSet = new Set(existingRows.map((e: { requestId: string }) => e.req
          LEFT JOIN Quotation q ON pr.quotationId = q.id
          ORDER BY pr.requestedAt DESC`
       );
-      const requests = rawRows.map((r: Row) => ({
+      const requests = rawRows.map((r: any) => ({
         id: r.id,
         status: r.status,
         amount: r.amount,
@@ -203,7 +203,7 @@ const existingSet = new Set(existingRows.map((e: { requestId: string }) => e.req
           ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
           : null,
       }));
-      const approvedIds = requests.filter((r: { status: string }) => r.status === "TEAM_LEAD_APPROVED").map((r: { id: string }) => r.id);
+      const approvedIds = requests.filter((r: any) => r.status === "TEAM_LEAD_APPROVED").map((r: any) => r.id);
       if (approvedIds.length > 0) {
         const now = new Date().toISOString();
         const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
@@ -214,7 +214,7 @@ const existingSet = new Set(existingRows.map((e: { requestId: string }) => e.req
             session.user.id,
             ...approvedIds
           );
-const existingSet = new Set(existingRows.map((e: { requestId: string }) => e.requestId));
+const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       for (const requestId of approvedIds) {
             if (existingSet.has(requestId)) continue;
             try {

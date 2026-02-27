@@ -105,7 +105,7 @@ export function AppNav() {
     const load = () => {
       fetch("/api/settings/logo")
         .then((r) => (r.ok ? r.json() : { logoUrl: null }))
-        .then((d: { logoUrl: string | null }) => setLogoUrl(d.logoUrl ?? null))
+        .then((d: any) => setLogoUrl(d?.logoUrl ?? null))
         .catch(() => setLogoUrl(null));
     };
     load();
@@ -122,7 +122,7 @@ export function AppNav() {
     const run = () => {
       fetch("/api/chats")
         .then((r) => (r.ok ? r.json() : []))
-        .then((list: { id: string; lastMessage: { createdAt: string; user: { id: string } } | null }[]) => {
+        .then((list: any) => {
           let count = 0;
           for (const c of list) {
             if (!c.lastMessage || c.lastMessage.user.id === session.user?.id) continue;
@@ -144,7 +144,7 @@ export function AppNav() {
       if (session?.user?.id && effectiveMode === "company") {
         fetch("/api/chats")
           .then((r) => (r.ok ? r.json() : []))
-          .then((list: { id: string; lastMessage: { createdAt: string; user: { id: string } } | null }[]) => {
+          .then((list: any) => {
             let count = 0;
             for (const c of list) {
               if (!c.lastMessage || c.lastMessage.user.id === session.user?.id) continue;
@@ -169,7 +169,7 @@ export function AppNav() {
     const run = () => {
       fetch("/api/finance/alerts/count", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
         .then((r) => (r.ok ? r.json() : { count: 0 }))
-        .then((d: { count: number }) => setPaymentAlertCount(d.count ?? 0))
+        .then((d: any) => setPaymentAlertCount(d?.count ?? 0))
         .catch(() => setPaymentAlertCount(0));
     };
     run();
@@ -200,11 +200,11 @@ export function AppNav() {
   const mainLinks = mainGroupLinks.filter(
     (l) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
   );
-  const workLinks = workGroupLinks.filter((l: { featureKey?: string }) => !l.featureKey || can(l.featureKey));
+  const workLinks = workGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
   const hrLinks = hrGroupLinks.filter(
     (l) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
   );
-  const financeLinks = financeGroupLinks.filter((l: { featureKey?: string }) => !l.featureKey || can(l.featureKey));
+  const financeLinks = financeGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
 
   const adminLinks = isExecutive
     ? [
@@ -331,7 +331,7 @@ export function AppNav() {
                   variant="ghost"
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    hrLinks.some((l: { href: string }) => pathname === l.href || pathname.startsWith(l.href + "/"))
+                    hrLinks.some((l: any) => pathname === l.href || pathname.startsWith(l.href + "/"))
                       ? "bg-indigo-50 text-indigo-700"
                       : "text-indigo-600/90 hover:bg-indigo-50 hover:text-indigo-700"
                   )}
@@ -373,7 +373,7 @@ export function AppNav() {
                   variant="ghost"
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    financeLinks.some((l: { href: string }) => pathname === l.href || pathname.startsWith(l.href + "/"))
+                    financeLinks.some((l: any) => pathname === l.href || pathname.startsWith(l.href + "/"))
                       ? "bg-emerald-50 text-emerald-700"
                       : "text-emerald-600/90 hover:bg-emerald-50 hover:text-emerald-700"
                   )}
@@ -420,7 +420,7 @@ export function AppNav() {
                   variant="ghost"
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    adminLinks.some((l: { href: string }) => pathname.startsWith(l.href))
+                    adminLinks.some((l: any) => pathname.startsWith(l.href))
                       ? "bg-violet-50 text-violet-700"
                       : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                   )}
@@ -520,8 +520,8 @@ export function AppNav() {
         <div className="flex gap-1">
           {[...mainLinks, ...workLinks, ...hrLinks, ...financeLinks].map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
-            const isHr = hrLinks.some((l: { href: string }) => l.href === href);
-            const isFinance = financeLinks.some((l: { href: string }) => l.href === href);
+            const isHr = hrLinks.some((l: any) => l.href === href);
+            const isFinance = financeLinks.some((l: any) => l.href === href);
             return (
               <Link
                 key={href}

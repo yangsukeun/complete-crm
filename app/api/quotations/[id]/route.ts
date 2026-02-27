@@ -80,7 +80,7 @@ export async function PUT(
       if (items !== undefined) {
         await tx.quotationItem.deleteMany({ where: { quotationId: id } });
         await tx.quotationItem.createMany({
-          data: items.map((item: { description?: string; quantity?: number; unitPrice?: number; amount?: number }, idx: number) => ({
+          data: items.map((item: any, idx: any) => ({
             quotationId: id,
             description: String(item?.description ?? "").trim() || "(품목)",
             quantity: Number(item?.quantity) || 0,
