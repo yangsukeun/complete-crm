@@ -92,7 +92,7 @@ export function AppNav() {
     };
     fetch("/api/mode")
       .then((r) => r.json())
-      .then((d) => schedule(() => setMode(d.mode)))
+      .then((d: any) => schedule(() => setMode(d?.mode ?? null)))
       .catch(() => schedule(() => setMode(null)));
     return () => {
       cancelled = true;
@@ -191,7 +191,7 @@ export function AppNav() {
   const userForPermission = session?.user as { role?: string; permissions?: string | null } | undefined;
   const can = (featureKey: string) => {
     try {
-      return userForPermission ? userHasPermission(userForPermission, featureKey) : true;
+      return userForPermission ? userHasPermission(userForPermission as any, featureKey) : true;
     } catch {
       return true;
     }
@@ -473,7 +473,7 @@ export function AppNav() {
                   </Avatar>
                   <div className="hidden flex-col items-start text-left lg:flex">
                     <span className="text-sm font-medium text-gray-900">
-                      {session.user.name ?? "사용자"}
+                      {session?.user?.name ?? "사용자"}
                     </span>
                     {roleLabel && (
                       <span className="text-xs text-gray-500">{roleLabel}</span>
@@ -485,8 +485,8 @@ export function AppNav() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">{session.user.name ?? session.user.email}</p>
-                    <p className="text-xs text-gray-500">{session.user.email}</p>
+                    <p className="text-sm font-medium">{session?.user?.name ?? session?.user?.email ?? ""}</p>
+                    <p className="text-xs text-gray-500">{session?.user?.email ?? ""}</p>
                     {roleLabel && (
                       <span className={cn("inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium", badgeClass)}>
                         {roleLabel}

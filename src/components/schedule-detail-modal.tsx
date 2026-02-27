@@ -60,12 +60,12 @@ export function ScheduleDetailModal({
 
   useEffect(() => {
     if (!event?.resource) return;
-    const r = event.resource;
-    setTitle(r.title);
-    setDescription(r.description ?? "");
-    setStartTime(r.startTime.slice(0, 16));
-    setEndTime(r.endTime.slice(0, 16));
-    setIsAllDay(r.isAllDay);
+    const r = event.resource as any;
+    setTitle(r?.title ?? "");
+    setDescription(r?.description ?? "");
+    setStartTime(r?.startTime != null ? String(r.startTime).slice(0, 16) : "");
+    setEndTime(r?.endTime != null ? String(r.endTime).slice(0, 16) : "");
+    setIsAllDay(r?.isAllDay ?? false);
   }, [event]);
 
   if (!event?.resource) return null;

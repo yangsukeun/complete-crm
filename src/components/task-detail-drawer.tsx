@@ -226,8 +226,8 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "FILE",
-          url: data.url,
-          name: data.name || file.name,
+          url: (data as any)?.url ?? "",
+          name: ((data as any)?.name || file?.name) ?? "",
         }),
       });
       if (!attachRes.ok) {
@@ -342,12 +342,12 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                   onClick={async () => {
                     setCopyingToPersonal(true);
                     try {
-                      const result = await copyTaskToPersonal(task.id);
+                      const result = await copyTaskToPersonal(task.id) as { ok?: boolean; error?: string };
                       if (result.ok) {
                         toast.success("개인 업무로 저장되었습니다.");
                         onUpdate();
                       } else {
-                        toast.error(result.error);
+                        toast.error(result.error ?? "실패");
                       }
                     } finally {
                       setCopyingToPersonal(false);
@@ -405,7 +405,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                         task.isCompleted && "text-muted-foreground line-through"
                       )}
                       onClick={() => {
-                        setEditTitle(task.title);
+                        setEditTitle(task?.title ?? "");
                         setIsEditingTitle(true);
                       }}
                       title="클릭하여 제목 수정"
@@ -672,20 +672,20 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                 댓글 {task.comments.length > 0 && `(${task.comments.length})`}
               </div>
               <ul className="space-y-4">
-                {task.comments.map((c: any) => (
-                  <li key={c.id} className="flex gap-3">
+                {task.comments.map((c: any, index: number) => (
+                  <li key={c?.id ?? index} className="flex gap-3">
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                      {(c.user.name ?? "?").slice(0, 1)}
+                      {(c?.user?.name ?? "?").slice(0, 1)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-muted-foreground">
-                        {formatUserName(c.user)}
+                        {formatUserName(c?.user as any)}
                         <span className="ml-2">
-                          {format(new Date(c.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
+                          {format(new Date(c?.createdAt ?? 0), "yyyy.MM.dd HH:mm", { locale: ko })}
                         </span>
                       </p>
                       <p className="mt-0.5 text-[15px] leading-relaxed whitespace-pre-wrap">
-                        {c.body}
+                        {c?.body ?? ""}
                       </p>
                     </div>
                   </li>

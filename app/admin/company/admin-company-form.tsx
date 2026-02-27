@@ -67,14 +67,14 @@ export function AdminCompanyForm() {
           }
         }
         setForm({
-          name: data.name,
-          businessNumber: data.businessNumber ?? "",
-          representative: data.representative ?? "",
-          address: data.address ?? "",
-          phone: data.phone ?? "",
-          email: data.email ?? "",
-          fax: data.fax ?? "",
-          stampImageUrl: data.stampImageUrl ?? "",
+          name: data?.name ?? "",
+          businessNumber: data?.businessNumber ?? "",
+          representative: data?.representative ?? "",
+          address: data?.address ?? "",
+          phone: data?.phone ?? "",
+          email: data?.email ?? "",
+          fax: data?.fax ?? "",
+          stampImageUrl: data?.stampImageUrl ?? "",
           transferExecutorIds: ids,
         });
       }

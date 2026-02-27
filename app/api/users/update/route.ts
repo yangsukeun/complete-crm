@@ -50,26 +50,24 @@ export async function PATCH(req: NextRequest) {
 
     const updated = await prisma.user.update({
       where: { id: effectiveUserId },
-      data,
+      data: data as any,
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
-        team: true,
-        hireDate: true,
         totalLeaves: true,
         usedLeaves: true,
         createdAt: true,
         updatedAt: true,
-      },
+      } as any,
     });
 
     return NextResponse.json({
-      ...updated,
-      hireDate: updated.hireDate?.toISOString() ?? null,
-      createdAt: updated.createdAt.toISOString(),
-      updatedAt: updated.updatedAt.toISOString(),
+      ...(updated as any),
+      hireDate: (updated as any).hireDate?.toISOString?.() ?? null,
+      createdAt: (updated as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
+      updatedAt: (updated as any).updatedAt?.toISOString?.() ?? new Date().toISOString(),
     });
   } catch (err) {
     console.error("[PATCH /api/users/update]", err);

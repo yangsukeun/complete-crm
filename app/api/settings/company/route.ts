@@ -63,7 +63,7 @@ export async function PATCH(req: Request) {
       phone: typeof body.phone === "string" ? body.phone.trim() || null : null,
       email: typeof body.email === "string" ? body.email.trim() || null : null,
       fax: typeof body.fax === "string" ? body.fax.trim() || null : null,
-      stampImageUrl: body.stampImageUrl === undefined ? undefined : (body.stampImageUrl === null || body.stampImageUrl === "" ? null : String(body.stampImageUrl)),
+      stampImageUrl: body.stampImageUrl === undefined ? null : (body.stampImageUrl === null || body.stampImageUrl === "" ? null : String(body.stampImageUrl)),
     };
 
     const existing = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });

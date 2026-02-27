@@ -80,7 +80,7 @@ export function AIAssistFloat() {
             notebook: !!p.notebook,
           };
           setProviders(next);
-          const available = (["gemini", "openai", "notebook"] as const).filter((k: any) => next[k]);
+          const available = (["gemini", "openai", "notebook"] as const).filter((k: any) => (next as any)[k]);
           const pref = profile?.preferredAiProvider;
           const chosen =
             pref === "gemini" || pref === "openai" || pref === "notebook"
@@ -195,7 +195,7 @@ export function AIAssistFloat() {
     }
   };
 
-  const availableProviders = (["gemini", "openai", "notebook"] as const).filter((k: any) => providers[k]);
+  const availableProviders = (["gemini", "openai", "notebook"] as const).filter((k: any) => (providers as any)[k]);
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
@@ -221,7 +221,7 @@ export function AIAssistFloat() {
                   <SelectContent>
                     {availableProviders.map((p: any) => (
                       <SelectItem key={p} value={p}>
-                        {PROVIDER_LABELS[p]}
+                        {(PROVIDER_LABELS as any)[p]}
                       </SelectItem>
                     ))}
                   </SelectContent>

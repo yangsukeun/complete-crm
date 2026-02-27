@@ -59,10 +59,10 @@ export async function GET() {
       const needsMinimal = isUnknown && (msg.includes("phone") || msg.includes("workPhone") || msg.includes("workEmail") || msg.includes("bankAccount") || msg.includes("residentId") || msg.includes("address") || msg.includes("currentProject"));
       if (!isUnknown) throw selectErr;
       if (needsMinimal) {
-        user = await prisma.user.findUnique({
+        user = (await prisma.user.findUnique({
           where: { id: session.user.id },
           select: { id: true, name: true, email: true, department: true, joinDate: true, role: true },
-        });
+        })) as any;
         if (user) {
           (user as Record<string, unknown>).phone = null;
           (user as Record<string, unknown>).workPhone = null;
@@ -220,7 +220,7 @@ export async function PATCH(req: Request) {
     if (parsed.data.address !== undefined) data.address = parsed.data.address?.trim() || null;
     if (parsed.data.department !== undefined) data.department = parsed.data.department?.trim() || null;
     if (parsed.data.position !== undefined) data.position = parsed.data.position?.trim() || null;
-    if (isAdmin && parsed.data.joinDate != null) data.joinDate = new Date(parsed.data.joinDate);
+    if (isAdmin && (parsed.data as any).joinDate != null) data.joinDate = new Date((parsed.data as any).joinDate);
     if (parsed.data.preferredAiProvider !== undefined)
       data.preferredAiProvider = parsed.data.preferredAiProvider ?? null;
 
@@ -327,9 +327,9 @@ export async function PATCH(req: Request) {
     const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
     const entitlement = getAnnualLeaveEntitlement(joinDateObj, year);
 
-    if (isAdmin && parsed.data.leaveRemaining !== undefined) {
+    if (isAdmin && (parsed.data as any).leaveRemaining !== undefined) {
       try {
-        const annualUsed = Math.max(0, entitlement - parsed.data.leaveRemaining);
+        const annualUsed = Math.max(0, entitlement - (parsed.data as any).leaveRemaining);
         await prisma.leaveBalance.upsert({
           where: { userId_year: { userId: session.user.id, year } },
           create: { userId: session.user.id, year, annualTotal: entitlement, annualUsed, manualDeduction: 0 },
@@ -340,7 +340,7 @@ export async function PATCH(req: Request) {
       }
     }
 
-    if (isAdmin && parsed.data.manualDeduction !== undefined) {
+    if (isAdmin && (parsed.data as any).manualDeduction !== undefined) {
       try {
         let balance = await prisma.leaveBalance.findUnique({
           where: { userId_year: { userId: session.user.id, year } },
@@ -352,13 +352,13 @@ export async function PATCH(req: Request) {
               year,
               annualTotal: entitlement,
               annualUsed: 0,
-              manualDeduction: parsed.data.manualDeduction,
+              manualDeduction: (parsed.data as any).manualDeduction,
             },
           });
         } else if (balance.manualDeduction === 0) {
           await prisma.leaveBalance.update({
             where: { userId_year: { userId: session.user.id, year } },
-            data: { manualDeduction: parsed.data.manualDeduction },
+            data: { manualDeduction: (parsed.data as any).manualDeduction },
           });
         }
       } catch (balanceErr) {

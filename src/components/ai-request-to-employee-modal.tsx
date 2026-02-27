@@ -91,7 +91,7 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
       toast.error("선택한 직원의 이메일이 없습니다.");
       return;
     }
-    window.open(`mailto:${selectedUser.email}`, "_blank");
+    window.open(`mailto:${selectedUser?.email ?? ""}`, "_blank");
     onOpenChange(false);
   };
 
@@ -119,9 +119,9 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
               </SelectTrigger>
               <SelectContent>
                 {users.map((u: any) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                    {u.position ? ` · ${u.position}` : ""}
+                  <SelectItem key={u?.id ?? ""} value={u?.id ?? ""}>
+                    {u?.name ?? ""}
+                    {u?.position ? ` · ${u.position}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -175,12 +175,12 @@ export function AIRequestToEmployeeModal({ open, onOpenChange }: Props) {
           )}
           {action === "email" && selectedUser?.email && (
             <p className="text-sm text-muted-foreground">
-              <strong>{selectedUser.name}</strong>님에게 이메일 앱으로 보내기: {selectedUser.email}
+              <strong>{selectedUser?.name ?? ""}</strong>님에게 이메일 앱으로 보내기: {selectedUser?.email ?? ""}
             </p>
           )}
           {action === "schedule" && selectedUser && (
             <p className="text-sm text-muted-foreground">
-              <strong>{selectedUser.name}</strong>님을 초대할 새 일정을 만듭니다.
+              <strong>{selectedUser?.name ?? ""}</strong>님을 초대할 새 일정을 만듭니다.
             </p>
           )}
         </div>

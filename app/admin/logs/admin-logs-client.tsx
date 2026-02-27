@@ -54,9 +54,9 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
       const res = await fetch(`/api/work-logs?date=${dateStr}&userId=${selectedUserId}`);
       if (!res.ok) throw new Error("불러오기 실패");
       const data = await res.json();
-      setActivities(Array.isArray(data.activities) ? data.activities : []);
-      setContent(data.content ?? "");
-      setStatus(data.status ?? "");
+      setActivities(Array.isArray(data?.activities) ? data.activities : []);
+      setContent(data?.content ?? "");
+      setStatus(data?.status ?? "");
     } catch {
       setActivities([]);
       setContent("(불러오기 실패)");
@@ -91,22 +91,22 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
         <div>
           <label className="text-muted-foreground mb-2 block text-sm font-medium">직원</label>
           <ul className="max-h-[320px] space-y-0.5 overflow-y-auto rounded-md border border-border bg-muted/30 p-1">
-            {employees.map((e: any) => (
-              <li key={e.id}>
+            {employees.map((e: any, idx: number) => (
+              <li key={e?.id ?? idx}>
                 <button
                   type="button"
-                  onClick={() => setSelectedUserId(e.id)}
+                  onClick={() => setSelectedUserId(e?.id ?? "")}
                   className={cn(
                     "flex w-full flex-col items-start rounded-md px-3 py-2 text-left text-sm transition-colors",
-                    selectedUserId === e.id
+                    selectedUserId === e?.id
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted/60"
                   )}
                 >
-                  <span className="font-medium">{e.name}</span>
-                  <span className={cn("text-xs", selectedUserId === e.id ? "opacity-90" : "text-muted-foreground")}>
-                    {e.department && `${e.department} · `}
-                    {e.position || e.role}
+                  <span className="font-medium">{e?.name ?? ""}</span>
+                  <span className={cn("text-xs", selectedUserId === e?.id ? "opacity-90" : "text-muted-foreground")}>
+                    {e?.department && `${e.department} · `}
+                    {(e?.position || e?.role) ?? ""}
                   </span>
                 </button>
               </li>

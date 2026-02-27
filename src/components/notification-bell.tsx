@@ -36,7 +36,7 @@ export function NotificationBell() {
       if (!res.ok) return;
       const data = await res.json();
       setList(Array.isArray(data) ? data : []);
-      setUnreadCount(data.filter((n: NotificationItem) => !n.isRead).length);
+      setUnreadCount(Array.isArray(data) ? data.filter((n: any) => !n?.isRead).length : 0);
     } catch {
       setList([]);
       setUnreadCount(0);

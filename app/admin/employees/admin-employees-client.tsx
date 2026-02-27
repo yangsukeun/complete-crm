@@ -90,20 +90,20 @@ export function AdminEmployeesClient({
     });
   }, []);
 
-  const openEdit = (e: Employee) => {
+  const openEdit = (e: any) => {
     setEditing(e);
-    setName(e.name);
-    setDepartment(e.department);
-    setPosition(e.position);
-    setBankAccount(e.bankAccount ?? "");
-    setAddress(e.address ?? "");
-    setWorkPhone(e.workPhone ?? "");
-    setWorkEmail(e.workEmail ?? "");
-    setRole((e.role === "TEAM_LEAD" ? "TEAM_LEAD" : "USER") as "USER" | "TEAM_LEAD");
-    setJoinDate(e.joinDate);
-    if (e.permissions != null && e.permissions !== "") {
+    setName(e?.name ?? "");
+    setDepartment(e?.department ?? "");
+    setPosition(e?.position ?? "");
+    setBankAccount(e?.bankAccount ?? "");
+    setAddress(e?.address ?? "");
+    setWorkPhone(e?.workPhone ?? "");
+    setWorkEmail(e?.workEmail ?? "");
+    setRole((e?.role === "TEAM_LEAD" ? "TEAM_LEAD" : "USER") as "USER" | "TEAM_LEAD");
+    setJoinDate(e?.joinDate ?? "");
+    if (e?.permissions != null && e?.permissions !== "") {
       try {
-        const arr = JSON.parse(e.permissions) as unknown;
+        const arr = JSON.parse(String(e?.permissions ?? "")) as unknown;
         setSelectedPermissions(Array.isArray(arr) ? arr.filter((x: any) => typeof x === "string") : []);
         setUseCustomPermissions(true);
       } catch {

@@ -226,8 +226,8 @@ export function TaskCategoryTree({
             <span
               className="flex-1 truncate cursor-text py-0.5 px-1 -mx-1 rounded hover:bg-violet-50 hover:text-violet-700 border border-transparent hover:border-violet-200 transition-colors group/title flex items-center gap-1"
               onClick={() => {
-                setEditingId(cat.id);
-                setEditName(cat.name);
+                setEditingId(cat?.id ?? "");
+                setEditName(cat?.name ?? "");
               }}
               title="클릭하여 이름 수정"
             >
@@ -255,7 +255,7 @@ export function TaskCategoryTree({
               size="icon"
               className="size-7"
               onClick={() => {
-                setCreateCategoryId(cat.id);
+                setCreateCategoryId(cat?.id ?? "");
                 setCreateOpen(true);
               }}
               title="업무 추가"
@@ -280,7 +280,7 @@ export function TaskCategoryTree({
             {childTasks.map((t: any) => (
               <div
                 key={t.id}
-                onClick={() => setDetailTaskId(t.id)}
+                onClick={() => setDetailTaskId(t?.id ?? "")}
                 className="ml-6 flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/50 cursor-pointer text-sm"
               >
                 <span className={cn("flex-1 truncate", t.isCompleted && "line-through text-muted-foreground")}>
@@ -360,7 +360,7 @@ export function TaskCategoryTree({
             {uncategorizedTasks.map((t: any) => (
               <div
                 key={t.id}
-                onClick={() => setDetailTaskId(t.id)}
+                onClick={() => setDetailTaskId(t?.id ?? "")}
                 className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/50 cursor-pointer text-sm"
               >
                 <span className={cn("flex-1 truncate", t.isCompleted && "line-through text-muted-foreground")}>

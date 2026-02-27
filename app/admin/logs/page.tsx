@@ -30,13 +30,12 @@ export default async function AdminLogsPage() {
       />
       <AdminLogsClient
       employees={employees.map((e: any) => ({
-        
-          id: e.id,
-          name: e.name,
-          email: e.email,
-          department: e.department ?? "",
-          position: e.position ?? "",
-          role: e.role,
+          id: e?.id ?? "",
+          name: e?.name ?? "",
+          email: e?.email ?? "",
+          department: e?.department ?? "",
+          position: e?.position ?? "",
+          role: e?.role ?? "",
         }))}
       />
     </div>

@@ -47,21 +47,21 @@ export default async function AdminEmployeesPage() {
       : [];
 
       const employees = rows.map((e: any) => {
-        const proj = projects.find((p: any) => p.id === e.currentProjectId);
+        const proj = projects.find((p: any) => p?.id === e?.currentProjectId);
     return {
-      id: e.id,
-      name: e.name,
-      email: e.email,
-      role: e.role,
-      department: e.department ?? "",
-      position: e.position ?? "",
-      bankAccount: e.bankAccount ?? "",
-      address: e.address ?? "",
-      workPhone: e.workPhone ?? "",
-      workEmail: e.workEmail ?? "",
-      currentProject: proj ? { id: proj.id, name: proj.name, brand: proj.brand } : null,
-      joinDate: e.joinDate instanceof Date ? e.joinDate.toISOString().slice(0, 10) : String(e.joinDate).slice(0, 10),
-      permissions: e.permissions ?? null,
+      id: e?.id ?? "",
+      name: e?.name ?? "",
+      email: e?.email ?? "",
+      role: e?.role ?? "",
+      department: e?.department ?? "",
+      position: e?.position ?? "",
+      bankAccount: e?.bankAccount ?? "",
+      address: e?.address ?? "",
+      workPhone: e?.workPhone ?? "",
+      workEmail: e?.workEmail ?? "",
+      currentProject: proj ? { id: proj?.id ?? "", name: proj?.name ?? "", brand: (proj as any)?.brand ?? "" } : null,
+      joinDate: e?.joinDate != null ? (e.joinDate instanceof Date ? e.joinDate.toISOString().slice(0, 10) : String(e.joinDate).slice(0, 10)) : "",
+      permissions: e?.permissions ?? null,
     };
   });
 
