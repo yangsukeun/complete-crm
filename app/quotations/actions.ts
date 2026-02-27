@@ -157,7 +157,7 @@ async function updateQuotationInternal(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.quotation.update({
         where: { id },
         data: updateData,

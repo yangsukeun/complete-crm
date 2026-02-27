@@ -1,5 +1,7 @@
 import { DocsEditorDynamic } from "@/components/docs-editor-dynamic";
 
+export const dynamic = "force-dynamic";
+
 export default function DocsNewPage() {
   return (
     <div className="min-h-screen bg-[#fafafa]">

@@ -75,7 +75,7 @@ export async function PUT(
       updateData.remarks = existing.remarks ?? null;
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.quotation.update({ where: { id }, data: updateData });
       if (items !== undefined) {
         await tx.quotationItem.deleteMany({ where: { quotationId: id } });
