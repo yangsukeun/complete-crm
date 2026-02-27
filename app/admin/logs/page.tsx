@@ -30,6 +30,7 @@ export default async function AdminLogsPage() {
       />
       <AdminLogsClient
       employees={employees.map((e: any) => ({
+        
           id: e.id,
           name: e.name,
           email: e.email,
