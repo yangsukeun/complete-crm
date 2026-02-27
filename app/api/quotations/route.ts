@@ -2,13 +2,41 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 
-export async function GET() {
+const VALID_STATUSES = [
+  "DRAFT",
+  "SENT",
+  "ACCEPTED",
+  "REJECTED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "AWAITING_PAYMENT",
+  "PAYMENT_COMPLETED",
+] as const;
+
+function toErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return String(e);
+  } catch {
+    return "목록을 불러오는 중 오류가 발생했습니다.";
+  }
+}
+
+export async function GET(req: Request) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const { searchParams } = new URL(req.url);
+    const statusFilter = searchParams.get("status");
+    const where: { status?: (typeof VALID_STATUSES)[number] } =
+      statusFilter && VALID_STATUSES.includes(statusFilter as (typeof VALID_STATUSES)[number])
+        ? { status: statusFilter as (typeof VALID_STATUSES)[number] }
+        : {};
     const list = await prisma.quotation.findMany({
+      where,
       orderBy: { issuedAt: "desc" },
       include: {
         issuedBy: { select: { id: true, name: true } },
@@ -16,7 +44,7 @@ export async function GET() {
     });
     return NextResponse.json(list);
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "견적서 목록을 불러올 수 없습니다." }, { status: 500 });
+    console.error("[GET /api/quotations]", e);
+    return NextResponse.json({ error: toErrorMessage(e).slice(0, 300) });
   }
 }

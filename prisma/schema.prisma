@@ -61,10 +61,14 @@ enum PaymentRequestStatus {
 }
 
 enum QuotationStatus {
-  DRAFT
-  SENT
-  ACCEPTED
-  REJECTED
+  DRAFT             // 대기(기존)
+  SENT              // 발송(기존)
+  ACCEPTED          // 수락(기존)
+  REJECTED          // 거절(기존)
+  IN_PROGRESS       // 작업중
+  COMPLETED         // 완료
+  AWAITING_PAYMENT  // 입금대기
+  PAYMENT_COMPLETED // 입금완료
 }
 
 // 접속 로그 타입 (향후 LOGOUT 등 확장)
@@ -526,11 +530,14 @@ model PaymentRequest {
   requester   User                @relation(fields: [requesterId], references: [id], onDelete: Cascade)
   vendorId    String
   vendor      Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  quotationId String?             // 정산 시 참고용 견적서 (선택)
+  quotation   Quotation?          @relation(fields: [quotationId], references: [id], onDelete: SetNull)
   alerts      PaymentRequestAlert[]
   @@index([requesterId])
   @@index([vendorId])
   @@index([status])
   @@index([requestedAt])
+  @@index([quotationId])
 }
 
 // 자금이체 등록 시 결재 담당자(팀장)에게 알람
@@ -547,22 +554,23 @@ model PaymentRequestAlert {
 }
 
 model Quotation {
-  id              String          @id @default(cuid())
-  quotationNumber String          @unique // EST-YYYYMMDD-001
-  title           String         // 건명
-  clientName      String         // 거래처명
-  validUntil      DateTime       // 유효기간
-  totalAmount     Int            // 공급가액 (원)
-  vatAmount       Int            // 부가세 (원)
-  finalAmount     Int            // 총합계 (원)
-  status          QuotationStatus @default(DRAFT)
-  issuedById     String
-  issuedBy        User           @relation(fields: [issuedById], references: [id], onDelete: Cascade)
-  issuedAt        DateTime       @default(now()) // 발행일시
-  remarks         String?        // 특이사항/비고
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  items           QuotationItem[]
+  id               String            @id @default(cuid())
+  quotationNumber  String            @unique // EST-YYYYMMDD-001
+  title            String            // 건명
+  clientName       String            // 거래처명
+  validUntil       DateTime          // 유효기간
+  totalAmount      Int               // 공급가액 (원)
+  vatAmount        Int               // 부가세 (원)
+  finalAmount      Int               // 총합계 (원)
+  status           QuotationStatus   @default(IN_PROGRESS)
+  issuedById       String
+  issuedBy         User              @relation(fields: [issuedById], references: [id], onDelete: Cascade)
+  issuedAt         DateTime          @default(now()) // 발행일시
+  remarks          String?           // 특이사항/비고
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  items            QuotationItem[]
+  paymentRequests  PaymentRequest[]
   @@index([issuedById])
   @@index([quotationNumber])
   @@index([status])

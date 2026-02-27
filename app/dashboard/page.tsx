@@ -8,8 +8,10 @@ import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { formatUserName } from "@/lib/utils";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import { getDashboardSalesStats } from "@/lib/dashboard-sales";
 import { DashboardAttendance } from "@/components/dashboard-attendance";
 import { DashboardAnnouncements } from "@/components/dashboard-announcements";
+import { DashboardSalesSection } from "@/components/dashboard-sales-section";
 import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
 
@@ -207,6 +209,7 @@ export default async function DashboardPage() {
     const manual = adminLeaveBalance?.manualDeduction ?? 0;
     const remaining = Math.max(0, annualTotal - used - manual);
     const incompleteCount = tasksCreatedByMe.filter((t) => !t.isCompleted).length;
+    const salesStats = await getDashboardSalesStats();
 
     return (
       <div className="flex flex-col gap-6 p-4 md:p-6">
@@ -369,6 +372,8 @@ export default async function DashboardPage() {
             </div>
           </Link>
         </div>
+
+        <DashboardSalesSection data={salesStats} />
       </div>
     );
   }
@@ -383,7 +388,7 @@ export default async function DashboardPage() {
   const joinDate = userForLeave?.joinDate ?? new Date();
   const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
 
-  const [myTasks, myTodayAttendance, upcomingSchedules, leaveBalance] = await Promise.all([
+  const [myTasks, myTodayAttendance, upcomingSchedules, leaveBalance, salesStats] = await Promise.all([
     prisma.task.findMany({
       where: { assignedToId: session.user.id, isCompleted: false },
       orderBy: { dueDate: "asc" },
@@ -404,6 +409,7 @@ export default async function DashboardPage() {
     prisma.leaveBalance.findUnique({
       where: { userId_year: { userId: session.user.id, year } },
     }),
+    getDashboardSalesStats(),
   ]);
 
   const used = leaveBalance?.annualUsed ?? 0;
@@ -585,6 +591,8 @@ export default async function DashboardPage() {
           </div>
         </Link>
       </div>
+
+      <DashboardSalesSection data={salesStats} />
     </div>
   );
 }

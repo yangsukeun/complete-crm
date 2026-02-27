@@ -8,6 +8,7 @@ const createSchema = z.object({
   amount: z.number().int().positive(),
   description: z.string().optional(),
   attachment: z.string().url().optional().or(z.literal("")),
+  quotationId: z.string().optional(),
 });
 
 function isTeamLead(role: string | undefined) {
@@ -57,6 +58,7 @@ export async function GET() {
         include: {
           requester: { select: { id: true, name: true, email: true, position: true } },
           vendor: true,
+          quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
         },
         orderBy: { requestedAt: "desc" },
       });
@@ -91,17 +93,20 @@ export async function GET() {
     if (isTeamLead(role)) {
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; requesterId: string; vendorId: string;
+        description: string | null; attachment: string | null; requesterId: string; vendorId: string; quotationId: string | null;
         r_id: string; r_name: string; r_email: string; r_position: string | null;
         v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
+        q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr.requestedAt, pr.completedAt, pr.description, pr.attachment, pr.requesterId, pr.vendorId,
+        `SELECT pr.id, pr.status, pr.amount, pr.requestedAt, pr.completedAt, pr.description, pr.attachment, pr.requesterId, pr.vendorId, pr.quotationId,
          u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
-         v.id as v_id, v.name as v_name, v.bankName as v_bankName, v.accountNumber as v_accountNumber, v.ownerName as v_ownerName, v.category as v_category
+         v.id as v_id, v.name as v_name, v.bankName as v_bankName, v.accountNumber as v_accountNumber, v.ownerName as v_ownerName, v.category as v_category,
+         q.id as q_id, q.quotationNumber as q_quotationNumber, q.title as q_title, q.finalAmount as q_finalAmount, q.clientName as q_clientName
          FROM PaymentRequest pr
          LEFT JOIN User u ON pr.requesterId = u.id
          LEFT JOIN Vendor v ON pr.vendorId = v.id
+         LEFT JOIN Quotation q ON pr.quotationId = q.id
          ORDER BY pr.requestedAt DESC`
       );
       const requests = rawRows.map((r) => ({
@@ -116,6 +121,9 @@ export async function GET() {
         vendorId: r.vendorId,
         requester: { id: r.r_id, name: r.r_name, email: r.r_email, position: r.r_position },
         vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
+        quotation: r.q_id
+          ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
+          : null,
       }));
       const pendingIds = requests.filter((r) => r.status === "PENDING").map((r) => r.id);
       const now = new Date().toISOString();
@@ -163,17 +171,20 @@ export async function GET() {
     if (isTransferExecutor) {
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; requesterId: string; vendorId: string;
+        description: string | null; attachment: string | null; requesterId: string; vendorId: string; quotationId: string | null;
         r_id: string; r_name: string; r_email: string; r_position: string | null;
         v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
+        q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr.requestedAt, pr.completedAt, pr.description, pr.attachment, pr.requesterId, pr.vendorId,
+        `SELECT pr.id, pr.status, pr.amount, pr.requestedAt, pr.completedAt, pr.description, pr.attachment, pr.requesterId, pr.vendorId, pr.quotationId,
          u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
-         v.id as v_id, v.name as v_name, v.bankName as v_bankName, v.accountNumber as v_accountNumber, v.ownerName as v_ownerName, v.category as v_category
+         v.id as v_id, v.name as v_name, v.bankName as v_bankName, v.accountNumber as v_accountNumber, v.ownerName as v_ownerName, v.category as v_category,
+         q.id as q_id, q.quotationNumber as q_quotationNumber, q.title as q_title, q.finalAmount as q_finalAmount, q.clientName as q_clientName
          FROM PaymentRequest pr
          LEFT JOIN User u ON pr.requesterId = u.id
          LEFT JOIN Vendor v ON pr.vendorId = v.id
+         LEFT JOIN Quotation q ON pr.quotationId = q.id
          ORDER BY pr.requestedAt DESC`
       );
       const requests = rawRows.map((r) => ({
@@ -188,6 +199,9 @@ export async function GET() {
         vendorId: r.vendorId,
         requester: { id: r.r_id, name: r.r_name, email: r.r_email, position: r.r_position },
         vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
+        quotation: r.q_id
+          ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
+          : null,
       }));
       const approvedIds = requests.filter((r) => r.status === "TEAM_LEAD_APPROVED").map((r) => r.id);
       if (approvedIds.length > 0) {
@@ -239,6 +253,7 @@ export async function GET() {
           select: { id: true, name: true, email: true, position: true },
         },
         vendor: true,
+        quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
       },
       orderBy: { requestedAt: "desc" },
     });
@@ -285,12 +300,14 @@ export async function POST(req: Request) {
         description: parsed.data.description || null,
         attachment: parsed.data.attachment && parsed.data.attachment !== "" ? parsed.data.attachment : null,
         requesterId: session.user.id,
+        quotationId: parsed.data.quotationId && parsed.data.quotationId !== "" ? parsed.data.quotationId : null,
       },
       include: {
         requester: {
           select: { id: true, name: true, email: true, position: true },
         },
         vendor: true,
+        quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
       },
     });
 

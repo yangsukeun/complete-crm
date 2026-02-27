@@ -14,10 +14,18 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { PageHeadline } from "@/components/page-headline";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { FileText, Plus, LayoutTemplate } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 type Quotation = {
   id: string;
@@ -31,30 +39,78 @@ type Quotation = {
   issuedBy: { name: string };
 };
 
-const statusLabel: Record<string, string> = {
-  DRAFT: "작성중",
-  SENT: "발송",
-  ACCEPTED: "수락",
-  REJECTED: "거절",
-};
+const STATUS_OPTIONS = [
+  { value: "DRAFT", label: "대기" },
+  { value: "IN_PROGRESS", label: "작업중" },
+  { value: "COMPLETED", label: "완료" },
+  { value: "AWAITING_PAYMENT", label: "입금대기" },
+  { value: "PAYMENT_COMPLETED", label: "입금완료" },
+  { value: "SENT", label: "발송" },
+  { value: "ACCEPTED", label: "수락" },
+  { value: "REJECTED", label: "거절" },
+] as const;
 
-const statusVariant: Record<string, "secondary" | "default" | "outline" | "destructive"> = {
-  DRAFT: "secondary",
-  SENT: "default",
-  ACCEPTED: "outline",
-  REJECTED: "destructive",
-};
+const statusLabel: Record<string, string> = Object.fromEntries(
+  STATUS_OPTIONS.map((o) => [o.value, o.label])
+);
+
+function StatusBadge({ status }: { status: string }) {
+  const variant = {
+    DRAFT: "secondary",
+    SENT: "outline",
+    ACCEPTED: "outline",
+    REJECTED: "destructive",
+    IN_PROGRESS: "default",
+    COMPLETED: "secondary",
+    AWAITING_PAYMENT: "destructive",
+    PAYMENT_COMPLETED: "default",
+  }[status] as "secondary" | "default" | "outline" | "destructive" | undefined;
+  const className = {
+    AWAITING_PAYMENT: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+    PAYMENT_COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    IN_PROGRESS: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+    COMPLETED: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  }[status];
+  return (
+    <Badge variant={variant} className={cn(className)}>
+      {statusLabel[status] ?? status}
+    </Badge>
+  );
+}
+
+const FILTER_TABS = [
+  { value: "", label: "전체보기" },
+  { value: "IN_PROGRESS", label: "작업중" },
+  { value: "COMPLETED", label: "완료" },
+  { value: "AWAITING_PAYMENT", label: "입금대기" },
+  { value: "PAYMENT_COMPLETED", label: "입금완료" },
+  { value: "DRAFT", label: "대기" },
+] as const;
 
 export default function QuotationsPage() {
   const { data: session, status } = useSession();
   const [list, setList] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const fetchList = useCallback(async () => {
     try {
-      const res = await fetch("/api/quotations");
-      if (!res.ok) throw new Error("Failed");
-      const data = await res.json();
+      const url = statusFilter
+        ? `/api/quotations?status=${encodeURIComponent(statusFilter)}`
+        : "/api/quotations";
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(typeof data?.error === "string" ? data.error : "견적서 목록을 불러올 수 없습니다.");
+        setList([]);
+        return;
+      }
+      if (data?.error) {
+        toast.error(data.error);
+        setList([]);
+        return;
+      }
       setList(Array.isArray(data) ? data : []);
     } catch {
       setList([]);
@@ -62,13 +118,36 @@ export default function QuotationsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter]);
 
   useEffect(() => {
     if (status === "unauthenticated") return;
     if (status === "loading") return;
+    setLoading(true);
     fetchList();
   }, [status, fetchList]);
+
+  const handleStatusChange = useCallback(async (quotationId: string, newStatus: string) => {
+    setUpdatingId(quotationId);
+    try {
+      const res = await fetch(`/api/quotations/${quotationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "변경 실패");
+      }
+      setList((prev) =>
+        prev.map((q) => (q.id === quotationId ? { ...q, status: newStatus } : q))
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "상태 변경에 실패했습니다.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }, []);
 
   if (status === "loading" || status === "unauthenticated") {
     return (
@@ -101,6 +180,24 @@ export default function QuotationsPage() {
             </Link>
           </Button>
         </div>
+      </div>
+
+      {/* 상태별 필터 탭 */}
+      <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50/50 p-1 dark:border-slate-800 dark:bg-slate-900/30">
+        {FILTER_TABS.map((tab) => (
+          <Button
+            key={tab.value || "all"}
+            variant={statusFilter === tab.value ? "secondary" : "ghost"}
+            size="sm"
+            className={cn(
+              "shrink-0",
+              statusFilter === tab.value && "bg-white shadow-sm dark:bg-slate-800"
+            )}
+            onClick={() => setStatusFilter(tab.value)}
+          >
+            {tab.label}
+          </Button>
+        ))}
       </div>
 
       {loading ? (
@@ -140,9 +237,26 @@ export default function QuotationsPage() {
                     {new Intl.NumberFormat("ko-KR").format(q.finalAmount)}원
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant[q.status] ?? "secondary"}>
-                      {statusLabel[q.status] ?? q.status}
-                    </Badge>
+                    <Select
+                      value={q.status}
+                      onValueChange={(v) => handleStatusChange(q.id, v)}
+                      disabled={updatingId === q.id}
+                    >
+                      <SelectTrigger className="h-8 w-[140px] border-0 bg-transparent shadow-none hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <SelectValue>
+                          <span className="inline-flex">
+                            <StatusBadge status={q.status} />
+                          </span>
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STATUS_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(q.issuedAt), "yyyy.MM.dd", { locale: ko })}

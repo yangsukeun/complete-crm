@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ArrowLeft, FileDown, Mail } from "lucide-react";
+import { ArrowLeft, FileDown, Mail, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
@@ -39,6 +39,7 @@ export type QuotationViewData = {
   finalAmount: number;
   status: string;
   issuedAt: string;
+  updatedAt?: string;
   remarks: string | null;
   issuedBy: { name: string };
   items: { description: string; quantity: number; unitPrice: number; amount: number }[];
@@ -47,9 +48,11 @@ export type QuotationViewData = {
 export function QuotationView({
   quotation,
   company,
+  canEdit = false,
 }: {
   quotation: QuotationViewData;
   company: CompanyViewData | null;
+  canEdit?: boolean;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [mailOpen, setMailOpen] = useState(false);
@@ -88,6 +91,9 @@ export function QuotationView({
   };
 
   const issuedAtFormatted = format(new Date(quotation.issuedAt), "yyyy-MM-dd HH:mm:ss", { locale: ko });
+  const updatedAtFormatted = quotation.updatedAt
+    ? format(new Date(quotation.updatedAt), "yyyy-MM-dd HH:mm", { locale: ko })
+    : null;
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
@@ -99,6 +105,14 @@ export function QuotationView({
           </Link>
         </Button>
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/quotations/${quotation.id}/edit`}>
+                <Pencil className="mr-2 size-4" />
+                수정
+              </Link>
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setMailOpen(true)}>
             <Mail className="mr-2 size-4" />
             메일 보내기
@@ -109,6 +123,11 @@ export function QuotationView({
           </Button>
         </div>
       </div>
+      {updatedAtFormatted && (
+        <p className="text-muted-foreground text-right text-xs">
+          마지막 수정: {updatedAtFormatted}
+        </p>
+      )}
 
       <Dialog open={mailOpen} onOpenChange={setMailOpen}>
         <DialogContent className="sm:max-w-md">

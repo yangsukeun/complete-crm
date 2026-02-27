@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Wallet, Plus, CheckCircle } from "lucide-react";
+import { ArrowLeft, Wallet, Plus, CheckCircle, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
@@ -45,6 +45,14 @@ type Vendor = {
   category: string;
 };
 
+type QuotationOption = {
+  id: string;
+  quotationNumber: string;
+  title: string;
+  finalAmount: number;
+  clientName: string;
+};
+
 type PaymentRequest = {
   id: string;
   amount: number;
@@ -55,6 +63,7 @@ type PaymentRequest = {
   attachment: string | null;
   requester: { id: string; name: string; email: string; position: string | null };
   vendor: Vendor;
+  quotation?: QuotationOption | null;
 };
 
 function formatAmount(n: number) {
@@ -90,7 +99,31 @@ export default function FinanceRequestsPage() {
     vendorId: "",
     amount: "",
     description: "",
+    quotationId: "",
   });
+  const [quotations, setQuotations] = useState<QuotationOption[]>([]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    fetch("/api/quotations")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setQuotations(
+            data.map((q: { id: string; quotationNumber: string; title: string; finalAmount: number; clientName: string }) => ({
+              id: q.id,
+              quotationNumber: q.quotationNumber,
+              title: q.title,
+              finalAmount: q.finalAmount,
+              clientName: q.clientName,
+            }))
+          );
+        } else {
+          setQuotations([]);
+        }
+      })
+      .catch(() => setQuotations([]));
+  }, [modalOpen]);
 
   const fetchRequests = useCallback(async () => {
     try {
@@ -242,6 +275,7 @@ export default function FinanceRequestsPage() {
           vendorId: form.vendorId,
           amount,
           description: form.description.trim() || undefined,
+          quotationId: form.quotationId && form.quotationId !== "" ? form.quotationId : undefined,
         }),
       });
       if (!res.ok) {
@@ -250,7 +284,7 @@ export default function FinanceRequestsPage() {
       }
       toast.success("결제 요청이 등록되었습니다.");
       setModalOpen(false);
-      setForm({ vendorId: "", amount: "", description: "" });
+      setForm({ vendorId: "", amount: "", description: "", quotationId: "" });
       fetchRequests();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "요청에 실패했습니다.");
@@ -437,6 +471,7 @@ export default function FinanceRequestsPage() {
                       <TableHead className="font-medium">요청일시</TableHead>
                       <TableHead className="font-medium">요청자</TableHead>
                       <TableHead className="font-medium">거래처</TableHead>
+                      <TableHead className="font-medium">견적서</TableHead>
                       <TableHead className="font-medium">은행/계좌</TableHead>
                       <TableHead className="font-medium text-right">금액</TableHead>
                       <TableHead className="font-medium">상태</TableHead>
@@ -456,6 +491,16 @@ export default function FinanceRequestsPage() {
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {r.quotation ? (
+                            <Link href={`/quotations/${r.quotation.id}`} className="text-primary hover:underline inline-flex items-center gap-1">
+                              <FileText className="size-3.5" />
+                              {r.quotation.quotationNumber} {r.quotation.title}
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.vendor.bankName} {r.vendor.accountNumber}
                         </TableCell>
@@ -525,6 +570,7 @@ export default function FinanceRequestsPage() {
                       <TableHead className="font-medium">요청일시</TableHead>
                       <TableHead className="font-medium">요청자</TableHead>
                       <TableHead className="font-medium">거래처</TableHead>
+                      <TableHead className="font-medium">견적서</TableHead>
                       <TableHead className="font-medium">은행/계좌</TableHead>
                       <TableHead className="font-medium text-right">금액</TableHead>
                       <TableHead className="font-medium">상태</TableHead>
@@ -544,6 +590,16 @@ export default function FinanceRequestsPage() {
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {r.quotation ? (
+                            <Link href={`/quotations/${r.quotation.id}`} className="text-primary hover:underline inline-flex items-center gap-1">
+                              <FileText className="size-3.5" />
+                              {r.quotation.quotationNumber} {r.quotation.title}
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.vendor.bankName} {r.vendor.accountNumber}
                         </TableCell>
@@ -584,6 +640,7 @@ export default function FinanceRequestsPage() {
                 <TableHead className="font-medium">요청일시</TableHead>
                 {(isTeamLead || isExecutive || isTransferExecutor) && <TableHead className="font-medium">요청자</TableHead>}
                 <TableHead className="font-medium">거래처</TableHead>
+                <TableHead className="font-medium">견적서</TableHead>
                 <TableHead className="font-medium">은행/계좌</TableHead>
                 <TableHead className="font-medium text-right">금액</TableHead>
                 <TableHead className="font-medium">상태</TableHead>
@@ -605,6 +662,16 @@ export default function FinanceRequestsPage() {
                     </TableCell>
                   )}
                   <TableCell>{r.vendor.name}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {r.quotation ? (
+                      <Link href={`/quotations/${r.quotation.id}`} className="text-primary hover:underline inline-flex items-center gap-1">
+                        <FileText className="size-3.5" />
+                        {r.quotation.quotationNumber} {r.quotation.title}
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {r.vendor.bankName} {r.vendor.accountNumber}
                   </TableCell>
@@ -729,6 +796,26 @@ export default function FinanceRequestsPage() {
               {form.amount && (
                 <p className="text-muted-foreground text-xs">{formatAmount(parseInt(form.amount.replace(/,/g, ""), 10) || 0)}</p>
               )}
+            </div>
+            <div className="grid gap-2">
+              <Label>견적서 연결 (선택)</Label>
+              <Select
+                value={form.quotationId || "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, quotationId: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="정산 시 참고할 견적서 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">연결 안 함</SelectItem>
+                  {quotations.map((q) => (
+                    <SelectItem key={q.id} value={q.id}>
+                      {q.quotationNumber} — {q.title} ({new Intl.NumberFormat("ko-KR").format(q.finalAmount)}원)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">이체·정산 시 견적서 내용을 함께 볼 수 있습니다.</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="req-desc">메모 (입금자명 변경 등)</Label>

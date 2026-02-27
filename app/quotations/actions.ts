@@ -68,7 +68,7 @@ export async function createQuotation(input: CreateQuotationInput): Promise<{ id
       totalAmount,
       vatAmount,
       finalAmount,
-      status: "DRAFT",
+      status: "IN_PROGRESS",
       issuedById: session.user.id,
       remarks: input.remarks || null,
       items: {
@@ -94,7 +94,30 @@ export type UpdateQuotationInput = {
   remarks?: string | null;
 };
 
+function toErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return String(e);
+  } catch {
+    return "수정 중 오류가 발생했습니다.";
+  }
+}
+
 export async function updateQuotation(
+  id: string,
+  input: UpdateQuotationInput
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    if (!id || typeof id !== "string") return { error: "견적서 ID가 없습니다." };
+    return await updateQuotationInternal(id, input);
+  } catch (e) {
+    console.error("[updateQuotation] outer", e);
+    return { error: toErrorMessage(e).slice(0, 300) };
+  }
+}
+
+async function updateQuotationInternal(
   id: string,
   input: UpdateQuotationInput
 ): Promise<{ ok: true } | { error: string }> {
@@ -103,6 +126,7 @@ export async function updateQuotation(
 
   const existing = await prisma.quotation.findUnique({ where: { id }, include: { items: true } });
   if (!existing) return { error: "견적서를 찾을 수 없습니다." };
+  if (existing.issuedById !== session.user.id) return { error: "견적서 발행자만 수정할 수 있습니다." };
 
   let totalAmount = existing.totalAmount;
   let vatAmount = existing.vatAmount;
@@ -111,7 +135,11 @@ export async function updateQuotation(
 
   if (input.title !== undefined) updateData.title = input.title;
   if (input.clientName !== undefined) updateData.clientName = input.clientName;
-  if (input.validUntil !== undefined) updateData.validUntil = new Date(input.validUntil);
+  if (input.validUntil !== undefined) {
+    const d = new Date(input.validUntil);
+    if (Number.isNaN(d.getTime())) return { error: "유효기간 날짜 형식이 올바르지 않습니다." };
+    updateData.validUntil = d;
+  }
   if (input.remarks !== undefined) updateData.remarks = input.remarks;
 
   if (input.items !== undefined && input.items.length > 0) {
@@ -123,26 +151,41 @@ export async function updateQuotation(
     updateData.finalAmount = finalAmount;
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.quotation.update({
-      where: { id },
-      data: updateData,
-    });
-    if (input.items !== undefined) {
-      await tx.quotationItem.deleteMany({ where: { quotationId: id } });
-      await tx.quotationItem.createMany({
-        data: input.items.map((item, idx) => ({
-          quotationId: id,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          amount: item.amount,
-          sortOrder: idx,
-        })),
+  if (Object.keys(updateData).length === 0) {
+    if (input.items === undefined || input.items.length === 0) return { error: "수정할 내용이 없습니다." };
+    updateData.remarks = existing.remarks ?? null;
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.quotation.update({
+        where: { id },
+        data: updateData,
       });
-    }
-  });
-  revalidatePath("/quotations");
-  revalidatePath(`/quotations/${id}`);
+      if (input.items !== undefined) {
+        await tx.quotationItem.deleteMany({ where: { quotationId: id } });
+        await tx.quotationItem.createMany({
+          data: input.items.map((item, idx) => ({
+            quotationId: id,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            amount: item.amount,
+            sortOrder: idx,
+          })),
+        });
+      }
+    });
+  } catch (e) {
+    console.error("[updateQuotation] transaction", e);
+    return { error: toErrorMessage(e).slice(0, 300) };
+  }
+
+  try {
+    revalidatePath("/quotations");
+    revalidatePath(`/quotations/${id}`);
+  } catch (revalErr) {
+    console.warn("[updateQuotation] revalidatePath", revalErr);
+  }
   return { ok: true };
 }

@@ -43,8 +43,10 @@ export default async function QuotationPage({
     finalAmount: quotation.finalAmount,
     status: quotation.status,
     issuedAt: quotation.issuedAt.toISOString(),
+    updatedAt: quotation.updatedAt.toISOString(),
     remarks: quotation.remarks,
     issuedBy: quotation.issuedBy,
+    issuedById: quotation.issuedById,
     items: quotation.items.map((i) => ({
       description: i.description,
       quantity: i.quantity,
@@ -52,6 +54,7 @@ export default async function QuotationPage({
       amount: i.amount,
     })),
   };
+  const canEdit = session.user.id === quotation.issuedById;
 
   const companyData = company
     ? {
@@ -66,5 +69,5 @@ export default async function QuotationPage({
       }
     : null;
 
-  return <QuotationView quotation={data} company={companyData} />;
+  return <QuotationView quotation={data} company={companyData} canEdit={canEdit} />;
 }
