@@ -220,7 +220,7 @@ export function AdminCompanyForm() {
         <Label>이체 담당자 (자금이체 팀장 승인 후 실제 이체·이체완료 처리할 담당자)</Label>
         <p className="text-muted-foreground text-sm">팀장이 승인하면 선택한 담당자에게 알림이 가며, 담당자가 이체 후 이체완료 버튼을 누릅니다.</p>
         <div className="flex flex-wrap gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-900/30">
-          {users.map((u: { id: string; name: string }) => (
+          {users.map((u: { id: string; name: string; email: string; position: string | null }) => (
             <label key={u.id} className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
