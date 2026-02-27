@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
         end?: { dateTime?: string; date?: string };
       }>;
     };
-    const events = (data.items ?? []).map((e) => {
+    const events = (data.items ?? []).map((e: { id?: string; summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }) => {
       const start = e.start?.dateTime ? new Date(e.start.dateTime) : e.start?.date ? new Date(e.start.date + "T00:00:00") : new Date();
       const end = e.end?.dateTime ? new Date(e.end.dateTime) : e.end?.date ? new Date(e.end.date + "T23:59:59") : new Date(start.getTime() + 3600000);
       return {

@@ -139,7 +139,7 @@ export function EmployeeHeaderActions() {
                 </p>
                 {result.errors.length > 0 && (
                   <div className="max-h-32 overflow-y-auto text-xs">
-                    {result.errors.slice(0, 10).map((err, i) => (
+                    {result.errors.slice(0, 10).map((err: { message: string }, i: number) => (
                       <p key={i} className="text-amber-700">
                         {err.row}행 {err.email}: {err.message}
                       </p>

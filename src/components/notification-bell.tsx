@@ -73,7 +73,7 @@ export function NotificationBell() {
         try {
           await fetch(`/api/notifications/${n.id}/read`, { method: "PATCH" });
           setList((prev) =>
-            prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x))
+            prev.map((x: { id: string; isRead: boolean; [key: string]: unknown }) => (x.id === n.id ? { ...x, isRead: true } : x))
           );
           setUnreadCount((c) => Math.max(0, c - 1));
         } catch {
@@ -115,7 +115,7 @@ export function NotificationBell() {
             </div>
           ) : (
             <ul className="divide-y">
-              {list.map((n) => (
+              {list.map((n: { id: string; type: string; message: string; link: string | null; isRead: boolean; createdAt: string }) => (
                 <li key={n.id}>
                   <button
                     type="button"

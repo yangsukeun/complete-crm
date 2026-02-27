@@ -15,7 +15,7 @@ export async function GET() {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       select: { id: true, name: true, itemsJson: true, sortOrder: true, createdAt: true },
     });
-    const list = forms.map((f) => ({
+    const list = forms.map((f: { id: string; name: string; itemsJson: string | null; sortOrder: number; createdAt: Date }) => ({
       id: f.id,
       name: f.name,
       items: parseItemsJson(f.itemsJson),

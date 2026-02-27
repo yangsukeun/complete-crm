@@ -35,18 +35,21 @@ export default async function AdminPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {menuItems.map(({ href, label, description, icon: Icon }) => (
-          <Link key={href} href={href}>
+        {menuItems.map((item: { href: string; label: string; description: string; icon: typeof Users }) => (
+          <Link key={item.href} href={item.href}>
             <Card className="h-full transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/50">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
-                  <Icon className="size-5" />
+                  <item.icon className="size-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">{label}</CardTitle>
-                  <CardDescription className="text-sm">{description}</CardDescription>
+                  <CardTitle className="text-base">{item.label}</CardTitle>
+                  <CardDescription className="text-sm">{item.description}</CardDescription>
                 </div>
               </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">클릭하여 이동</p>
+              </CardContent>
             </Card>
           </Link>
         ))}

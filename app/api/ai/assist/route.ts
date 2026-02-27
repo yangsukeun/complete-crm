@@ -62,9 +62,9 @@ async function callGemini(
   messages: Message[]
 ): Promise<string> {
   const model = process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
-  const systemMessage = messages.find((m) => m.role === "system");
-  const rest = messages.filter((m) => m.role !== "system");
-  const contents = rest.map((m) => ({
+  const systemMessage = messages.find((m: Message) => m.role === "system");
+  const rest = messages.filter((m: Message) => m.role !== "system");
+  const contents = rest.map((m: Message) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));

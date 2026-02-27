@@ -80,7 +80,7 @@ export function DashboardAnnouncements({
         </Link>
       ) : (
         <ul className="space-y-2">
-          {list.map((a) => {
+          {list.map((a: { id: string; title: string; content: string; [key: string]: unknown }) => {
             const newAnnouncement = isNew(a.createdAt);
             return (
               <li key={a.id}>

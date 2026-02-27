@@ -70,7 +70,7 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
     loadLog();
   }, [loadLog]);
 
-  const selectedEmployee = employees.find((e) => e.id === selectedUserId);
+  const selectedEmployee = employees.find((e: { id: string }) => e.id === selectedUserId);
 
   return (
     <div className="flex flex-col gap-4 md:flex-row">
@@ -91,7 +91,7 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
         <div>
           <label className="text-muted-foreground mb-2 block text-sm font-medium">직원</label>
           <ul className="max-h-[320px] space-y-0.5 overflow-y-auto rounded-md border border-border bg-muted/30 p-1">
-            {employees.map((e) => (
+            {employees.map((e: { id: string; name: string }) => (
               <li key={e.id}>
                 <button
                   type="button"
@@ -146,7 +146,7 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
                   출퇴근·활동 기록 (수정 불가)
                 </p>
                 <ul className="font-mono text-sm">
-                  {activities.map((a, i) => {
+                  {activities.map((a: { id: string; [key: string]: unknown }, i: number) => {
                     const time = format(new Date(a.timestamp), "HH:mm");
                     const label = activityLabel(a.actionType);
                     const ipText =

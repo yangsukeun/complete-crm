@@ -30,7 +30,7 @@ export async function POST(
       return NextResponse.json({ error: "잘못된 선택입니다." }, { status: 400 });
     }
 
-    const alreadyVoted = poll.some((o) => o.voterIds.includes(session.user!.id));
+    const alreadyVoted = poll.some((o: { voterIds: string[] }) => o.voterIds.includes(session.user!.id));
     if (alreadyVoted) {
       return NextResponse.json({ error: "이미 투표하셨습니다." }, { status: 400 });
     }

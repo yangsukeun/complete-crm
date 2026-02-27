@@ -76,22 +76,22 @@ export async function GET() {
           },
           orderBy: { updatedAt: "desc" },
         });
-        const chats = raw.map((chat) => ({
+        const chats = raw.map((chat: { id: string; isGroup: boolean; name: string; participants: { user: unknown }[]; messages: { user: unknown }[] }) => ({
           id: chat.id,
           isGroup: chat.isGroup,
           name: chat.name,
-          participants: chat.participants.map((x) => withCurrentProjectNull(x.user)),
+          participants: chat.participants.map((x: { user: unknown }) => withCurrentProjectNull(x.user)),
           lastMessage: chat.messages[0]
             ? { ...chat.messages[0], user: withCurrentProjectNull(chat.messages[0].user) }
             : null,
         }));
         return NextResponse.json(chats);
       }
-      const chats = allChats.map((chat) => ({
+      const chats = allChats.map((chat: { id: string; isGroup: boolean; name: string; participants: { user: unknown }[]; messages: unknown[] }) => ({
         id: chat.id,
         isGroup: chat.isGroup,
         name: chat.name,
-        participants: chat.participants.map((x) => x.user),
+        participants: chat.participants.map((x: { user: unknown }) => x.user),
         lastMessage: chat.messages[0] ?? null,
       }));
       return NextResponse.json(chats);
@@ -149,11 +149,11 @@ export async function GET() {
         },
         orderBy: { chat: { updatedAt: "desc" } },
       });
-      const chats = raw.map((p) => ({
+      const chats = raw.map((p: { chat: { id: string; isGroup: boolean; name: string; participants: { user: unknown }[]; messages: { user: unknown }[] } }) => ({
         id: p.chat.id,
         isGroup: p.chat.isGroup,
         name: p.chat.name,
-        participants: p.chat.participants.map((x) => withCurrentProjectNull(x.user)),
+        participants: p.chat.participants.map((x: { user: unknown }) => withCurrentProjectNull(x.user)),
         lastMessage: p.chat.messages[0]
           ? { ...p.chat.messages[0], user: withCurrentProjectNull(p.chat.messages[0].user) }
           : null,
@@ -161,11 +161,11 @@ export async function GET() {
       return NextResponse.json(chats);
     }
 
-    const chats = participants.map((p) => ({
+    const chats = participants.map((p: { chat: { id: string; isGroup: boolean; name: string; participants: { user: unknown }[]; messages: unknown[] } }) => ({
       id: p.chat.id,
       isGroup: p.chat.isGroup,
       name: p.chat.name,
-      participants: p.chat.participants.map((x) => x.user),
+      participants: p.chat.participants.map((x: { user: unknown }) => x.user),
       lastMessage: p.chat.messages[0] ?? null,
     }));
 
@@ -228,7 +228,7 @@ export async function POST(req: Request) {
         include: { participants: true },
       });
       if (existing && existing.participants.length === 2) {
-        const ids = existing.participants.map((p) => p.userId).sort().join(",");
+        const ids = existing.participants.map((p: { userId: string }) => p.userId).sort().join(",");
         if (ids === [a, b].sort().join(",")) {
           return NextResponse.json(existing);
         }
@@ -241,7 +241,7 @@ export async function POST(req: Request) {
           isGroup,
           name: isGroup ? name ?? null : null,
           participants: {
-            create: userIds.map((userId) => ({ userId })),
+            create: userIds.map((userId: string) => ({ userId })),
           },
         },
         include: {
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
           isGroup,
           name: isGroup ? name ?? null : null,
           participants: {
-            create: userIds.map((userId) => ({ userId })),
+            create: userIds.map((userId: string) => ({ userId })),
           },
         },
         include: {
@@ -268,7 +268,7 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({
         ...created,
-        participants: created.participants.map((p) => ({
+        participants: created.participants.map((p: { userId: string; user: unknown }) => ({
           ...p,
           user: withCurrentProjectNull(p.user),
         })),

@@ -437,7 +437,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                         {loadingUsers ? (
                           <p className="text-xs text-muted-foreground p-2">불러오는 중...</p>
                         ) : (
-                          users.map((u) => (
+                          users.map((u: { id: string; name: string }) => (
                             <button
                               key={u.id}
                               onClick={() => updateTask({ assignedToId: u.id })}
@@ -503,7 +503,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                           { value: "HIGH", label: "높음", color: "text-red-600" },
                           { value: "MEDIUM", label: "보통", color: "text-gray-600" },
                           { value: "LOW", label: "낮음", color: "text-slate-500" },
-                        ].map((p) => (
+                        ].map((p: { value: string; label: string }) => (
                           <button
                             key={p.value}
                             onClick={() => updateTask({ priority: p.value })}
@@ -588,7 +588,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {task.attachments.map((a) => (
+                  {task.attachments.map((a: { id: string; url: string; name: string }) => (
                     <a
                       key={a.id}
                       href={a.url}
@@ -672,7 +672,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                 댓글 {task.comments.length > 0 && `(${task.comments.length})`}
               </div>
               <ul className="space-y-4">
-                {task.comments.map((c) => (
+                {task.comments.map((c: { id: string; content: string; createdAt: string; user: { name: string } }) => (
                   <li key={c.id} className="flex gap-3">
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                       {(c.user.name ?? "?").slice(0, 1)}

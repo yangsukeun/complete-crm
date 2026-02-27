@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(
-      list.map((n) => ({
+      list.map((n: { id: string; type: string; message: string; link: string | null; isRead: boolean; createdAt: Date }) => ({
         id: n.id,
         type: n.type,
         message: n.message,

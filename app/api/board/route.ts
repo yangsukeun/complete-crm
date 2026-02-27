@@ -44,7 +44,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(
-      list.map((p) => ({
+      list.map((p: { id: string; title: string; description: string | null; category: string; attachments: string | null; createdAt: Date; createdBy: { name: string; position: string | null } }) => ({
         id: p.id,
         title: p.title,
         description: p.description ?? "",

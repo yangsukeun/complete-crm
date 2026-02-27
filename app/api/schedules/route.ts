@@ -84,8 +84,8 @@ export async function POST(req: Request) {
     if (inviteUserIds.length > 0) {
       await prisma.scheduleInvite.createMany({
         data: inviteUserIds
-          .filter((id) => id !== session.user.id)
-          .map((toUserId) => ({
+          .filter((id: string) => id !== session.user.id)
+          .map((toUserId: string) => ({
             scheduleId: schedule.id,
             fromUserId: session.user.id!,
             toUserId,

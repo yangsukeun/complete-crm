@@ -38,11 +38,11 @@ export async function GET() {
     });
 
     return NextResponse.json(
-      list.map((a) => {
+      list.map((a: { id: string; pollData: string | null; title: string; content: string; createdAt: Date; eventDate: Date | null; eventEndDate: Date | null; location: string | null; createdBy: { name: string; position: string | null } }) => {
         const poll = a.pollData ? (JSON.parse(a.pollData) as PollOption[]) : null;
         const myVote =
           poll && session?.user?.id
-            ? poll.findIndex((o) => o.voterIds.includes(session!.user!.id))
+            ? poll.findIndex((o: { voterIds: string[] }) => o.voterIds.includes(session!.user!.id))
             : -1;
         return {
           id: a.id,
@@ -52,7 +52,7 @@ export async function GET() {
           eventDate: a.eventDate?.toISOString() ?? null,
           eventEndDate: a.eventEndDate?.toISOString() ?? null,
           location: a.location ?? null,
-          pollOptions: poll?.map((o) => ({ text: o.text, count: o.voterIds.length })) ?? null,
+          pollOptions: poll?.map((o: { text: string; voterIds: string[] }) => ({ text: o.text, count: o.voterIds.length })) ?? null,
           myVoteIndex: myVote >= 0 ? myVote : null,
           createdByName: a.createdBy.name,
           createdByPosition: a.createdBy.position,
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     const pollData =
       parsed.data.pollOptions && parsed.data.pollOptions.length > 0
         ? JSON.stringify(
-            parsed.data.pollOptions.filter(Boolean).map((text) => ({ text: text.trim(), voterIds: [] as string[] }))
+            parsed.data.pollOptions.filter(Boolean).map((text: string) => ({ text: text.trim(), voterIds: [] as string[] }))
           )
         : null;
 

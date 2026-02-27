@@ -104,7 +104,7 @@ export function AdminEmployeesClient({
     if (e.permissions != null && e.permissions !== "") {
       try {
         const arr = JSON.parse(e.permissions) as unknown;
-        setSelectedPermissions(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : []);
+        setSelectedPermissions(Array.isArray(arr) ? arr.filter((x: unknown): x is string => typeof x === "string") : []);
         setUseCustomPermissions(true);
       } catch {
         setSelectedPermissions([]);
@@ -151,7 +151,7 @@ export function AdminEmployeesClient({
       }
       const updated = await res.json();
       setEmployees((prev) =>
-        prev.map((p) =>
+        prev.map((p: { id: string; [key: string]: unknown }) =>
           p.id === editing.id
             ? {
                 ...p,
@@ -208,7 +208,7 @@ export function AdminEmployeesClient({
                 </TableCell>
               </TableRow>
             ) : (
-              employees.map((emp) => (
+              employees.map((emp: { id: string; name: string; email: string; role: string; [key: string]: unknown }) => (
                 <TableRow key={emp.id}>
                   <TableCell className="font-medium">{formatUserName(emp)}</TableCell>
                   <TableCell>{emp.email}</TableCell>
@@ -293,7 +293,7 @@ export function AdminEmployeesClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {departments.map((d) => (
+                    {departments.map((d: { id: string; name: string }) => (
                       <SelectItem key={d.id} value={d.name}>
                         {d.name}
                       </SelectItem>
@@ -309,7 +309,7 @@ export function AdminEmployeesClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {positions.map((p) => (
+                    {positions.map((p: { id: string; name: string }) => (
                       <SelectItem key={p.id} value={p.name}>
                         {p.name}
                       </SelectItem>
@@ -381,14 +381,14 @@ export function AdminEmployeesClient({
                 </div>
                 {useCustomPermissions && (
                   <div className="max-h-48 overflow-y-auto rounded border bg-muted/30 p-3 space-y-2">
-                    {features.map((f) => (
-                      <label key={f.key} className="flex items-center gap-2 text-sm cursor-pointer">
+{features.map((f: { key: string; label: string }) => (
+                        <label key={f.key} className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
                           type="checkbox"
                           checked={selectedPermissions.includes(f.key)}
                           onChange={(e) => {
                             if (e.target.checked) setSelectedPermissions((prev) => [...prev, f.key]);
-                            else setSelectedPermissions((prev) => prev.filter((k) => k !== f.key));
+                            else setSelectedPermissions((prev) => prev.filter((k: string) => k !== f.key));
                           }}
                           className="rounded border-gray-300"
                         />

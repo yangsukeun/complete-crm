@@ -53,7 +53,7 @@ function buildTree(categories: TaskCategory[]): (TaskCategory & { children: (Tas
   const sort = (list: TaskCategory[]) =>
     [...list].sort((a, b) => a.sortOrder - b.sortOrder);
   function children(parentId: string | null): (TaskCategory & { children: (TaskCategory & { children: TaskCategory[] })[] })[] {
-    return sort(byParent.get(parentId ?? "root") ?? []).map((c) => ({
+    return sort(byParent.get(parentId ?? "root") ?? []).map((c: { id: string; name: string; sortOrder: number; parentId: string | null }) => ({
       ...c,
       children: children(c.id),
     }));
@@ -93,7 +93,7 @@ export function TaskCategoryTree({
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
   const tree = buildTree(categories);
-  const topLevel = categories.filter((c) => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+  const topLevel = categories.filter((c: { parentId: string | null }) => !c.parentId).sort((a: { sortOrder: number }, b: { sortOrder: number }) => a.sortOrder - b.sortOrder);
 
   const updateCategory = useCallback(
     async (id: string, data: { name?: string; sortOrder?: number; parentId?: string | null; isCollapsed?: boolean }) => {
@@ -161,7 +161,7 @@ export function TaskCategoryTree({
       const id = result.draggableId;
       if (!id) return;
       const newOrder = result.destination.index;
-      const prev = topLevel.map((c) => c.id);
+      const prev = topLevel.map((c: { id: string }) => c.id);
       const fromIdx = prev.indexOf(id);
       if (fromIdx === -1) return;
       const reordered = [...prev];
@@ -178,7 +178,7 @@ export function TaskCategoryTree({
     keyPrefix: string
   ) => {
     const isEditing = editingId === cat.id;
-    const childTasks = tasks.filter((t) => t.categoryId === cat.id);
+    const childTasks = tasks.filter((t: { categoryId: string | null }) => t.categoryId === cat.id);
     const hasChildren = cat.children.length > 0 || childTasks.length > 0;
 
     return (
@@ -276,8 +276,8 @@ export function TaskCategoryTree({
         </div>
         {!cat.isCollapsed && (
           <>
-            {cat.children.map((child) => renderCategory(child, depth + 1, `${keyPrefix}-${child.id}`))}
-            {childTasks.map((t) => (
+            {cat.children.map((child: TaskCategory & { children: TaskCategory[] }) => renderCategory(child, depth + 1, `${keyPrefix}-${child.id}`))}
+            {childTasks.map((t: { id: string; title: string; [key: string]: unknown }) => (
               <div
                 key={t.id}
                 onClick={() => setDetailTaskId(t.id)}
@@ -305,7 +305,7 @@ export function TaskCategoryTree({
     );
   };
 
-  const uncategorizedTasks = tasks.filter((t) => !t.categoryId);
+  const uncategorizedTasks = tasks.filter((t: { categoryId: string | null }) => !t.categoryId);
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-2">
@@ -328,7 +328,7 @@ export function TaskCategoryTree({
           {(provided) => (
             <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0">
               {topLevel.map((cat, index) => {
-                const full = tree.find((c) => c.id === cat.id);
+                const full = tree.find((c: { id: string }) => c.id === cat.id);
                 if (!full) return null;
                 return (
                   <Draggable key={cat.id} draggableId={cat.id} index={index}>
@@ -357,7 +357,7 @@ export function TaskCategoryTree({
             미분류 ({uncategorizedTasks.length})
           </div>
           <div className="ml-4 space-y-1">
-            {uncategorizedTasks.map((t) => (
+            {uncategorizedTasks.map((t: { id: string; title: string; [key: string]: unknown }) => (
               <div
                 key={t.id}
                 onClick={() => setDetailTaskId(t.id)}

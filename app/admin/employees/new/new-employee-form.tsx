@@ -241,7 +241,7 @@ export function NewEmployeeForm() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">선택 안 함</SelectItem>
-                  {departments.map((d) => (
+                  {departments.map((d: { id: string; name: string }) => (
                     <SelectItem key={d.id} value={d.name}>
                       {d.name}
                     </SelectItem>
@@ -257,7 +257,7 @@ export function NewEmployeeForm() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">선택 안 함</SelectItem>
-                  {positions.map((p) => (
+                  {positions.map((p: { id: string; name: string }) => (
                     <SelectItem key={p.id} value={p.name}>
                       {p.name}
                     </SelectItem>

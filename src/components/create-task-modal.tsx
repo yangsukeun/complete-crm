@@ -124,7 +124,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">미지정 (나중에 선택)</SelectItem>
-                {users.map((u) => (
+                {users.map((u: { id: string; name: string }) => (
                   <SelectItem key={u.id} value={u.id}>
                     {formatUserName(u)}{u.department ? ` · ${u.department}` : ""}
                   </SelectItem>

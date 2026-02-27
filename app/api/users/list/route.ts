@@ -44,7 +44,7 @@ export async function GET() {
         },
         orderBy: { name: "asc" },
       });
-      users = list.map((u) => ({ ...u, currentProject: null }));
+      users = list.map((u: { id: string; name: string; email: string; [key: string]: unknown }) => ({ ...u, currentProject: null }));
     }
 
     return NextResponse.json(users);
