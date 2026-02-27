@@ -33,7 +33,7 @@ export default async function AdminEmployeesPage() {
     ORDER BY joinDate DESC
   `;
 
-  const projectIds = [...new Set(rows.map((r) => r.currentProjectId).filter(Boolean))] as string[];
+  const projectIds = [...new Set(rows.map((r: any) => r.currentProjectId).filter(Boolean))] as string[];
   const projects =
     projectIds.length > 0
       ? await prisma.project.findMany({
