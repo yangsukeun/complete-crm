@@ -58,7 +58,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(
-      list.map((log) => ({
+      list.map((log: any) => ({
         id: log.id,
         userId: log.userId,
         userName: log.user.name,
