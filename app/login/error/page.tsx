@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 /**
  * NextAuth가 /login/error?... 로 보낼 때 우리 로그인 폼(/login)으로 보냄
  */
-export default function LoginErrorPage({
+export default async function LoginErrorPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
