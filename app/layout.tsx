@@ -35,19 +35,24 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const h = await headers();
+  const pathname = h.get("x-pathname") ?? "";
+  const isPublicPage = pathname === "/login" || pathname === "/signup";
+
   let session: Awaited<ReturnType<typeof authWithTimeout>> = null;
-  try {
-    session = await authWithTimeout();
-    if (session?.user?.id) {
-      const h = await headers();
-      void ensureAccessLog(
-        session.user.id,
-        getClientIp(h),
-        h.get("user-agent") ?? ""
-      ).catch((e: any) => console.error("[AccessLog] 기록 실패:", e));
+  if (!isPublicPage) {
+    try {
+      session = await authWithTimeout();
+      if (session?.user?.id) {
+        void ensureAccessLog(
+          session.user.id,
+          getClientIp(h),
+          h.get("user-agent") ?? ""
+        ).catch((e: unknown) => console.error("[AccessLog] 기록 실패:", e));
+      }
+    } catch (e) {
+      console.error("[layout] auth failed", e);
     }
-  } catch (e) {
-    console.error("[layout] auth failed", e);
   }
 
   return (

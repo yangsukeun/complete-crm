@@ -21,8 +21,15 @@ function hasAuthCookie(request: NextRequest): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (isPublic(pathname)) return NextResponse.next();
-  if (hasAuthCookie(request)) return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
+  if (isPublic(pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+  if (hasAuthCookie(request)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("callbackUrl", pathname);
   return NextResponse.redirect(loginUrl);
