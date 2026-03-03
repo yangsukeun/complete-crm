@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
 const VALID_STATUSES = [
@@ -25,7 +25,7 @@ function toErrorMessage(e: unknown): string {
 
 export async function GET(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
@@ -9,7 +9,7 @@ const PAD_LEN = 2; // 01, 02, ...
 
 /** 오늘 날짜 기준 마지막 견적 번호 찾아 +1 (예: EST-240211-01) */
 export async function getNextQuotationNumber(): Promise<string> {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
   const today = new Date();
@@ -51,7 +51,7 @@ export type CreateQuotationInput = {
 };
 
 export async function createQuotation(input: CreateQuotationInput): Promise<{ id: string } | { error: string }> {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) return { error: "로그인이 필요합니다." };
 
   const number = await getNextQuotationNumber();
@@ -121,7 +121,7 @@ async function updateQuotationInternal(
   id: string,
   input: UpdateQuotationInput
 ): Promise<{ ok: true } | { error: string }> {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) return { error: "로그인이 필요합니다." };
 
   const existing = await prisma.quotation.findUnique({ where: { id }, include: { items: true } });

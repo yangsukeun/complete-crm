@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 
@@ -11,7 +11,7 @@ const createSchema = z.object({
 // GET: 모든 TaskLink 조회
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -37,7 +37,7 @@ export async function GET() {
 // POST: 추가 부모-자식 연결 생성
 export async function POST(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -135,7 +135,7 @@ export async function POST(req: Request) {
 // DELETE: 연결 삭제 (query params: parentId, childId)
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

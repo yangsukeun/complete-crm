@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { createActivityLog } from "@/lib/activity-log";
 import prisma from "@/lib/prisma";
 import { startOfDay } from "date-fns";
@@ -12,7 +12,7 @@ function getClientIp(req: Request): string | null {
 
 export async function GET(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

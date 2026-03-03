@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 /** Google OAuth로 리다이렉트 */
 export async function GET(req: NextRequest) {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) {
     const loginUrl = new URL("/login", BASE_URL);
     loginUrl.searchParams.set("callbackUrl", "/schedule");

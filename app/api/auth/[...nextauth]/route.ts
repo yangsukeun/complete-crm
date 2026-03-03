@@ -21,6 +21,10 @@ async function handleGet(req: Request, context: RouteContext) {
 async function handlePost(req: Request, context: RouteContext) {
   try {
     const params = await context.params;
+    if (process.env.NODE_ENV === "development") {
+      const u = req.url ?? "";
+      console.warn("[auth] POST", u);
+    }
     return await (AuthPOST as any)(req);
   } catch (e) {
     console.error("[auth] POST error:", e);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import * as XLSX from "xlsx";
@@ -22,7 +22,7 @@ function parseDate(v: unknown): Date | null {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

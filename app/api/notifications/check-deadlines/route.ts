@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { checkDeadlines } from "@/lib/notifications";
 
 /**
@@ -8,7 +8,7 @@ import { checkDeadlines } from "@/lib/notifications";
  */
 export async function POST() {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

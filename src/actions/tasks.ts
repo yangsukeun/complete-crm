@@ -1,13 +1,13 @@
 "use server";
 
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { createActivityLog } from "@/lib/activity-log";
 
 /** TEAM 워크스페이스 업무를 MY(개인) 워크스페이스로 복제 */
 export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } | { error: string }> {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) {
     return { error: "로그인이 필요합니다." };
   }

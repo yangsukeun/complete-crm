@@ -503,7 +503,13 @@ export function AppNav() {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  onClick={() => {
+                    if (process.env.NODE_ENV === "development") {
+                      window.location.href = "/api/auth/dev-logout";
+                      return;
+                    }
+                    signOut({ callbackUrl: "/login" });
+                  }}
                   className="flex items-center gap-2 cursor-pointer text-red-600 focus:text-red-600"
                 >
                   <LogOut className="size-4" />

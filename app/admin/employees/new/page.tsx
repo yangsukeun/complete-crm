@@ -1,10 +1,10 @@
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { NewEmployeeForm } from "./new-employee-form";
 import { PageHeadline } from "@/components/page-headline";
 
 export default async function NewEmployeePage() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 

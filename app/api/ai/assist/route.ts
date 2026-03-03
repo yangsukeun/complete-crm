@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
@@ -153,7 +153,7 @@ async function callNotebookLLM(baseUrl: string, messages: Message[]): Promise<st
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }

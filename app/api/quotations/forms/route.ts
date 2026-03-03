@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
 export type QuotationFormItem = { description: string; quantity: number; unitPrice: number };
@@ -7,7 +7,7 @@ export type QuotationFormItem = { description: string; quantity: number; unitPri
 /** 견적서 폼 목록 */
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -32,7 +32,7 @@ export async function GET() {
 /** 견적서 폼 추가 - 관리자(대표/임원)만 가능 */
 export async function POST(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

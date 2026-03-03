@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { cookies } from "next/headers";
 
 export async function GET() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) {
     return NextResponse.json({ mode: null });
   }
@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

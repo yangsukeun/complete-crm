@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import * as XLSX from "xlsx";
 
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

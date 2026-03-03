@@ -1,11 +1,11 @@
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
 import prisma from "@/lib/prisma";
 import { AdminLogsClient } from "./admin-logs-client";
 
 export default async function AdminLogsPage() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 

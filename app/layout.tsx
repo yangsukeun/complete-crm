@@ -35,15 +35,19 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await authWithTimeout();
-  if (session?.user?.id) {
-    const h = await headers();
-    // 접속 로그는 응답을 막지 않도록 백그라운드에서만 실행
-    void ensureAccessLog(
-      session.user.id,
-      getClientIp(h),
-      h.get("user-agent") ?? ""
-    ).catch((e: any) => console.error("[AccessLog] 기록 실패:", e));
+  let session: Awaited<ReturnType<typeof authWithTimeout>> = null;
+  try {
+    session = await authWithTimeout();
+    if (session?.user?.id) {
+      const h = await headers();
+      void ensureAccessLog(
+        session.user.id,
+        getClientIp(h),
+        h.get("user-agent") ?? ""
+      ).catch((e: any) => console.error("[AccessLog] 기록 실패:", e));
+    }
+  } catch (e) {
+    console.error("[layout] auth failed", e);
   }
 
   return (

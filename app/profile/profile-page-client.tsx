@@ -32,7 +32,13 @@ type Profile = {
   badgePreset?: string | null;
 };
 
-export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
+export function ProfilePageClient({
+  isAdmin,
+  isNewUser = false,
+}: {
+  isAdmin: boolean;
+  isNewUser?: boolean;
+}) {
   const { update: updateSession } = useSession();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -212,8 +218,10 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
       <PageHeadline
         title="내 정보"
         description={
-          "아래 입력란에 정보를 기입한 뒤 저장해 주세요. " +
-          (isAdmin ? "입사일과 휴가 잔여일은 관리자만 수정할 수 있습니다." : "이름·연락처·직책 등은 본인이 직접 수정할 수 있습니다.")
+          isNewUser
+            ? "처음 로그인하셨습니다. 이름을 입력한 뒤 저장해 주세요."
+            : "아래 입력란에 정보를 기입한 뒤 저장해 주세요. " +
+              (isAdmin ? "입사일과 휴가 잔여일은 관리자만 수정할 수 있습니다." : "이름·연락처·직책 등은 본인이 직접 수정할 수 있습니다.")
         }
       />
 
@@ -478,7 +486,13 @@ export function ProfilePageClient({ isAdmin }: { isAdmin: boolean }) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => {
+                if (process.env.NODE_ENV === "development") {
+                  window.location.href = "/api/auth/dev-logout";
+                  return;
+                }
+                signOut({ callbackUrl: "/login" });
+              }}
               className="gap-2"
             >
               <LogOut className="size-4" />

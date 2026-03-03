@@ -122,9 +122,9 @@ export function AdminEmployeesClient({
     const ac = new AbortController();
     const timeoutId = setTimeout(() => ac.abort(), 18_000);
     try {
-      const body = {
+      const isAdminOrExecutive = editing.role === "ADMIN" || editing.role === "EXECUTIVE";
+      const body: Record<string, unknown> = {
         name: name.trim(),
-        role,
         department: department.trim() || null,
         position: position.trim() || null,
         bankAccount: bankAccount.trim() || null,
@@ -137,6 +137,7 @@ export function AdminEmployeesClient({
             : undefined,
         permissions: useCustomPermissions ? selectedPermissions : null,
       };
+      if (!isAdminOrExecutive) (body as { role?: string }).role = role;
       const res = await fetch(`/api/users/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -212,7 +213,9 @@ export function AdminEmployeesClient({
                 <TableRow key={emp.id}>
                   <TableCell className="font-medium">{formatUserName(emp)}</TableCell>
                   <TableCell>{emp.email ?? ""}</TableCell>
-                  <TableCell>{emp.role === "TEAM_LEAD" ? "팀장" : "직원"}</TableCell>
+                  <TableCell>
+                    {emp.role === "EXECUTIVE" ? "대표/임원" : emp.role === "ADMIN" ? "관리자" : emp.role === "TEAM_LEAD" ? "팀장" : "직원"}
+                  </TableCell>
                   <TableCell>
                     {emp.department ? (
                       <Badge variant="secondary" className="font-normal">
@@ -270,20 +273,28 @@ export function AdminEmployeesClient({
               </div>
               <div className="space-y-2">
                 <Label>역할 (직책에 따른 기능)</Label>
-                <Select value={role} onValueChange={(v: any) => setRole(v as "USER" | "TEAM_LEAD")}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차 신청·자금 요청)</SelectItem>
-                    <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-muted-foreground text-xs">
-                  {role === "TEAM_LEAD"
-                    ? "팀장: 휴가 1차 승인, 자금이체 등록 시 알람 수신 및 이체 확인 가능."
-                    : "직원: 본인 업무·연차 신청·결제 요청만 가능."}
-                </p>
+                {(editing.role === "ADMIN" || editing.role === "EXECUTIVE") ? (
+                  <p className="text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                    {editing.role === "EXECUTIVE" ? "대표/임원" : "관리자"} — 역할 변경 불가
+                  </p>
+                ) : (
+                  <>
+                    <Select value={role} onValueChange={(v: any) => setRole(v as "USER" | "TEAM_LEAD")}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차 신청·자금 요청)</SelectItem>
+                        <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-xs">
+                      {role === "TEAM_LEAD"
+                        ? "팀장: 휴가 1차 승인, 자금이체 등록 시 알람 수신 및 이체 확인 가능."
+                        : "직원: 본인 업무·연차 신청·결제 요청만 가능."}
+                    </p>
+                  </>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>부서</Label>

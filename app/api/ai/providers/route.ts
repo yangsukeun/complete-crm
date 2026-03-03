@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 
 /** 로그인 사용자에게 사용 가능한 AI 프로바이더 목록 반환 (키/URL 노출 없음) */
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }

@@ -1,39 +1,37 @@
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { AdminEmployeesClient } from "./admin-employees-client";
 import { EmployeeHeaderActions } from "./employee-header-actions";
 import { PageHeadline } from "@/components/page-headline";
 import prisma from "@/lib/prisma";
 
-type EmployeeRow = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  department: string | null;
-  position: string | null;
-  bankAccount: string | null;
-  address: string | null;
-  workPhone: string | null;
-  workEmail: string | null;
-  joinDate: Date;
-  currentProjectId: string | null;
-  permissions: string | null;
-};
-
 export default async function AdminEmployeesPage() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 
-  const rows = await prisma.$queryRaw<EmployeeRow[]>`
-    SELECT id, name, email, role, department, position, bankAccount, address, workPhone, workEmail, joinDate, currentProjectId, permissions
-    FROM User
-    WHERE role IN ('USER', 'TEAM_LEAD')
-    ORDER BY joinDate DESC
-  `;
+  // 직원(USER, TEAM_LEAD) + 관리자(ADMIN, EXECUTIVE) 모두 표시 (DB에 있는 계정이 목록에 보이도록)
+  const rows = await prisma.user.findMany({
+    where: {},
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      department: true,
+      position: true,
+      bankAccount: true,
+      address: true,
+      workPhone: true,
+      workEmail: true,
+      joinDate: true,
+      currentProjectId: true,
+      permissions: true,
+    },
+    orderBy: { joinDate: "desc" },
+  });
 
-  const projectIds = [...new Set(rows.map((r: any) => r.currentProjectId).filter(Boolean))] as string[];
+  const projectIds = [...new Set(rows.map((r) => r.currentProjectId).filter(Boolean))] as string[];
   const projects =
     projectIds.length > 0
       ? await prisma.project.findMany({
@@ -46,8 +44,8 @@ export default async function AdminEmployeesPage() {
         })
       : [];
 
-      const employees = rows.map((e: any) => {
-        const proj = projects.find((p: any) => p?.id === e?.currentProjectId);
+  const employees = rows.map((e) => {
+    const proj = projects.find((p) => p?.id === e?.currentProjectId);
     return {
       id: e?.id ?? "",
       name: e?.name ?? "",
@@ -59,7 +57,7 @@ export default async function AdminEmployeesPage() {
       address: e?.address ?? "",
       workPhone: e?.workPhone ?? "",
       workEmail: e?.workEmail ?? "",
-      currentProject: proj ? { id: proj?.id ?? "", name: proj?.name ?? "", brand: (proj as any)?.brand ?? "" } : null,
+      currentProject: proj ? { id: proj?.id ?? "", name: proj?.name ?? "", brand: (proj as { brand?: { name: string } })?.brand ?? "" } : null,
       joinDate: e?.joinDate != null ? (e.joinDate instanceof Date ? e.joinDate.toISOString().slice(0, 10) : String(e.joinDate).slice(0, 10)) : "",
       permissions: e?.permissions ?? null,
     };

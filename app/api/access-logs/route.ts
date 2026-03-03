@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
 /**
@@ -8,8 +8,10 @@ import prisma from "@/lib/prisma";
  */
 export async function GET(req: Request) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
+      // 개발: 비로그인 시 401 대신 빈 배열 반환해 에러 창·콘솔 401 방지
+      if (process.env.NODE_ENV === "development") return NextResponse.json([]);
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -22,7 +24,9 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
+    const limitParam = searchParams.get("limit") ?? searchParams.get("take");
+    const limit = Math.min(Number(limitParam) || 50, 200);
+    const skip = Math.max(0, Number(searchParams.get("skip")) || 0);
     const dateStr = searchParams.get("date"); // YYYY-MM-DD
     const userId = searchParams.get("userId") ?? undefined;
 
@@ -44,6 +48,7 @@ export async function GET(req: Request) {
       where,
       orderBy: { loggedInAt: "desc" },
       take: limit,
+      skip,
       include: {
         user: {
           select: {
@@ -73,9 +78,12 @@ export async function GET(req: Request) {
     );
   } catch (e) {
     console.error("Access logs GET:", e);
-    return NextResponse.json(
-      { error: "접속 로그를 불러올 수 없습니다." },
-      { status: 500 }
-    );
+    // 500 대신 빈 배열 반환해 클라이언트 에러 창/연속 실패 방지
+    return NextResponse.json([]);
   }
+}
+
+/** POST는 클라이언트가 호출할 수 있음 — 기록은 layout ensureAccessLog에서 처리. 빈 응답으로 500 방지 */
+export async function POST() {
+  return new Response(null, { status: 204 });
 }

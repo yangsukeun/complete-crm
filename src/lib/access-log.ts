@@ -45,15 +45,24 @@ export async function ensureAccessLog(
 
   if (existing) return;
 
-  await prisma.accessLog.create({
-    data: {
-      userId,
-      ipAddress: ipAddress || "unknown",
-      userAgent: userAgent || "",
-      type: "LOGIN",
-    },
-  });
+  try {
+    await prisma.accessLog.create({
+      data: {
+        userId,
+        ipAddress: ipAddress || "unknown",
+        userAgent: userAgent || "",
+        type: "LOGIN",
+      },
+    });
+  } catch (e) {
+    console.error("[AccessLog] create 실패:", e);
+    return;
+  }
 
-  const { createActivityLog } = await import("@/lib/activity-log");
-  await createActivityLog(userId, "LOGIN", "로그인");
+  try {
+    const { createActivityLog } = await import("@/lib/activity-log");
+    await createActivityLog(userId, "LOGIN", "로그인");
+  } catch (e) {
+    console.error("[AccessLog] createActivityLog 실패:", e);
+  }
 }

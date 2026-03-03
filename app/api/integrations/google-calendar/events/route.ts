@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
 async function getValidAccessToken(userId: string): Promise<string | null> {
@@ -38,7 +38,7 @@ async function getValidAccessToken(userId: string): Promise<string | null> {
 /** 구글 캘린더 이벤트 조회 (timeMin, timeMax ISO 문자열) */
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
+    const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
