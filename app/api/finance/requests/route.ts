@@ -36,7 +36,10 @@ export async function GET() {
     }
     let role: string | undefined = session.user.role as string | undefined;
     try {
-      const roleRows = await prisma.$queryRawUnsafe<{ role: string }[]>("SELECT role FROM User WHERE id = ?", session.user.id);
+      const roleRows = await prisma.$queryRawUnsafe<{ role: string }[]>(
+        'SELECT role FROM "User" WHERE id = $1',
+        session.user.id
+      );
       if (roleRows[0]) role = roleRows[0].role;
     } catch (_) {}
     const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
@@ -44,7 +47,7 @@ export async function GET() {
     let transferExecutorIds: string[] = [];
     if (company?.id) {
       const rows = await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
-        "SELECT transferExecutorIds FROM CompanyInfo WHERE id = ?",
+        'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
         company.id
       );
       transferExecutorIds = getTransferExecutorIds(rows[0]?.transferExecutorIds ?? null);
@@ -66,7 +69,7 @@ export async function GET() {
       if (isTransferExecutor) {
         try {
           const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-            "SELECT COUNT(*) as count FROM PaymentRequestAlert WHERE userId = ? AND readAt IS NULL",
+            'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
             session.user.id
           );
           unreadCount = Number(countRows[0]?.count ?? 0);
@@ -99,15 +102,15 @@ export async function GET() {
         q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr.requestedAt, pr.completedAt, pr.description, pr.attachment, pr.requesterId, pr.vendorId, pr.quotationId,
+        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr."requesterId", pr."vendorId", pr."quotationId",
          u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
-         v.id as v_id, v.name as v_name, v.bankName as v_bankName, v.accountNumber as v_accountNumber, v.ownerName as v_ownerName, v.category as v_category,
-         q.id as q_id, q.quotationNumber as q_quotationNumber, q.title as q_title, q.finalAmount as q_finalAmount, q.clientName as q_clientName
-         FROM PaymentRequest pr
-         LEFT JOIN User u ON pr.requesterId = u.id
-         LEFT JOIN Vendor v ON pr.vendorId = v.id
-         LEFT JOIN Quotation q ON pr.quotationId = q.id
-         ORDER BY pr.requestedAt DESC`
+         v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
+         q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
+         FROM "PaymentRequest" pr
+         LEFT JOIN "User" u ON pr."requesterId" = u.id
+         LEFT JOIN "Vendor" v ON pr."vendorId" = v.id
+         LEFT JOIN "Quotation" q ON pr."quotationId" = q.id
+         ORDER BY pr."requestedAt" DESC`
       );
       const requests = rawRows.map((r: any) => ({
         id: r.id,
@@ -130,9 +133,9 @@ export async function GET() {
       const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
       if (pendingIds.length > 0) {
         try {
-          const placeholders = pendingIds.map(() => "?").join(",");
+          const placeholders = pendingIds.map((_, i) => `$${i + 2}`).join(",");
           const existingRows = await prisma.$queryRawUnsafe<{ requestId: string }[]>(
-            `SELECT requestId FROM PaymentRequestAlert WHERE userId = ? AND requestId IN (${placeholders})`,
+            `SELECT "requestId" FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "requestId" IN (${placeholders})`,
             session.user.id,
             ...pendingIds
           );
@@ -141,7 +144,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
             if (existingSet.has(requestId)) continue;
             try {
               await prisma.$executeRawUnsafe(
-                "INSERT OR IGNORE INTO PaymentRequestAlert (id, requestId, userId, createdAt) VALUES (?, ?, ?, ?)",
+                'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
                 cuidLike(),
                 requestId,
                 session.user.id,
@@ -156,7 +159,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       let finalUnread = 0;
       try {
         const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          "SELECT COUNT(*) as count FROM PaymentRequestAlert WHERE userId = ? AND readAt IS NULL",
+          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
           session.user.id
         );
         finalUnread = Number(countRows[0]?.count ?? 0);
@@ -177,15 +180,15 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr.requestedAt, pr.completedAt, pr.description, pr.attachment, pr.requesterId, pr.vendorId, pr.quotationId,
+        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr."requesterId", pr."vendorId", pr."quotationId",
          u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
-         v.id as v_id, v.name as v_name, v.bankName as v_bankName, v.accountNumber as v_accountNumber, v.ownerName as v_ownerName, v.category as v_category,
-         q.id as q_id, q.quotationNumber as q_quotationNumber, q.title as q_title, q.finalAmount as q_finalAmount, q.clientName as q_clientName
-         FROM PaymentRequest pr
-         LEFT JOIN User u ON pr.requesterId = u.id
-         LEFT JOIN Vendor v ON pr.vendorId = v.id
-         LEFT JOIN Quotation q ON pr.quotationId = q.id
-         ORDER BY pr.requestedAt DESC`
+         v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
+         q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
+         FROM "PaymentRequest" pr
+         LEFT JOIN "User" u ON pr."requesterId" = u.id
+         LEFT JOIN "Vendor" v ON pr."vendorId" = v.id
+         LEFT JOIN "Quotation" q ON pr."quotationId" = q.id
+         ORDER BY pr."requestedAt" DESC`
       );
       const requests = rawRows.map((r: any) => ({
         id: r.id,
@@ -208,9 +211,9 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         const now = new Date().toISOString();
         const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
         try {
-          const placeholders = approvedIds.map(() => "?").join(",");
+          const placeholders = approvedIds.map((_, i) => `$${i + 2}`).join(",");
           const existingRows = await prisma.$queryRawUnsafe<{ requestId: string }[]>(
-            `SELECT requestId FROM PaymentRequestAlert WHERE userId = ? AND requestId IN (${placeholders})`,
+            `SELECT "requestId" FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "requestId" IN (${placeholders})`,
             session.user.id,
             ...approvedIds
           );
@@ -219,7 +222,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
             if (existingSet.has(requestId)) continue;
             try {
               await prisma.$executeRawUnsafe(
-                "INSERT OR IGNORE INTO PaymentRequestAlert (id, requestId, userId, createdAt) VALUES (?, ?, ?, ?)",
+                'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
                 cuidLike(),
                 requestId,
                 session.user.id,
@@ -234,7 +237,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       let unreadCount = 0;
       try {
         const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          "SELECT COUNT(*) as count FROM PaymentRequestAlert WHERE userId = ? AND readAt IS NULL",
+          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
           session.user.id
         );
         unreadCount = Number(countRows[0]?.count ?? 0);
@@ -260,7 +263,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
     let paymentAlertUnreadCount = 0;
     try {
       const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-        "SELECT COUNT(*) as count FROM PaymentRequestAlert WHERE userId = ? AND readAt IS NULL",
+        'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
         session.user.id
       );
       paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
@@ -322,7 +325,7 @@ export async function POST(req: Request) {
       for (const u of teamLeads) {
         try {
           await prisma.$executeRawUnsafe(
-            "INSERT OR IGNORE INTO PaymentRequestAlert (id, requestId, userId, createdAt) VALUES (?, ?, ?, ?)",
+            'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
             cuidLike(),
             paymentRequest.id,
             u.id,

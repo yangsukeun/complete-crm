@@ -1,10 +1,10 @@
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { LeavePageClient } from "./leave-page-client";
 
 export default async function LeavePage() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user) redirect("/login");
 
   const cookieStore = await cookies();

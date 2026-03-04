@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { QuotationEditForm } from "./quotation-edit-form";
 
 export default async function QuotationEditPage({
@@ -9,7 +9,7 @@ export default async function QuotationEditPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">

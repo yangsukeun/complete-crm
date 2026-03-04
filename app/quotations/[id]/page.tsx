@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { QuotationView } from "./quotation-view";
 
 export default async function QuotationPage({
@@ -8,7 +8,7 @@ export default async function QuotationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">

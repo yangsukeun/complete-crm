@@ -26,7 +26,8 @@ import { toast } from "sonner";
 import { Pencil, UserPlus } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 
-type Employee = {
+/** 직원 목록/편집용 타입. currentProject.brand는 객체 { name: string } 또는 null만 사용 */
+export type Employee = {
   id: string;
   name: string;
   email: string;

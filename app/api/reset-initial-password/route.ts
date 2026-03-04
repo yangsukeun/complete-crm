@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = bodySchema.safeParse(body);
     if (!parsed.success) {
-      const msg = parsed.error.errors.map((e) => e.message).join(" ");
+      const msg = parsed.error.issues.map((e) => e.message).join(" ");
       return NextResponse.json({ error: msg || "입력값이 올바르지 않습니다." }, { status: 400 });
     }
 

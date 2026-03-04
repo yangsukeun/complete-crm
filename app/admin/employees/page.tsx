@@ -1,6 +1,6 @@
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
-import { AdminEmployeesClient } from "./admin-employees-client";
+import { AdminEmployeesClient, type Employee } from "./admin-employees-client";
 import { EmployeeHeaderActions } from "./employee-header-actions";
 import { PageHeadline } from "@/components/page-headline";
 import prisma from "@/lib/prisma";
@@ -31,7 +31,8 @@ export default async function AdminEmployeesPage() {
     orderBy: { joinDate: "desc" },
   });
 
-  const projectIds = [...new Set(rows.map((r) => r.currentProjectId).filter(Boolean))] as string[];
+  type Row = (typeof rows)[number];
+  const projectIds = [...new Set(rows.map((r: Row) => r.currentProjectId).filter(Boolean))] as string[];
   const projects =
     projectIds.length > 0
       ? await prisma.project.findMany({
@@ -44,8 +45,16 @@ export default async function AdminEmployeesPage() {
         })
       : [];
 
-  const employees = rows.map((e) => {
-    const proj = projects.find((p) => p?.id === e?.currentProjectId);
+  // Prisma가 project.brand를 string | { name } 등으로 추론해 빌드 오류가 나므로, brand만 별도 추출 후 currentProject를 순수 객체로 구성하고 전달 시 단언
+  const employees = rows.map((e: Row) => {
+    const proj = projects.find((p) => p.id === e.currentProjectId);
+    const brand: { name: string } | null =
+      proj && typeof (proj as { brand?: unknown }).brand === "object" && proj.brand !== null && "name" in proj.brand
+        ? { name: String((proj.brand as { name: string }).name) }
+        : null;
+    const currentProject: { id: string; name: string; brand: { name: string } | null } | null = proj
+      ? { id: String(proj.id), name: String(proj.name), brand }
+      : null;
     return {
       id: e?.id ?? "",
       name: e?.name ?? "",
@@ -54,10 +63,10 @@ export default async function AdminEmployeesPage() {
       department: e?.department ?? "",
       position: e?.position ?? "",
       bankAccount: e?.bankAccount ?? "",
-      address: e?.address ?? "",
-      workPhone: e?.workPhone ?? "",
-      workEmail: e?.workEmail ?? "",
-      currentProject: proj ? { id: proj?.id ?? "", name: proj?.name ?? "", brand: (proj as { brand?: { name: string } })?.brand ?? "" } : null,
+      address: e?.address ?? undefined,
+      workPhone: e?.workPhone ?? undefined,
+      workEmail: e?.workEmail ?? undefined,
+      currentProject,
       joinDate: e?.joinDate != null ? (e.joinDate instanceof Date ? e.joinDate.toISOString().slice(0, 10) : String(e.joinDate).slice(0, 10)) : "",
       permissions: e?.permissions ?? null,
     };
@@ -73,7 +82,7 @@ export default async function AdminEmployeesPage() {
         <EmployeeHeaderActions />
       </div>
       <AdminEmployeesClient
-        employees={employees}
+        employees={employees as Employee[]}
       />
     </div>
   );

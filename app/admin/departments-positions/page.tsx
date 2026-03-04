@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { DepartmentsPositionsClient } from "./departments-positions-client";
 
 export default async function AdminDepartmentsPositionsPage() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 

@@ -1,11 +1,11 @@
-import { auth } from "@/auth";
+import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardPageClient } from "./board-page-client";
 
 export default async function BoardPage() {
-  const session = await auth();
+  const session = await getAppSession();
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
