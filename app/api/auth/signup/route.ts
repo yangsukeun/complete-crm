@@ -50,10 +50,19 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: "계정이 생성되었습니다. 로그인 페이지에서 로그인하세요." });
   } catch (e) {
-    console.error("[signup]", e);
-    return NextResponse.json(
-      { error: "회원가입 처리 중 오류가 발생했습니다." },
-      { status: 500 }
-    );
+    const err = e as Error & { code?: string };
+    console.error("[signup]", err);
+    const isDev = process.env.NODE_ENV === "development";
+    if (err?.code === "P2002") {
+      return NextResponse.json({ error: "이미 사용 중인 이메일입니다." }, { status: 400 });
+    }
+    if (err?.code === "P1001" || err?.message?.includes("connect") || err?.message?.includes("Connection")) {
+      return NextResponse.json(
+        { error: "데이터베이스에 연결할 수 없습니다. Vercel에서 DATABASE_URL 환경 변수를 확인하세요." },
+        { status: 503 }
+      );
+    }
+    const message = isDev && err?.message ? err.message : "회원가입 처리 중 오류가 발생했습니다.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

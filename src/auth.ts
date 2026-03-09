@@ -151,7 +151,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             where: { email: { equals: emailRaw, mode: "insensitive" } },
             select: { id: true, email: true, name: true, image: true, password: true, role: true, permissions: true },
           });
-          if (!user?.password) return null;
+          if (!user) {
+            if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 해당 이메일 사용자 없음", emailRaw);
+            return null;
+          }
+          if (!user.password) {
+            if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 비밀번호 미설정 계정", emailRaw);
+            return null;
+          }
           let ok = await compare(passwordRaw, user.password);
           // 개발: 비교 실패 시 DB 해시 복구
           if (!ok && process.env.NODE_ENV === "development") {
@@ -166,7 +173,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             await prisma.user.update({ where: { id: user.id }, data: { password: rehashed } });
             ok = true;
           }
-          if (!ok) return null;
+          if (!ok) {
+            if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 비밀번호 불일치", emailRaw);
+            return null;
+          }
           return {
             id: user.id,
             email: user.email,

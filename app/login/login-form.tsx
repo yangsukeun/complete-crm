@@ -23,13 +23,15 @@ function LoginFormInner() {
   const callbackUrl = searchParams.get("callbackUrl") ?? "/choose-mode";
   const urlError = searchParams.get("error");
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string>("");
 
   const displayError =
     urlError === "CredentialsSignin"
       ? "이메일 또는 비밀번호가 올바르지 않습니다."
-      : urlError
+      :     urlError
         ? decodeURIComponent(String(urlError))
-        : "";
+        : submitError || "";
+  const isCredentialError = urlError === "CredentialsSignin" || submitError.includes("이메일 또는 비밀번호");
 
   // 개발: 이메일만 입력 후 로그인 (비밀번호 없음)
   if (isDev) {
@@ -89,6 +91,7 @@ function LoginFormInner() {
   // 프로덕션: NextAuth signIn에 이메일·비밀번호 직접 전달 (서버리스에서 메모리 토큰 미동작 방지)
   async function handleProductionSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setSubmitError("");
     setLoading(true);
     const form = e.currentTarget;
     const email = (form.querySelector('[name="email"]') as HTMLInputElement)?.value?.trim() ?? "";
@@ -104,17 +107,27 @@ function LoginFormInner() {
         callbackUrl,
         redirect: false,
       });
-      if (res?.error) {
+      // NextAuth v5: 반환값이 객체가 아니라 URL 문자열일 수 있음
+      const resObj = typeof res === "string" ? { url: res, error: undefined } : res ?? {};
+      const successUrl = resObj.url ?? (typeof res === "string" ? res : null);
+      const err = resObj.error;
+
+      if (err) {
         setLoading(false);
-        window.location.href = `/login?error=CredentialsSignin&callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        setSubmitError("이메일 또는 비밀번호가 올바르지 않습니다.");
         return;
       }
-      if (res?.url) {
-        window.location.href = res.url;
+      if (successUrl) {
+        window.location.href = successUrl;
         return;
       }
-    } catch {
+      // url도 error도 없으면 callbackUrl로 이동 시도 (세션이 설정됐을 수 있음)
       setLoading(false);
+      window.location.href = callbackUrl;
+    } catch (err) {
+      setLoading(false);
+      setSubmitError("로그인 요청에 실패했습니다. 네트워크와 서버를 확인한 뒤 다시 시도해 주세요.");
+      console.error("[login]", err);
     }
   }
 
@@ -128,9 +141,18 @@ function LoginFormInner() {
         <form onSubmit={handleProductionSubmit}>
           <CardContent className="space-y-4">
             {displayError && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {displayError}
-              </p>
+              <div className="space-y-1.5 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <p>{displayError}</p>
+                {isCredentialError && (
+                  <p className="text-muted-foreground">
+                    개발 모드에서 이메일만으로 만든 계정은 비밀번호를 모릅니다.{" "}
+                    <Link href="/login/reset-password" className="font-medium text-foreground underline hover:no-underline">
+                      비밀번호 재설정
+                    </Link>
+                    에서 가입한 이메일과 새 비밀번호를 입력한 뒤 다시 로그인하세요.
+                  </p>
+                )}
+              </div>
             )}
             <div className="space-y-2">
               <Label htmlFor="email">이메일</Label>
@@ -169,6 +191,12 @@ function LoginFormInner() {
               계정이 없으신가요?{" "}
               <Link href="/signup" className="text-primary underline hover:no-underline">
                 회원가입
+              </Link>
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              비밀번호를 잊으셨나요?{" "}
+              <Link href="/login/reset-password" className="text-primary font-medium underline hover:no-underline">
+                비밀번호 재설정
               </Link>
             </p>
           </CardFooter>
