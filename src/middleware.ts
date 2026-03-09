@@ -6,6 +6,10 @@ const DEV_SESSION_COOKIE = "dev_user_id";
 const NEXTAUTH_COOKIES = [
   "next-auth.session-token",
   "__Secure-next-auth.session-token",
+  // NextAuth v5(Auth.js) 쿠키명
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+  "__Host-authjs.session-token",
 ];
 
 function isPublic(pathname: string): boolean {
