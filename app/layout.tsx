@@ -37,7 +37,10 @@ export default async function RootLayout({
 }>) {
   const h = await headers();
   const pathname = h.get("x-pathname") ?? "";
-  const isPublicPage = pathname === "/login" || pathname === "/signup";
+  const isPublicPage =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname.startsWith("/login/");
 
   let session: Awaited<ReturnType<typeof authWithTimeout>> = null;
   if (!isPublicPage) {

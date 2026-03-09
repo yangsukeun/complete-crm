@@ -15,7 +15,10 @@
 |--------|---------|------|
 | `NEXTAUTH_URL` | `https://complete-crm-luard.vercel.app` | 배포된 앱 주소 (프로덕션용) |
 | `AUTH_URL` | 위와 동일 | NextAuth 호환용 |
-| `DATABASE_URL` | `postgresql://...` | Supabase 등 DB 연결 문자열 |
+| `DATABASE_URL` | 아래 참고 | **Supabase 사용 시 반드시 연결 풀러 URL 사용** (직접 연결 시 비밀번호 재설정 등 DB 작업이 실패할 수 있음) |
+
+**Supabase 연결 풀러 설정:**  
+[Supabase 대시보드](https://supabase.com/dashboard) → 프로젝트 → **Project Settings** → **Database** → **Connection string**에서 **"Transaction"** 또는 **"Session"** 모드를 선택한 뒤 나오는 연결 문자열을 복사해 `DATABASE_URL`에 넣습니다. (포트 **6543** 사용하는 주소입니다. 포트 5432 직접 연결은 Vercel 서버리스에서 연결 수 제한으로 오류가 납니다.)
 | `NEXTAUTH_SECRET` 또는 `AUTH_SECRET` | 랜덤 문자열 | 세션 암호화용 |
 
 **주의:** 도메인이 `complete-crm-luard.vercel.app` 이면 위 예시처럼 그대로 넣고, 실제 사용하는 URL이 다르면 그 URL로 설정하세요.
@@ -33,3 +36,10 @@
    - 수정 사항이 아직 푸시되지 않았다면, Redeploy만으로는 반영되지 않습니다.
 3. **브라우저:** 시크릿 창에서 `https://본인도메인/signup` 다시 열기.
 4. **환경 변수:** 추가·수정 후에는 반드시 한 번 더 배포(Redeploy 또는 새 Deploy)해야 적용됩니다.
+
+## 4. 콘솔에 401 오류(_next/static 등)가 날 때
+
+`/_next/static/...` 같은 정적 파일 요청에 **401 (Unauthorized)** 가 나오면, 대부분 **Vercel Deployment Protection** 때문입니다.
+
+- **Settings** → **Deployment Protection** 에서 **Vercel Authentication** 또는 **Password Protection** 이 켜져 있으면, 로그인하지 않은 요청(정적 파일 포함)이 401을 받을 수 있습니다.
+- 테스트용이면 해당 보호를 끄거나, 실제 사용자만 쓸 경우 로그인 후 사용하면 401이 사라집니다.

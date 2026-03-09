@@ -8,12 +8,10 @@ type RouteContext = { params: Promise<{ nextauth: string[] }> };
 async function handleGet(req: Request, context: RouteContext) {
   try {
     const params = await context.params;
-    // 개발 환경: /api/auth/session 요청 시 getAppSession 사용 → dev 쿠키 세션도 200 반환 (클라이언트 401 방지)
-    if (process.env.NODE_ENV === "development" && params?.nextauth?.[0] === "session") {
+    // /api/auth/session: getAppSession으로 세션 조회 후, 없어도 200 반환 (비로그인 페이지에서 401 방지)
+    if (params?.nextauth?.[0] === "session") {
       const session = await getAppSession();
-      if (session) {
-        return NextResponse.json(session);
-      }
+      return NextResponse.json(session ?? {});
     }
     return await (AuthGET as any)(req);
   } catch (e) {
