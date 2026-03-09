@@ -82,6 +82,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const token = params.token as { id?: string; sub?: string };
       const userId = token.id ?? token.sub;
       if (!userId || typeof userId !== "string") return base ?? params.session;
+      // 성능: 프로덕션에서는 /api/auth/session 호출이 빈번하므로,
+      // 매번 DB에서 name/email/badgePreset을 갱신하지 않는다.
+      // 필요 시 환경 변수로 활성화 가능.
+      const refreshFromDb =
+        process.env.NODE_ENV === "development" ||
+        process.env.SESSION_REFRESH_FROM_DB === "true";
+      if (!refreshFromDb) return base ?? params.session;
       try {
         let user: { name: string; email: string | null; badgePreset?: string | null } | null = null;
         try {

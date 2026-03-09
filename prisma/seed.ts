@@ -5,24 +5,19 @@ import { hash } from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const hashed = await hash("1234", 10);
+  // 마스터(초기 관리자) 계정 1개만 생성/갱신
+  const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
+  const masterPassword = (process.env.MASTER_PASSWORD ?? "1234").trim();
+  const masterName = (process.env.MASTER_NAME ?? "마스터").trim() || "마스터";
+
+  const hashed = await hash(masterPassword, 10);
   await prisma.user.upsert({
-    where: { email: "admin@complete.co.kr" },
-    update: { password: hashed },
+    where: { email: masterEmail },
+    update: { password: hashed, name: masterName, role: "ADMIN" },
     create: {
-      email: "admin@complete.co.kr",
+      email: masterEmail,
       password: hashed,
-      name: "관리자",
-      role: "ADMIN",
-    },
-  });
-  await prisma.user.upsert({
-    where: { email: "lookatthetop@gmail.com" },
-    update: { password: hashed },
-    create: {
-      email: "lookatthetop@gmail.com",
-      password: hashed,
-      name: "관리자",
+      name: masterName,
       role: "ADMIN",
     },
   });
@@ -37,8 +32,7 @@ async function main() {
       });
     }
   }
-  console.log("Seed 완료: admin@complete.co.kr / 1234");
-  console.log("Seed 완료: lookatthetop@gmail.com / 1234");
+  console.log(`Seed 완료(마스터): ${masterEmail} / ${masterPassword}`);
   console.log("직책 추가: 경영관리 매니저, PP");
 }
 
