@@ -62,8 +62,10 @@ export async function POST(req: Request) {
         { status: 503 }
       );
     }
+    // 화면에 원인 표시 (DB 코드 등) — 해결에 도움
+    const hint = code ? ` (DB 코드: ${code})` : msg ? ` (${msg.slice(0, 80)})` : "";
     return NextResponse.json(
-      { error: "비밀번호 재설정 중 오류가 발생했습니다." },
+      { error: `비밀번호 재설정 중 오류가 발생했습니다.${hint}` },
       { status: 500 }
     );
   }

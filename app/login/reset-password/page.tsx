@@ -26,7 +26,16 @@ async function resetPasswordViaApi(body: {
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { error: (data as { error?: string }).error ?? "요청에 실패했습니다." };
+  const errMsg = (data as { error?: string }).error;
+  if (!res.ok) {
+    if (res.status === 401) {
+      return {
+        error:
+          "접근이 거부되었습니다(401). Vercel 프로젝트 설정 → Deployment Protection에서 비밀번호 보호를 끄고 다시 시도하세요.",
+      };
+    }
+    return { error: errMsg ?? "요청에 실패했습니다." };
+  }
   return data;
 }
 
