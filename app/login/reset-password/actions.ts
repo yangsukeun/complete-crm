@@ -41,11 +41,33 @@ export async function resetPassword(formData: FormData) {
   } catch (e) {
     const err = e as Error & { code?: string; message?: string };
     console.error("[reset-password]", err);
-    // DB 연결/타임아웃 등은 사용자에게 안내
-    const msg = err?.message ?? "";
-    if (msg.includes("connect") || msg.includes("Connection") || err?.code === "P1001") {
-      return { error: "데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요." };
+    const msg = String(err?.message ?? "");
+    const code = err?.code;
+
+    // DB 연결/타임아웃 (Prisma P1001, P1002, P1003 등)
+    if (
+      code === "P1001" ||
+      code === "P1002" ||
+      code === "P1003" ||
+      msg.includes("connect") ||
+      msg.includes("Connection") ||
+      msg.includes("ECONNREFUSED") ||
+      msg.includes("timeout") ||
+      msg.includes("Timed out")
+    ) {
+      return {
+        error:
+          "데이터베이스에 연결할 수 없습니다. Supabase 사용 시 Vercel 환경 변수 DATABASE_URL을 '연결 풀러(Transaction 모드)' 주소로 바꾼 뒤 재배포해 주세요.",
+      };
     }
-    return { error: "비밀번호 재설정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." };
+
+    // 개발 환경에서는 실제 오류 메시지 반환 (원인 확인용)
+    if (process.env.NODE_ENV === "development" && msg) {
+      return { error: `비밀번호 재설정 실패: ${msg}` };
+    }
+    return {
+      error:
+        "비밀번호 재설정 중 오류가 발생했습니다. Vercel 대시보드 → Deployments → 최신 배포 → Logs에서 [reset-password] 로그를 확인해 주세요.",
+    };
   }
 }

@@ -17,8 +17,13 @@
 | `AUTH_URL` | 위와 동일 | NextAuth 호환용 |
 | `DATABASE_URL` | 아래 참고 | **Supabase 사용 시 반드시 연결 풀러 URL 사용** (직접 연결 시 비밀번호 재설정 등 DB 작업이 실패할 수 있음) |
 
-**Supabase 연결 풀러 설정:**  
-[Supabase 대시보드](https://supabase.com/dashboard) → 프로젝트 → **Project Settings** → **Database** → **Connection string**에서 **"Transaction"** 또는 **"Session"** 모드를 선택한 뒤 나오는 연결 문자열을 복사해 `DATABASE_URL`에 넣습니다. (포트 **6543** 사용하는 주소입니다. 포트 5432 직접 연결은 Vercel 서버리스에서 연결 수 제한으로 오류가 납니다.)
+**Supabase 연결 풀러 설정 (비밀번호 재설정 등 DB 사용 필수):**
+1. [Supabase 대시보드](https://supabase.com/dashboard) → 프로젝트 → **Project Settings** → **Database**
+2. **Connection string**에서 **"Transaction"** 또는 **"Session"** 모드 선택 후 나오는 URL 복사 (포트 **6543**)
+3. Prisma 사용 시 URL **끝에** `?pgbouncer=true` 를 붙여서 `DATABASE_URL`에 넣기  
+   예: `postgresql://postgres.xxx:비밀번호@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true`  
+4. Vercel **Environment Variables**에 저장 후 **반드시 Redeploy**
+
 | `NEXTAUTH_SECRET` 또는 `AUTH_SECRET` | 랜덤 문자열 | 세션 암호화용 |
 
 **주의:** 도메인이 `complete-crm-luard.vercel.app` 이면 위 예시처럼 그대로 넣고, 실제 사용하는 URL이 다르면 그 URL로 설정하세요.

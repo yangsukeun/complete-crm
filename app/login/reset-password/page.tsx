@@ -13,7 +13,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { resetPassword } from "./actions";
+
+/** API 라우트로 비밀번호 재설정 (Vercel 서버리스에서 Server Action보다 안정적) */
+async function resetPasswordViaApi(body: {
+  email: string;
+  newPassword: string;
+  confirmPassword: string;
+}): Promise<{ error?: string }> {
+  const res = await fetch("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { error: (data as { error?: string }).error ?? "요청에 실패했습니다." };
+  return data;
+}
 
 export default function ResetPasswordPage() {
   const [error, setError] = useState("");
@@ -25,8 +40,11 @@ export default function ResetPasswordPage() {
     setError("");
     setLoading(true);
     try {
-      const formData = new FormData(e.currentTarget);
-      const result = await resetPassword(formData);
+      const form = e.currentTarget;
+      const email = (form.querySelector('[name="email"]') as HTMLInputElement)?.value?.trim() ?? "";
+      const newPassword = (form.querySelector('[name="newPassword"]') as HTMLInputElement)?.value ?? "";
+      const confirmPassword = (form.querySelector('[name="confirmPassword"]') as HTMLInputElement)?.value ?? "";
+      const result = await resetPasswordViaApi({ email, newPassword, confirmPassword });
       if (result?.error) {
         setError(result.error);
         setLoading(false);
