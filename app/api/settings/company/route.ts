@@ -12,13 +12,9 @@ export async function GET() {
       orderBy: { updatedAt: "desc" },
     });
     if (!company) return NextResponse.json(null);
-
-    const rows = await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
-      'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
-      company.id
-    );
-    const transferExecutorIds = rows[0]?.transferExecutorIds ?? null;
-    return NextResponse.json({ ...company, transferExecutorIds });
+    // PostgreSQL 기준으로는 CompanyInfo 모델에 transferExecutorIds 컬럼이 이미 존재하므로
+    // raw query 없이 그대로 반환한다.
+    return NextResponse.json(company);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "회사 정보를 불러올 수 없습니다." }, { status: 500 });
@@ -55,6 +51,7 @@ export async function PATCH(req: Request) {
       email: string | null;
       fax: string | null;
       stampImageUrl: string | null;
+      transferExecutorIds?: string | null;
     } = {
       name,
       businessNumber: typeof body.businessNumber === "string" ? body.businessNumber.trim() || null : null,
@@ -65,23 +62,14 @@ export async function PATCH(req: Request) {
       fax: typeof body.fax === "string" ? body.fax.trim() || null : null,
       stampImageUrl: body.stampImageUrl === undefined ? null : (body.stampImageUrl === null || body.stampImageUrl === "" ? null : String(body.stampImageUrl)),
     };
+    if (transferExecutorIdsJson !== undefined) {
+      data.transferExecutorIds = transferExecutorIdsJson;
+    }
 
     const existing = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-    let company = existing
+    const company = existing
       ? await prisma.companyInfo.update({ where: { id: existing.id }, data })
       : await prisma.companyInfo.create({ data });
-
-    if (transferExecutorIdsJson !== undefined) {
-      await prisma.$executeRawUnsafe(
-        'UPDATE "CompanyInfo" SET "transferExecutorIds" = $1, "updatedAt" = $2 WHERE id = $3',
-        transferExecutorIdsJson,
-        new Date(),
-        company.id
-      );
-      company = await prisma.companyInfo.findFirstOrThrow({
-        where: { id: company.id },
-      });
-    }
 
     return NextResponse.json(company);
   } catch (e) {
