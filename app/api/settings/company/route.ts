@@ -14,7 +14,7 @@ export async function GET() {
     if (!company) return NextResponse.json(null);
 
     const rows = await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
-      "SELECT transferExecutorIds FROM CompanyInfo WHERE id = ?",
+      'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
       company.id
     );
     const transferExecutorIds = rows[0]?.transferExecutorIds ?? null;
@@ -73,7 +73,7 @@ export async function PATCH(req: Request) {
 
     if (transferExecutorIdsJson !== undefined) {
       await prisma.$executeRawUnsafe(
-        "UPDATE CompanyInfo SET transferExecutorIds = ?, updatedAt = ? WHERE id = ?",
+        'UPDATE "CompanyInfo" SET "transferExecutorIds" = $1, "updatedAt" = $2 WHERE id = $3',
         transferExecutorIdsJson,
         new Date(),
         company.id
