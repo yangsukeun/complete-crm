@@ -588,7 +588,7 @@ export function ChatPageClient() {
                             </p>
                           )}
                           <span className="text-muted-foreground text-xs">
-                            {format(new Date(m.createdAt), "MM/dd HH:mm", { locale: ko })}
+                            {formatKstDateTime(m.createdAt)}
                           </span>
                         </div>
                       );
@@ -803,4 +803,16 @@ export function ChatPageClient() {
       </Dialog>
     </div>
   );
+}
+
+function formatKstDateTime(value: string | Date) {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }
