@@ -17,7 +17,8 @@ export async function resetPassword(formData: FormData) {
   if (typeof newPassword !== "string" || newPassword.trim().length < 4) {
     return { error: "비밀번호는 4자 이상 입력하세요." };
   }
-  if (newPassword.trim() !== confirmPassword) {
+  const confirm = typeof confirmPassword === "string" ? confirmPassword.trim() : "";
+  if (newPassword.trim() !== confirm) {
     return { error: "새 비밀번호와 확인이 일치하지 않습니다." };
   }
 
@@ -38,7 +39,13 @@ export async function resetPassword(formData: FormData) {
 
     return { success: true };
   } catch (e) {
-    console.error("[reset-password]", e);
-    return { error: "비밀번호 재설정 중 오류가 발생했습니다." };
+    const err = e as Error & { code?: string; message?: string };
+    console.error("[reset-password]", err);
+    // DB 연결/타임아웃 등은 사용자에게 안내
+    const msg = err?.message ?? "";
+    if (msg.includes("connect") || msg.includes("Connection") || err?.code === "P1001") {
+      return { error: "데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요." };
+    }
+    return { error: "비밀번호 재설정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." };
   }
 }
