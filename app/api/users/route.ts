@@ -8,7 +8,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(4),
   name: z.string().min(1),
-  role: z.enum(["USER", "TEAM_LEAD"]).optional(),
+  role: z.enum(["USER", "TEAM_LEAD", "ADMIN", "EXECUTIVE"]).optional(),
   phone: z.string().optional(),
   workPhone: z.string().optional(),
   workEmail: z.string().email().optional().or(z.literal("")),
@@ -66,6 +66,12 @@ export async function POST(req: Request) {
       );
     }
 
+    // ADMIN은 EXECUTIVE 생성 불가 (대표/임원은 대표/임원만 생성)
+    const requestedRole = parsed.data.role ?? "USER";
+    if (requestedRole === "EXECUTIVE" && session.user.role !== "EXECUTIVE") {
+      return NextResponse.json({ error: "대표/임원 계정은 대표/임원만 생성할 수 있습니다." }, { status: 403 });
+    }
+
     const existing = await prisma.user.findUnique({
       where: { email: parsed.data.email.trim() },
     });
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
         email: parsed.data.email.trim(),
         password: hashedPassword,
         name: parsed.data.name.trim(),
-        role: parsed.data.role ?? "USER",
+        role: requestedRole,
         phone: parsed.data.phone?.trim() || null,
         workPhone: parsed.data.workPhone?.trim() || null,
         workEmail: parsed.data.workEmail?.trim() || null,

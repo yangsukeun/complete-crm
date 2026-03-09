@@ -313,7 +313,7 @@ export default async function DashboardPage() {
               {todayAttendances.slice(0, 3).map((a: any) => (
                 <li key={a.id}>
                   {formatUserName(a.user)}
-                  {a.checkIn ? ` ${format(new Date(a.checkIn), "HH:mm", { locale: ko })} 출근` : ""}
+                  {a.checkIn ? ` ${formatKstTime(a.checkIn)} 출근` : ""}
                 </li>
               ))}
               {todayAttendances.length > 3 && <li>외 {todayAttendances.length - 3}명</li>}
@@ -595,4 +595,15 @@ export default async function DashboardPage() {
       <DashboardSalesSection data={salesStats} />
     </div>
   );
+}
+
+function formatKstTime(value: string | Date) {
+  const d = value instanceof Date ? value : new Date(value);
+  // 서버(Vercel)는 기본 UTC일 수 있어 타임존을 명시
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }

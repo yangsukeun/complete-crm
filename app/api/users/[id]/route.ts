@@ -106,3 +106,64 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const myRole = String(session.user.role ?? "").toUpperCase();
+    if (myRole !== "EXECUTIVE" && myRole !== "ADMIN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    if (!id) return NextResponse.json({ error: "Bad Request" }, { status: 400 });
+    if (id === session.user.id) {
+      return NextResponse.json({ error: "본인 계정은 삭제할 수 없습니다." }, { status: 400 });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true },
+    });
+    if (!target) {
+      return NextResponse.json({ error: "해당 계정을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    // 마지막 관리자/임원 보호
+    const targetRole = String(target.role ?? "").toUpperCase();
+    if (targetRole === "ADMIN" || targetRole === "EXECUTIVE") {
+      const adminCount = await prisma.user.count({
+        where: { role: { in: ["ADMIN", "EXECUTIVE"] as any } },
+      });
+      if (adminCount <= 1) {
+        return NextResponse.json(
+          { error: "마지막 관리자 계정은 삭제할 수 없습니다." },
+          { status: 400 }
+        );
+      }
+      // ADMIN은 EXECUTIVE 삭제 불가 (대표/임원은 대표/임원만 삭제)
+      if (targetRole === "EXECUTIVE" && myRole !== "EXECUTIVE") {
+        return NextResponse.json(
+          { error: "대표/임원 계정은 대표/임원만 삭제할 수 있습니다." },
+          { status: 403 }
+        );
+      }
+    }
+
+    await prisma.user.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    const err = e as { code?: string; message?: string };
+    if (err?.code === "P2025") {
+      return NextResponse.json({ error: "해당 계정을 찾을 수 없습니다." }, { status: 404 });
+    }
+    return NextResponse.json({ error: "계정 삭제에 실패했습니다." }, { status: 500 });
+  }
+}

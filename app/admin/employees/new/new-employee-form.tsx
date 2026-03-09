@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,11 @@ import { ArrowLeft } from "lucide-react";
 
 export function NewEmployeeForm() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const myRole = String((session?.user as any)?.role ?? "").toUpperCase();
+  const canCreateAdmin = myRole === "ADMIN" || myRole === "EXECUTIVE";
+  const canCreateExecutive = myRole === "EXECUTIVE";
+
   const [saving, setSaving] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +31,7 @@ export function NewEmployeeForm() {
   const [residentId, setResidentId] = useState("");
   const [department, setDepartment] = useState("");
   const [position, setPosition] = useState("");
-  const [role, setRole] = useState<"USER" | "TEAM_LEAD">("USER");
+  const [role, setRole] = useState<"USER" | "TEAM_LEAD" | "ADMIN" | "EXECUTIVE">("USER");
   const [joinDate, setJoinDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [positions, setPositions] = useState<{ id: string; name: string }[]>([]);
@@ -136,13 +142,19 @@ export function NewEmployeeForm() {
           </div>
           <div className="space-y-2">
             <Label>역할 (직책에 따른 기능)</Label>
-            <Select value={role} onValueChange={(v: any) => setRole(v as "USER" | "TEAM_LEAD")}>
+            <Select value={role} onValueChange={(v: any) => setRole(v as any)}>
               <SelectTrigger className="h-10 border bg-background">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차 신청·자금 요청)</SelectItem>
                 <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
+                {canCreateAdmin && (
+                  <SelectItem value="ADMIN">관리자 — 관리 메뉴 접근 및 설정/직원 관리</SelectItem>
+                )}
+                {canCreateExecutive && (
+                  <SelectItem value="EXECUTIVE">대표/임원 — 최고 권한(관리자 생성/삭제 포함)</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">

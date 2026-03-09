@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   Table,
   TableBody,
@@ -25,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Pencil, UserPlus } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
+import { Trash2 } from "lucide-react";
 
 /** 직원 목록/편집용 타입. currentProject.brand는 객체 { name: string } 또는 null만 사용 */
 export type Employee = {
@@ -48,8 +50,14 @@ export function AdminEmployeesClient({
 }: {
   employees: Employee[];
 }) {
+  const { data: session } = useSession();
+  const myId = (session?.user as any)?.id as string | undefined;
+  const myRole = String((session?.user as any)?.role ?? "").toUpperCase();
+
   const [employees, setEmployees] = useState(initial);
   const [editing, setEditing] = useState<Employee | null>(null);
+  const [deleting, setDeleting] = useState<Employee | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
   const [position, setPosition] = useState("");
@@ -187,6 +195,23 @@ export function AdminEmployeesClient({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleting || deletingBusy) return;
+    setDeletingBusy(true);
+    try {
+      const res = await fetch(`/api/users/${deleting.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "계정 삭제에 실패했습니다.");
+      setEmployees((prev: any) => prev.filter((u: any) => u.id !== deleting.id));
+      toast.success("계정이 삭제되었습니다.");
+      setDeleting(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "계정 삭제에 실패했습니다.");
+    } finally {
+      setDeletingBusy(false);
+    }
+  };
+
   return (
     <>
       <div className="rounded-lg border bg-card">
@@ -237,14 +262,29 @@ export function AdminEmployeesClient({
                   </TableCell>
                   <TableCell>{emp.joinDate ?? "—"}</TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openEdit(emp)}
-                      aria-label="수정"
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEdit(emp)}
+                        aria-label="수정"
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="삭제"
+                        disabled={
+                          deletingBusy ||
+                          (myId != null && emp.id === myId) ||
+                          (myRole !== "EXECUTIVE" && String(emp.role ?? "").toUpperCase() === "EXECUTIVE")
+                        }
+                        onClick={() => setDeleting(emp)}
+                      >
+                        <Trash2 className="size-4 text-destructive" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -252,6 +292,32 @@ export function AdminEmployeesClient({
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!deleting} onOpenChange={(open: any) => !open && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>계정 삭제</DialogTitle>
+          </DialogHeader>
+          {deleting && (
+            <div className="space-y-2">
+              <p className="text-sm">
+                <span className="font-medium">{formatUserName(deleting)}</span> 계정을 삭제하시겠습니까?
+              </p>
+              <p className="text-muted-foreground text-xs">
+                삭제하면 로그인/데이터 접근이 불가능해집니다. (마지막 관리자 계정은 삭제할 수 없습니다.)
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)} disabled={deletingBusy}>
+              취소
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deletingBusy}>
+              {deletingBusy ? "삭제 중..." : "삭제"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(open: any) => !open && setEditing(null)}>
         <DialogContent>

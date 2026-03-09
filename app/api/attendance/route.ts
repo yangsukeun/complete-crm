@@ -4,6 +4,15 @@ import { createActivityLog } from "@/lib/activity-log";
 import prisma from "@/lib/prisma";
 import { startOfDay } from "date-fns";
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+function startOfDayKst(date: Date): Date {
+  // 한국은 DST 없음. KST 기준 00:00을 UTC Date로 변환해 저장/조회 기준을 맞춤.
+  const kst = new Date(date.getTime() + KST_OFFSET_MS);
+  const kstStart = startOfDay(kst);
+  return new Date(kstStart.getTime() - KST_OFFSET_MS);
+}
+
 function getClientIp(req: Request): string | null {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]?.trim() ?? null;
@@ -20,7 +29,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date"); // YYYY-MM-DD
     const today = dateStr ? new Date(dateStr + "T00:00:00") : new Date();
-    const dateStart = startOfDay(today);
+    const dateStart = startOfDayKst(today);
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
 
@@ -70,7 +79,7 @@ export async function POST(req: Request) {
     const action = body.action as string; // "checkIn" | "checkOut"
 
     const now = new Date();
-    const dateStart = startOfDay(now);
+    const dateStart = startOfDayKst(now);
 
     if (action === "checkIn") {
       const existing = await prisma.attendance.findUnique({
