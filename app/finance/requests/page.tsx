@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,7 @@ const VENDOR_CATEGORIES = ["인쇄", "식대", "용역", "자재", "기타"];
 
 export default function FinanceRequestsPage() {
   const { data: session, status: authStatus } = useSession();
+  const router = useRouter();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [completedRequests, setCompletedRequests] = useState<PaymentRequest[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PaymentRequest[]>([]);
@@ -125,9 +127,10 @@ export default function FinanceRequestsPage() {
       .catch(() => setQuotations([]));
   }, [modalOpen]);
 
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (noCache = false) => {
     try {
-      const res = await fetch("/api/finance/requests", {
+      const url = noCache ? `/api/finance/requests?_t=${Date.now()}` : "/api/finance/requests";
+      const res = await fetch(url, {
         cache: "no-store",
         headers: { "Cache-Control": "no-cache" },
       });
@@ -306,7 +309,8 @@ export default function FinanceRequestsPage() {
         throw new Error(data.error ?? "승인 처리 실패");
       }
       toast.success("승인했습니다. 이체 담당자에게 알림이 전달됩니다.");
-      await fetchRequests();
+      await fetchRequests(true);
+      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "승인에 실패했습니다.");
     } finally {
@@ -327,7 +331,8 @@ export default function FinanceRequestsPage() {
         throw new Error(data.error ?? "반려 처리 실패");
       }
       toast.success("반려했습니다.");
-      await fetchRequests();
+      await fetchRequests(true);
+      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "반려 처리에 실패했습니다.");
     } finally {
@@ -348,7 +353,8 @@ export default function FinanceRequestsPage() {
         throw new Error(data.error ?? "되돌리기 실패");
       }
       toast.success("승인 대기 상태로 되돌렸습니다.");
-      await fetchRequests();
+      await fetchRequests(true);
+      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "되돌리기에 실패했습니다.");
     } finally {
@@ -369,7 +375,8 @@ export default function FinanceRequestsPage() {
         throw new Error(data.error ?? "처리 실패");
       }
       toast.success("이체 완료로 처리했습니다.");
-      await fetchRequests();
+      await fetchRequests(true);
+      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "처리에 실패했습니다.");
     } finally {
