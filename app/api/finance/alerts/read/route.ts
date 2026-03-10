@@ -11,7 +11,7 @@ export async function POST() {
     }
     const now = new Date().toISOString();
     await prisma.$executeRawUnsafe(
-      "UPDATE PaymentRequestAlert SET readAt = ? WHERE userId = ? AND readAt IS NULL",
+      'UPDATE "PaymentRequestAlert" SET "readAt" = $1::timestamptz WHERE "userId" = $2 AND "readAt" IS NULL',
       now,
       session.user.id
     );

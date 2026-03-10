@@ -391,7 +391,7 @@ export default function FinanceRequestsPage() {
   const isTeamLead = role === "TEAM_LEAD";
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
   const isTransferExecutor = !isTeamLead && (paymentAlertUnreadCount !== undefined || isExecutiveTransferExecutor);
-  const canRequest = !isTeamLead && !isExecutive; // 일반 직원·이체 담당자: 새 결제 요청 가능 (대표는 요청 불가)
+  const canRequest = !isExecutive; // 직원·팀장·이체 담당자: 새 결제 요청 가능 (대표는 요청 불가). 팀장 요청 시 바로 이체 담당자에게 알람
   const canApproveReject = isTeamLead; // 팀장: 승인/반려
   const canComplete = isTransferExecutor; // 이체 담당자(또는 대표+이체담당자): 이체완료
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
@@ -620,7 +620,7 @@ export default function FinanceRequestsPage() {
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/30 py-12 text-center">
           <Wallet className="mx-auto size-12 text-slate-400" />
           <p className="text-muted-foreground mt-2 text-sm">
-            {isTeamLead && "결제 요청이 없습니다."}
+            {isTeamLead && "결제 요청 내역이 없습니다."}
             {isTransferExecutor && !isTeamLead && !isExecutive && "이체 대기 중인 건이 없습니다."}
             {canRequest && "내 결제 요청이 없습니다."}
             {isExecutive && !isTeamLead && !canRequest && "결제 요청 내역이 없습니다."}

@@ -296,6 +296,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "거래처를 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // 요청자 역할 확인 (팀장이 요청하면 바로 이체 담당자에게 알람, 일반 직원이면 팀장에게 알람)
+    let requesterRole: string | undefined = session.user.role as string | undefined;
+    try {
+      const roleRows = await prisma.$queryRawUnsafe<{ role: string }[]>(
+        'SELECT role FROM "User" WHERE id = $1',
+        session.user.id
+      );
+      if (roleRows[0]) requesterRole = roleRows[0].role;
+    } catch (_) {}
+
+    const isRequesterTeamLead = isTeamLead(requesterRole);
+    const initialStatus = isRequesterTeamLead ? "TEAM_LEAD_APPROVED" : "PENDING";
+
     const paymentRequest = await prisma.paymentRequest.create({
       data: {
         vendorId: parsed.data.vendorId,
@@ -304,6 +317,7 @@ export async function POST(req: Request) {
         attachment: parsed.data.attachment && parsed.data.attachment !== "" ? parsed.data.attachment : null,
         requesterId: session.user.id,
         quotationId: parsed.data.quotationId && parsed.data.quotationId !== "" ? parsed.data.quotationId : null,
+        status: initialStatus as "PENDING" | "TEAM_LEAD_APPROVED",
       },
       include: {
         requester: {
@@ -314,27 +328,56 @@ export async function POST(req: Request) {
       },
     });
 
-    // 결재 담당자(팀장)에게 알람 등록 (raw SQL로 Prisma 이슈 우회)
-    try {
-      const teamLeads = await prisma.user.findMany({
-        where: { role: "TEAM_LEAD" },
-        select: { id: true },
-      });
-      const now = new Date().toISOString();
-      const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
-      for (const u of teamLeads) {
-        try {
-          await prisma.$executeRawUnsafe(
-            'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-            cuidLike(),
-            paymentRequest.id,
-            u.id,
-            now
-          );
-        } catch (_) {}
+    const now = new Date().toISOString();
+    const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
+
+    if (isRequesterTeamLead) {
+      // 팀장이 요청한 경우: 결제(이체) 담당자에게만 알람 등록
+      try {
+        const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
+        const transferExecutorIds: string[] = company?.id
+          ? getTransferExecutorIds(
+              (await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
+                'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
+                company.id
+              ))[0]?.transferExecutorIds ?? null
+            )
+          : [];
+        for (const userId of transferExecutorIds) {
+          try {
+            await prisma.$executeRawUnsafe(
+              'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
+              cuidLike(),
+              paymentRequest.id,
+              userId,
+              now
+            );
+          } catch (_) {}
+        }
+      } catch (alertErr) {
+        console.error("이체 담당자 알람 생성 실패:", alertErr);
       }
-    } catch (alertErr) {
-      console.error("팀장 알람 생성 실패:", alertErr);
+    } else {
+      // 일반 직원 요청: 결재 담당자(팀장)에게 알람 등록
+      try {
+        const teamLeads = await prisma.user.findMany({
+          where: { role: "TEAM_LEAD" },
+          select: { id: true },
+        });
+        for (const u of teamLeads) {
+          try {
+            await prisma.$executeRawUnsafe(
+              'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
+              cuidLike(),
+              paymentRequest.id,
+              u.id,
+              now
+            );
+          } catch (_) {}
+        }
+      } catch (alertErr) {
+        console.error("팀장 알람 생성 실패:", alertErr);
+      }
     }
 
     return NextResponse.json(paymentRequest);

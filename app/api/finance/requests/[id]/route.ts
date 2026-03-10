@@ -38,14 +38,14 @@ export async function PATCH(
 
     const currentRows = await prisma.$queryRawUnsafe<
       { id: string; status: string; requesterId: string; vendorId: string; amount: number; requestedAt: string; completedAt: string | null; description: string | null; attachment: string | null }[]
-    >("SELECT id, status, requesterId, vendorId, amount, requestedAt, completedAt, description, attachment FROM PaymentRequest WHERE id = ?", id);
+    >('SELECT id, status, "requesterId", "vendorId", amount, "requestedAt", "completedAt", description, attachment FROM "PaymentRequest" WHERE id = $1', id);
     const current = currentRows[0];
     if (!current) {
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
 
     const dbUserRows = await prisma.$queryRawUnsafe<{ role: string }[]>(
-      "SELECT role FROM User WHERE id = ?",
+      'SELECT role FROM "User" WHERE id = $1',
       session.user.id
     );
     const dbUser = dbUserRows[0];
@@ -57,7 +57,7 @@ export async function PATCH(
     if (company?.id) {
       try {
         const rows = await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
-          "SELECT transferExecutorIds FROM CompanyInfo WHERE id = ?",
+          'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
           company.id
         );
         transferExecutorIds = getTransferExecutorIds(rows[0]?.transferExecutorIds ?? null);
@@ -118,7 +118,7 @@ export async function PATCH(
     const completedAt = parsed.data.status === "COMPLETED" ? new Date().toISOString() : null;
     try {
       await prisma.$executeRawUnsafe(
-        "UPDATE PaymentRequest SET status = ?, completedAt = ? WHERE id = ?",
+        'UPDATE "PaymentRequest" SET status = $1, "completedAt" = $2::timestamptz WHERE id = $3',
         parsed.data.status,
         completedAt,
         id
@@ -142,7 +142,7 @@ export async function PATCH(
       } catch (e) {
         try {
           await prisma.$executeRawUnsafe(
-            "DELETE FROM PaymentRequestAlert WHERE requestId = ?",
+            'DELETE FROM "PaymentRequestAlert" WHERE "requestId" = $1',
             id
           );
         } catch (rawErr) {
@@ -154,7 +154,7 @@ export async function PATCH(
       for (const userId of transferExecutorIds) {
         try {
           await prisma.$executeRawUnsafe(
-            "INSERT OR IGNORE INTO PaymentRequestAlert (id, requestId, userId, createdAt) VALUES (?, ?, ?, ?)",
+            'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
             cuidLike(),
             id,
             userId,
@@ -165,10 +165,11 @@ export async function PATCH(
         }
       }
     }
+    // 이체완료 시 요청자(담당자)에게 알람: 이체 되었다고 알림
     if (parsed.data.status === "COMPLETED" && current.requesterId) {
       try {
         await prisma.$executeRawUnsafe(
-          "INSERT OR IGNORE INTO PaymentRequestAlert (id, requestId, userId, createdAt) VALUES (?, ?, ?, ?)",
+          'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
           cuidLike(),
           id,
           current.requesterId,
@@ -178,7 +179,7 @@ export async function PATCH(
     }
     try {
       await prisma.$executeRawUnsafe(
-        "UPDATE PaymentRequestAlert SET readAt = ? WHERE requestId = ? AND userId = ?",
+        'UPDATE "PaymentRequestAlert" SET "readAt" = $1::timestamptz WHERE "requestId" = $2 AND "userId" = $3',
         now,
         id,
         session.user.id
@@ -187,14 +188,14 @@ export async function PATCH(
 
     const updatedRows = await prisma.$queryRawUnsafe<
       { id: string; status: string; amount: number; requestedAt: string; completedAt: string | null; description: string | null; attachment: string | null; requesterId: string; vendorId: string }[]
-    >("SELECT id, status, amount, requestedAt, completedAt, description, attachment, requesterId, vendorId FROM PaymentRequest WHERE id = ?", id);
+    >('SELECT id, status, amount, "requestedAt", "completedAt", description, attachment, "requesterId", "vendorId" FROM "PaymentRequest" WHERE id = $1', id);
     const updated = updatedRows[0];
     if (!updated) {
       return NextResponse.json({ id, status: parsed.data.status, completedAt, requesterId: current.requesterId, vendorId: current.vendorId, amount: current.amount, requestedAt: current.requestedAt, description: current.description, attachment: current.attachment, requester: null, vendor: null });
     }
     const [requesterRows, vendorRows] = await Promise.all([
-      prisma.$queryRawUnsafe<{ id: string; name: string; email: string; position: string | null }[]>("SELECT id, name, email, position FROM User WHERE id = ?", updated.requesterId),
-      prisma.$queryRawUnsafe<{ id: string; name: string; bankName: string; accountNumber: string; ownerName: string; category: string }[]>("SELECT id, name, bankName, accountNumber, ownerName, category FROM Vendor WHERE id = ?", updated.vendorId),
+      prisma.$queryRawUnsafe<{ id: string; name: string; email: string; position: string | null }[]>('SELECT id, name, email, position FROM "User" WHERE id = $1', updated.requesterId),
+      prisma.$queryRawUnsafe<{ id: string; name: string; bankName: string; accountNumber: string; ownerName: string; category: string }[]>('SELECT id, name, "bankName", "accountNumber", "ownerName", category FROM "Vendor" WHERE id = $1', updated.vendorId),
     ]);
     const requester = requesterRows[0] ?? null;
     const vendor = vendorRows[0] ?? null;
