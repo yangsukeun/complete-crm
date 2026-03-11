@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import path from "path";
-import fs from "fs";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "stamps");
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
+/** 도장 이미지를 base64 데이터 URL로 DB에 저장 (서버리스 환경에서도 동작) */
 export async function POST(req: Request) {
   try {
     const session = await getAppSession();
@@ -30,30 +28,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "파일 크기는 2MB 이하여야 합니다." }, { status: 400 });
     }
 
-    const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : file.type === "image/gif" ? "gif" : "webp";
-    const filename = `stamp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-    const filepath = path.join(UPLOAD_DIR, filename);
     const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filepath, buffer);
-
-    const url = `/uploads/stamps/${filename}`;
+    const base64 = buffer.toString("base64");
+    const mime = file.type;
+    const dataUrl = `data:${mime};base64,${base64}`;
 
     const existing = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
     if (existing) {
       await prisma.companyInfo.update({
         where: { id: existing.id },
-        data: { stampImageUrl: url },
+        data: { stampImageUrl: dataUrl },
       });
     } else {
       await prisma.companyInfo.create({
-        data: { name: "회사명", stampImageUrl: url },
+        data: { name: "회사명", stampImageUrl: dataUrl },
       });
     }
 
-    return NextResponse.json({ url });
+    return NextResponse.json({ url: dataUrl });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "도장 이미지 등록에 실패했습니다." }, { status: 500 });
