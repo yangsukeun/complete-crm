@@ -43,8 +43,8 @@ export function AdminProjectsClient() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [savingAssign, setSavingAssign] = useState(false);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const [bRes, pRes, uRes] = await Promise.all([
         fetch("/api/brands"),
@@ -69,7 +69,7 @@ export function AdminProjectsClient() {
       setIsMaster(false);
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -103,7 +103,7 @@ export function AdminProjectsClient() {
       if (!res.ok) throw new Error(data.error ?? "생성 실패");
       toast.success("브랜드가 생성되었습니다.");
       setNewBrandName("");
-      fetchAll();
+      fetchAll({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "브랜드 생성 실패");
     }
@@ -123,7 +123,7 @@ export function AdminProjectsClient() {
       if (!res.ok) throw new Error(data.error ?? "생성 실패");
       toast.success("프로젝트가 생성되었습니다.");
       setNewProjectName("");
-      fetchAll();
+      fetchAll({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "프로젝트 생성 실패");
     }
@@ -142,7 +142,7 @@ export function AdminProjectsClient() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "부여 실패");
       toast.success(clear ? "부여를 해제했습니다." : "프로젝트/브랜드를 부여했습니다.");
-      fetchAll();
+      fetchAll({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "부여 실패");
     } finally {
@@ -159,7 +159,7 @@ export function AdminProjectsClient() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "삭제 실패");
       toast.success("프로젝트를 삭제 처리했습니다.");
-      fetchAll();
+      fetchAll({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "삭제 실패");
     }
