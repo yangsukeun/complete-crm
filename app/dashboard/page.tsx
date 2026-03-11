@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock } from "lucide-react";
-import { format, startOfDay, addDays } from "date-fns";
+import { format, addDays } from "date-fns";
+import { startOfDayKst } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
 import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
@@ -30,7 +31,7 @@ export default async function DashboardPage() {
   const isAdmin = role === "EXECUTIVE" || role === "ADMIN";
   const canCreateAnnouncement =
     role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
-  const todayStart = startOfDay(new Date());
+  const todayStart = startOfDayKst(new Date());
 
   // 개인 모드: 연차/출퇴근 없이 일정·업무·목표만
   if (!isCompanyMode) {

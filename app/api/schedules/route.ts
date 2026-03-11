@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScope, getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
+import { createActivityLog } from "@/lib/activity-log";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -79,6 +80,8 @@ export async function POST(req: Request) {
         scope: scope === "PERSONAL" ? "PERSONAL" : "TEAM",
       },
     });
+
+    await createActivityLog(session.user.id, "SCHEDULE_CREATED", schedule.title, undefined, { timestamp: schedule.startTime });
 
     const inviteUserIds = parsed.data.inviteUserIds ?? [];
     if (inviteUserIds.length > 0) {

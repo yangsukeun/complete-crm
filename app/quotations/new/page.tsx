@@ -55,6 +55,7 @@ export default function NewQuotationPage() {
   const [validUntil, setValidUntil] = useState(() => formatYMD(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)));
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<QuotationItemInput[]>([defaultItem()]);
+  const [finalAmountOverride, setFinalAmountOverride] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [forms, setForms] = useState<FormOption[]>([]);
   const remarksRef = useRef(remarks);
@@ -117,9 +118,14 @@ export default function NewQuotationPage() {
     setItems((prev: any) => prev.filter((_: any, i: any) => i !== index));
   };
 
-  const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
-  const vatAmount = Math.floor(totalAmount * 0.1);
-  const finalAmount = totalAmount + vatAmount;
+  const computedTotalAmount = items.reduce((sum, i) => sum + i.amount, 0);
+  const computedVatAmount = Math.floor(computedTotalAmount * 0.1);
+  const computedFinalAmount = computedTotalAmount + computedVatAmount;
+
+  const overrideFinal = finalAmountOverride.trim() === "" ? null : Number(finalAmountOverride);
+  const displayFinal = overrideFinal != null && Number.isFinite(overrideFinal) && overrideFinal >= 0 ? Math.floor(overrideFinal) : computedFinalAmount;
+  const displayTotal = overrideFinal != null && Number.isFinite(overrideFinal) && overrideFinal >= 0 ? Math.round(displayFinal / 1.1) : computedTotalAmount;
+  const displayVat = overrideFinal != null && Number.isFinite(overrideFinal) && overrideFinal >= 0 ? displayFinal - displayTotal : computedVatAmount;
 
   const handleSave = async (openPreview: boolean) => {
     if (!title.trim()) {
@@ -148,6 +154,8 @@ export default function NewQuotationPage() {
           amount: i.quantity * i.unitPrice,
         })),
         remarks: remarks.trim() || null,
+        finalAmountOverride:
+          overrideFinal != null && Number.isFinite(overrideFinal) && overrideFinal >= 0 ? Math.floor(overrideFinal) : null,
       });
       if ("error" in result) {
         toast.error(result.error);
@@ -303,10 +311,27 @@ export default function NewQuotationPage() {
                 </TableBody>
               </Table>
             </div>
-            <div className="mt-2 flex justify-end gap-4 text-sm">
-              <span className="text-muted-foreground">공급가액: {new Intl.NumberFormat("ko-KR").format(totalAmount)}원</span>
-              <span className="text-muted-foreground">부가세(10%): {new Intl.NumberFormat("ko-KR").format(vatAmount)}원</span>
-              <span className="font-semibold">총합계: {new Intl.NumberFormat("ko-KR").format(finalAmount)}원</span>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3 sm:items-end">
+              <div className="grid gap-1">
+                <Label className="text-xs text-muted-foreground">총합계(부가세 포함) 직접 입력</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={finalAmountOverride}
+                  onChange={(e: any) => setFinalAmountOverride(e.target.value)}
+                  placeholder={String(computedFinalAmount)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  입력 시 총합계에 맞춰 공급가/부가세를 원 단위로 조정합니다.
+                </p>
+              </div>
+              <div className="flex flex-col gap-1 text-sm sm:items-end">
+                <span className="text-muted-foreground">공급가액: {new Intl.NumberFormat("ko-KR").format(displayTotal)}원</span>
+                <span className="text-muted-foreground">부가세(10%): {new Intl.NumberFormat("ko-KR").format(displayVat)}원</span>
+              </div>
+              <div className="text-sm font-semibold sm:text-right">
+                총합계: {new Intl.NumberFormat("ko-KR").format(displayFinal)}원
+              </div>
             </div>
           </div>
 

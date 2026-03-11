@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { Providers } from "@/components/providers";
+import { OneSignalInit } from "@/components/OneSignalInit";
 import { AppNav } from "@/components/app-nav";
 import "./globals.css";
 
@@ -70,6 +71,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <OneSignalInit />
         <Providers session={session ?? undefined}>
           <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>
             <AppNav />

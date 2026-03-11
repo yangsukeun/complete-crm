@@ -84,6 +84,7 @@ enum ActivityLogActionType {
   TASK_CREATED
   TASK_COMPLETED
   COMMENT_ADDED
+  SCHEDULE_CREATED  // 일정 등록
   LOGIN
   CHECK_IN   // 출근
   CHECK_OUT  // 퇴근
@@ -187,10 +188,14 @@ model Project {
   brandId   String
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   users     User[]
+  deletedAt DateTime?
+  deletedById String?
+  deletedBy User? @relation("ProjectDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([brandId, name])
   @@index([brandId])
+  @@index([deletedAt])
 }
 
 model Account {

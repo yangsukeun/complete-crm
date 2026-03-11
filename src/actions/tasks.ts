@@ -66,7 +66,8 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
     });
   }
 
-  await createActivityLog(session.user.id, "TASK_CREATED", title);
+  const dueStr = newTask.dueDate.toISOString().slice(0, 10);
+  await createActivityLog(session.user.id, "TASK_CREATED", title, undefined, dueStr ? { timestamp: new Date(dueStr + "T12:00:00") } : undefined);
   revalidatePath("/tasks");
 
   return { ok: true };

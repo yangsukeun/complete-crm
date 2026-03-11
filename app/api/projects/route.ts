@@ -16,8 +16,14 @@ export async function GET(req: Request) {
     }
     const { searchParams } = new URL(req.url);
     const brandId = searchParams.get("brandId") ?? undefined;
+    const includeDeleted = searchParams.get("includeDeleted") === "1";
+    const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
+    const isMaster = String((session.user as any)?.email ?? "").trim().toLowerCase() === masterEmail;
+
+    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const baseWhere: any = brandId ? { brandId } : {};
     const projects = await prisma.project.findMany({
-      where: brandId ? { brandId } : {},
+      where: { ...baseWhere, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -25,6 +31,20 @@ export async function GET(req: Request) {
       },
       orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
     });
+    if (includeDeleted && (isAdmin || isMaster)) {
+      const deletedProjects = await prisma.project.findMany({
+        where: { ...baseWhere, deletedAt: { not: null } },
+        select: {
+          id: true,
+          name: true,
+          deletedAt: true,
+          brand: { select: { id: true, name: true } },
+          deletedBy: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { deletedAt: "desc" },
+      });
+      return NextResponse.json({ projects, deletedProjects, isMaster: !!isMaster });
+    }
     return NextResponse.json(projects);
   } catch (e) {
     console.error("GET /api/projects", e);

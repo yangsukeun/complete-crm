@@ -28,7 +28,10 @@ export async function GET(req: Request) {
     }
 
     const log = await getOrCreateDailyWorkLog(userId, dateStr);
-    return NextResponse.json(log);
+    return NextResponse.json({
+      ...log,
+      monthDeadlines: log.monthDeadlines ?? [],
+    });
   } catch (e) {
     console.error("Work logs GET:", e);
     return NextResponse.json(

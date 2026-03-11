@@ -23,6 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
@@ -123,6 +128,8 @@ export default function TasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<TaskStatus | "">("");
+  const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
 
   const taskKey: [string, string] = ["/api/tasks", mode];
   const catKey: [string, string] = ["/api/tasks/categories", mode];
@@ -209,11 +216,20 @@ export default function TasksPage() {
     );
   }
 
+  const filteredTasks = tasks.filter((t: any) => {
+    if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
+    if (filterAssigneeId && t.assignedTo?.id !== filterAssigneeId) return false;
+    return true;
+  });
   const tasksByStatus = {
-    TODO: tasks.filter((t: any) => getEffectiveStatus(t) === "TODO"),
-    IN_PROGRESS: tasks.filter((t: any) => getEffectiveStatus(t) === "IN_PROGRESS"),
-    DONE: tasks.filter((t: any) => getEffectiveStatus(t) === "DONE"),
+    TODO: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "TODO"),
+    IN_PROGRESS: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "IN_PROGRESS"),
+    DONE: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "DONE"),
   };
+  const assigneeOptions = Array.from(
+    new Map(tasks.map((t: any) => [t.assignedTo?.id, t.assignedTo]).filter(([, u]: any) => u)).entries()
+  );
+  const hasActiveFilter = filterStatus !== "" || filterAssigneeId !== "";
 
   return (
     <div key={mode} className="flex flex-col gap-6 p-6 md:p-8">
@@ -245,10 +261,54 @@ export default function TasksPage() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          <Button variant="outline" size="sm" className="border-gray-200 text-muted-foreground">
-            <Filter className="mr-2 size-4" />
-            필터
-          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("border-gray-200 text-muted-foreground", hasActiveFilter && "border-amber-400 text-amber-700")}
+              >
+                <Filter className="mr-2 size-4" />
+                필터
+                {hasActiveFilter && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px]">적용중</span>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64" align="start">
+              <div className="space-y-3">
+                <p className="text-sm font-medium">상태</p>
+                <Select value={filterStatus || "all"} onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="전체" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체</SelectItem>
+                    {STATUS_LIST.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm font-medium">담당자</p>
+                <Select value={filterAssigneeId || "all"} onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="전체" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체</SelectItem>
+                    {assigneeOptions.map(([id, u]: any) => (
+                      <SelectItem key={id} value={id}>
+                        {formatUserName(u)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setFilterStatus(""); setFilterAssigneeId(""); }}>
+                  필터 초기화
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button
             onClick={() => setCreateOpen(true)}
             className="ml-auto bg-foreground text-background hover:bg-foreground/90"
@@ -267,7 +327,7 @@ export default function TasksPage() {
         </p>
       ) : view === "logs" ? (
         <WorkLogTab />
-      ) : tasks.length === 0 ? (
+      ) : filteredTasks.length === 0 ? (
         <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
           <p className="mb-4 text-sm">업무가 없습니다.</p>
           <Button onClick={() => setCreateOpen(true)} variant="outline" size="sm">
@@ -277,7 +337,7 @@ export default function TasksPage() {
         </div>
       ) : view === "tree" ? (
         <TaskTreeView
-          tasks={tasks.map((t: any) => ({
+          tasks={filteredTasks.map((t: any) => ({
             id: t.id,
             title: t.title,
             description: t.description,
@@ -377,7 +437,7 @@ export default function TasksPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tasks.map((task: any) => (
+              {filteredTasks.map((task: any) => (
                 <TableRow
                   key={task.id}
                   className="border-gray-200 cursor-pointer transition-colors hover:bg-muted/50"
@@ -439,7 +499,7 @@ export default function TasksPage() {
       {/* 스킬트리 (대분류) */}
       <TaskCategoryTree
         categories={categories}
-        tasks={tasks.map((t: any) => ({
+        tasks={filteredTasks.map((t: any) => ({
           id: t.id,
           title: t.title,
           dueDate: t.dueDate,

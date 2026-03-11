@@ -18,6 +18,7 @@ const menuItems = [
   { href: "/admin/logs", label: "업무일지 조회", description: "직원별 업무일지 조회", icon: FileText },
   { href: "/admin/departments-positions", label: "부서·직책", description: "부서·직책 마스터 관리", icon: Layers },
   { href: "/admin/projects", label: "브랜드/프로젝트", description: "브랜드·프로젝트 관리", icon: FolderKanban },
+  { href: "/admin/deleted-projects", label: "삭제된 프로젝트", description: "삭제(숨김) 처리된 프로젝트 목록", icon: FolderKanban },
   { href: "/admin/company", label: "회사 정보", description: "견적서용 회사 정보·도장", icon: Building2 },
   { href: "/admin/settings/logo", label: "로고 설정", description: "헤더 로고 이미지 변경", icon: Image },
 ];

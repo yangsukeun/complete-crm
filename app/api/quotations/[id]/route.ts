@@ -60,6 +60,7 @@ export async function PUT(
     if (body.remarks !== undefined) updateData.remarks = body.remarks === "" || body.remarks == null ? null : String(body.remarks);
 
     const items = Array.isArray(body.items) ? body.items : undefined;
+    const finalAmountOverrideRaw = body.finalAmountOverride;
     if (items && items.length > 0) {
       const totalAmount = items.reduce((sum: number, i: { amount?: number }) => sum + (Number(i?.amount) || 0), 0);
       const vatAmount = Math.floor(totalAmount * 0.1);
@@ -67,6 +68,18 @@ export async function PUT(
       updateData.totalAmount = totalAmount;
       updateData.vatAmount = vatAmount;
       updateData.finalAmount = finalAmount;
+    }
+    if (finalAmountOverrideRaw !== undefined && finalAmountOverrideRaw !== null) {
+      const n = Number(finalAmountOverrideRaw);
+      if (!Number.isFinite(n) || n < 0) {
+        return NextResponse.json({ error: "총합계(부가세 포함) 금액이 올바르지 않습니다." });
+      }
+      const final = Math.max(0, Math.floor(n));
+      const total = Math.max(0, Math.round(final / 1.1)); // 원 단위 반올림(공급가)
+      const vat = Math.max(0, final - total);
+      updateData.totalAmount = total;
+      updateData.vatAmount = vat;
+      updateData.finalAmount = final;
     }
     if (Object.keys(updateData).length === 0 && (!items || items.length === 0)) {
       return NextResponse.json({ error: "수정할 내용이 없습니다." });

@@ -77,6 +77,7 @@ export function AppNav() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [paymentAlertCount, setPaymentAlertCount] = useState(0);
+  const [paymentAlertLabel, setPaymentAlertLabel] = useState<string>("알림");
 
   const urlMode = searchParams.get("mode");
   const effectiveMode: "company" | "personal" =
@@ -160,17 +161,24 @@ export function AppNav() {
     return () => window.removeEventListener("chat-read", onRead);
   }, [session?.user?.id, session?.user?.role, effectiveMode, pathname]);
 
-  // 팀장·이체 담당자: 미확인 자금이체 알람 수 (자금관리 뱃지)
+  // 팀장·이체 담당자·요청자: 자금관리 뱃지 (승인대기/이체대기/이체완료 알람)
   useEffect(() => {
     if (pathname === "/choose-mode" || effectiveMode !== "company") {
       setPaymentAlertCount(0);
+      setPaymentAlertLabel("알림");
       return;
     }
     const run = () => {
       fetch("/api/finance/alerts/count", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
-        .then((r: any) => (r.ok ? r.json() : { count: 0 }))
-        .then((d: any) => setPaymentAlertCount(d?.count ?? 0))
-        .catch(() => setPaymentAlertCount(0));
+        .then((r: any) => (r.ok ? r.json() : { count: 0, label: "알림" }))
+        .then((d: any) => {
+          setPaymentAlertCount(d?.count ?? 0);
+          setPaymentAlertLabel(d?.label ?? "알림");
+        })
+        .catch(() => {
+          setPaymentAlertCount(0);
+          setPaymentAlertLabel("알림");
+        });
     };
     run();
     const t = setInterval(run, 5000);
@@ -213,6 +221,7 @@ export function AppNav() {
         { href: "/admin/logs", label: "업무일지 조회", icon: FileText },
         { href: "/admin/departments-positions", label: "부서·직책", icon: Layers },
         { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban },
+        { href: "/admin/deleted-projects", label: "삭제된 프로젝트", icon: FolderKanban },
         { href: "/admin/company", label: "회사 정보", icon: Building2 },
         { href: "/admin/settings/logo", label: "로고 설정", icon: Image },
       ]
@@ -400,8 +409,9 @@ export function AppNav() {
                         <Icon className="size-4" />
                         {label}
                         {href === "/finance/requests" && paymentAlertCount > 0 && (
-                          <span className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            {paymentAlertCount > 99 ? "99+" : paymentAlertCount}
+                          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            <span className="opacity-90">{paymentAlertLabel}</span>
+                            <span>{paymentAlertCount > 99 ? "99+" : paymentAlertCount}</span>
                           </span>
                         )}
                       </Link>
@@ -501,6 +511,12 @@ export function AppNav() {
                     내 정보
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/my-project" className="flex items-center gap-2 cursor-pointer">
+                    <FolderKanban className="size-4" />
+                    내 프로젝트
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
@@ -551,8 +567,9 @@ export function AppNav() {
                   </span>
                 )}
                 {href === "/finance/requests" && paymentAlertCount > 0 && (
-                  <span className="ml-1 flex min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 py-0.5 text-[9px] font-bold text-white">
-                    {paymentAlertCount > 99 ? "99+" : paymentAlertCount}
+                  <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    <span>{paymentAlertLabel}</span>
+                    <span>{paymentAlertCount > 99 ? "99+" : paymentAlertCount}</span>
                   </span>
                 )}
               </Link>

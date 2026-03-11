@@ -48,16 +48,30 @@ export type CreateQuotationInput = {
   validUntil: string; // ISO date
   items: QuotationItemInput[];
   remarks?: string | null;
+  /** 부가세 포함 총액을 사용자가 직접 지정할 때(원 단위). 비우면 품목 합계 기준 자동 계산 */
+  finalAmountOverride?: number | null;
 };
+
+function calcAmountsFromFinal(finalAmount: number): { totalAmount: number; vatAmount: number; finalAmount: number } {
+  const final = Math.max(0, Math.floor(finalAmount));
+  const total = Math.max(0, Math.round(final / 1.1)); // 원 단위 반올림(공급가)
+  const vat = Math.max(0, final - total);
+  return { totalAmount: total, vatAmount: vat, finalAmount: final };
+}
 
 export async function createQuotation(input: CreateQuotationInput): Promise<{ id: string } | { error: string }> {
   const session = await getAppSession();
   if (!session?.user?.id) return { error: "로그인이 필요합니다." };
 
   const number = await getNextQuotationNumber();
-  const totalAmount = input.items.reduce((sum, i) => sum + i.amount, 0);
-  const vatAmount = Math.floor(totalAmount * 0.1);
-  const finalAmount = totalAmount + vatAmount;
+  const computedTotal = input.items.reduce((sum, i) => sum + i.amount, 0);
+  const computedVat = Math.floor(computedTotal * 0.1);
+  const computedFinal = computedTotal + computedVat;
+  const override = input.finalAmountOverride;
+  const { totalAmount, vatAmount, finalAmount } =
+    typeof override === "number" && Number.isFinite(override) && override >= 0
+      ? calcAmountsFromFinal(override)
+      : { totalAmount: computedTotal, vatAmount: computedVat, finalAmount: computedFinal };
 
   const quotation = await prisma.quotation.create({
     data: {
@@ -92,6 +106,8 @@ export type UpdateQuotationInput = {
   validUntil?: string;
   items?: QuotationItemInput[];
   remarks?: string | null;
+  /** 부가세 포함 총액을 사용자가 직접 지정할 때(원 단위). null/undefined면 자동 계산 */
+  finalAmountOverride?: number | null;
 };
 
 function toErrorMessage(e: unknown): string {
@@ -146,6 +162,19 @@ async function updateQuotationInternal(
     totalAmount = input.items.reduce((sum, i) => sum + i.amount, 0);
     vatAmount = Math.floor(totalAmount * 0.1);
     finalAmount = totalAmount + vatAmount;
+    updateData.totalAmount = totalAmount;
+    updateData.vatAmount = vatAmount;
+    updateData.finalAmount = finalAmount;
+  }
+
+  if (input.finalAmountOverride !== undefined && input.finalAmountOverride !== null) {
+    if (typeof input.finalAmountOverride !== "number" || !Number.isFinite(input.finalAmountOverride) || input.finalAmountOverride < 0) {
+      return { error: "총합계(부가세 포함) 금액이 올바르지 않습니다." };
+    }
+    const c = calcAmountsFromFinal(input.finalAmountOverride);
+    totalAmount = c.totalAmount;
+    vatAmount = c.vatAmount;
+    finalAmount = c.finalAmount;
     updateData.totalAmount = totalAmount;
     updateData.vatAmount = vatAmount;
     updateData.finalAmount = finalAmount;

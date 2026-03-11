@@ -117,7 +117,9 @@ export async function POST(req: Request) {
       },
     });
 
-    await createActivityLog(session.user.id, "TASK_CREATED", task.title);
+    const dueDateStr = parsed.data.dueDate.slice(0, 10);
+    const timestampForLog = dueDateStr ? new Date(dueDateStr + "T12:00:00") : undefined;
+    await createActivityLog(session.user.id, "TASK_CREATED", task.title, undefined, timestampForLog ? { timestamp: timestampForLog } : undefined);
 
     if (task.assignedToId && task.assignedToId !== session.user.id) {
       await createNotification(

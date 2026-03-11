@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { PageHeadline } from "@/components/page-headline";
 
 type Brand = { id: string; name: string };
 type Project = { id: string; name: string; brand: { id: string; name: string } };
+type DeletedProject = Project & { deletedAt: string | null; deletedBy?: { id: string; name: string; email: string | null } | null };
 type User = {
   id: string;
   name: string;
@@ -28,6 +30,8 @@ function projectLabel(p: Project | null): string {
 export function AdminProjectsClient() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [deletedProjects, setDeletedProjects] = useState<DeletedProject[]>([]);
+  const [isMaster, setIsMaster] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,18 +48,25 @@ export function AdminProjectsClient() {
     try {
       const [bRes, pRes, uRes] = await Promise.all([
         fetch("/api/brands"),
-        fetch("/api/projects"),
+        fetch("/api/projects?includeDeleted=1"),
         fetch("/api/users/list"),
       ]);
       const b = bRes.ok ? await bRes.json() : [];
-      const p = pRes.ok ? await pRes.json() : [];
+      const pJson = pRes.ok ? await pRes.json() : [];
+      const p = Array.isArray(pJson) ? pJson : (pJson?.projects ?? []);
+      const del = Array.isArray(pJson?.deletedProjects) ? pJson.deletedProjects : [];
+      const master = pJson?.isMaster === true;
       const u = uRes.ok ? await uRes.json() : [];
       setBrands(b);
       setProjects(p);
+      setDeletedProjects(del);
+      setIsMaster(master);
       setUsers(u);
     } catch {
       setBrands([]);
       setProjects([]);
+      setDeletedProjects([]);
+      setIsMaster(false);
       setUsers([]);
     } finally {
       setLoading(false);
@@ -70,6 +81,11 @@ export function AdminProjectsClient() {
     if (!selectedBrandId) return projects;
     return projects.filter((p: any) => p?.brand?.id === selectedBrandId);
   }, [projects, selectedBrandId]);
+
+  const deletedProjectsInBrand = useMemo(() => {
+    if (!selectedBrandId) return deletedProjects;
+    return deletedProjects.filter((p: any) => p?.brand?.id === selectedBrandId);
+  }, [deletedProjects, selectedBrandId]);
 
   const selectedUser = users.find((u: any) => u?.id === selectedUserId) ?? null;
   const selectedProject = projects.find((p: any) => p?.id === selectedProjectId) ?? null;
@@ -131,6 +147,21 @@ export function AdminProjectsClient() {
       toast.error(e instanceof Error ? e.message : "부여 실패");
     } finally {
       setSavingAssign(false);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    const p = projects.find((x: any) => x.id === projectId) ?? null;
+    const label = p ? projectLabel(p) : "이 프로젝트";
+    if (!confirm(`${label}를 삭제(숨김)할까요?\n(퇴사 등 이력 보존을 위해 실제 삭제가 아니라 '삭제된 프로젝트'로 분리됩니다.)`)) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "삭제 실패");
+      toast.success("프로젝트를 삭제 처리했습니다.");
+      fetchAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "삭제 실패");
     }
   };
 
@@ -201,9 +232,19 @@ export function AdminProjectsClient() {
                 placeholder="예: 2026 SS 런칭"
               />
             </div>
-            <Button onClick={handleCreateProject} disabled={!selectedBrandId}>
-              프로젝트 생성
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={handleCreateProject} disabled={!selectedBrandId || !newProjectName.trim()}>
+                프로젝트 생성
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setNewProjectName(""); setSelectedBrandId(""); }}
+                disabled={!selectedBrandId && !newProjectName.trim()}
+              >
+                취소(초기화)
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -267,6 +308,61 @@ export function AdminProjectsClient() {
           </div>
         </CardContent>
       </Card>
+
+      <Card className="border-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">프로젝트 목록</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-muted-foreground text-sm">
+            개인이 퇴사/정리 시 프로젝트를 지울 수 있지만, 실제 삭제 대신 “삭제된 프로젝트”로 숨김 처리합니다.
+          </p>
+          {projectsInBrand.length === 0 ? (
+            <p className="text-muted-foreground text-sm">표시할 프로젝트가 없습니다.</p>
+          ) : (
+            <div className="space-y-2">
+              {projectsInBrand.map((p: any) => (
+                <div key={p.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div className="text-sm font-medium">{projectLabel(p)}</div>
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteProject(p.id)}>
+                    삭제
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {(deletedProjects.length > 0 || isMaster) && (
+        <Card className="border-2 border-dashed">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">삭제된 프로젝트</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-muted-foreground text-sm">
+              삭제된 프로젝트입니다. 퇴사 등 이력 보존을 위해 관리자만 확인할 수 있습니다. 전체 목록은 <Link href="/admin/deleted-projects" className="text-primary underline">삭제된 프로젝트</Link>에서 볼 수 있습니다.
+            </p>
+            {deletedProjectsInBrand.length === 0 ? (
+              <p className="text-muted-foreground text-sm">삭제된 프로젝트가 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {deletedProjectsInBrand.map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between rounded-md border bg-slate-50 px-3 py-2">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">{projectLabel(p)}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {p.deletedAt ? `삭제일: ${new Date(p.deletedAt).toLocaleString("ko-KR")}` : ""}
+                        {p.deletedBy?.name ? ` · 삭제자: ${p.deletedBy.name}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
