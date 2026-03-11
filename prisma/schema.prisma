@@ -159,6 +159,7 @@ model User {
   activityLogs          ActivityLog[]
   dailyWorkLogs         DailyWorkLog[]
   notifications         Notification[]
+  projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
   @@index([currentProjectId])
 }
 
