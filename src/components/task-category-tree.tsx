@@ -297,6 +297,27 @@ export function TaskCategoryTree({
                     {(t.assignedTo.name ?? "?").slice(0, 1)}
                   </AvatarFallback>
                 </Avatar>
+                <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setDetailTaskId(t?.id ?? "")}
+                  >
+                    수정
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteTask(t.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                    삭제
+                  </Button>
+                </div>
               </div>
             ))}
           </>
@@ -306,6 +327,22 @@ export function TaskCategoryTree({
   };
 
   const uncategorizedTasks = tasks.filter((t: any) => !t.categoryId);
+
+  const deleteTask = useCallback(
+    async (taskId: string) => {
+      if (!confirm("이 업무를 삭제할까요?")) return;
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+        const errData = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(errData.error ?? "삭제 실패");
+        toast.success("삭제되었습니다.");
+        onRefresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+      }
+    },
+    [onRefresh]
+  );
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-2">
@@ -377,6 +414,27 @@ export function TaskCategoryTree({
                     {(t.assignedTo.name ?? "?").slice(0, 1)}
                   </AvatarFallback>
                 </Avatar>
+                <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setDetailTaskId(t?.id ?? "")}
+                  >
+                    수정
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteTask(t.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                    삭제
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
