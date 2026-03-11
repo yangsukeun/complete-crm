@@ -226,9 +226,10 @@ export default function TasksPage() {
     IN_PROGRESS: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "IN_PROGRESS"),
     DONE: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "DONE"),
   };
-  const assigneeOptions = Array.from(
-    new Map(tasks.map((t: any) => [t.assignedTo?.id, t.assignedTo]).filter(([, u]: any) => u)).entries()
-  );
+  const assigneePairs = tasks
+    .map((t: any) => [t.assignedTo?.id, t.assignedTo] as [string | undefined, unknown])
+    .filter((pair): pair is [string, unknown] => pair[0] != null && !!pair[1]);
+  const assigneeOptions = Array.from(new Map(assigneePairs).entries());
   const hasActiveFilter = filterStatus !== "" || filterAssigneeId !== "";
 
   return (
