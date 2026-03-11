@@ -125,9 +125,104 @@ const CANVAS_BG_OPTIONS = [
   { value: "#ffffff", label: "흰색" },
 ];
 
-// Dagre layout
+// Layout constants
 const NODE_WIDTH = 280;
 const NODE_HEIGHT = 100;
+const MINDMAP_CENTER_X = 400;
+const MINDMAP_CENTER_Y = 280;
+const MINDMAP_RADIUS = 280;
+const MINDMAP_ANGLE_SPREAD = Math.PI * 0.85; // 약 153도 퍼짐
+
+const STORAGE_KEY_MINDMAP_POSITIONS = "task-mindmap-positions";
+
+function loadSavedPositions(): Record<string, { x: number; y: number }> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_MINDMAP_POSITIONS);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePosition(taskId: string, x: number, y: number) {
+  const saved = loadSavedPositions();
+  saved[taskId] = { x, y };
+  try {
+    localStorage.setItem(STORAGE_KEY_MINDMAP_POSITIONS, JSON.stringify(saved));
+  } catch {
+    // ignore
+  }
+}
+
+/** 마인드맵 방사형 레이아웃: 루트를 중앙에, 자식들을 부모 주변 호(arc)에 배치 */
+function getMindMapLayout(
+  nodes: Node[],
+  edges: Edge[],
+  rootIds: Set<string>
+): Node[] {
+  if (nodes.length === 0) return [];
+
+  const childMap = new Map<string, string[]>();
+  const primaryEdges = edges.filter((e: any) => !e.id?.startsWith("link-"));
+  primaryEdges.forEach((e: any) => {
+    if (!childMap.has(e.source)) childMap.set(e.source, []);
+    childMap.get(e.source)!.push(e.target);
+  });
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const nodeIds = new Set(nodes.map((n: any) => n.id));
+
+  const getChildren = (id: string) => (childMap.get(id) ?? []).filter((c: string) => nodeIds.has(c));
+
+  // 루트 노드들: 중앙 또는 가로로 나란히
+  const roots = nodes.filter((n: any) => rootIds.has(n.id) || !primaryEdges.some((e: any) => e.target === n.id));
+  if (roots.length === 0 && nodes.length > 0) {
+    const first = nodes[0];
+    roots.push(first);
+  }
+
+  roots.forEach((node: any, i: number) => {
+    const totalRoots = roots.length;
+    const dx = totalRoots > 1 ? (i - (totalRoots - 1) / 2) * (NODE_WIDTH + 80) : 0;
+    positions.set(node.id, { x: MINDMAP_CENTER_X + dx - NODE_WIDTH / 2, y: MINDMAP_CENTER_Y - NODE_HEIGHT / 2 });
+  });
+
+  // BFS로 레벨별 자식들을 부모 오른쪽 호에 배치
+  const queue: { id: string; level: number }[] = roots.map((n: any) => ({ id: n.id, level: 0 }));
+  const visited = new Set(roots.map((n: any) => n.id));
+
+  while (queue.length > 0) {
+    const { id, level } = queue.shift()!;
+    const children = getChildren(id);
+    const parentPos = positions.get(id);
+    if (!parentPos) continue;
+
+    const radius = MINDMAP_RADIUS + level * 120;
+    const startAngle = -MINDMAP_ANGLE_SPREAD / 2;
+    const step = children.length > 1 ? MINDMAP_ANGLE_SPREAD / (children.length - 1) : 0;
+
+    children.forEach((childId: string, idx: number) => {
+      if (visited.has(childId)) return;
+      visited.add(childId);
+      const angle = startAngle + step * idx;
+      const x = parentPos.x + NODE_WIDTH / 2 + radius * Math.cos(angle) - NODE_WIDTH / 2;
+      const y = parentPos.y + NODE_HEIGHT / 2 + radius * Math.sin(angle) * 0.6 - NODE_HEIGHT / 2;
+      positions.set(childId, { x, y });
+      queue.push({ id: childId, level: level + 1 });
+    });
+  }
+
+  // 위치가 없는 노드(연결만 있고 루트가 아닌 경우 등)는 중앙 근처에
+  const result = nodes.map((node: any) => {
+    const pos = positions.get(node.id) ?? { x: MINDMAP_CENTER_X + 50 - NODE_WIDTH / 2, y: MINDMAP_CENTER_Y - NODE_HEIGHT / 2 };
+    return { ...node, position: pos };
+  });
+
+  return result;
+}
 
 function getLayoutedElements(
   nodes: Node[],
@@ -530,7 +625,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       if (parentId) {
         toast.success("업무가 하위 노드로 추가되었습니다!");
       } else {
-        toast.success("업무가 트리에 추가되었습니다!");
+        toast.success("업무가 마인드맵에 추가되었습니다!");
       }
       onRefresh();
     } catch {
@@ -706,25 +801,37 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
       }));
 
     const allEdges = [...primaryEdges, ...additionalEdges];
-    const result = getLayoutedElements(nodes, allEdges, "TB");
-    return { layoutedNodes: result.nodes, layoutedEdges: result.edges };
-  }, [treeTasks, taskLinks, collapsedIds, onCreateTask, onTaskClick, handleToggleCollapse, handleTitleChange, getVisibleTasks, getNodeStyle]);
+    // 마인드맵 방사형 레이아웃: 루트 = 상위 없는 노드 + 스테이징된 루트
+    const rootIds = new Set<string>(stagedRootIds);
+    visibleTasks.forEach((t: any) => {
+      if (!t.parentId || !visibleTaskIds.has(t.parentId)) rootIds.add(t.id);
+    });
+    const mindMapNodes = getMindMapLayout(nodes, allEdges, rootIds);
+    return { layoutedNodes: mindMapNodes, layoutedEdges: allEdges };
+  }, [treeTasks, taskLinks, collapsedIds, stagedRootIds, onCreateTask, onTaskClick, handleToggleCollapse, handleTitleChange, getVisibleTasks, getNodeStyle]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
 
-  // Update nodes/edges when tasks change
+  // 레이아웃 적용 + 저장된 위치 병합 (드래그로 옮긴 위치 유지)
   useEffect(() => {
-    if (layoutedNodes) {
-      setNodes(layoutedNodes);
-    }
-    if (layoutedEdges) {
-      setEdges(layoutedEdges);
-    }
-    if (layoutedNodes && layoutedNodes.length > 0) {
-      setTimeout(() => fitView({ padding: 0.2 }), 100);
-    }
+    if (!layoutedNodes?.length) return;
+    const saved = loadSavedPositions();
+    const merged = layoutedNodes.map((node: any) => {
+      const pos = saved[node.id];
+      return pos ? { ...node, position: pos } : node;
+    });
+    setNodes(merged);
+    if (layoutedEdges) setEdges(layoutedEdges);
+    setTimeout(() => fitView({ padding: 0.2 }), 100);
   }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView]);
+
+  // 노드 드래그 끝났을 때 위치 저장 (자유 배치 유지)
+  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node) => {
+    if (node?.position) {
+      savePosition(node.id, node.position.x, node.position.y);
+    }
+  }, []);
 
   // Listen for drop-on-node events
   useEffect(() => {
@@ -1037,7 +1144,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
         </Popover>
 
         <p className="text-xs text-muted-foreground hidden sm:block">
-          💡 노드 선택 후 스타일 변경 가능 · Delete 키로 삭제
+          💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제
         </p>
       </div>
 
@@ -1059,9 +1166,9 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <TreePine className="size-16 mx-auto text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground mb-2 font-medium">트리가 비어있습니다</p>
+              <p className="text-muted-foreground mb-2 font-medium">마인드맵이 비어있습니다</p>
               <p className="text-sm text-muted-foreground">
-                아래 미분류 업무를 여기로 드래그하여 트리를 시작하세요 🌱
+                아래 미분류 업무를 여기로 드래그하여 마인드맵을 시작하세요 🌱
               </p>
             </div>
           </div>
@@ -1071,10 +1178,12 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeDragStop={onNodeDragStop}
             onConnect={handleConnect}
             onEdgesDelete={handleEdgesDelete}
             onSelectionChange={handleSelectionChange}
             nodeTypes={nodeTypes}
+            nodesDraggable
             fitView
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.3}
@@ -1108,13 +1217,13 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            드래그하여 위 캔버스에 놓으면 트리에 심을 수 있어요
+            드래그하여 위 캔버스에 놓으면 마인드맵에 추가할 수 있어요
           </p>
         </div>
 
         {uncategorizedTasks.length === 0 ? (
           <div className="py-8 text-center text-muted-foreground text-sm">
-            <p>모든 업무가 트리에 배치되었습니다! 🎉</p>
+            <p>모든 업무가 마인드맵에 배치되었습니다! 🎉</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto">

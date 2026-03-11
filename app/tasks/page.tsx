@@ -254,7 +254,7 @@ export default function TasksPage() {
               </TabsTrigger>
               <TabsTrigger value="tree" className="gap-2 rounded-md px-3">
                 <GitBranch className="size-4" />
-                트리
+                업무 마인드맵
               </TabsTrigger>
               <TabsTrigger value="logs" className="gap-2 rounded-md px-3">
                 <FileText className="size-4" />
