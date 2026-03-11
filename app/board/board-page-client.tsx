@@ -6,7 +6,6 @@ import {
   FolderOpen,
   Plus,
   Loader2,
-  Paperclip,
   Trash2,
   FileText,
   GraduationCap,
@@ -27,6 +26,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { ContentBodyEditor } from "@/components/content-body-editor";
+import { FilePreviewDialog } from "@/components/file-preview-dialog";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -432,16 +432,17 @@ export function BoardPageClient({
                   {b.attachments.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {b.attachments.map((att: any, idx: any) => (
-                        <a
+                        <div
                           key={idx}
-                          href={att.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md border bg-muted/50 px-2 py-1 text-sm text-foreground hover:bg-muted"
+                          className="inline-flex"
                         >
-                          <Paperclip className="size-3.5" />
-                          {att.name}
-                        </a>
+                          <FilePreviewDialog
+                            url={att.url}
+                            name={att.name}
+                            triggerVariant="outline"
+                            triggerClassName="h-8 px-2 py-1 text-sm"
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -560,8 +561,12 @@ export function BoardPageClient({
                 <ul className="mt-2 space-y-1">
                   {attachments.map((att, idx) => (
                     <li key={idx} className="flex items-center gap-2 text-sm">
-                      <Paperclip className="size-4 text-muted-foreground" />
-                      <span className="truncate">{att.name}</span>
+                      <FilePreviewDialog
+                        url={att.url}
+                        name={att.name}
+                        triggerVariant="ghost"
+                        triggerClassName="h-7 px-2 justify-start text-sm"
+                      />
                       <Button
                         type="button"
                         variant="ghost"

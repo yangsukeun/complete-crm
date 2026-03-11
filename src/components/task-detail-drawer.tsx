@@ -45,6 +45,7 @@ import {
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 
 type User = { id: string; name: string; email?: string; department?: string | null; position?: string | null };
@@ -589,21 +590,17 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
               ) : (
                 <div className="space-y-2">
                   {task.attachments.map((a: any) => (
-                    <a
+                    <div
                       key={a.id}
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
+                      className="flex items-center"
                     >
-                      <span className="text-muted-foreground">
-                        <FileText className="size-4" />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate font-medium">
-                        {a.name || a.url}
-                      </span>
-                      <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-                    </a>
+                      <FilePreviewDialog
+                        url={a.url}
+                        name={a.name}
+                        triggerVariant="ghost"
+                        triggerClassName="w-full justify-start rounded-lg border bg-card px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
+                      />
+                    </div>
                   ))}
                   {showAddAttach ? (
                     <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
