@@ -236,7 +236,10 @@ export default function TasksPage() {
     <div key={mode} className="flex flex-col gap-6 p-6 md:p-8">
       {/* Notion-style header */}
       <div className="border-border flex flex-col gap-4 border-b border-gray-200 pb-6">
-        <PageHeadline title="업무" />
+        <PageHeadline
+          title="업무"
+          description="할 일을 보드·리스트·마인드맵·업무일지로 보고, 담당자·마감일을 지정해 관리합니다."
+        />
         <div className="flex flex-wrap items-center gap-3">
           <Tabs
             value={view}

@@ -433,7 +433,10 @@ export function ChatPageClient() {
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageHeadline title="채팅" />
+        <PageHeadline
+          title="채팅"
+          description="직원과 1:1 또는 그룹 대화를 나누고, 일정 초대·이미지 공유를 할 수 있습니다."
+        />
         <Button onClick={() => setModalOpen(true)}>
           <Plus className="mr-2 size-4" />
           새 대화

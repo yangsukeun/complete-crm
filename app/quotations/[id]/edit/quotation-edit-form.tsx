@@ -248,12 +248,13 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
                       <TableCell className="text-right">
                         <Input
                           type="number"
-                          min={0}
                           className="h-9 text-right border-0 bg-transparent focus-visible:ring-1"
-                          value={row.unitPrice || ""}
-                          onChange={(e: any) =>
-                            updateItem(idx, { unitPrice: parseInt(e.target.value, 10) || 0 })
-                          }
+                          placeholder="원단위 (절사 시 -금액)"
+                          value={row.unitPrice === 0 ? "" : row.unitPrice}
+                          onChange={(e: any) => {
+                            const v = e.target.value === "" ? 0 : Number(e.target.value);
+                            updateItem(idx, { unitPrice: Number.isFinite(v) ? v : 0 });
+                          }}
                         />
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">

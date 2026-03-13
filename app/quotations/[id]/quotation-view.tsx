@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PageHeadline } from "@/components/page-headline";
 import { ArrowLeft, FileDown, Mail, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -97,13 +98,19 @@ export function QuotationView({
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
-      <div className="flex items-center justify-between gap-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/quotations">
-            <ArrowLeft className="mr-2 size-4" />
-            견적서 목록
-          </Link>
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/quotations">
+              <ArrowLeft className="mr-2 size-4" />
+              견적서 목록
+            </Link>
+          </Button>
+          <PageHeadline
+            title={`견적서 ${quotation.quotationNumber}`}
+            description="내용을 확인하고 PDF로 저장·인쇄하거나 메일로 보낼 수 있습니다."
+          />
+        </div>
         <div className="flex items-center gap-2">
           {canEdit && (
             <Button variant="outline" size="sm" asChild>

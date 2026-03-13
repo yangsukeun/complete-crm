@@ -1,7 +1,7 @@
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
 
-export type NotificationTypeEnum = "DEADLINE" | "ASSIGNED" | "COMMENT" | "STAGNANT";
+export type NotificationTypeEnum = "DEADLINE" | "ASSIGNED" | "COMMENT" | "STAGNANT" | "BOARD_MENTION";
 
 /**
  * 알림 1건 생성 (수신자, 타입, 메시지, 링크)

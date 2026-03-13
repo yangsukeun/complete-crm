@@ -108,7 +108,11 @@ export default function DocumentsPage() {
 
   return (
     <main className="min-h-screen bg-[#0a0f1a] text-slate-100 flex flex-col">
-      <div className="border-b border-slate-700/50 px-4 py-3">
+      <div className="border-b border-slate-700/50 px-4 py-3 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-semibold text-slate-100">문서</span>
+          <span className="text-slate-500 text-sm">PC의 폴더·파일을 탐색합니다. 경로를 입력하거나 폴더를 클릭해 이동하세요.</span>
+        </div>
         <form onSubmit={handleAddressSubmit} className="flex gap-2 items-center max-w-3xl">
           <span className="text-slate-500 text-sm shrink-0">경로</span>
           <Input

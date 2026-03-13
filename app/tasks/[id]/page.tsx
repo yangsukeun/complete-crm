@@ -233,6 +233,9 @@ export default function TaskDetailPage() {
             </Button>
           )}
         </div>
+        <p className="text-muted-foreground mb-6 text-sm">
+          업무 상세를 보고, 담당·마감일·본문을 수정하거나 업무일지에 기록할 수 있습니다.
+        </p>
 
         <div className="px-2 pb-10">
           <div className="flex items-start gap-3">

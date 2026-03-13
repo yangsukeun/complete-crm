@@ -125,9 +125,16 @@ export function NotificationBell() {
                       !n.isRead && "bg-violet-50/50"
                     )}
                   >
-                    <p className="line-clamp-2 font-medium text-foreground">
-                      {n.message}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="line-clamp-2 flex-1 font-medium text-foreground">
+                        {n.message}
+                      </p>
+                      {n.type === "BOARD_MENTION" && (
+                        <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
+                          태그
+                        </span>
+                      )}
+                    </div>
                     <p className="text-muted-foreground mt-0.5 text-xs">
                       {formatDistanceToNow(new Date(n.createdAt), {
                         addSuffix: true,

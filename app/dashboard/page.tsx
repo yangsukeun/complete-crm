@@ -56,7 +56,7 @@ export default async function DashboardPage() {
       <div className="flex flex-col gap-6 p-4 md:p-6">
         <PageHeadline
           title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
-          description="개인 모드"
+          description="개인 모드 — 내 일정·할 일만 간단히 관리합니다."
         />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Link
@@ -217,7 +217,7 @@ export default async function DashboardPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <PageHeadline
             title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
-            description="관리자 대시보드"
+            description="관리자 대시보드 — 공지·업무·직원 현황을 한눈에 볼 수 있습니다."
           />
           <DashboardAttendance
             initial={
@@ -428,7 +428,7 @@ export default async function DashboardPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageHeadline
           title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
-          description="직원 대시보드"
+          description="직원 대시보드 — 오늘 할 일·일정·공지를 확인합니다."
         />
         <DashboardAttendance
           initial={

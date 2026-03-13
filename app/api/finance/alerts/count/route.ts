@@ -41,9 +41,14 @@ export async function GET() {
     }
 
     // 이체 담당자 / 요청자: 미확인 알람 수
-    const count = await prisma.paymentRequestAlert.count({
-      where: { userId: session.user.id, readAt: null },
-    });
+    let count = 0;
+    try {
+      count = await prisma.paymentRequestAlert.count({
+        where: { userId: session.user.id, readAt: null },
+      });
+    } catch (err) {
+      console.error("[GET /api/finance/alerts/count] paymentRequestAlert.count", err);
+    }
 
     const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
     const transferExecutorIds = getTransferExecutorIds(
@@ -58,7 +63,8 @@ export async function GET() {
       { count, label },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
-  } catch {
+  } catch (e) {
+    console.error("[GET /api/finance/alerts/count]", e);
     return NextResponse.json(
       { count: 0, label: "알림" },
       { headers: { "Cache-Control": "no-store, max-age=0" } }

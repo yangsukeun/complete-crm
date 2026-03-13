@@ -42,8 +42,11 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
     (q: any) => q.issuedAt >= thisMonthStart && q.issuedAt <= thisMonthEnd
   );
 
+  // 거절(REJECTED)된 견적은 매출·수금 통계에서 제외
+  const excludeRejected = (q: { status: string }) => q.status !== "REJECTED";
+
   const currentMonth = {
-    totalQuotation: currentMonthQuotations.reduce((sum, q) => sum + q.finalAmount, 0),
+    totalQuotation: currentMonthQuotations.filter(excludeRejected).reduce((sum, q) => sum + q.finalAmount, 0),
     paymentCompleted: currentMonthQuotations
       .filter((q: any) => q.status === "PAYMENT_COMPLETED")
       .reduce((sum, q) => sum + q.finalAmount, 0),
@@ -67,7 +70,7 @@ export async function getDashboardSalesStats(): Promise<DashboardSalesStats> {
     const key = format(q.issuedAt, "yyyy-MM");
     const cur = monthlyMap.get(key);
     if (!cur) continue;
-    cur.totalQuotation += q.finalAmount;
+    if (q.status !== "REJECTED") cur.totalQuotation += q.finalAmount;
     if (q.status === "PAYMENT_COMPLETED") cur.paymentCompleted += q.finalAmount;
   }
 

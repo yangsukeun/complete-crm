@@ -9,19 +9,11 @@ const createSchema = z.object({
   name: z.string().optional(),
 });
 
-const userSelectWithProject = {
+const userSelect = {
   id: true,
   name: true,
   position: true,
-  currentProject: { select: { name: true, brand: { select: { name: true } } } },
 } as const;
-const userSelectFallback = { id: true, name: true, position: true } as const;
-
-function withCurrentProjectNull<T extends { id: string; name: string; position: string | null }>(
-  u: T
-): T & { currentProject: { name: string; brand: { name: string } } | null } {
-  return { ...u, currentProject: null };
-}
 
 export async function GET() {
   try {
@@ -38,55 +30,19 @@ export async function GET() {
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
 
     if (isAdmin) {
-      let allChats: Awaited<
-        ReturnType<
-          typeof prisma.chat.findMany<{
-            include: {
-              participants: { include: { user: { select: typeof userSelectWithProject } } };
-              messages: { include: { user: { select: typeof userSelectWithProject } } };
-            };
-          }>
-        >
-      >;
-      try {
-        allChats = await prisma.chat.findMany({
-          include: {
-            participants: {
-              include: { user: { select: userSelectWithProject } },
-            },
-            messages: {
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              include: { user: { select: userSelectWithProject } },
-            },
+      const allChats = await prisma.chat.findMany({
+        include: {
+          participants: {
+            include: { user: { select: userSelect } },
           },
-          orderBy: { updatedAt: "desc" },
-        });
-      } catch {
-        const raw = await prisma.chat.findMany({
-          include: {
-            participants: {
-              include: { user: { select: userSelectFallback } },
-            },
-            messages: {
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              include: { user: { select: userSelectFallback } },
-            },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            include: { user: { select: userSelect } },
           },
-          orderBy: { updatedAt: "desc" },
-        });
-        const chats = raw.map((chat: any) => ({
-          id: chat.id,
-          isGroup: chat.isGroup,
-          name: chat.name,
-          participants: chat.participants.map((x: any) => withCurrentProjectNull(x.user)),
-          lastMessage: chat.messages[0]
-            ? { ...chat.messages[0], user: withCurrentProjectNull(chat.messages[0].user) }
-            : null,
-        }));
-        return NextResponse.json(chats);
-      }
+        },
+        orderBy: { updatedAt: "desc" },
+      });
       const chats = allChats.map((chat: any) => ({
         id: chat.id,
         isGroup: chat.isGroup,
@@ -97,69 +53,24 @@ export async function GET() {
       return NextResponse.json(chats);
     }
 
-    let participants: Awaited<
-      ReturnType<
-        typeof prisma.chatParticipant.findMany<{
+    const participants = await prisma.chatParticipant.findMany({
+      where: { userId: session.user.id },
+      include: {
+        chat: {
           include: {
-            chat: {
-              include: {
-                participants: { include: { user: { select: typeof userSelectWithProject } } };
-                messages: { include: { user: { select: typeof userSelectWithProject } } };
-              };
-            };
-          };
-        }>
-      >
-    >;
-    try {
-      participants = await prisma.chatParticipant.findMany({
-        where: { userId: session.user.id },
-        include: {
-          chat: {
-            include: {
-              participants: {
-                include: { user: { select: userSelectWithProject } },
-              },
-              messages: {
-                orderBy: { createdAt: "desc" },
-                take: 1,
-                include: { user: { select: userSelectWithProject } },
-              },
+            participants: {
+              include: { user: { select: userSelect } },
+            },
+            messages: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              include: { user: { select: userSelect } },
             },
           },
         },
-        orderBy: { chat: { updatedAt: "desc" } },
-      });
-    } catch {
-      const raw = await prisma.chatParticipant.findMany({
-        where: { userId: session.user.id },
-        include: {
-          chat: {
-            include: {
-              participants: {
-                include: { user: { select: userSelectFallback } },
-              },
-              messages: {
-                orderBy: { createdAt: "desc" },
-                take: 1,
-                include: { user: { select: userSelectFallback } },
-              },
-            },
-          },
-        },
-        orderBy: { chat: { updatedAt: "desc" } },
-      });
-      const chats = raw.map((p: any) => ({
-        id: p.chat.id,
-        isGroup: p.chat.isGroup,
-        name: p.chat.name,
-        participants: p.chat.participants.map((x: any) => withCurrentProjectNull(x.user)),
-        lastMessage: p.chat.messages[0]
-          ? { ...p.chat.messages[0], user: withCurrentProjectNull(p.chat.messages[0].user) }
-          : null,
-      }));
-      return NextResponse.json(chats);
-    }
+      },
+      orderBy: { chat: { updatedAt: "desc" } },
+    });
 
     const chats = participants.map((p: any) => ({
       id: p.chat.id,
@@ -171,7 +82,7 @@ export async function GET() {
 
     return NextResponse.json(chats);
   } catch (e) {
-    console.error(e);
+    console.error("[GET /api/chats]", e);
     return NextResponse.json(
       { error: "채팅 목록을 불러올 수 없습니다." },
       { status: 500 }
@@ -235,47 +146,23 @@ export async function POST(req: Request) {
       }
     }
 
-    try {
-      const chat = await prisma.chat.create({
-        data: {
-          isGroup,
-          name: isGroup ? name ?? null : null,
-          participants: {
-            create: userIds.map((userId: any) => ({ userId })),
-          },
+    const chat = await prisma.chat.create({
+      data: {
+        isGroup,
+        name: isGroup ? name ?? null : null,
+        participants: {
+          create: userIds.map((userId: any) => ({ userId })),
         },
-        include: {
-          participants: {
-            include: { user: { select: userSelectWithProject } },
-          },
+      },
+      include: {
+        participants: {
+          include: { user: { select: userSelect } },
         },
-      });
-      return NextResponse.json(chat);
-    } catch {
-      const created = await prisma.chat.create({
-        data: {
-          isGroup,
-          name: isGroup ? name ?? null : null,
-          participants: {
-            create: userIds.map((userId: any) => ({ userId })),
-          },
-        },
-        include: {
-          participants: {
-            include: { user: { select: userSelectFallback } },
-          },
-        },
-      });
-      return NextResponse.json({
-        ...created,
-        participants: created.participants.map((p: any) => ({
-          ...p,
-          user: withCurrentProjectNull(p.user),
-        })),
-      });
-    }
+      },
+    });
+    return NextResponse.json(chat);
   } catch (e) {
-    console.error(e);
+    console.error("[POST /api/chats]", e);
     return NextResponse.json(
       { error: "채팅을 만들 수 없습니다." },
       { status: 500 }

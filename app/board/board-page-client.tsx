@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   FolderOpen,
@@ -58,6 +59,18 @@ type BoardItem = {
 type UnifiedItem =
   | { type: "ANNOUNCEMENT"; data: AnnouncementItem }
   | { type: "BOARD"; data: BoardItem };
+
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|avif)(\?|$)/i;
+const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i;
+
+function getPreviewMedia(attachments: AttachmentItem[]): { type: "image" | "video"; url: string; name: string } | null {
+  if (!attachments?.length) return null;
+  const img = attachments.find((a) => IMAGE_EXT.test(a.url) || IMAGE_EXT.test(a.name));
+  if (img) return { type: "image", url: img.url, name: img.name };
+  const vid = attachments.find((a) => VIDEO_EXT.test(a.url) || VIDEO_EXT.test(a.name));
+  if (vid) return { type: "video", url: vid.url, name: vid.name };
+  return null;
+}
 
 function stripMarkdownPreview(text: string, maxLen: number): string {
   const stripped = text
@@ -350,7 +363,7 @@ export function BoardPageClient({
                 : "등록된 공지·자료가 없습니다."}
           </div>
         ) : (
-          <ul className="space-y-3">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {unifiedList.map((item: any) => {
               if (item.type === "ANNOUNCEMENT") {
                 const a = item.data;
@@ -358,7 +371,7 @@ export function BoardPageClient({
                 return (
                   <li
                     key={`ann-${a.id}`}
-                    className="rounded-xl border bg-card p-5 shadow-sm transition-colors hover:bg-muted/50"
+                    className="sm:col-span-2 lg:col-span-3 rounded-xl border bg-card p-5 shadow-sm transition-colors hover:bg-muted/50"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -386,70 +399,103 @@ export function BoardPageClient({
               }
               const b = item.data;
               const preview = stripMarkdownPreview(b.description, 120);
+              const media = getPreviewMedia(b.attachments);
               return (
                 <li
                   key={`board-${b.id}`}
-                  className="rounded-xl border bg-card p-5 shadow-sm transition-colors hover:bg-muted/50"
+                  className="overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <span className="font-medium">{b.title}</span>
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                        {b.category === "TRAINING" ? (
-                          <GraduationCap className="size-3.5" />
-                        ) : (
-                          <Building2 className="size-3.5" />
-                        )}
+                  <Link href={`/board/${b.id}`} className="block outline-none">
+                    {/* 이미지/영상 미리보기 또는 플레이스홀더 */}
+                    <div className="relative aspect-video w-full bg-muted">
+                      {media?.type === "image" ? (
+                        <img
+                          src={media.url}
+                          alt={media.name || b.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : media?.type === "video" ? (
+                        <video
+                          src={media.url}
+                          className="h-full w-full object-cover"
+                          muted
+                          playsInline
+                          loop
+                          preload="metadata"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                          {b.category === "TRAINING" ? (
+                            <GraduationCap className="size-12 opacity-50" />
+                          ) : (
+                            <FolderOpen className="size-12 opacity-50" />
+                          )}
+                        </div>
+                      )}
+                      <span className="absolute right-2 top-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
                         {CATEGORY_LABEL[b.category] ?? b.category}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-muted-foreground text-sm">
-                        {format(new Date(b.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}
-                      </span>
-                      {canCreate && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeleteBoard(b.id)}
-                          disabled={deletingId === b.id}
-                        >
-                          {deletingId === b.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
+                    <div className="p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h3 className="min-w-0 flex-1 font-medium leading-tight">{b.title}</h3>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-muted-foreground text-xs">
+                            {format(new Date(b.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
+                          </span>
+                          {canCreate && (
+                            <span onClick={(e) => e.preventDefault()} className="inline-flex">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-destructive h-8 w-8"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeleteBoard(b.id);
+                                }}
+                                disabled={deletingId === b.id}
+                              >
+                                {deletingId === b.id ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="size-4" />
+                                )}
+                              </Button>
+                            </span>
                           )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {preview && (
-                    <p className="text-muted-foreground mt-1 line-clamp-2 break-words text-sm">
-                      {preview}
-                    </p>
-                  )}
-                  {b.attachments.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {b.attachments.map((att: any, idx: any) => (
-                        <div
-                          key={idx}
-                          className="inline-flex"
-                        >
-                          <FilePreviewDialog
-                            url={att.url}
-                            name={att.name}
-                            triggerVariant="outline"
-                            triggerClassName="h-8 px-2 py-1 text-sm"
-                          />
                         </div>
-                      ))}
+                      </div>
+                      {preview && (
+                        <p className="text-muted-foreground mt-1 line-clamp-2 break-words text-sm">
+                          {preview}
+                        </p>
+                      )}
+                      {b.attachments.length > 0 && !media && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {b.attachments.slice(0, 3).map((att: any, idx: any) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-xs"
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              <FileText className="size-3" />
+                              {att.name?.slice(0, 8)}
+                              {att.name?.length > 8 ? "…" : ""}
+                            </span>
+                          ))}
+                          {b.attachments.length > 3 && (
+                            <span className="text-muted-foreground text-xs">+{b.attachments.length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-muted-foreground mt-2 text-xs">
+                        {b.createdByName}
+                        {b.createdByPosition ? ` · ${b.createdByPosition}` : ""}
+                      </p>
                     </div>
-                  )}
-                  <p className="text-muted-foreground mt-2 text-xs">
-                    {b.createdByName}
-                    {b.createdByPosition ? ` · ${b.createdByPosition}` : ""}
-                  </p>
+                  </Link>
                 </li>
               );
             })}
@@ -543,7 +589,7 @@ export function BoardPageClient({
                 type="file"
                 className="hidden"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,.txt"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
                 onChange={handleFileSelect}
               />
               <Button

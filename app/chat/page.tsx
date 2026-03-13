@@ -1,7 +1,13 @@
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { ChatPageClient } from "./chat-page-client";
+import dynamic from "next/dynamic";
+import { LoadingFallback } from "@/components/loading-fallback";
+
+const ChatPageClient = dynamic(() => import("./chat-page-client").then((m) => ({ default: m.ChatPageClient })), {
+  loading: () => <LoadingFallback label="채팅 불러오는 중..." />,
+  ssr: false,
+});
 
 export default async function ChatPage() {
   const session = await getAppSession();

@@ -98,10 +98,11 @@ enum DailyWorkLogStatus {
 
 // 알림 타입
 enum NotificationType {
-  DEADLINE   // 마감 임박
-  ASSIGNED   // 업무 배정
-  COMMENT    // 댓글
-  STAGNANT   // 장기 미진행
+  DEADLINE      // 마감 임박
+  ASSIGNED      // 업무 배정
+  COMMENT       // 댓글
+  STAGNANT      // 장기 미진행
+  BOARD_MENTION // 게시판에서 태그(멘션)됨
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
@@ -155,6 +156,7 @@ model User {
   quotations            Quotation[]
   announcements         Announcement[]
   boardPosts            BoardPost[]
+  boardPostComments    BoardPostComment[]
   accessLogs            AccessLog[]
   activityLogs          ActivityLog[]
   dailyWorkLogs         DailyWorkLog[]
@@ -448,16 +450,31 @@ model Announcement {
 
 // 자료실 게시판 — 회사 자료·교육자료 등 (첨부파일 URL 배열)
 model BoardPost {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   title       String
-  description String?  @default("")
-  category    String   // "COMPANY" | "TRAINING"
-  attachments String   @default("[]") // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
+  description String?           @default("")
+  category    String             // "COMPANY" | "TRAINING"
+  attachments String            @default("[]") // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
   createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  createdBy   User              @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  comments    BoardPostComment[]
   @@index([createdAt])
   @@index([category])
+}
+
+// 게시판 댓글 (멘션된 사용자 ID 배열 저장 → 알림 발송)
+model BoardPostComment {
+  id             String    @id @default(cuid())
+  boardPostId    String
+  boardPost      BoardPost @relation(fields: [boardPostId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body           String
+  mentionedIds   String    @default("[]") // JSON: ["userId1", "userId2"]
+  createdAt      DateTime  @default(now())
+  @@index([boardPostId])
+  @@index([userId])
 }
 
 // 실시간 알림

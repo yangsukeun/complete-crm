@@ -93,14 +93,18 @@ export async function PUT(
       if (items !== undefined) {
         await tx.quotationItem.deleteMany({ where: { quotationId: id } });
         await tx.quotationItem.createMany({
-          data: items.map((item: any, idx: any) => ({
-            quotationId: id,
-            description: String(item?.description ?? "").trim() || "(품목)",
-            quantity: Number(item?.quantity) || 0,
-            unitPrice: Number(item?.unitPrice) || 0,
-            amount: Number(item?.amount) || 0,
-            sortOrder: idx,
-          })),
+          data: items.map((item: any, idx: any) => {
+            const up = Number(item?.unitPrice);
+            const amt = Number(item?.amount);
+            return {
+              quotationId: id,
+              description: String(item?.description ?? "").trim() || "(품목)",
+              quantity: Number.isFinite(Number(item?.quantity)) ? Number(item.quantity) : 0,
+              unitPrice: Number.isFinite(up) ? up : 0,
+              amount: Number.isFinite(amt) ? amt : 0,
+              sortOrder: idx,
+            };
+          }),
         });
       }
     });

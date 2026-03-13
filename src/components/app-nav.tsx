@@ -291,7 +291,7 @@ export function AppNav() {
         <nav className="hidden flex-1 items-center justify-center gap-1 md:flex">
           {/* 대시보드 단일 버튼 */}
           <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/dashboard" || pathname.startsWith("/dashboard/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-            <Link href="/dashboard" className="flex items-center gap-1.5">
+            <Link href="/dashboard" prefetch={true} className="flex items-center gap-1.5">
               <LayoutDashboard className="size-4" />
               <span>대시보드</span>
             </Link>
@@ -300,7 +300,7 @@ export function AppNav() {
           {/* 업무 단일 버튼 */}
           {can("tasks") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/tasks" || pathname.startsWith("/tasks/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/tasks" className="flex items-center gap-1.5">
+              <Link href="/tasks" prefetch={true} className="flex items-center gap-1.5">
                 <ListTodo className="size-4" />
                 <span>업무</span>
               </Link>
@@ -310,7 +310,7 @@ export function AppNav() {
           {/* 게시판(자료실) - 회사 모드에서만 */}
           {isCompany && can("board") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/board" || pathname.startsWith("/board/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/board" className="flex items-center gap-1.5">
+              <Link href="/board" prefetch={true} className="flex items-center gap-1.5">
                 <FolderOpen className="size-4" />
                 <span>게시판</span>
               </Link>
@@ -320,7 +320,7 @@ export function AppNav() {
           {/* 채팅 - 회사 모드에서만 */}
           {isCompany && can("chat") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/chat" || pathname.startsWith("/chat/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/chat" className="relative flex items-center gap-1.5">
+              <Link href="/chat" prefetch={true} className="relative flex items-center gap-1.5">
                 <MessageCircle className="size-4" />
                 <span>채팅</span>
                 {chatUnreadCount > 0 && (

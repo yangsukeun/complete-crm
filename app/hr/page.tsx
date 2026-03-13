@@ -347,7 +347,10 @@ export default function HrPage() {
   return (
     <div className="min-h-screen bg-[#0a0f1a] text-slate-100">
       <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <h1 className="text-2xl font-bold text-slate-100">인사관리 (HR)</h1>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold text-slate-100">인사관리 (HR)</h1>
+          <p className="text-slate-500 text-sm">출퇴근 기록과 연차·반차 신청·승인을 한 화면에서 처리합니다.</p>
+        </div>
 
         <Tabs defaultValue="attendance" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
