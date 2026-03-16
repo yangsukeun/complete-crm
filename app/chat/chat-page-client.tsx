@@ -77,6 +77,7 @@ export function ChatPageClient() {
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastMessageIdRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -135,13 +136,24 @@ export function ChatPageClient() {
   }, [selectedChatId, session?.user?.id]);
 
   const fetchMessages = useCallback(
-    async (chatId: string, silent?: boolean) => {
+    async (chatId: string, silent?: boolean, afterMessageId?: string | null) => {
       if (!silent) setMessageLoading(true);
       try {
-        const res = await fetch(`/api/chats/${chatId}/messages`);
+        const url = afterMessageId
+          ? `/api/chats/${chatId}/messages?after=${encodeURIComponent(afterMessageId)}`
+          : `/api/chats/${chatId}/messages?limit=100`;
+        const res = await fetch(url);
         if (!res.ok) throw new Error("Failed");
-        const data = await res.json() as Message[];
-        if (silent) {
+        const data = (await res.json()) as Message[];
+        if (silent && afterMessageId) {
+          if (data.length === 0) return;
+          setMessages((prev: any) => {
+            const existingIds = new Set(prev.map((m: any) => m.id));
+            const toAdd = data.filter((m: any) => !existingIds.has(m.id));
+            if (toAdd.length === 0) return prev;
+            return [...prev, ...toAdd];
+          });
+        } else if (silent) {
           setMessages((prev: any) => {
             if (prev.length !== data.length) return data;
             if (data.length === 0) return prev;
@@ -175,6 +187,7 @@ export function ChatPageClient() {
 
   useEffect(() => {
     if (selectedChatId) {
+      lastMessageIdRef.current = null;
       fetchMessages(selectedChatId);
       setUnreadCounts((counts: any) => {
         const next = { ...counts };
@@ -188,12 +201,18 @@ export function ChatPageClient() {
     } else setMessages([]);
   }, [selectedChatId, fetchMessages]);
 
-  // 선택된 채팅 메시지 폴링(대화창에 새 메시지 반영, 로딩 표시 없이 백그라운드 갱신)
+  useEffect(() => {
+    lastMessageIdRef.current =
+      messages.length > 0 ? (messages[messages.length - 1] as Message)?.id ?? null : null;
+  }, [messages]);
+
+  // 선택된 채팅 메시지 폴링: 새 메시지만 after 파라미터로 요청해 응답 가벼움
   useEffect(() => {
     if (!selectedChatId) return;
     const t = setInterval(() => {
-      fetchMessages(selectedChatId, true);
-    }, 2000);
+      const afterId = lastMessageIdRef.current;
+      fetchMessages(selectedChatId, true, afterId);
+    }, 2500);
     return () => clearInterval(t);
   }, [selectedChatId, fetchMessages]);
 

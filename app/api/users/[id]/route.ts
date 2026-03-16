@@ -151,9 +151,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const myRole = String(session.user.role ?? "").toUpperCase();
-    if (myRole !== "EXECUTIVE" && myRole !== "ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "Bad Request" }, { status: 400 });
@@ -169,25 +166,37 @@ export async function DELETE(
       return NextResponse.json({ error: "해당 계정을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    // 마지막 관리자/임원 보호
     const targetRole = String(target.role ?? "").toUpperCase();
-    if (targetRole === "ADMIN" || targetRole === "EXECUTIVE") {
-      const adminCount = await prisma.user.count({
-        where: { role: { in: ["ADMIN", "EXECUTIVE"] as any } },
-      });
-      if (adminCount <= 1) {
-        return NextResponse.json(
-          { error: "마지막 관리자 계정은 삭제할 수 없습니다." },
-          { status: 400 }
-        );
+
+    // EXECUTIVE, ADMIN: 전체 삭제 권한
+    if (myRole === "EXECUTIVE" || myRole === "ADMIN") {
+      if (targetRole === "ADMIN" || targetRole === "EXECUTIVE") {
+        const adminCount = await prisma.user.count({
+          where: { role: { in: ["ADMIN", "EXECUTIVE"] as any } },
+        });
+        if (adminCount <= 1) {
+          return NextResponse.json(
+            { error: "마지막 관리자 계정은 삭제할 수 없습니다." },
+            { status: 400 }
+          );
+        }
+        if (targetRole === "EXECUTIVE" && myRole !== "EXECUTIVE") {
+          return NextResponse.json(
+            { error: "대표/임원 계정은 대표/임원만 삭제할 수 있습니다." },
+            { status: 403 }
+          );
+        }
       }
-      // ADMIN은 EXECUTIVE 삭제 불가 (대표/임원은 대표/임원만 삭제)
-      if (targetRole === "EXECUTIVE" && myRole !== "EXECUTIVE") {
+    } else if (myRole === "TEAM_LEAD") {
+      // 팀장: USER 역할만 삭제 가능 (직원 삭제)
+      if (targetRole !== "USER") {
         return NextResponse.json(
-          { error: "대표/임원 계정은 대표/임원만 삭제할 수 있습니다." },
+          { error: "팀장은 일반 직원(USER)만 삭제할 수 있습니다." },
           { status: 403 }
         );
       }
+    } else {
+      return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 
     await prisma.user.delete({ where: { id } });
