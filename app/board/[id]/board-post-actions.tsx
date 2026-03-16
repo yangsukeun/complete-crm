@@ -51,6 +51,8 @@ export function BoardPostActions({
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [urlLink, setUrlLink] = useState("");
+  const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openEdit = () => {
@@ -58,7 +60,18 @@ export function BoardPostActions({
     setBodyContent(initialDescription);
     setCategory(initialCategory);
     setAttachments([...initialAttachments]);
+    setUrlLink("");
+    setUrlName("");
     setEditOpen(true);
+  };
+
+  const handleAddUrl = () => {
+    const link = urlLink.trim();
+    if (!link) return;
+    if (attachments.length >= 20) return;
+    setAttachments((prev) => [...prev, { url: link, name: urlName.trim() || "링크" }]);
+    setUrlLink("");
+    setUrlName("");
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -197,26 +210,49 @@ export function BoardPostActions({
               />
             </div>
             <div className="space-y-2">
-              <Label>첨부파일</Label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
-                onChange={handleFileSelect}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || attachments.length >= 20}
-                className="gap-1"
-              >
-                <FileText className="size-4" />
-                {uploading ? "업로드 중..." : "파일 선택"}
-              </Button>
+              <Label>첨부파일 / 링크</Label>
+              <div className="flex flex-wrap items-end gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
+                  onChange={handleFileSelect}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || attachments.length >= 20}
+                  className="gap-1"
+                >
+                  <FileText className="size-4" />
+                  {uploading ? "업로드 중..." : "파일 선택"}
+                </Button>
+                <Input
+                  placeholder="URL 입력"
+                  value={urlLink}
+                  onChange={(e) => setUrlLink(e.target.value)}
+                  className="h-9 flex-1 min-w-[120px] text-sm"
+                />
+                <Input
+                  placeholder="이름 (선택)"
+                  value={urlName}
+                  onChange={(e) => setUrlName(e.target.value)}
+                  className="h-9 w-24 text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddUrl}
+                  disabled={attachments.length >= 20 || !urlLink.trim()}
+                >
+                  URL 추가
+                </Button>
+              </div>
               {attachments.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {attachments.map((att, idx) => (

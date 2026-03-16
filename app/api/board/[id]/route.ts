@@ -7,7 +7,7 @@ const updateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(50000).optional(),
   category: z.enum(["COMPANY", "TRAINING"]).optional(),
-  attachments: z.array(z.object({ url: z.string(), name: z.string() })).max(20).optional(),
+  attachments: z.array(z.object({ url: z.string().min(1), name: z.string().optional() })).max(20).optional(),
 });
 
 export async function GET(
@@ -81,7 +81,14 @@ export async function PATCH(
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
     if (parsed.data.description !== undefined) data.description = (parsed.data.description ?? "").trim() || null;
     if (parsed.data.category !== undefined) data.category = parsed.data.category;
-    if (parsed.data.attachments !== undefined) data.attachments = JSON.stringify(parsed.data.attachments ?? []);
+    if (parsed.data.attachments !== undefined) {
+      data.attachments = JSON.stringify(
+        (parsed.data.attachments ?? []).map((a: { url: string; name?: string }) => ({
+          url: a.url,
+          name: (a.name && a.name.trim()) || "링크",
+        }))
+      );
+    }
 
     const updated = await prisma.boardPost.update({
       where: { id },

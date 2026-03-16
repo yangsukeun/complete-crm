@@ -25,6 +25,13 @@ const ALLOWED_FILE_TYPES = [
   "text/plain",
 ];
 
+// 브라우저가 MIME을 비우거나 octet-stream으로 보낼 때 확장자로 허용
+const ALLOWED_EXTENSIONS = new Set([
+  "pdf", "doc", "docx", "xls", "xlsx", "txt",
+  "jpg", "jpeg", "png", "gif", "webp", "bmp",
+  "mp4", "webm", "ogg", "mov", "m4v", "avi",
+]);
+
 function getExt(mime: string, fileName?: string): string {
   const map: Record<string, string> = {
     "image/jpeg": "jpg",
@@ -62,11 +69,13 @@ export async function POST(req: Request) {
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ error: "파일 크기는 50MB 이하여야 합니다." }, { status: 400 });
     }
-    const mime = file.type || "application/octet-stream";
-    const allowed = ALLOWED_IMAGE_TYPES.includes(mime) || ALLOWED_FILE_TYPES.includes(mime);
-    if (!allowed) {
+    const mime = (file.type || "").toLowerCase() || "application/octet-stream";
+    const ext = (file.name || "").split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "") || "";
+    const allowedByMime = ALLOWED_IMAGE_TYPES.includes(mime) || ALLOWED_FILE_TYPES.includes(mime);
+    const allowedByExt = ext && ALLOWED_EXTENSIONS.has(ext);
+    if (!allowedByMime && !allowedByExt) {
       return NextResponse.json(
-        { error: "지원 형식: 이미지, 동영상(MP4/WebM/OGG/MOV 등), PDF, 문서, 텍스트." },
+        { error: "지원 형식: 이미지, 동영상(MP4/WebM/OGG/MOV 등), PDF, 문서, 텍스트. (확장자: " + [...ALLOWED_EXTENSIONS].slice(0, 10).join(", ") + " 등)" },
         { status: 400 }
       );
     }

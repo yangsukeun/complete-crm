@@ -9,7 +9,7 @@ const createSchema = z.object({
   description: z.string().max(50000).optional().default(""),
   category: categorySchema,
   attachments: z
-    .array(z.object({ url: z.string(), name: z.string() }))
+    .array(z.object({ url: z.string().min(1), name: z.string().optional() }))
     .max(20)
     .optional()
     .default([]),
@@ -79,12 +79,16 @@ export async function POST(req: Request) {
       );
     }
 
+    const attachments = (parsed.data.attachments ?? []).map((a: { url: string; name?: string }) => ({
+      url: a.url,
+      name: (a.name && a.name.trim()) || "링크",
+    }));
     const created = await prisma.boardPost.create({
       data: {
         title: parsed.data.title.trim(),
         description: (parsed.data.description ?? "").trim() || null,
         category: parsed.data.category,
-        attachments: JSON.stringify(parsed.data.attachments ?? []),
+        attachments: JSON.stringify(attachments),
         createdById: session.user.id,
       },
       select: {

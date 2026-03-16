@@ -129,6 +129,8 @@ export function BoardPageClient({
   const [category, setCategory] = useState<"COMPANY" | "TRAINING">("COMPANY");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [urlLink, setUrlLink] = useState("");
+  const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -268,6 +270,21 @@ export function BoardPageClient({
     setAttachments((prev: any) => prev.filter((_: any, i: any) => i !== index));
   };
 
+  const handleAddUrl = () => {
+    const link = urlLink.trim();
+    if (!link) {
+      toast.error("URL을 입력하세요.");
+      return;
+    }
+    if (attachments.length >= 20) {
+      toast.error("첨부는 최대 20개까지 가능합니다.");
+      return;
+    }
+    setAttachments((prev: any) => [...prev, { url: link, name: urlName.trim() || "링크" }]);
+    setUrlLink("");
+    setUrlName("");
+  };
+
   const handleDeleteBoard = async (id: string) => {
     if (!confirm("이 자료를 삭제하시겠습니까?")) return;
     setDeletingId(id);
@@ -289,6 +306,8 @@ export function BoardPageClient({
     setBodyContent("");
     setCategory("COMPANY");
     setAttachments([]);
+    setUrlLink("");
+    setUrlName("");
     setOpenBoard(false);
   };
 
@@ -609,26 +628,51 @@ export function BoardPageClient({
               />
             </div>
             <div className="space-y-2">
-              <Label>첨부파일</Label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
-                onChange={handleFileSelect}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || attachments.length >= 20}
-                className="gap-1"
-              >
-                <FileText className="size-4" />
-                {uploading ? "업로드 중..." : "파일 선택"}
-              </Button>
+              <Label>첨부파일 / 링크</Label>
+              <div className="flex flex-wrap items-end gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
+                  onChange={handleFileSelect}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || attachments.length >= 20}
+                  className="gap-1"
+                >
+                  <FileText className="size-4" />
+                  {uploading ? "업로드 중..." : "파일 선택"}
+                </Button>
+                <div className="flex flex-1 min-w-[200px] gap-2 items-center">
+                  <Input
+                    placeholder="URL 입력 (예: https://... 또는 /uploads/...)"
+                    value={urlLink}
+                    onChange={(e: any) => setUrlLink(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  <Input
+                    placeholder="이름 (선택)"
+                    value={urlName}
+                    onChange={(e: any) => setUrlName(e.target.value)}
+                    className="h-9 w-28 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddUrl}
+                    disabled={attachments.length >= 20 || !urlLink.trim()}
+                  >
+                    URL 추가
+                  </Button>
+                </div>
+              </div>
               {attachments.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {attachments.map((att, idx) => (
