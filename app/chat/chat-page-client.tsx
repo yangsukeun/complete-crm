@@ -449,6 +449,22 @@ export function ChatPageClient() {
           return nameMatch || participantMatch;
         });
 
+  const handleLeaveChat = async () => {
+    if (!selectedChatId) return;
+    if (!confirm("이 채팅방에서 나가시겠습니까?")) return;
+    try {
+      const res = await fetch(`/api/chats/${selectedChatId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "나가기 실패");
+      setChats((prev: any) => prev.filter((c: any) => c.id !== selectedChatId));
+      setSelectedChatId(null);
+      setMessages([]);
+      toast.success("채팅방에서 나갔습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "채팅방 나가기에 실패했습니다.");
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -538,11 +554,24 @@ export function ChatPageClient() {
             <>
               <div className="flex items-center justify-between border-b px-4 py-2">
                 <span className="font-medium">{chatTitle}</span>
-                {!isParticipant && (
-                  <span className="text-muted-foreground rounded bg-muted px-2 py-0.5 text-xs">
-                    관리자 보기 전용
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {!isParticipant && (
+                    <span className="text-muted-foreground rounded bg-muted px-2 py-0.5 text-xs">
+                      관리자 보기 전용
+                    </span>
+                  )}
+                  {isParticipant && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleLeaveChat}
+                    >
+                      나가기
+                    </Button>
+                  )}
+                </div>
               </div>
               <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2">
                 {messageLoading ? (
