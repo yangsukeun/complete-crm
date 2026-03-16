@@ -23,7 +23,11 @@ export default async function BoardPage() {
         title="게시판"
         description="공지사항과 회사 자료·교육자료를 확인하고 올립니다."
       />
-      <BoardPageClient canCreate={canCreate} canCreateAnnouncement={canCreateAnnouncement} />
+      <BoardPageClient
+        canCreate={canCreate}
+        canCreateAnnouncement={canCreateAnnouncement}
+        currentUserId={session.user.id}
+      />
     </div>
   );
 }

@@ -1,0 +1,258 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ContentBodyEditor } from "@/components/content-body-editor";
+import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { FileText, Loader2, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+type AttachmentItem = { url: string; name: string };
+
+type Props = {
+  postId: string;
+  createdById: string;
+  currentUserId: string;
+  isAdmin: boolean;
+  initialTitle: string;
+  initialDescription: string;
+  initialCategory: "COMPANY" | "TRAINING";
+  initialAttachments: AttachmentItem[];
+};
+
+export function BoardPostActions({
+  postId,
+  createdById,
+  currentUserId,
+  isAdmin,
+  initialTitle,
+  initialDescription,
+  initialCategory,
+  initialAttachments,
+}: Props) {
+  const router = useRouter();
+  const canEdit = currentUserId === createdById || isAdmin;
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [title, setTitle] = useState(initialTitle);
+  const [bodyContent, setBodyContent] = useState(initialDescription);
+  const [category, setCategory] = useState<"COMPANY" | "TRAINING">(initialCategory);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>(initialAttachments);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openEdit = () => {
+    setTitle(initialTitle);
+    setBodyContent(initialDescription);
+    setCategory(initialCategory);
+    setAttachments([...initialAttachments]);
+    setEditOpen(true);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    if (attachments.length + files.length > 20) {
+      toast.error("첨부파일은 최대 20개까지 가능합니다.");
+      return;
+    }
+    setUploading(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "업로드 실패");
+        setAttachments((prev) => [...prev, { url: data.url, name: data.name ?? file.name }]);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "파일 업로드에 실패했습니다.");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmitEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      toast.error("제목을 입력하세요.");
+      return;
+    }
+    setSubmitLoading(true);
+    try {
+      const res = await fetch(`/api/board/${postId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: bodyContent.trim() || "",
+          category,
+          attachments,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "수정 실패");
+      toast.success("수정되었습니다.");
+      setEditOpen(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "수정에 실패했습니다.");
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("이 자료를 삭제하시겠습니까?")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/board/${postId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "삭제 실패");
+      toast.success("삭제되었습니다.");
+      router.push("/board");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+      setDeleting(false);
+    }
+  };
+
+  if (!canEdit) return null;
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
+          <Pencil className="size-4" />
+          수정
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="gap-1 text-destructive hover:text-destructive"
+        >
+          {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          삭제
+        </Button>
+      </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>자료 수정</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitEdit} className="flex flex-col gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-board-title">제목</Label>
+              <Input
+                id="edit-board-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="제목을 입력하세요"
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-board-category">구분</Label>
+              <select
+                id="edit-board-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as "COMPANY" | "TRAINING")}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="COMPANY">회사 자료</option>
+                <option value="TRAINING">교육자료</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>설명</Label>
+              <ContentBodyEditor
+                key={editOpen ? "edit-open" : "edit-closed"}
+                initialContent={bodyContent}
+                onChange={setBodyContent}
+                minHeight="240px"
+                showHelp={true}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>첨부파일</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
+                onChange={handleFileSelect}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || attachments.length >= 20}
+                className="gap-1"
+              >
+                <FileText className="size-4" />
+                {uploading ? "업로드 중..." : "파일 선택"}
+              </Button>
+              {attachments.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {attachments.map((att, idx) => (
+                    <li key={idx} className="flex items-center gap-2 text-sm">
+                      <FilePreviewDialog
+                        url={att.url}
+                        name={att.name}
+                        triggerVariant="ghost"
+                        triggerClassName="h-7 px-2 justify-start text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0"
+                        onClick={() => removeAttachment(idx)}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                취소
+              </Button>
+              <Button type="submit" disabled={submitLoading}>
+                {submitLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+                저장
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

@@ -159,6 +159,7 @@ model User {
   boardPostComments    BoardPostComment[]
   accessLogs            AccessLog[]
   activityLogs          ActivityLog[]
+  taskRevisions         TaskRevision[]
   dailyWorkLogs         DailyWorkLog[]
   notifications         Notification[]
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
@@ -328,6 +329,7 @@ model Task {
   // 추가 부모 연결 (다대다: 하나의 업무가 여러 대분류에 연결 가능)
   additionalParents TaskLink[] @relation("TaskLinkChild")
   additionalChildren TaskLink[] @relation("TaskLinkParent")
+  revisions        TaskRevision[]
   @@index([assignedToId])
   @@index([createdById])
   @@index([parentId])
@@ -347,6 +349,21 @@ model TaskLink {
   @@unique([parentId, childId])
   @@index([parentId])
   @@index([childId])
+}
+
+// 업무 수정 이력 (누가, 무엇을, 언제)
+model TaskRevision {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field     String   // title, description, status, dueDate, assignedToId, priority 등
+  oldValue  String?  // 변경 전 값 (표시용 문자열)
+  newValue  String?  // 변경 후 값 (표시용 문자열)
+  createdAt DateTime @default(now())
+  @@index([taskId])
+  @@index([userId])
 }
 
 model TaskAttachment {

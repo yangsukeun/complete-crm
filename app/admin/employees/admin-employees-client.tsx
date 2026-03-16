@@ -73,6 +73,8 @@ export function AdminEmployeesClient({
   const [features, setFeatures] = useState<{ key: string; label: string }[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [useCustomPermissions, setUseCustomPermissions] = useState(false);
+  const [manualDeduction, setManualDeduction] = useState("");
+  const [leaveBalance, setLeaveBalance] = useState<{ manualDeduction: number; leaveRemaining: number } | null>(null);
   const saveSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -110,6 +112,8 @@ export function AdminEmployeesClient({
     setWorkEmail(e?.workEmail ?? "");
     setRole((e?.role === "TEAM_LEAD" ? "TEAM_LEAD" : "USER") as "USER" | "TEAM_LEAD");
     setJoinDate(e?.joinDate ?? "");
+    setManualDeduction("");
+    setLeaveBalance(null);
     if (e?.permissions != null && e?.permissions !== "") {
       try {
         const arr = JSON.parse(String(e?.permissions ?? "")) as unknown;
@@ -122,6 +126,20 @@ export function AdminEmployeesClient({
     } else {
       setSelectedPermissions([]);
       setUseCustomPermissions(false);
+    }
+    if (e?.id) {
+      fetch(`/api/users/${e.id}/leave-balance`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { manualDeduction?: number; leaveRemaining?: number } | null) => {
+          if (d) {
+          setLeaveBalance({ manualDeduction: d.manualDeduction ?? 0, leaveRemaining: d.leaveRemaining ?? 0 });
+          // 마스터(EXECUTIVE)는 기존 소진값을 수정할 수 있으므로 입력란에 현재값 표시
+          if (myRole === "EXECUTIVE" && (d.manualDeduction ?? 0) > 0) {
+            setManualDeduction(String(d.manualDeduction));
+          }
+        }
+        })
+        .catch(() => setLeaveBalance(null));
     }
   };
 
@@ -147,6 +165,10 @@ export function AdminEmployeesClient({
         permissions: useCustomPermissions ? selectedPermissions : null,
       };
       if (!isAdminOrExecutive) (body as { role?: string }).role = role;
+      const manualNum = manualDeduction.trim() === "" ? undefined : parseFloat(manualDeduction);
+      if (manualNum !== undefined && !Number.isNaN(manualNum) && manualNum >= 0) {
+        (body as { manualDeduction?: number }).manualDeduction = manualNum;
+      }
       const res = await fetch(`/api/users/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -440,6 +462,35 @@ export function AdminEmployeesClient({
                   value={joinDate}
                   onChange={(e: any) => setJoinDate(e.target.value)}
                 />
+              </div>
+              {/* 휴가 소진: 마스터(대표/임원)는 언제든 사용 처리·되돌리기 가능, 일반 관리자는 최초 1회만 */}
+              <div className="space-y-2 border-t pt-4">
+                <Label className="text-sm font-medium">휴가 소진 (이미 사용한 연차)</Label>
+                {leaveBalance && leaveBalance.manualDeduction > 0 && myRole !== "EXECUTIVE" ? (
+                  <p className="text-muted-foreground text-sm">
+                    이미 소진 처리됨: <strong>{leaveBalance.manualDeduction}일</strong> (수정 불가)
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground text-xs">
+                      {myRole === "EXECUTIVE"
+                        ? "마스터 계정: 사용 처리 또는 0으로 되돌릴 수 있습니다."
+                        : "시스템 도입 전에 이미 사용한 연차가 있으면 여기 입력 후 저장하세요. 최초 1회만 설정 가능합니다."}
+                    </p>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={manualDeduction}
+                      onChange={(e: any) => setManualDeduction(e.target.value)}
+                      placeholder="0"
+                      className="w-32"
+                    />
+                    {leaveBalance != null && (
+                      <p className="text-muted-foreground text-xs">현재 잔여 연차: {leaveBalance.leaveRemaining}일</p>
+                    )}
+                  </>
+                )}
               </div>
               <div className="space-y-2 border-t pt-4">
                 <div className="flex items-center justify-between">

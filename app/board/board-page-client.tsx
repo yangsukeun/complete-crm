@@ -52,6 +52,7 @@ type BoardItem = {
   category: string;
   attachments: AttachmentItem[];
   createdAt: string;
+  createdById?: string;
   createdByName: string;
   createdByPosition: string | null;
 };
@@ -62,13 +63,36 @@ type UnifiedItem =
 
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|avif)(\?|$)/i;
 const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i;
+const YOUTUBE_REGEX = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 
-function getPreviewMedia(attachments: AttachmentItem[]): { type: "image" | "video"; url: string; name: string } | null {
-  if (!attachments?.length) return null;
-  const img = attachments.find((a) => IMAGE_EXT.test(a.url) || IMAGE_EXT.test(a.name));
-  if (img) return { type: "image", url: img.url, name: img.name };
-  const vid = attachments.find((a) => VIDEO_EXT.test(a.url) || VIDEO_EXT.test(a.name));
-  if (vid) return { type: "video", url: vid.url, name: vid.name };
+function getYoutubeThumbnail(urlOrText: string): string | null {
+  const m = urlOrText.match(YOUTUBE_REGEX);
+  return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null;
+}
+
+function getPreviewMedia(
+  attachments: AttachmentItem[],
+  description?: string
+): { type: "image" | "video"; url: string; name: string } | null {
+  // 1) 첨부 중 직접 업로드 이미지 (URL 또는 파일명에 확장자)
+  if (attachments?.length) {
+    const img = attachments.find((a) => IMAGE_EXT.test(a.url) || IMAGE_EXT.test(a.name));
+    if (img) return { type: "image", url: img.url, name: img.name };
+    // 2) 첨부 중 YouTube 링크 → 썸네일로 미리보기
+    const yt = attachments.find((a) => YOUTUBE_REGEX.test(a.url || "") || YOUTUBE_REGEX.test(a.name || ""));
+    if (yt) {
+      const thumb = getYoutubeThumbnail(yt.url || yt.name);
+      if (thumb) return { type: "image", url: thumb, name: yt.name };
+    }
+    // 3) 첨부 중 직접 업로드 영상 파일
+    const vid = attachments.find((a) => VIDEO_EXT.test(a.url) || VIDEO_EXT.test(a.name));
+    if (vid) return { type: "video", url: vid.url, name: vid.name };
+  }
+  // 4) 본문(description)에 YouTube 링크가 있으면 썸네일 사용
+  if (description?.trim()) {
+    const thumb = getYoutubeThumbnail(description);
+    if (thumb) return { type: "image", url: thumb, name: "YouTube" };
+  }
   return null;
 }
 
@@ -87,9 +111,11 @@ function stripMarkdownPreview(text: string, maxLen: number): string {
 export function BoardPageClient({
   canCreate,
   canCreateAnnouncement,
+  currentUserId,
 }: {
   canCreate: boolean;
   canCreateAnnouncement: boolean;
+  currentUserId?: string;
 }) {
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [boardList, setBoardList] = useState<BoardItem[]>([]);
@@ -399,7 +425,7 @@ export function BoardPageClient({
               }
               const b = item.data;
               const preview = stripMarkdownPreview(b.description, 120);
-              const media = getPreviewMedia(b.attachments);
+              const media = getPreviewMedia(b.attachments, b.description);
               return (
                 <li
                   key={`board-${b.id}`}
@@ -443,7 +469,7 @@ export function BoardPageClient({
                           <span className="text-muted-foreground text-xs">
                             {format(new Date(b.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                           </span>
-                          {canCreate && (
+                          {(canCreate && (!currentUserId || b.createdById === currentUserId)) && (
                             <span onClick={(e) => e.preventDefault()} className="inline-flex">
                               <Button
                                 type="button"

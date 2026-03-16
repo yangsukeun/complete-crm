@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -22,6 +23,8 @@ const updateSchema = z.object({
   currentProjectId: z.string().nullable().optional(),
   joinDate: z.string().optional(), // YYYY-MM-DD or ISO
   permissions: z.array(z.string()).optional().nullable(), // 사용 가능 기능 키 목록, null = 역할 기본값
+  /** 휴가 소진 처리: 시스템 도입 전 이미 사용한 연차 일수. 최초 1회만 설정 가능. */
+  manualDeduction: z.number().min(0).optional(),
 });
 
 export async function PATCH(
@@ -88,6 +91,37 @@ export async function PATCH(
         permissions: true,
       },
     });
+
+    // 휴가 소진(실제 사용 차감): 일반 관리자는 최초 1회만, 마스터(EXECUTIVE)는 언제든 수정·되돌리기 가능
+    if (parsed.data.manualDeduction !== undefined && parsed.data.manualDeduction >= 0) {
+      try {
+        const year = new Date().getFullYear();
+        const joinDateVal = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
+        const entitlement = getAnnualLeaveEntitlement(joinDateVal, year);
+        const balance = await prisma.leaveBalance.findUnique({
+          where: { userId_year: { userId: id, year } },
+        });
+        const isMaster = role === "EXECUTIVE";
+        if (!balance) {
+          await prisma.leaveBalance.create({
+            data: {
+              userId: id,
+              year,
+              annualTotal: entitlement,
+              annualUsed: 0,
+              manualDeduction: parsed.data.manualDeduction,
+            },
+          });
+        } else if (balance.manualDeduction === 0 || isMaster) {
+          await prisma.leaveBalance.update({
+            where: { userId_year: { userId: id, year } },
+            data: { manualDeduction: parsed.data.manualDeduction },
+          });
+        }
+      } catch (leaveErr) {
+        console.error("PATCH users/[id] leaveBalance:", leaveErr);
+      }
+    }
 
     return NextResponse.json(user);
   } catch (e) {

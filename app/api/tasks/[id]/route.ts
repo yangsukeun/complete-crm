@@ -50,6 +50,12 @@ export async function GET(
           },
           orderBy: { createdAt: "asc" },
         },
+        revisions: {
+          include: {
+            user: { select: { id: true, name: true, position: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
         children: {
           include: {
             assignedTo: { select: { name: true, position: true } },
@@ -106,7 +112,10 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await req.json();
-    const existing = await prisma.task.findUnique({ where: { id } });
+    const existing = await prisma.task.findUnique({
+      where: { id },
+      include: { assignedTo: { select: { name: true } } },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -150,6 +159,70 @@ export async function PATCH(
     if ("parentId" in body) data.parentId = body.parentId === null || body.parentId === "" ? null : body.parentId;
     if (typeof body.dueDate === "string") data.dueDate = new Date(body.dueDate);
     if (body.priority === "HIGH" || body.priority === "MEDIUM" || body.priority === "LOW") data.priority = body.priority;
+
+    // 수정 이력 기록 (누가, 무엇을, 언제)
+    const statusLabels: Record<string, string> = { TODO: "할 일", IN_PROGRESS: "진행 중", DONE: "완료" };
+    const priorityLabels: Record<string, string> = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
+    const revisions: { field: string; oldValue: string | null; newValue: string | null }[] = [];
+    if (data.title !== undefined && data.title !== existing.title) {
+      revisions.push({ field: "title", oldValue: existing.title, newValue: data.title });
+    }
+    if (data.description !== undefined && data.description !== (existing.description ?? null)) {
+      revisions.push({
+        field: "description",
+        oldValue: existing.description ?? null,
+        newValue: data.description ?? null,
+      });
+    }
+    if (data.status !== undefined && data.status !== existing.status) {
+      revisions.push({
+        field: "status",
+        oldValue: statusLabels[existing.status] ?? existing.status,
+        newValue: statusLabels[data.status] ?? data.status,
+      });
+    }
+    if (data.dueDate !== undefined && String(data.dueDate) !== String(existing.dueDate)) {
+      revisions.push({
+        field: "dueDate",
+        oldValue: existing.dueDate.toISOString().slice(0, 10),
+        newValue: data.dueDate.toISOString().slice(0, 10),
+      });
+    }
+    if (data.assignedToId !== undefined && data.assignedToId !== existing.assignedToId) {
+      const newUser = data.assignedToId
+        ? await prisma.user.findUnique({ where: { id: data.assignedToId }, select: { name: true } })
+        : null;
+      revisions.push({
+        field: "assignedToId",
+        oldValue: (existing.assignedTo as { name?: string })?.name ?? existing.assignedToId,
+        newValue: newUser?.name ?? data.assignedToId,
+      });
+    }
+    if (data.priority !== undefined && data.priority !== existing.priority) {
+      revisions.push({
+        field: "priority",
+        oldValue: priorityLabels[existing.priority] ?? existing.priority,
+        newValue: priorityLabels[data.priority] ?? data.priority,
+      });
+    }
+    if (data.isCompleted !== undefined && data.isCompleted !== existing.isCompleted) {
+      revisions.push({
+        field: "isCompleted",
+        oldValue: existing.isCompleted ? "완료" : "미완료",
+        newValue: data.isCompleted ? "완료" : "미완료",
+      });
+    }
+    if (revisions.length > 0) {
+      await prisma.taskRevision.createMany({
+        data: revisions.map((r) => ({
+          taskId: id,
+          userId: session.user.id,
+          field: r.field,
+          oldValue: r.oldValue,
+          newValue: r.newValue,
+        })),
+      });
+    }
 
     const task = await prisma.task.update({
       where: { id },

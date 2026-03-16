@@ -39,6 +39,7 @@ export async function GET(req: Request) {
         category: true,
         attachments: true,
         createdAt: true,
+        createdById: true,
         createdBy: { select: { name: true, position: true } },
       },
     });
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
         category: p.category,
         attachments: JSON.parse(p.attachments || "[]") as { url: string; name: string }[],
         createdAt: p.createdAt.toISOString(),
+        createdById: p.createdById,
         createdByName: p.createdBy.name,
         createdByPosition: p.createdBy.position,
       }))

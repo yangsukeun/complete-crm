@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import { useSession } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTaskModal } from "@/components/create-task-modal";
-import { TaskDetailDrawer } from "@/components/task-detail-drawer";
 import { TaskCategoryTree } from "@/components/task-category-tree";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
@@ -126,7 +125,7 @@ export default function TasksPage() {
   const [view, setView] = useState<"board" | "table" | "tree" | "logs">("board");
   const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const router = useRouter();
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "">("");
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
@@ -355,7 +354,7 @@ export default function TasksPage() {
           }))}
           taskLinks={taskLinks}
           onRefresh={refreshTasks}
-          onTaskClick={(taskId: any) => setDetailTaskId(taskId)}
+          onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
           onCreateTask={(parentId: any) => {
             setCreateParentId(parentId);
             setCreateOpen(true);
@@ -392,7 +391,7 @@ export default function TasksPage() {
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              onClick={() => setDetailTaskId(task.id)}
+                              onClick={() => router.push(`/tasks/${task.id}`)}
                               className="border-border cursor-pointer rounded-lg border border-gray-200 bg-card p-3 shadow-sm transition-shadow hover:shadow-md"
                             >
                               <p
@@ -445,7 +444,7 @@ export default function TasksPage() {
                 <TableRow
                   key={task.id}
                   className="border-gray-200 cursor-pointer transition-colors hover:bg-muted/50"
-                  onClick={() => setDetailTaskId(task.id)}
+                  onClick={() => router.push(`/tasks/${task.id}`)}
                 >
                   <TableCell>
                     <span
@@ -533,11 +532,6 @@ export default function TasksPage() {
         orderIndex={tasks.length}
       />
 
-      <TaskDetailDrawer
-        taskId={detailTaskId}
-        onClose={() => setDetailTaskId(null)}
-        onUpdate={refreshTasks}
-      />
     </div>
   );
 }
