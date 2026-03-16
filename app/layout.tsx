@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Script from "next/script";
 import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { Providers } from "@/components/providers";
-import { OneSignalInit } from "@/components/OneSignalInit";
 import { AppNav } from "@/components/app-nav";
 import "./globals.css";
 
@@ -71,7 +71,20 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <OneSignalInit />
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          strategy="afterInteractive"
+        />
+        <Script id="onesignal-init" strategy="afterInteractive">
+          {`
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            OneSignalDeferred.push(async function(OneSignal) {
+              await OneSignal.init({
+                appId: "7a05dfae-d334-4485-b552-ed56e9310772"
+              });
+            });
+          `}
+        </Script>
         <Providers session={session ?? undefined}>
           <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>
             <AppNav />
