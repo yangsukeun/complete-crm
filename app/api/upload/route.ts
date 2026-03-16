@@ -70,9 +70,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "파일 크기는 50MB 이하여야 합니다." }, { status: 400 });
     }
     const mime = (file.type || "").toLowerCase() || "application/octet-stream";
-    const ext = (file.name || "").split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "") || "";
+    const extFromName = (file.name || "").split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "") || "";
     const allowedByMime = ALLOWED_IMAGE_TYPES.includes(mime) || ALLOWED_FILE_TYPES.includes(mime);
-    const allowedByExt = ext && ALLOWED_EXTENSIONS.has(ext);
+    const allowedByExt = extFromName && ALLOWED_EXTENSIONS.has(extFromName);
     if (!allowedByMime && !allowedByExt) {
       return NextResponse.json(
         { error: "지원 형식: 이미지, 동영상(MP4/WebM/OGG/MOV 등), PDF, 문서, 텍스트. (확장자: " + [...ALLOWED_EXTENSIONS].slice(0, 10).join(", ") + " 등)" },
@@ -80,8 +80,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const ext = getExt(mime, file.name);
-    const filename = `u-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+    const fileExt = getExt(mime, file.name);
+    const filename = `u-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${fileExt}`;
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     }
