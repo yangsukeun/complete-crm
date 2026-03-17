@@ -44,6 +44,8 @@ type LeaveRequest = {
 type Balance = {
   year: number;
   total: number;
+  annualTotal?: number;
+  carryOver?: number;
   used: number;
   manualDeduction?: number;
   remaining: number;
@@ -231,7 +233,7 @@ export function LeavePageClient({
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{balance.year}년 연차 (입사일 기준 2026 근로기준법 자동계산)</CardTitle>
             <p className="text-muted-foreground text-xs">
-              부여일 − 시스템 사용일 − 실제 사용 차감(최초 1회) = 잔여일
+              전체 휴가(부여+이월) − 시스템 사용일 − 실제 사용 차감(최초 1회) = 잔여일
             </p>
           </CardHeader>
           <CardContent>
@@ -239,12 +241,26 @@ export function LeavePageClient({
               잔여 <span className="text-primary">{balance.remaining.toFixed(1)}</span>일
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
-              부여 {balance.total}일 − 사용 {balance.used.toFixed(1)}일
-              {(balance.manualDeduction ?? 0) > 0 && (
-                <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
+              {typeof balance.annualTotal === "number" && (balance.carryOver ?? 0) > 0 ? (
+                <>
+                  부여 {balance.annualTotal}일 + 이월 {balance.carryOver!.toFixed(1)}일 = 총 {balance.total}일
+                  {" − "}사용 {balance.used.toFixed(1)}일
+                  {(balance.manualDeduction ?? 0) > 0 && (
+                    <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
+                  )}
+                  {" = "}
+                  {balance.remaining.toFixed(1)}일
+                </>
+              ) : (
+                <>
+                  전체 휴가 {balance.total}일 − 사용 {balance.used.toFixed(1)}일
+                  {(balance.manualDeduction ?? 0) > 0 && (
+                    <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
+                  )}
+                  {" = "}
+                  {balance.remaining.toFixed(1)}일
+                </>
               )}
-              {" = "}
-              {balance.remaining.toFixed(1)}일
             </p>
           </CardContent>
         </Card>

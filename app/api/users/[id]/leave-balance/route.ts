@@ -34,14 +34,18 @@ export async function GET(
     const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
     const balance = await prisma.leaveBalance.findUnique({
       where: { userId_year: { userId: id, year } },
-      select: { annualUsed: true, manualDeduction: true },
+      select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
     });
+    const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const leaveRemaining = Math.max(0, annualTotal - annualUsed - manualDeduction);
+    const totalAvailable = annualTotal + carryOver;
+    const leaveRemaining = Math.max(0, totalAvailable - annualUsed - manualDeduction);
 
     return NextResponse.json({
       annualTotal,
+      annualCarryOver: carryOver,
+      totalAvailable,
       annualUsed,
       manualDeduction,
       leaveRemaining,

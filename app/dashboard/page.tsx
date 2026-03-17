@@ -208,9 +208,11 @@ export default async function DashboardPage() {
       tasksCreatedByMe.length > 0
         ? Math.round((completedTasks.length / tasksCreatedByMe.length) * 100)
         : 0;
+    const carryOver = adminLeaveBalance?.annualCarryOver ?? 0;
     const used = adminLeaveBalance?.annualUsed ?? 0;
     const manual = adminLeaveBalance?.manualDeduction ?? 0;
-    const remaining = Math.max(0, annualTotal - used - manual);
+    const totalLeave = annualTotal + carryOver;
+    const remaining = Math.max(0, totalLeave - used - manual);
     const incompleteCount = tasksCreatedByMe.filter((t: any) => !t.isCompleted).length;
     const salesStats = await getDashboardSalesStats();
 
@@ -277,7 +279,7 @@ export default async function DashboardPage() {
             </div>
             <p className="mt-2 text-2xl font-semibold">{remaining}일</p>
             <p className="text-muted-foreground text-sm">
-              사용 {used + manual} / 부여 {annualTotal}일
+              사용 {used + manual} / 전체 휴가 {totalLeave}일
             </p>
             <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
               연차/근태 →
@@ -415,9 +417,11 @@ export default async function DashboardPage() {
     getDashboardSalesStats(),
   ]);
 
+  const carryOver = leaveBalance?.annualCarryOver ?? 0;
   const used = leaveBalance?.annualUsed ?? 0;
   const manual = leaveBalance?.manualDeduction ?? 0;
-  const remaining = Math.max(0, annualTotal - used - manual);
+  const totalLeave = annualTotal + carryOver;
+  const remaining = Math.max(0, totalLeave - used - manual);
 
   const isDueSoonOrOverdue = (due: Date) => {
     const endOfToday = new Date();
@@ -489,7 +493,7 @@ export default async function DashboardPage() {
           </div>
           <p className="mt-2 text-2xl font-semibold">{remaining}일</p>
           <p className="text-muted-foreground text-sm">
-            사용 {used + manual} / 부여 {annualTotal}일
+            사용 {used + manual} / 전체 휴가 {totalLeave}일
           </p>
           <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
             연차/근태 →

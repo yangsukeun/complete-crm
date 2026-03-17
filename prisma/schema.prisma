@@ -409,7 +409,8 @@ model LeaveBalance {
   userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   year            Int
-  annualTotal     Float    @default(15)  // 연차 부여 일수
+  annualTotal     Float    @default(15)  // 당해 연도 부여 연차 일수
+  annualCarryOver Float    @default(0)   // 전년도 이월 연차 일수
   annualUsed      Float    @default(0)   // 시스템에서 승인된 사용일
   manualDeduction Float    @default(0)   // 실제 사용한 일수 (최초 1회만 설정 가능)
   @@unique([userId, year])

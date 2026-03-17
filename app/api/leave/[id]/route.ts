@@ -71,7 +71,7 @@ export async function PATCH(
         const entitlement = getAnnualLeaveEntitlement(leave.user.joinDate, year);
         await prisma.leaveBalance.upsert({
           where: { userId_year: { userId: leave.userId, year } },
-          create: { userId: leave.userId, year, annualTotal: entitlement, annualUsed: days, manualDeduction: 0 },
+          create: { userId: leave.userId, year, annualTotal: entitlement, annualUsed: days, manualDeduction: 0, annualCarryOver: 0 },
           update: { annualUsed: { increment: days } },
         });
       }

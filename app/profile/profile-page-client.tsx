@@ -27,6 +27,8 @@ type Profile = {
   role: string;
   leaveRemaining?: number;
   annualTotal?: number;
+  annualCarryOver?: number;
+  totalAvailable?: number;
   annualUsed?: number;
   manualDeduction?: number;
   badgePreset?: string | null;
@@ -63,6 +65,7 @@ export function ProfilePageClient({
   const [positions, setPositions] = useState<{ id: string; name: string }[]>([]);
   const [leaveRemaining, setLeaveRemaining] = useState("");
   const [manualDeduction, setManualDeduction] = useState("");
+  const [annualCarryOver, setAnnualCarryOver] = useState("");
 
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -96,6 +99,7 @@ export function ProfilePageClient({
       setJoinDate(data.joinDate?.slice(0, 10) ?? "");
       setLeaveRemaining(String(data.leaveRemaining ?? 0));
       setManualDeduction(String(data.manualDeduction ?? 0));
+      setAnnualCarryOver(String(data.annualCarryOver ?? 0));
       setBadgePreset(data.badgePreset ?? "default");
     } catch (err) {
       clearTimeout(timeoutId);
@@ -161,6 +165,8 @@ export function ProfilePageClient({
         if (joinDate) body.joinDate = joinDate;
         const manual = parseFloat(manualDeduction);
         if (!Number.isNaN(manual) && manual >= 0) body.manualDeduction = manual;
+        const carry = parseFloat(annualCarryOver);
+        if (!Number.isNaN(carry) && carry >= 0) body.annualCarryOver = carry;
       }
 
       const res = await fetch("/api/profile/me", {
@@ -174,6 +180,7 @@ export function ProfilePageClient({
       if (data.joinDate) setJoinDate(data.joinDate.slice(0, 10));
       if (data.leaveRemaining != null) setLeaveRemaining(String(data.leaveRemaining));
       if (data.manualDeduction != null) setManualDeduction(String(data.manualDeduction));
+      if (data.annualCarryOver != null) setAnnualCarryOver(String(data.annualCarryOver));
       if (password) {
         setPassword("");
         setPasswordConfirm("");
@@ -431,15 +438,41 @@ export function ProfilePageClient({
                 <p className="text-lg font-semibold">{leaveRemaining}일</p>
                 {profile.annualTotal != null && (
                   <p className="text-muted-foreground text-xs">
-                    부여 {profile.annualTotal}일 − 사용 {profile.annualUsed ?? 0}일
-                    {(profile.manualDeduction ?? 0) > 0 && (
-                      <> − 실제 사용 차감 {profile.manualDeduction}일</>
+                    {(profile.annualCarryOver ?? 0) > 0 ? (
+                      <>
+                        부여 {profile.annualTotal}일 + 이월 {profile.annualCarryOver}일 = 전체 {profile.totalAvailable ?? profile.annualTotal + (profile.annualCarryOver ?? 0)}일
+                        {" − "}사용 {profile.annualUsed ?? 0}일
+                        {(profile.manualDeduction ?? 0) > 0 && <> − 실제 사용 차감 {profile.manualDeduction}일</>}
+                        {" = "}{leaveRemaining}일
+                      </>
+                    ) : (
+                      <>
+                        부여 {profile.annualTotal}일 − 사용 {profile.annualUsed ?? 0}일
+                        {(profile.manualDeduction ?? 0) > 0 && <> − 실제 사용 차감 {profile.manualDeduction}일</>}
+                        {" = "}{leaveRemaining}일
+                      </>
                     )}
-                    {" = "}{leaveRemaining}일
                   </p>
                 )}
               </div>
             </div>
+            {isAdmin && (
+              <div className="space-y-2 border-t pt-4">
+                <Label htmlFor="annualCarryOver" className="text-sm font-medium">
+                  이월 연차 (전년도 미사용분, 일)
+                </Label>
+                <Input
+                  id="annualCarryOver"
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={annualCarryOver}
+                  onChange={(e: any) => setAnnualCarryOver(e.target.value)}
+                  placeholder="0"
+                  className="h-10 w-32 border bg-background"
+                />
+              </div>
+            )}
             {isAdmin && (profile.manualDeduction ?? 0) === 0 && (
               <div className="space-y-2 border-t pt-4">
                 <Label htmlFor="manualDeduction" className="text-sm font-medium">

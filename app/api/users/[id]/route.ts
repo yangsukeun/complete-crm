@@ -25,6 +25,8 @@ const updateSchema = z.object({
   permissions: z.array(z.string()).optional().nullable(), // 사용 가능 기능 키 목록, null = 역할 기본값
   /** 휴가 소진 처리: 시스템 도입 전 이미 사용한 연차 일수. 최초 1회만 설정 가능. */
   manualDeduction: z.number().min(0).optional(),
+  /** 전년도 이월 연차 일수 */
+  annualCarryOver: z.number().min(0).optional(),
 });
 
 export async function PATCH(
@@ -110,6 +112,7 @@ export async function PATCH(
               annualTotal: entitlement,
               annualUsed: 0,
               manualDeduction: parsed.data.manualDeduction,
+              annualCarryOver: 0,
             },
           });
         } else if (balance.manualDeduction === 0 || isMaster) {
@@ -120,6 +123,28 @@ export async function PATCH(
         }
       } catch (leaveErr) {
         console.error("PATCH users/[id] leaveBalance:", leaveErr);
+      }
+    }
+
+    if (parsed.data.annualCarryOver !== undefined && parsed.data.annualCarryOver >= 0) {
+      try {
+        const year = new Date().getFullYear();
+        const joinDateVal = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
+        const entitlement = getAnnualLeaveEntitlement(joinDateVal, year);
+        await prisma.leaveBalance.upsert({
+          where: { userId_year: { userId: id, year } },
+          create: {
+            userId: id,
+            year,
+            annualTotal: entitlement,
+            annualUsed: 0,
+            manualDeduction: 0,
+            annualCarryOver: parsed.data.annualCarryOver,
+          },
+          update: { annualCarryOver: parsed.data.annualCarryOver },
+        });
+      } catch (carryErr) {
+        console.error("PATCH users/[id] annualCarryOver:", carryErr);
       }
     }
 

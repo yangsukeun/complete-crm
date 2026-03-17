@@ -62,14 +62,18 @@ export async function GET() {
         data: { userId: session.user.id, year, annualTotal, annualUsed: 0, manualDeduction: 0 },
       });
     }
+    const carryOver = balance.annualCarryOver ?? 0;
     const manualDeduction = balance.manualDeduction ?? 0;
-    const remaining = Math.max(0, annualTotal - balance.annualUsed - manualDeduction);
+    const totalAvailable = annualTotal + carryOver;
+    const remaining = Math.max(0, totalAvailable - balance.annualUsed - manualDeduction);
 
     return NextResponse.json({
       requests,
       balance: {
         year,
-        total: annualTotal,
+        total: totalAvailable,
+        annualTotal,
+        carryOver,
         used: balance.annualUsed,
         manualDeduction,
         remaining,
@@ -125,8 +129,10 @@ export async function POST(req: Request) {
         data: { userId: session.user.id, year, annualTotal, annualUsed: 0, manualDeduction: 0 },
       });
     }
+    const carryOver = balance.annualCarryOver ?? 0;
     const manualDeduction = balance.manualDeduction ?? 0;
-    const remaining = annualTotal - balance.annualUsed - manualDeduction;
+    const totalAvailable = annualTotal + carryOver;
+    const remaining = totalAvailable - balance.annualUsed - manualDeduction;
 
     let days = 0;
     const type = parsed.data.type;

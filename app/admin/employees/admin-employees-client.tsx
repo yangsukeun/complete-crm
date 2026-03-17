@@ -74,7 +74,13 @@ export function AdminEmployeesClient({
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [useCustomPermissions, setUseCustomPermissions] = useState(false);
   const [manualDeduction, setManualDeduction] = useState("");
-  const [leaveBalance, setLeaveBalance] = useState<{ manualDeduction: number; leaveRemaining: number } | null>(null);
+  const [leaveBalance, setLeaveBalance] = useState<{
+    manualDeduction: number;
+    leaveRemaining: number;
+    annualCarryOver?: number;
+    totalAvailable?: number;
+  } | null>(null);
+  const [annualCarryOver, setAnnualCarryOver] = useState("");
   const saveSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -113,6 +119,7 @@ export function AdminEmployeesClient({
     setRole((e?.role === "TEAM_LEAD" ? "TEAM_LEAD" : "USER") as "USER" | "TEAM_LEAD");
     setJoinDate(e?.joinDate ?? "");
     setManualDeduction("");
+    setAnnualCarryOver("");
     setLeaveBalance(null);
     if (e?.permissions != null && e?.permissions !== "") {
       try {
@@ -130,14 +137,19 @@ export function AdminEmployeesClient({
     if (e?.id) {
       fetch(`/api/users/${e.id}/leave-balance`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { manualDeduction?: number; leaveRemaining?: number } | null) => {
+        .then((d: { manualDeduction?: number; leaveRemaining?: number; annualCarryOver?: number; totalAvailable?: number } | null) => {
           if (d) {
-          setLeaveBalance({ manualDeduction: d.manualDeduction ?? 0, leaveRemaining: d.leaveRemaining ?? 0 });
-          // 마스터(EXECUTIVE)는 기존 소진값을 수정할 수 있으므로 입력란에 현재값 표시
-          if (myRole === "EXECUTIVE" && (d.manualDeduction ?? 0) > 0) {
-            setManualDeduction(String(d.manualDeduction));
+            setLeaveBalance({
+              manualDeduction: d.manualDeduction ?? 0,
+              leaveRemaining: d.leaveRemaining ?? 0,
+              annualCarryOver: d.annualCarryOver ?? 0,
+              totalAvailable: d.totalAvailable,
+            });
+            setAnnualCarryOver(String(d.annualCarryOver ?? 0));
+            if (myRole === "EXECUTIVE" && (d.manualDeduction ?? 0) > 0) {
+              setManualDeduction(String(d.manualDeduction));
+            }
           }
-        }
         })
         .catch(() => setLeaveBalance(null));
     }
@@ -168,6 +180,10 @@ export function AdminEmployeesClient({
       const manualNum = manualDeduction.trim() === "" ? undefined : parseFloat(manualDeduction);
       if (manualNum !== undefined && !Number.isNaN(manualNum) && manualNum >= 0) {
         (body as { manualDeduction?: number }).manualDeduction = manualNum;
+      }
+      const carryNum = annualCarryOver.trim() === "" ? undefined : parseFloat(annualCarryOver);
+      if (carryNum !== undefined && !Number.isNaN(carryNum) && carryNum >= 0) {
+        (body as { annualCarryOver?: number }).annualCarryOver = carryNum;
       }
       const res = await fetch(`/api/users/${editing.id}`, {
         method: "PATCH",
@@ -487,10 +503,27 @@ export function AdminEmployeesClient({
                       className="w-32"
                     />
                     {leaveBalance != null && (
-                      <p className="text-muted-foreground text-xs">현재 잔여 연차: {leaveBalance.leaveRemaining}일</p>
+                      <p className="text-muted-foreground text-xs">
+                        현재 잔여 연차: {leaveBalance.leaveRemaining}일
+                        {(leaveBalance.annualCarryOver ?? 0) > 0 && (
+                          <> (전체 휴가 {leaveBalance.totalAvailable ?? "-"}일, 이월 {leaveBalance.annualCarryOver}일)</>
+                        )}
+                      </p>
                     )}
                   </>
                 )}
+              </div>
+              <div className="space-y-2 border-t pt-4">
+                <Label className="text-sm font-medium">이월 연차 (전년도 미사용분, 일)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={annualCarryOver}
+                  onChange={(e: any) => setAnnualCarryOver(e.target.value)}
+                  placeholder="0"
+                  className="w-32"
+                />
               </div>
               <div className="space-y-2 border-t pt-4">
                 <div className="flex items-center justify-between">

@@ -110,20 +110,22 @@ export async function GET() {
     }
 
     const year = new Date().getFullYear();
-    let balance: { annualUsed: number; manualDeduction: number } | null = null;
+    let balance: { annualUsed: number; manualDeduction: number; annualCarryOver?: number } | null = null;
     try {
       balance = await prisma.leaveBalance.findUnique({
         where: { userId_year: { userId: session.user.id, year } },
-        select: { annualUsed: true, manualDeduction: true },
+        select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
       });
     } catch {
       // leaveBalance 없어도 진행
     }
     const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
     const annualTotal = getAnnualLeaveEntitlement(joinDateObj, year);
+    const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const leaveRemaining = Math.max(0, annualTotal - annualUsed - manualDeduction);
+    const totalAvailable = annualTotal + carryOver;
+    const leaveRemaining = Math.max(0, totalAvailable - annualUsed - manualDeduction);
     const joinDateStr =
       user.joinDate instanceof Date
         ? user.joinDate.toISOString().slice(0, 10)
@@ -134,6 +136,8 @@ export async function GET() {
       joinDate: joinDateStr,
       leaveRemaining,
       annualTotal,
+      annualCarryOver: carryOver,
+      totalAvailable,
       annualUsed,
       manualDeduction,
     });
@@ -171,6 +175,7 @@ const updateByAdminSchema = updateByUserSchema.extend({
   joinDate: z.string().optional(),
   leaveRemaining: z.number().min(0).optional(),
   manualDeduction: z.number().min(0).optional(), // 실제 사용한 일수 (최초 1회만)
+  annualCarryOver: z.number().min(0).optional(), // 전년도 이월 연차 일수
 });
 
 export async function PATCH(req: Request) {
@@ -332,7 +337,7 @@ export async function PATCH(req: Request) {
         const annualUsed = Math.max(0, entitlement - (parsed.data as any).leaveRemaining);
         await prisma.leaveBalance.upsert({
           where: { userId_year: { userId: session.user.id, year } },
-          create: { userId: session.user.id, year, annualTotal: entitlement, annualUsed, manualDeduction: 0 },
+          create: { userId: session.user.id, year, annualTotal: entitlement, annualUsed, manualDeduction: 0, annualCarryOver: 0 },
           update: { annualUsed },
         });
       } catch (leaveBalanceErr) {
@@ -366,11 +371,31 @@ export async function PATCH(req: Request) {
       }
     }
 
-    let balance: { annualUsed: number; manualDeduction?: number } | null = null;
+    if (isAdmin && (parsed.data as any).annualCarryOver !== undefined) {
+      try {
+        const carryOver = Math.max(0, (parsed.data as any).annualCarryOver);
+        await prisma.leaveBalance.upsert({
+          where: { userId_year: { userId: session.user.id, year } },
+          create: {
+            userId: session.user.id,
+            year,
+            annualTotal: entitlement,
+            annualCarryOver: carryOver,
+            annualUsed: 0,
+            manualDeduction: 0,
+          },
+          update: { annualCarryOver: carryOver },
+        });
+      } catch (carryErr) {
+        console.error("Profile PATCH annualCarryOver:", carryErr);
+      }
+    }
+
+    let balance: { annualUsed: number; manualDeduction?: number; annualCarryOver?: number } | null = null;
     try {
       balance = await prisma.leaveBalance.findUnique({
         where: { userId_year: { userId: session.user.id, year } },
-        select: { annualUsed: true, manualDeduction: true },
+        select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
       });
     } catch {
       try {
@@ -379,13 +404,16 @@ export async function PATCH(req: Request) {
           select: { annualUsed: true },
         });
         if (balance) (balance as Record<string, unknown>).manualDeduction = 0;
+        if (balance) (balance as Record<string, unknown>).annualCarryOver = 0;
       } catch {
         // ignore
       }
     }
+    const carryOver = (balance as { annualCarryOver?: number } | null)?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = (balance as { manualDeduction?: number } | null)?.manualDeduction ?? 0;
-    const leaveRemaining = Math.max(0, entitlement - annualUsed - manualDeduction);
+    const totalAvailable = entitlement + carryOver;
+    const leaveRemaining = Math.max(0, totalAvailable - annualUsed - manualDeduction);
 
     const joinDateStr =
       user.joinDate instanceof Date
@@ -396,6 +424,8 @@ export async function PATCH(req: Request) {
       joinDate: joinDateStr,
       leaveRemaining,
       annualTotal: entitlement,
+      annualCarryOver: carryOver,
+      totalAvailable,
       annualUsed,
       manualDeduction,
     };
