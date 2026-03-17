@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,10 +48,10 @@ export function NotificationBell() {
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications?limit=100&unreadOnly=true");
+      const res = await fetch("/api/notifications/unread-count");
       if (!res.ok) return;
       const data = await res.json();
-      setUnreadCount(Array.isArray(data) ? data.length : 0);
+      setUnreadCount(typeof data?.count === "number" ? data.count : 0);
     } catch {
       setUnreadCount(0);
     }
@@ -84,6 +85,17 @@ export function NotificationBell() {
     },
     [router]
   );
+
+  const handleReadAll = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications/read-all", { method: "PATCH" });
+      if (!res.ok) return;
+      setList((prev: NotificationItem[]) => prev.map((x) => ({ ...x, isRead: true })));
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -145,6 +157,20 @@ export function NotificationBell() {
                 </li>
               ))}
             </ul>
+          )}
+        </div>
+        <div className="flex items-center justify-between border-t px-3 py-2 text-sm">
+          <Link
+            href="/notifications"
+            onClick={() => setOpen(false)}
+            className="text-primary hover:underline"
+          >
+            전체 보기
+          </Link>
+          {unreadCount > 0 && (
+            <Button variant="ghost" size="sm" onClick={handleReadAll}>
+              모두 읽음
+            </Button>
           )}
         </div>
       </PopoverContent>

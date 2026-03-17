@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
 export type PollOption = { text: string; voterIds: string[] };
@@ -111,6 +112,22 @@ export async function POST(req: Request) {
         pollData: true,
       },
     });
+
+    const recipients = await prisma.user.findMany({
+      where: { id: { not: session.user.id } },
+      select: { id: true },
+    });
+    const link = `/announcements/${created.id}`;
+    const message = `새 공지: ${created.title}`;
+    for (const u of recipients) {
+      await createNotificationWithOptions({
+        userId: u.id,
+        type: "NOTICE_POSTED",
+        message,
+        link,
+        actorId: session.user.id,
+      });
+    }
 
     return NextResponse.json({
       ...created,

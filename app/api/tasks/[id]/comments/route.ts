@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createActivityLog } from "@/lib/activity-log";
-import { createNotification } from "@/lib/notifications";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
 const postSchema = z.object({ body: z.string().min(1).max(2000) });
@@ -56,12 +56,13 @@ export async function POST(
     const uniqueIds = [...new Set(toNotify)];
     const commenterName = session.user.name ?? "누군가";
     for (const uid of uniqueIds) {
-      await createNotification(
-        uid,
-        "COMMENT",
-        `'${task.title}' 업무에 ${commenterName}님이 댓글을 달았습니다.`,
-        `/tasks/${taskId}`
-      );
+      await createNotificationWithOptions({
+        userId: uid,
+        type: "COMMENT",
+        message: `'${task.title}' 업무에 ${commenterName}님이 댓글을 달았습니다.`,
+        link: `/tasks/${taskId}`,
+        actorId: session.user.id,
+      });
     }
 
     return NextResponse.json(comment);

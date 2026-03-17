@@ -8,6 +8,7 @@ import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { Providers } from "@/components/providers";
 import { AppNav } from "@/components/app-nav";
+import { OneSignalUserSync } from "@/components/OneSignalUserSync";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -80,12 +81,13 @@ export default async function RootLayout({
             window.OneSignalDeferred = window.OneSignalDeferred || [];
             OneSignalDeferred.push(async function(OneSignal) {
               await OneSignal.init({
-                appId: "7a05dfae-d334-4485-b552-ed56e9310772"
+                appId: "${process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? ""}"
               });
             });
           `}
         </Script>
         <Providers session={session ?? undefined}>
+          <OneSignalUserSync />
           <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>
             <AppNav />
           </Suspense>

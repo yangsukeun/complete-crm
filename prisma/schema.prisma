@@ -103,6 +103,8 @@ enum NotificationType {
   COMMENT       // 댓글
   STAGNANT      // 장기 미진행
   BOARD_MENTION // 게시판에서 태그(멘션)됨
+  CHAT_MESSAGE  // 채팅 메시지
+  NOTICE_POSTED // 공지 등록
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)

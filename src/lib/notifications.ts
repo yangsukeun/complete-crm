@@ -1,10 +1,32 @@
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
+import { sendPushToUser } from "./notifications/push";
 
-export type NotificationTypeEnum = "DEADLINE" | "ASSIGNED" | "COMMENT" | "STAGNANT" | "BOARD_MENTION";
+export type NotificationTypeEnum = "DEADLINE" | "ASSIGNED" | "COMMENT" | "STAGNANT" | "BOARD_MENTION" | "CHAT_MESSAGE" | "NOTICE_POSTED";
+export type NotificationPriority = "high" | "medium" | "low";
+
+type CreateNotificationInput = {
+  userId: string;
+  type: NotificationTypeEnum;
+  message: string;
+  link?: string;
+  actorId?: string | null;
+  priority?: NotificationPriority;
+};
+
+const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriority> = {
+  DEADLINE: "high",
+  ASSIGNED: "high",
+  COMMENT: "medium",
+  STAGNANT: "low",
+  BOARD_MENTION: "medium",
+  CHAT_MESSAGE: "medium",
+  NOTICE_POSTED: "high",
+};
 
 /**
  * 알림 1건 생성 (수신자, 타입, 메시지, 링크)
+ * - 기존 시그니처 유지 (DB 저장 + 필요 시 푸시)
  */
 export async function createNotification(
   userId: string,
@@ -12,12 +34,30 @@ export async function createNotification(
   message: string,
   link: string = ""
 ): Promise<void> {
+  await createNotificationWithOptions({ userId, type, message, link });
+}
+
+export async function createNotificationWithOptions(input: CreateNotificationInput): Promise<void> {
+  const { userId, type, message, link = "", actorId = null } = input;
+  const priority: NotificationPriority = input.priority ?? DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
+
   try {
     await prisma.notification.create({
       data: { userId, type, message, link },
     });
   } catch (e) {
     console.error("[Notification] 생성 실패:", e);
+  }
+
+  // push: 내부 알림이 우선, push는 best-effort
+  if ((priority === "high" || priority === "medium") && actorId && actorId !== userId) {
+    await sendPushToUser({
+      userId,
+      title: "새 알림",
+      message,
+      url: link || undefined,
+      priority,
+    });
   }
 }
 

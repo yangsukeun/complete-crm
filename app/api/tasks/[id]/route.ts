@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { getServerWorkspaceScope } from "@/lib/workspace";
+import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { createActivityLog } from "@/lib/activity-log";
-import { createNotification } from "@/lib/notifications";
+import { createNotificationWithOptions } from "@/lib/notifications";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -79,7 +79,7 @@ export async function GET(
     if (!task) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    const scope = await getServerWorkspaceScope();
+    const scope = await getServerWorkspaceScopeFromRequest(req);
     const taskScope = (task as { scope?: string }).scope ?? "TEAM";
     if (taskScope !== scope) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -119,7 +119,7 @@ export async function PATCH(
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    const scope = await getServerWorkspaceScope();
+    const scope = await getServerWorkspaceScopeFromRequest(req);
     const existingScope = (existing as { scope?: string }).scope ?? "TEAM";
     if (existingScope !== scope) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -267,12 +267,13 @@ export async function PATCH(
     }
 
     if (data.assignedToId && data.assignedToId !== existing.assignedToId && data.assignedToId !== session.user.id) {
-      await createNotification(
-        data.assignedToId,
-        "ASSIGNED",
-        `'${existing.title}' 업무가 배정되었습니다.`,
-        `/tasks/${id}`
-      );
+      await createNotificationWithOptions({
+        userId: data.assignedToId,
+        type: "ASSIGNED",
+        message: `'${existing.title}' 업무가 배정되었습니다.`,
+        link: `/tasks/${id}`,
+        actorId: session.user.id,
+      });
     }
 
     return NextResponse.json(task);

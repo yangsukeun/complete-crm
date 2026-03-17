@@ -177,7 +177,10 @@ export default function TasksPage() {
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-workspace": mode,
+        },
         body: JSON.stringify({
           status: newStatus,
           isCompleted: newStatus === "DONE",
@@ -191,7 +194,7 @@ export default function TasksPage() {
     } finally {
       setUpdatingStatusId(null);
     }
-  }, [mutateTasks]);
+  }, [mode, mutateTasks]);
 
   const handleDragEnd = useCallback(
     (result: { destination?: { droppableId: string }; draggableId: string }) => {
@@ -514,6 +517,7 @@ export default function TasksPage() {
         }))}
         onRefresh={refreshTasks}
         defaultAssignedToId={session?.user?.id ?? null}
+        workspace={mode}
       />
       </div>
 

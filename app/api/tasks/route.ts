@@ -3,7 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { createActivityLog } from "@/lib/activity-log";
-import { createNotification } from "@/lib/notifications";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -122,12 +122,13 @@ export async function POST(req: Request) {
     await createActivityLog(session.user.id, "TASK_CREATED", task.title, undefined, timestampForLog ? { timestamp: timestampForLog } : undefined);
 
     if (task.assignedToId && task.assignedToId !== session.user.id) {
-      await createNotification(
-        task.assignedToId,
-        "ASSIGNED",
-        `'${task.title}' 업무가 배정되었습니다.`,
-        `/tasks/${task.id}`
-      );
+      await createNotificationWithOptions({
+        userId: task.assignedToId,
+        type: "ASSIGNED",
+        message: `'${task.title}' 업무가 배정되었습니다.`,
+        link: `/tasks/${task.id}`,
+        actorId: session.user.id,
+      });
     }
 
     return NextResponse.json(task);

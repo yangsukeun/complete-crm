@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
 const postSchema = z.object({ body: z.string().min(1).max(2000) });
@@ -137,6 +138,21 @@ export async function POST(
         data: { updatedAt: new Date() },
       }),
     ]);
+
+    const senderName = session.user.name ?? "누군가";
+    const participants = await prisma.chatParticipant.findMany({
+      where: { chatId, userId: { not: session.user.id } },
+      select: { userId: true },
+    });
+    for (const p of participants) {
+      await createNotificationWithOptions({
+        userId: p.userId,
+        type: "CHAT_MESSAGE",
+        message: `${senderName}님이 채팅 메시지를 보냈습니다.`,
+        link: `/chats/${chatId}`,
+        actorId: session.user.id,
+      });
+    }
 
     return NextResponse.json(message);
   } catch (e) {

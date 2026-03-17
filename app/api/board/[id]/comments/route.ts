@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { createNotification } from "@/lib/notifications";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
 const postSchema = z.object({
@@ -128,12 +128,13 @@ export async function POST(
     const link = `/board/${postId}`;
 
     for (const userId of mentionedUserIds) {
-      await createNotification(
+      await createNotificationWithOptions({
         userId,
-        "BOARD_MENTION",
-        `게시글 '${postTitle}'에서 ${commenterName}님이 회원님을 태그했습니다.`,
-        link
-      );
+        type: "BOARD_MENTION",
+        message: `게시글 '${postTitle}'에서 ${commenterName}님이 회원님을 태그했습니다.`,
+        link,
+        actorId: session.user.id,
+      });
     }
 
     let mentioned: { id: string; name: string | null }[] = [];
