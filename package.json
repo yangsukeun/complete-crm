@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack -p 3000",
     "dev:fresh": "node scripts/clear-dev-lock.js && next dev --webpack -p 3000",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && npx prisma migrate deploy && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
