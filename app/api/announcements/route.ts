@@ -55,8 +55,8 @@ export async function GET() {
           location: a.location ?? null,
           pollOptions: poll?.map((o: any) => ({ text: o.text, count: o.voterIds.length })) ?? null,
           myVoteIndex: myVote >= 0 ? myVote : null,
-          createdByName: a.createdBy.name,
-          createdByPosition: a.createdBy.position,
+          createdByName: a.createdBy?.name ?? "삭제된 사용자",
+          createdByPosition: a.createdBy?.position ?? null,
         };
       })
     );

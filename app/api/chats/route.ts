@@ -31,6 +31,7 @@ export async function GET() {
 
     if (isAdmin) {
       const allChats = await prisma.chat.findMany({
+        take: 80,
         include: {
           participants: {
             include: { user: { select: userSelect } },
@@ -55,6 +56,7 @@ export async function GET() {
 
     const participants = await prisma.chatParticipant.findMany({
       where: { userId: session.user.id },
+      take: 80,
       include: {
         chat: {
           include: {

@@ -177,11 +177,13 @@ export function ChatPageClient() {
     fetchChats();
   }, [fetchChats]);
 
-  // 채팅 목록 폴링 (새 메시지 알림)
+  // 채팅 목록 폴링 (새 메시지 알림) — 탭 보일 때만, 간격 완화로 서버 부하 감소
   useEffect(() => {
     const t = setInterval(() => {
-      fetchChats();
-    }, 5000);
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchChats();
+      }
+    }, 10000);
     return () => clearInterval(t);
   }, [fetchChats]);
 
@@ -206,13 +208,14 @@ export function ChatPageClient() {
       messages.length > 0 ? (messages[messages.length - 1] as Message)?.id ?? null : null;
   }, [messages]);
 
-  // 선택된 채팅 메시지 폴링: 새 메시지만 after 파라미터로 요청해 응답 가벼움
+  // 선택된 채팅 메시지 폴링: 탭 보일 때만, 새 메시지만 after로 요청
   useEffect(() => {
     if (!selectedChatId) return;
     const t = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const afterId = lastMessageIdRef.current;
       fetchMessages(selectedChatId, true, afterId);
-    }, 2500);
+    }, 5000);
     return () => clearInterval(t);
   }, [selectedChatId, fetchMessages]);
 

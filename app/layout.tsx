@@ -74,9 +74,9 @@ export default async function RootLayout({
       >
         <Script
           src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
-        <Script id="onesignal-init" strategy="afterInteractive">
+        <Script id="onesignal-init" strategy="lazyOnload">
           {`
             window.OneSignalDeferred = window.OneSignalDeferred || [];
             OneSignalDeferred.push(async function(OneSignal) {

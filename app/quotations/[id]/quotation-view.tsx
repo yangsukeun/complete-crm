@@ -42,7 +42,7 @@ export type QuotationViewData = {
   issuedAt: string;
   updatedAt?: string;
   remarks: string | null;
-  issuedBy: { name: string };
+  issuedBy: { name: string } | null;
   items: { description: string; quantity: number; unitPrice: number; amount: number }[];
 };
 
@@ -236,7 +236,7 @@ export function QuotationView({
               </div>
               <div className="flex">
                 <span className="w-24 font-semibold shrink-0">담당자</span>
-                <span>{quotation.issuedBy.name}</span>
+                <span>{quotation.issuedBy?.name ?? "삭제된 사용자"}</span>
               </div>
             </div>
 
@@ -301,7 +301,7 @@ export function QuotationView({
 
             {/* Security Footer - 문서 하단 고정 */}
             <div className="mt-12 pt-4 border-t border-slate-300 text-[10px] text-slate-500">
-              Issued by {quotation.issuedBy.name} at {issuedAtFormatted} / Ref: {quotation.quotationNumber}
+              Issued by {quotation.issuedBy?.name ?? "삭제된 사용자"} at {issuedAtFormatted} / Ref: {quotation.quotationNumber}
             </div>
           </div>
         </div>

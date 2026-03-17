@@ -50,7 +50,7 @@ export default async function BoardPostPage({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeadline
           title={post.title}
-          description={`${post.createdBy.name}${post.createdBy.position ? ` · ${post.createdBy.position}` : ""} · ${new Date(post.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+          description={`${post.createdBy?.name ?? "삭제된 사용자"}${post.createdBy?.position ? ` · ${post.createdBy.position}` : ""} · ${new Date(post.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
         />
         <BoardPostActions
           postId={id}

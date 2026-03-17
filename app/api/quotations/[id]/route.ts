@@ -43,7 +43,8 @@ export async function PUT(
     if (!existing) {
       return NextResponse.json({ error: "견적서를 찾을 수 없습니다." });
     }
-    if (existing.issuedById !== session.user.id) {
+    const isAdmin = (session.user as { role?: string }).role === "EXECUTIVE" || (session.user as { role?: string }).role === "ADMIN";
+    if (existing.issuedById != null && existing.issuedById !== session.user.id && !isAdmin) {
       return NextResponse.json({ error: "견적서 발행자만 수정할 수 있습니다." });
     }
 

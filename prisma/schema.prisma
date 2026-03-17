@@ -322,10 +322,10 @@ model Task {
   scope        WorkspaceScope @default(TEAM)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  assignedToId String
-  createdById  String
-  assignedTo   User           @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
-  createdBy   User           @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignedToId String?
+  createdById  String?
+  assignedTo   User?          @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy   User?          @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
   attachments TaskAttachment[]
   comments    TaskComment[]
   // 추가 부모 연결 (다대다: 하나의 업무가 여러 대분류에 연결 가능)
@@ -358,8 +358,8 @@ model TaskRevision {
   id        String   @id @default(cuid())
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   field     String   // title, description, status, dueDate, assignedToId, priority 등
   oldValue  String?  // 변경 전 값 (표시용 문자열)
   newValue  String?  // 변경 후 값 (표시용 문자열)
@@ -383,8 +383,8 @@ model TaskComment {
   id        String   @id @default(cuid())
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   body      String
   createdAt DateTime @default(now())
   @@index([taskId])
@@ -571,8 +571,8 @@ model PaymentRequest {
   completedAt DateTime?
   description String?             // 입금자명 변경 요청, 메모 등
   attachment  String?             // 견적서/영수증 이미지 URL
-  requesterId String
-  requester   User                @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  requesterId String?
+  requester   User?               @relation(fields: [requesterId], references: [id], onDelete: SetNull)
   vendorId    String
   vendor      Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   quotationId String?             // 정산 시 참고용 견적서 (선택)
@@ -608,8 +608,8 @@ model Quotation {
   vatAmount        Int               // 부가세 (원)
   finalAmount      Int               // 총합계 (원)
   status           QuotationStatus   @default(IN_PROGRESS)
-  issuedById       String
-  issuedBy         User              @relation(fields: [issuedById], references: [id], onDelete: Cascade)
+  issuedById       String?
+  issuedBy         User?             @relation(fields: [issuedById], references: [id], onDelete: SetNull)
   issuedAt         DateTime          @default(now()) // 발행일시
   remarks          String?           // 특이사항/비고
   createdAt        DateTime          @default(now())

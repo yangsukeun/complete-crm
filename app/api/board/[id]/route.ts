@@ -36,8 +36,8 @@ export async function GET(
       category: post.category,
       attachments: JSON.parse(post.attachments || "[]") as { url: string; name: string }[],
       createdAt: post.createdAt.toISOString(),
-      createdByName: post.createdBy.name,
-      createdByPosition: post.createdBy.position,
+      createdByName: post.createdBy?.name ?? "삭제된 사용자",
+      createdByPosition: post.createdBy?.position ?? null,
     });
   } catch (e) {
     console.error("Board GET [id]:", e);

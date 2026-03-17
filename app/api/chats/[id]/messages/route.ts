@@ -36,38 +36,21 @@ export async function GET(
     const afterId = searchParams.get("after");
 
     // 폴링: afterId 있으면 해당 id 이후 메시지만 조회 (새 메시지만 가져와서 빠름)
+    const messageUserSelect = { id: true, name: true, position: true };
     if (afterId) {
       const newMessages = await prisma.chatMessage.findMany({
         where: { chatId, id: { gt: afterId } },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              position: true,
-              currentProject: { select: { name: true, brand: { select: { name: true } } } },
-            },
-          },
-        },
+        include: { user: { select: messageUserSelect } },
         orderBy: { createdAt: "asc" },
         take: 50,
       });
       return NextResponse.json(newMessages);
     }
 
-    // 초기/이전 로드: 최근 limit개만 조회
+    // 초기/이전 로드: 최근 limit개만 조회 (목록용으로 user는 id/name/position만)
     const messages = await prisma.chatMessage.findMany({
       where: { chatId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
-          },
-        },
-      },
+      include: { user: { select: messageUserSelect } },
       orderBy: { createdAt: "desc" },
       take: limit,
     });

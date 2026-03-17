@@ -271,7 +271,7 @@ export default function TaskDetailPage() {
 
           <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">담당</span>
-            <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{formatUserName(task.assignedTo)}</span>
+            <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.assignedTo ? formatUserName(task.assignedTo) : "미지정"}</span>
             <span className="text-muted-foreground mx-1">·</span>
             <span className="text-muted-foreground">마감</span>
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">
@@ -282,7 +282,7 @@ export default function TaskDetailPage() {
             <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", priorityColor)}>{priorityLabel}</span>
             <span className="text-muted-foreground mx-1">·</span>
             <span className="text-muted-foreground">지시</span>
-            <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{formatUserName(task.createdBy)}</span>
+            <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.createdBy ? formatUserName(task.createdBy) : "삭제된 사용자"}</span>
           </div>
 
           <div className="border-t border-border/50 px-2 py-6">

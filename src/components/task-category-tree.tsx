@@ -397,7 +397,7 @@ export function TaskCategoryTree({
                           </span>
                           <Avatar className="size-5">
                             <AvatarFallback className="text-[10px]">
-                              {(t.assignedTo.name ?? "?").slice(0, 1)}
+                              {(t.assignedTo?.name ?? "?").slice(0, 1)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -543,7 +543,7 @@ export function TaskCategoryTree({
                         </span>
                         <Avatar className="size-5">
                           <AvatarFallback className="text-[10px]">
-                            {(t.assignedTo.name ?? "?").slice(0, 1)}
+                            {(t.assignedTo?.name ?? "?").slice(0, 1)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>

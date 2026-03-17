@@ -184,6 +184,8 @@ export default async function DashboardPage() {
       prisma.task.findMany({
         where: { createdById: session.user.id },
         include: { assignedTo: { select: { name: true, position: true } } },
+        orderBy: { dueDate: "asc" },
+        take: 100,
       }),
       prisma.attendance.findUnique({
         where: { userId_date: { userId: session.user.id, date: todayStart } },

@@ -33,6 +33,7 @@ export async function GET(req: Request) {
         ? { scope: "PERSONAL" as const, OR: [{ assignedToId: session.user.id }, { createdById: session.user.id }] }
         : { scope: "TEAM" as const, ...(isAdmin ? {} : { OR: [{ assignedToId: session.user.id }, { createdById: session.user.id }] }) };
 
+    // 목록용: comments/attachments 제외로 페이로드·쿼리 부담 감소 (상세는 GET /api/tasks/[id]에서 조회)
     const tasks = await prisma.task.findMany({
       where: baseWhere,
       include: {
@@ -42,7 +43,6 @@ export async function GET(req: Request) {
             name: true,
             email: true,
             position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
         createdBy: {
@@ -50,23 +50,9 @@ export async function GET(req: Request) {
             id: true,
             name: true,
             position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
-        attachments: true,
-        comments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                position: true,
-                currentProject: { select: { name: true, brand: { select: { name: true } } } },
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
+        _count: { select: { comments: true, attachments: true } },
       },
       orderBy: [{ parentId: "asc" }, { orderIndex: "asc" }, { isCompleted: "asc" }, { dueDate: "asc" }],
     });

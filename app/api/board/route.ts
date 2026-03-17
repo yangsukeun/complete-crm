@@ -53,8 +53,8 @@ export async function GET(req: Request) {
         attachments: JSON.parse(p.attachments || "[]") as { url: string; name: string }[],
         createdAt: p.createdAt.toISOString(),
         createdById: p.createdById,
-        createdByName: p.createdBy.name,
-        createdByPosition: p.createdBy.position,
+        createdByName: p.createdBy?.name ?? "삭제된 사용자",
+        createdByPosition: p.createdBy?.position ?? null,
       }))
     );
   } catch (e) {

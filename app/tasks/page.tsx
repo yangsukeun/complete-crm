@@ -137,7 +137,7 @@ export default function TasksPage() {
   const { data: tasksData = [], mutate: mutateTasks, isLoading: tasksLoading } = useSWR<Task[]>(
     authStatus === "authenticated" ? taskKey : null,
     tasksFetcher,
-    { keepPreviousData: true }
+    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 5000 }
   );
   const { data: categoriesData = [], mutate: mutateCategories } = useSWR<CategoryItem[]>(
     authStatus === "authenticated" ? catKey : null,
@@ -408,7 +408,7 @@ export default function TasksPage() {
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 <Avatar className="h-6 w-6">
                                   <AvatarFallback className="text-[10px]">
-                                    {(task.assignedTo.name ?? "?").slice(0, 1)}
+                                    {(task.assignedTo?.name ?? "?").slice(0, 1)}
                                   </AvatarFallback>
                                 </Avatar>
                                 <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
@@ -489,7 +489,7 @@ export default function TasksPage() {
                     <div className="flex items-center gap-2">
                       <Avatar className="h-6 w-6">
                         <AvatarFallback className="text-[10px]">
-                          {(task.assignedTo.name ?? "?").slice(0, 1)}
+                          {(task.assignedTo?.name ?? "?").slice(0, 1)}
                         </AvatarFallback>
                       </Avatar>
                       <span className="text-sm">{formatUserName(task.assignedTo)}</span>

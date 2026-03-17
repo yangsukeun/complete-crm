@@ -58,8 +58,8 @@ type TaskDetail = {
   isCompleted: boolean;
   priority: string;
   scope?: "TEAM" | "PERSONAL";
-  assignedTo: { id: string; name: string; email: string; position?: string | null };
-  createdBy: { id: string; name: string; position?: string | null };
+  assignedTo: { id: string; name: string; email: string; position?: string | null } | null;
+  createdBy: { id: string; name: string; position?: string | null } | null;
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
 };
@@ -526,7 +526,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                 <div className="flex items-center gap-3 text-sm">
                   <span className="text-muted-foreground w-16">지시</span>
                   <span className="rounded-md bg-muted px-2 py-0.5 font-medium">
-                    {formatUserName(task.createdBy)}
+                    {task.createdBy ? formatUserName(task.createdBy) : "삭제된 사용자"}
                   </span>
                 </div>
               </div>

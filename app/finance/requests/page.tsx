@@ -492,9 +492,9 @@ export default function FinanceRequestsPage() {
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium">{r.requester.name}</span>
-                          {r.requester.position && (
-                            <span className="text-muted-foreground ml-1 text-xs">({r.requester.position})</span>
+                          <span className="font-medium">{r.requester?.name ?? "삭제된 사용자"}</span>
+                          {r.requester?.position && (
+                            <span className="text-muted-foreground ml-1 text-xs">({r.requester?.position})</span>
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
@@ -591,9 +591,9 @@ export default function FinanceRequestsPage() {
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium">{r.requester.name}</span>
-                          {r.requester.position && (
-                            <span className="text-muted-foreground ml-1 text-xs">({r.requester.position})</span>
+                          <span className="font-medium">{r.requester?.name ?? "삭제된 사용자"}</span>
+                          {r.requester?.position && (
+                            <span className="text-muted-foreground ml-1 text-xs">({r.requester?.position})</span>
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
@@ -662,9 +662,9 @@ export default function FinanceRequestsPage() {
                   </TableCell>
                   {(isTeamLead || isExecutive || isTransferExecutor) && (
                     <TableCell>
-                      <span className="font-medium">{r.requester.name}</span>
-                      {r.requester.position && (
-                        <span className="text-muted-foreground ml-1 text-xs">({r.requester.position})</span>
+                      <span className="font-medium">{r.requester?.name ?? "삭제된 사용자"}</span>
+                      {r.requester?.position && (
+                        <span className="text-muted-foreground ml-1 text-xs">({r.requester?.position})</span>
                       )}
                     </TableCell>
                   )}
