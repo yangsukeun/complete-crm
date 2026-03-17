@@ -55,11 +55,11 @@ export function DashboardSalesSection({ data }: { data: DashboardSalesStats }) {
         </div>
       </div>
 
-      {/* 2. 월별 막대 그래프 (최근 6개월) */}
+      {/* 2. 월별 막대 그래프 (최근 6개월) - 고정 크기로 grid/flex min-width 경고 방지 */}
       <div className="rounded-lg border bg-card p-4 shadow-sm">
         <p className="text-muted-foreground mb-4 text-sm">최근 6개월 총 견적 vs 입금 완료</p>
-        <div className="min-h-[280px] h-[280px] w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
+        <div style={{ width: "100%", height: 280, minHeight: 280, boxSizing: "border-box" }}>
+          <ResponsiveContainer width="100%" height={280}>
             <BarChart
               data={monthly}
               margin={{ top: 12, right: 12, left: 0, bottom: 0 }}

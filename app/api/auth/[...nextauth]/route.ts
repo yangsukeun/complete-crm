@@ -8,10 +8,22 @@ type RouteContext = { params: Promise<{ nextauth: string[] }> };
 async function handleGet(req: Request, context: RouteContext) {
   try {
     const params = await context.params;
-    // /api/auth/session: getAppSession으로 세션 조회 후, 없어도 200 반환 (비로그인 페이지에서 401 방지)
+    // /api/auth/session: getAppSession으로 세션 조회. 실패 시에도 200 + 빈 객체 반환해 앱이 깨지지 않게 함
     if (params?.nextauth?.[0] === "session") {
-      const session = await getAppSession();
-      return NextResponse.json(session ?? {});
+      try {
+        const session = await getAppSession();
+        const body = session ?? {};
+        return new NextResponse(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (sessionErr) {
+        console.error("[auth] session error:", sessionErr);
+        return new NextResponse(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
     return await (AuthGET as any)(req);
   } catch (e) {
