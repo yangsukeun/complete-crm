@@ -174,7 +174,6 @@ export default async function DashboardPage() {
       tasksCreatedByMe,
       adminTodayAttendance,
       adminUpcomingSchedules,
-      adminLeaveBalance,
     ] = await Promise.all([
       prisma.user.count({ where: { role: "USER" } }),
       prisma.attendance.findMany({
@@ -198,10 +197,15 @@ export default async function DashboardPage() {
         orderBy: { startTime: "asc" },
         take: 5,
       }),
-      prisma.leaveBalance.findUnique({
-        where: { userId_year: { userId: session.user.id, year } },
-      }),
     ]);
+    let adminLeaveBalance: Awaited<ReturnType<typeof prisma.leaveBalance.findUnique>> = null;
+    try {
+      adminLeaveBalance = await prisma.leaveBalance.findUnique({
+        where: { userId_year: { userId: session.user.id, year } },
+      });
+    } catch (e) {
+      console.error("[dashboard] leaveBalance fetch:", e);
+    }
 
     const completedTasks = tasksCreatedByMe.filter((t: any) => t.isCompleted);
     const progressPercent =
@@ -393,7 +397,7 @@ export default async function DashboardPage() {
   const joinDate = userForLeave?.joinDate ?? new Date();
   const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
 
-  const [myTasks, myTodayAttendance, upcomingSchedules, leaveBalance, salesStats] = await Promise.all([
+  const [myTasks, myTodayAttendance, upcomingSchedules, salesStats] = await Promise.all([
     prisma.task.findMany({
       where: { assignedToId: session.user.id, isCompleted: false },
       orderBy: { dueDate: "asc" },
@@ -411,11 +415,16 @@ export default async function DashboardPage() {
       orderBy: { startTime: "asc" },
       take: 5,
     }),
-    prisma.leaveBalance.findUnique({
-      where: { userId_year: { userId: session.user.id, year } },
-    }),
     getDashboardSalesStats(),
   ]);
+  let leaveBalance: Awaited<ReturnType<typeof prisma.leaveBalance.findUnique>> = null;
+  try {
+    leaveBalance = await prisma.leaveBalance.findUnique({
+      where: { userId_year: { userId: session.user.id, year } },
+    });
+  } catch (e) {
+    console.error("[dashboard] leaveBalance fetch:", e);
+  }
 
   const carryOver = leaveBalance?.annualCarryOver ?? 0;
   const used = leaveBalance?.annualUsed ?? 0;
