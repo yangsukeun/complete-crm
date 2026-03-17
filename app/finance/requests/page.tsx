@@ -73,12 +73,42 @@ function formatAmount(n: number) {
 
 const VENDOR_CATEGORIES = ["인쇄", "식대", "용역", "자재", "기타"];
 
+function buildRequestSearchText(r: PaymentRequest) {
+  const parts: string[] = [];
+  parts.push(String(r.amount ?? ""));
+  parts.push(String(r.vendor?.name ?? ""));
+  parts.push(String(r.vendor?.ownerName ?? ""));
+  parts.push(String(r.requester?.name ?? ""));
+  parts.push(String(r.requester?.email ?? ""));
+  parts.push(String(r.description ?? ""));
+  if (r.quotation) {
+    parts.push(String(r.quotation.quotationNumber ?? ""));
+    parts.push(String(r.quotation.title ?? ""));
+    parts.push(String(r.quotation.clientName ?? ""));
+    parts.push(String(r.quotation.finalAmount ?? ""));
+  }
+  return parts.join(" ").toLowerCase();
+}
+
+function filterBySearch(list: PaymentRequest[], query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return list;
+  const qDigits = q.replace(/[^0-9]/g, "");
+  return list.filter((r) => {
+    const hay = buildRequestSearchText(r);
+    if (hay.includes(q)) return true;
+    if (qDigits && String(r.amount ?? "").includes(qDigits)) return true;
+    return false;
+  });
+}
+
 export default function FinanceRequestsPage() {
   const { data: session, status: authStatus } = useSession();
   const router = useRouter();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [completedRequests, setCompletedRequests] = useState<PaymentRequest[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PaymentRequest[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isExecutiveTransferExecutor, setIsExecutiveTransferExecutor] = useState(false);
   const [allowTransferComplete, setAllowTransferComplete] = useState(false); // 대표/관리자 중 이체 담당자일 때만 이체완료 버튼
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -440,12 +470,22 @@ export default function FinanceRequestsPage() {
                   : "거래처에 대한 송금을 요청합니다."
           }
         />
-        {canRequest && (
-          <Button onClick={() => setModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
-            <Plus className="mr-2 size-4" />
-            새 결제 요청
-          </Button>
-        )}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          <div className="w-full sm:w-[320px]">
+            <Input
+              value={searchQuery}
+              onChange={(e: any) => setSearchQuery(e.target.value)}
+              placeholder="업체명 / 금액 / 견적 / 내용 검색"
+              className="h-10"
+            />
+          </div>
+          {canRequest && (
+            <Button onClick={() => setModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+              <Plus className="mr-2 size-4" />
+              새 결제 요청
+            </Button>
+          )}
+        </div>
       </div>
 
       {(isTeamLead || showTwoSections) && pendingTotal > 0 && (
@@ -478,6 +518,7 @@ export default function FinanceRequestsPage() {
                       <TableHead className="font-medium">요청일시</TableHead>
                       <TableHead className="font-medium">요청자</TableHead>
                       <TableHead className="font-medium">거래처</TableHead>
+                      <TableHead className="font-medium">요청 내용</TableHead>
                       <TableHead className="font-medium">견적서</TableHead>
                       <TableHead className="font-medium">은행/계좌</TableHead>
                       <TableHead className="font-medium text-right">금액</TableHead>
@@ -486,7 +527,7 @@ export default function FinanceRequestsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendingRequests.map((r: any) => (
+                    {filterBySearch(pendingRequests, searchQuery).map((r: any) => (
                       <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                         <TableCell className="text-muted-foreground text-sm">
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
@@ -498,6 +539,13 @@ export default function FinanceRequestsPage() {
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm max-w-[360px]">
+                          {r.description?.trim()
+                            ? <span className="line-clamp-2">{r.description}</span>
+                            : r.quotation
+                              ? <span className="line-clamp-2">{r.quotation.clientName} · {r.quotation.title}</span>
+                              : "-"}
+                        </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.quotation ? (
                             <Link href={`/quotations/${r.quotation.id}`} className="text-primary hover:underline inline-flex items-center gap-1">
@@ -577,6 +625,7 @@ export default function FinanceRequestsPage() {
                       <TableHead className="font-medium">요청일시</TableHead>
                       <TableHead className="font-medium">요청자</TableHead>
                       <TableHead className="font-medium">거래처</TableHead>
+                      <TableHead className="font-medium">요청 내용</TableHead>
                       <TableHead className="font-medium">견적서</TableHead>
                       <TableHead className="font-medium">은행/계좌</TableHead>
                       <TableHead className="font-medium text-right">금액</TableHead>
@@ -585,7 +634,7 @@ export default function FinanceRequestsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {completedRequests.map((r: any) => (
+                    {filterBySearch(completedRequests, searchQuery).map((r: any) => (
                       <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                         <TableCell className="text-muted-foreground text-sm">
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
@@ -597,6 +646,13 @@ export default function FinanceRequestsPage() {
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm max-w-[360px]">
+                          {r.description?.trim()
+                            ? <span className="line-clamp-2">{r.description}</span>
+                            : r.quotation
+                              ? <span className="line-clamp-2">{r.quotation.clientName} · {r.quotation.title}</span>
+                              : "-"}
+                        </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.quotation ? (
                             <Link href={`/quotations/${r.quotation.id}`} className="text-primary hover:underline inline-flex items-center gap-1">
@@ -647,6 +703,7 @@ export default function FinanceRequestsPage() {
                 <TableHead className="font-medium">요청일시</TableHead>
                 {(isTeamLead || isExecutive || isTransferExecutor) && <TableHead className="font-medium">요청자</TableHead>}
                 <TableHead className="font-medium">거래처</TableHead>
+                <TableHead className="font-medium">요청 내용</TableHead>
                 <TableHead className="font-medium">견적서</TableHead>
                 <TableHead className="font-medium">은행/계좌</TableHead>
                 <TableHead className="font-medium text-right">금액</TableHead>
@@ -655,7 +712,7 @@ export default function FinanceRequestsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {requests.map((r: any) => (
+              {filterBySearch(requests, searchQuery).map((r: any) => (
                 <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
@@ -669,6 +726,13 @@ export default function FinanceRequestsPage() {
                     </TableCell>
                   )}
                   <TableCell>{r.vendor.name}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm max-w-[360px]">
+                    {r.description?.trim()
+                      ? <span className="line-clamp-2">{r.description}</span>
+                      : r.quotation
+                        ? <span className="line-clamp-2">{r.quotation.clientName} · {r.quotation.title}</span>
+                        : "-"}
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {r.quotation ? (
                       <Link href={`/quotations/${r.quotation.id}`} className="text-primary hover:underline inline-flex items-center gap-1">
