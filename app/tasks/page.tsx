@@ -34,13 +34,18 @@ import { TaskCategoryTree } from "@/components/task-category-tree";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
 import { Plus, LayoutGrid, List, Filter, GitBranch, FileText } from "lucide-react";
-import { TaskTreeView } from "./components/view-tree";
+import dynamic from "next/dynamic";
 import { WorkLogTab } from "./components/work-log-tab";
 import { formatUserName } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { cn } from "@/lib/utils";
+
+const TaskTreeView = dynamic(() => import("./components/view-tree").then((m) => m.TaskTreeView), {
+  ssr: false,
+  loading: () => <p className="text-muted-foreground py-12 text-center text-sm">마인드맵 불러오는 중...</p>,
+});
 
 const STATUS_LIST = [
   { value: "TODO", label: "할 일" },
