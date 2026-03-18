@@ -25,7 +25,6 @@ export async function GET(
             name: true,
             email: true,
             position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
         createdBy: {
@@ -33,7 +32,6 @@ export async function GET(
             id: true,
             name: true,
             position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
         attachments: true,
@@ -44,7 +42,6 @@ export async function GET(
                 id: true,
                 name: true,
                 position: true,
-                currentProject: { select: { name: true, brand: { select: { name: true } } } },
               },
             },
           },
@@ -55,24 +52,6 @@ export async function GET(
             user: { select: { id: true, name: true, position: true } },
           },
           orderBy: { createdAt: "desc" },
-        },
-        children: {
-          include: {
-            assignedTo: { select: { name: true, position: true } },
-            attachments: true,
-            comments: {
-              include: {
-                user: {
-                  select: {
-                    name: true,
-                    position: true,
-                    currentProject: { select: { name: true, brand: { select: { name: true } } } },
-                  },
-                },
-              },
-            },
-          },
-          orderBy: { orderIndex: "asc" },
         },
       },
     });
@@ -234,14 +213,13 @@ export async function PATCH(
             name: true,
             email: true,
             position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
         createdBy: {
           select: {
+            id: true,
             name: true,
             position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
         attachments: true,
@@ -249,9 +227,9 @@ export async function PATCH(
           include: {
             user: {
               select: {
+                id: true,
                 name: true,
                 position: true,
-                currentProject: { select: { name: true, brand: { select: { name: true } } } },
               },
             },
           },
