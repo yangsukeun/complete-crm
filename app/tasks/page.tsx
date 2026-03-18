@@ -1,11 +1,12 @@
-﻿"use client";
+"use client";
 
-import { useCallback, useState } from "react";
+import React, { Component, type ReactNode, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -30,11 +31,36 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import dynamic from "next/dynamic";
+
+const TaskTreeView = dynamic(
+  () => import("./components/view-tree").then((m) => m.TaskTreeView),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-muted-foreground py-12 text-center text-sm">
+        마인드맵 불러오는 중...
+      </p>
+    ),
+  }
+);
+
+const WorkLogTab = dynamic(
+  () => import("./components/work-log-tab").then((m) => m.WorkLogTab),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-muted-foreground py-12 text-center text-sm">
+        업무일지 불러오는 중...
+      </p>
+    ),
+  }
+);
 
 const STATUS_LIST = [
   { value: "TODO", label: "할 일" },
@@ -55,6 +81,7 @@ type Task = {
   parentId: string | null;
   categoryId: string | null;
   orderIndex: number;
+  isCollapsed?: boolean;
   assignedTo: { id: string; name: string; email: string; position?: string | null };
   createdBy: { id: string; name: string; position?: string | null };
 };
@@ -80,13 +107,43 @@ function tasksFetcher(url: string): Promise<Task[]> {
   return fetch(url).then((r: any) => (r.ok ? r.json() : []));
 }
 
+type TaskLink = { id: string; parentId: string; childId: string };
+function linksFetcher(url: string): Promise<TaskLink[]> {
+  return fetch(url).then((r: any) => (r.ok ? r.json() : []));
+}
+
+class ViewErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state: { hasError: boolean } = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error("[tasks] view render error:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
+          <p className="mb-3 text-sm">이 화면을 표시할 수 없습니다.</p>
+          <p className="text-xs">
+            우측 상단에서 다른 탭으로 이동하거나 새로고침 후 다시 시도해 주세요.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function TasksPage() {
   const { data: session, status: authStatus } = useSession();
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "">("");
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
+  const [view, setView] = useState<"list" | "mindmap" | "log">("list");
 
   const { data: tasksData = [], mutate: mutateTasks, isLoading: tasksLoading } = useSWR<Task[]>(
     authStatus === "authenticated" ? "/api/tasks" : null,
@@ -94,11 +151,19 @@ export default function TasksPage() {
     { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 5000 }
   );
 
+  const { data: linksData = [], mutate: mutateLinks, isLoading: linksLoading } = useSWR<TaskLink[]>(
+    authStatus === "authenticated" && view === "mindmap" ? "/api/tasks/links" : null,
+    linksFetcher,
+    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 5000 }
+  );
+
   const tasks = Array.isArray(tasksData) ? tasksData : [];
+  const taskLinks = Array.isArray(linksData) ? linksData : [];
 
   const refreshTasks = useCallback(() => {
     mutateTasks();
-  }, [mutateTasks]);
+    mutateLinks();
+  }, [mutateTasks, mutateLinks]);
 
   const updateTaskStatus = useCallback(
     async (taskId: string, newStatus: TaskStatus) => {
@@ -141,11 +206,45 @@ export default function TasksPage() {
   const assigneeOptions = Array.from(new Map(assigneePairs).entries());
   const hasActiveFilter = filterStatus !== "" || filterAssigneeId !== "";
 
+  const mindmapTasks = useMemo(() => {
+    return filteredTasks.map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? null,
+      dueDate: t.dueDate,
+      isCompleted: !!t.isCompleted,
+      status: t.status ?? null,
+      priority: t.priority,
+      parentId: t.parentId ?? null,
+      isCollapsed: !!t.isCollapsed,
+      assignedTo: t.assignedTo,
+    }));
+  }, [filteredTasks]);
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="border-border flex flex-col gap-4 border-b border-gray-200 pb-6">
-        <PageHeadline title="업무" description="업무를 목록으로 보고, 상태와 담당자를 관리합니다." />
+        <PageHeadline title="업무" description="업무를 목록·마인드맵·업무일지로 관리합니다." />
         <div className="flex flex-wrap items-center gap-3">
+          <Tabs value={view} onValueChange={(v: any) => setView(v as any)} className="w-auto">
+            <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5">
+              <TabsTrigger value="list" className="gap-2 rounded-md px-3">
+                <ListIcon className="size-4" />
+                투두리스트
+              </TabsTrigger>
+              <TabsTrigger value="mindmap" className="gap-2 rounded-md px-3">
+                <GitBranch className="size-4" />
+                마인드맵
+              </TabsTrigger>
+              <TabsTrigger value="log" className="gap-2 rounded-md px-3">
+                <FileText className="size-4" />
+                업무일지
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="list" className="mt-0" />
+            <TabsContent value="mindmap" className="mt-0" />
+            <TabsContent value="log" className="mt-0" />
+          </Tabs>
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -214,7 +313,10 @@ export default function TasksPage() {
             </PopoverContent>
           </Popover>
           <Button
-            onClick={() => setCreateOpen(true)}
+            onClick={() => {
+              setCreateParentId(null);
+              setCreateOpen(true);
+            }}
             className="ml-auto bg-foreground text-background hover:bg-foreground/90"
           >
             <Plus className="mr-2 size-4" />
@@ -223,87 +325,115 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {tasksLoading && tasks.length === 0 ? (
-        <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
-      ) : filteredTasks.length === 0 ? (
-        <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
-          <p className="mb-4 text-sm">업무가 없습니다.</p>
-          <Button onClick={() => setCreateOpen(true)} variant="outline" size="sm">
-            <Plus className="mr-2 size-4" />
-            새로 만들기
-          </Button>
-        </div>
-      ) : (
-        <div className="border-border overflow-hidden rounded-lg border border-gray-200">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-200 hover:bg-transparent">
-                <TableHead className="text-muted-foreground font-medium">제목</TableHead>
-                <TableHead className="text-muted-foreground w-[120px] font-medium">상태</TableHead>
-                <TableHead className="text-muted-foreground w-[90px] font-medium">우선순위</TableHead>
-                <TableHead className="text-muted-foreground w-[110px] font-medium">마감일</TableHead>
-                <TableHead className="text-muted-foreground w-[100px] font-medium">담당자</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTasks.map((task: any) => (
-                <TableRow
-                  key={task.id}
-                  className="border-gray-200 cursor-pointer transition-colors hover:bg-muted/50"
-                  onClick={() => router.push(`/tasks/${task.id}`)}
-                >
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "font-medium",
-                        task.isCompleted && "text-muted-foreground line-through"
-                      )}
-                    >
-                      {task.title}
-                    </span>
-                  </TableCell>
-                  <TableCell onClick={(e: any) => e.stopPropagation()}>
-                    <Select
-                      value={getEffectiveStatus(task)}
-                      onValueChange={(v: any) => updateTaskStatus(task.id, v as TaskStatus)}
-                      disabled={updatingStatusId === task.id}
-                    >
-                      <SelectTrigger className="h-8 border-gray-200 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATUS_LIST.map((s: any) => (
-                          <SelectItem key={s.value} value={s.value}>
-                            {s.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={priorityVariant(task.priority)} className="text-xs">
-                      {priorityLabel(task.priority)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {format(new Date(task.dueDate), "yyyy년 M월 d일", { locale: ko })}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-[10px]">
-                          {(task.assignedTo?.name ?? "?").slice(0, 1)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">{formatUserName(task.assignedTo)}</span>
-                    </div>
-                  </TableCell>
+      <ViewErrorBoundary>
+        {view === "log" ? (
+          <WorkLogTab />
+        ) : view === "mindmap" ? (
+          tasksLoading && tasks.length === 0 ? (
+            <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
+          ) : linksLoading ? (
+            <p className="text-muted-foreground py-12 text-center text-sm">연결 정보를 불러오는 중...</p>
+          ) : (
+            <TaskTreeView
+              tasks={mindmapTasks as any}
+              taskLinks={taskLinks as any}
+              onRefresh={refreshTasks}
+              onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
+              onCreateTask={(parentId: any) => {
+                setCreateParentId(parentId);
+                setCreateOpen(true);
+              }}
+            />
+          )
+        ) : tasksLoading && tasks.length === 0 ? (
+          <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
+        ) : filteredTasks.length === 0 ? (
+          <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
+            <p className="mb-4 text-sm">업무가 없습니다.</p>
+            <Button
+              onClick={() => {
+                setCreateParentId(null);
+                setCreateOpen(true);
+              }}
+              variant="outline"
+              size="sm"
+            >
+              <Plus className="mr-2 size-4" />
+              새로 만들기
+            </Button>
+          </div>
+        ) : (
+          <div className="border-border overflow-hidden rounded-lg border border-gray-200">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-muted-foreground font-medium">제목</TableHead>
+                  <TableHead className="text-muted-foreground w-[120px] font-medium">상태</TableHead>
+                  <TableHead className="text-muted-foreground w-[90px] font-medium">우선순위</TableHead>
+                  <TableHead className="text-muted-foreground w-[110px] font-medium">마감일</TableHead>
+                  <TableHead className="text-muted-foreground w-[100px] font-medium">담당자</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+              </TableHeader>
+              <TableBody>
+                {filteredTasks.map((task: any) => (
+                  <TableRow
+                    key={task.id}
+                    className="border-gray-200 cursor-pointer transition-colors hover:bg-muted/50"
+                    onClick={() => router.push(`/tasks/${task.id}`)}
+                  >
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "font-medium",
+                          task.isCompleted && "text-muted-foreground line-through"
+                        )}
+                      >
+                        {task.title}
+                      </span>
+                    </TableCell>
+                    <TableCell onClick={(e: any) => e.stopPropagation()}>
+                      <Select
+                        value={getEffectiveStatus(task)}
+                        onValueChange={(v: any) => updateTaskStatus(task.id, v as TaskStatus)}
+                        disabled={updatingStatusId === task.id}
+                      >
+                        <SelectTrigger className="h-8 border-gray-200 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_LIST.map((s: any) => (
+                            <SelectItem key={s.value} value={s.value}>
+                              {s.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={priorityVariant(task.priority)} className="text-xs">
+                        {priorityLabel(task.priority)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {format(new Date(task.dueDate), "yyyy년 M월 d일", { locale: ko })}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-[10px]">
+                            {(task.assignedTo?.name ?? "?").slice(0, 1)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{formatUserName(task.assignedTo)}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </ViewErrorBoundary>
 
       <CreateTaskModal
         open={createOpen}
@@ -314,6 +444,9 @@ export default function TasksPage() {
           refreshTasks();
           setCreateOpen(false);
         }}
+        parentId={createParentId}
+        orderIndex={tasks.length}
+        defaultAssignedToId={(session?.user as any)?.id ?? null}
       />
     </div>
   );

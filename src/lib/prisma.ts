@@ -1,6 +1,11 @@
+import "server-only";
 import { PrismaClient } from "@prisma/client";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
+// Vercel/Edge 등에서 globalThis가 null일 수 있어 .prisma 접근 시 TypeError 방지
+const globalForPrisma =
+  typeof globalThis !== "undefined" && globalThis != null
+    ? (globalThis as unknown as { prisma: PrismaClient | undefined })
+    : ({ prisma: undefined } as { prisma: PrismaClient | undefined });
 
 function createPrisma() {
   return new PrismaClient({
@@ -9,6 +14,8 @@ function createPrisma() {
 }
 
 const prisma = globalForPrisma.prisma ?? createPrisma();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== "production" && typeof globalThis !== "undefined" && globalThis != null) {
+  (globalThis as unknown as { prisma: PrismaClient }).prisma = prisma;
+}
 
 export default prisma;
