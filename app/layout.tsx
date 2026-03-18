@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Script from "next/script";
+import { Suspense } from "react";
 import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
@@ -74,7 +75,9 @@ export default async function RootLayout({
         ) : null}
         <Providers session={session ?? undefined}>
           <OneSignalUserSync />
-          <AppNav />
+          <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>
+            <AppNav />
+          </Suspense>
           <main>{children}</main>
           <Toaster richColors position="top-center" />
         </Providers>

@@ -2,6 +2,7 @@
 
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
+import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
 import { AIAssistFloat } from "@/components/ai-assist-float";
 
@@ -23,6 +24,7 @@ export function Providers({
       refetchOnWindowFocus={false}
     >
       <AIAssistProvider>
+        <WorkspaceThemeSync />
         {children}
         {safeSession?.user && <AIAssistFloat />}
       </AIAssistProvider>
