@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Script from "next/script";
 import { Suspense } from "react";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
@@ -9,6 +10,20 @@ import { Providers } from "@/components/providers";
 import { AppNav } from "@/components/app-nav";
 import { OneSignalUserSync } from "@/components/OneSignalUserSync";
 import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -54,7 +69,9 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body
+        className={`${typeof geistSans?.variable === "string" ? geistSans.variable : ""} ${typeof geistMono?.variable === "string" ? geistMono.variable : ""} antialiased`}
+      >
         {(typeof process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID === "string" && process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID.trim() !== "") ? (
           <>
             <Script
