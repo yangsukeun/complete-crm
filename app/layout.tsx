@@ -72,24 +72,20 @@ export default async function RootLayout({
       <body
         className={`${typeof geistSans?.variable === "string" ? geistSans.variable : ""} ${typeof geistMono?.variable === "string" ? geistMono.variable : ""} antialiased`}
       >
-        {(typeof process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID === "string" && process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID.trim() !== "") ? (
-          <>
-            <Script
-              src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
-              strategy="lazyOnload"
-            />
-            <Script id="onesignal-init" strategy="lazyOnload">
-              {`(function(){
-                var appId = "${(process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? "").trim()}";
-                if (!appId) return;
-                window.OneSignalDeferred = window.OneSignalDeferred || [];
-                OneSignalDeferred.push(async function(OneSignal) {
-                  try { await OneSignal.init({ appId: appId }); } catch (e) { console.warn("[OneSignal] init skipped:", e && e.message ? e.message : e); }
-                });
-              })();`}
-            </Script>
-          </>
-        ) : null}
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          strategy="lazyOnload"
+        />
+        <Script id="onesignal-init" strategy="lazyOnload">
+          {`
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            OneSignalDeferred.push(async function(OneSignal) {
+              await OneSignal.init({
+                appId: "${process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? ""}"
+              });
+            });
+          `}
+        </Script>
         <Providers session={session ?? undefined}>
           <OneSignalUserSync />
           <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>

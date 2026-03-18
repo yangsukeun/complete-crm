@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -266,10 +266,6 @@ export default function TasksPage() {
                 일지
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="board" className="mt-0" />
-            <TabsContent value="table" className="mt-0" />
-            <TabsContent value="tree" className="mt-0" />
-            <TabsContent value="logs" className="mt-0" />
           </Tabs>
           <Popover>
             <PopoverTrigger asChild>
