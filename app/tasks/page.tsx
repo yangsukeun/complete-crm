@@ -1,13 +1,11 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import useSWR, { useSWRConfig } from "swr";
+import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import { useSession } from "next-auth/react";
-import { useWorkspaceStore } from "@/store/workspace-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -30,16 +28,12 @@ import {
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTaskModal } from "@/components/create-task-modal";
-import { TaskCategoryTree } from "@/components/task-category-tree";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, LayoutGrid, List, Filter, GitBranch, FileText } from "lucide-react";
-import { TaskTreeView } from "./components/view-tree";
-import { WorkLogTab } from "./components/work-log-tab";
+import { Plus, Filter } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { cn } from "@/lib/utils";
 
 const STATUS_LIST = [
@@ -63,8 +57,6 @@ type Task = {
   orderIndex: number;
   assignedTo: { id: string; name: string; email: string; position?: string | null };
   createdBy: { id: string; name: string; position?: string | null };
-  attachments?: { id: string }[];
-  comments?: { id: string }[];
 };
 
 function getEffectiveStatus(task: Task): TaskStatus {
@@ -84,128 +76,48 @@ function priorityLabel(priority: string) {
   return "보통";
 }
 
-type TaskLink = {
-  id: string;
-  parentId: string;
-  childId: string;
-};
-
-type CategoryItem = { id: string; name: string; parentId: string | null; sortOrder: number; isCollapsed: boolean };
-
-function tasksFetcher(key: unknown): Promise<Task[]> {
-  const [url, workspace] = Array.isArray(key) && key.length >= 2 ? key : [];
-  if (!url || !workspace) return Promise.resolve([]);
-  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r: any) => (r.ok ? r.json() : []));
-}
-function categoriesFetcher(key: unknown): Promise<CategoryItem[]> {
-  const [url, workspace] = Array.isArray(key) && key.length >= 2 ? key : [];
-  if (!url || !workspace) return Promise.resolve([]);
-  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r: any) => (r.ok ? r.json() : []));
-}
-function linksFetcher(key: unknown): Promise<TaskLink[]> {
-  const [url, workspace] = Array.isArray(key) && key.length >= 2 ? key : [];
-  if (!url || !workspace) return Promise.resolve([]);
-  return fetch(url, { headers: { "x-workspace": String(workspace) } }).then((r: any) => (r.ok ? r.json() : []));
+function tasksFetcher(url: string): Promise<Task[]> {
+  return fetch(url).then((r: any) => (r.ok ? r.json() : []));
 }
 
 export default function TasksPage() {
-  const searchParams = useSearchParams();
   const { data: session, status: authStatus } = useSession();
-  const { mutate: globalMutate } = useSWRConfig();
-  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
-  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
-
-  const urlMode = searchParams.get("mode");
-  const mode: "TEAM" | "MY" = urlMode === "MY" || urlMode === "TEAM" ? urlMode : currentWorkspace;
-
-  useEffect(() => {
-    if (urlMode === "MY" || urlMode === "TEAM") setWorkspace(urlMode);
-  }, [urlMode, setWorkspace]);
-
-  const [view, setView] = useState<"board" | "table" | "tree" | "logs">("board");
-  const [createParentId, setCreateParentId] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
   const router = useRouter();
+  const [createOpen, setCreateOpen] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "">("");
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
 
-  const taskKey: [string, string] = ["/api/tasks", mode];
-  const catKey: [string, string] = ["/api/tasks/categories", mode];
-  const linksKey: [string, string] = ["/api/tasks/links", mode];
-
   const { data: tasksData = [], mutate: mutateTasks, isLoading: tasksLoading } = useSWR<Task[]>(
-    authStatus === "authenticated" ? taskKey : null,
+    authStatus === "authenticated" ? "/api/tasks" : null,
     tasksFetcher,
     { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 5000 }
   );
-  const { data: categoriesData = [], mutate: mutateCategories } = useSWR<CategoryItem[]>(
-    authStatus === "authenticated" ? catKey : null,
-    categoriesFetcher,
-    { keepPreviousData: true }
-  );
-  const { data: taskLinksData = [], mutate: mutateLinks } = useSWR<TaskLink[]>(
-    authStatus === "authenticated" ? linksKey : null,
-    linksFetcher,
-    { keepPreviousData: true }
-  );
 
   const tasks = Array.isArray(tasksData) ? tasksData : [];
-  const categories = Array.isArray(categoriesData) ? categoriesData : [];
-  const taskLinks = Array.isArray(taskLinksData) ? taskLinksData : [];
 
   const refreshTasks = useCallback(() => {
     mutateTasks();
-    mutateCategories();
-    mutateLinks();
-  }, [mutateTasks, mutateCategories, mutateLinks]);
+  }, [mutateTasks]);
 
-  useEffect(() => {
-    const onPrefetch = (e: Event) => {
-      const w = (e as CustomEvent<{ workspace: "TEAM" | "MY" }>).detail?.workspace;
-      if (!w) return;
-      globalMutate(["/api/tasks", w], tasksFetcher);
-      globalMutate(["/api/tasks/categories", w], categoriesFetcher);
-      globalMutate(["/api/tasks/links", w], linksFetcher);
-    };
-    window.addEventListener("workspace-prefetch", onPrefetch);
-    return () => window.removeEventListener("workspace-prefetch", onPrefetch);
-  }, [globalMutate]);
-
-  const updateTaskStatus = useCallback(async (taskId: string, newStatus: TaskStatus) => {
-    setUpdatingStatusId(taskId);
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-workspace": mode,
-        },
-        body: JSON.stringify({
-          status: newStatus,
-          isCompleted: newStatus === "DONE",
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      mutateTasks();
-      toast.success("상태가 변경되었습니다.");
-    } catch {
-      toast.error("상태 변경에 실패했습니다.");
-    } finally {
-      setUpdatingStatusId(null);
-    }
-  }, [mode, mutateTasks]);
-
-  const handleDragEnd = useCallback(
-    (result: { destination?: { droppableId: string }; draggableId: string }) => {
-      if (!result.destination) return;
-      const newStatus = result.destination.droppableId as TaskStatus;
-      const taskId = result.draggableId;
-      if (getEffectiveStatus(tasks.find((t: any) => t.id === taskId)!) !== newStatus) {
-        updateTaskStatus(taskId, newStatus);
+  const updateTaskStatus = useCallback(
+    async (taskId: string, newStatus: TaskStatus) => {
+      setUpdatingStatusId(taskId);
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus, isCompleted: newStatus === "DONE" }),
+        });
+        if (!res.ok) throw new Error("수정 실패");
+        refreshTasks();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "수정에 실패했습니다.");
+      } finally {
+        setUpdatingStatusId(null);
       }
     },
-    [tasks, updateTaskStatus]
+    [refreshTasks]
   );
 
   if (authStatus === "loading" || authStatus === "unauthenticated") {
@@ -223,11 +135,6 @@ export default function TasksPage() {
     if (filterAssigneeId && t.assignedTo?.id !== filterAssigneeId) return false;
     return true;
   });
-  const tasksByStatus = {
-    TODO: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "TODO"),
-    IN_PROGRESS: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "IN_PROGRESS"),
-    DONE: filteredTasks.filter((t: any) => getEffectiveStatus(t) === "DONE"),
-  };
   const assigneePairs = tasks
     .map((t: any) => [t.assignedTo?.id, t.assignedTo] as [string | undefined, unknown])
     .filter((pair): pair is [string, unknown] => pair[0] != null && !!pair[1]);
@@ -235,54 +142,34 @@ export default function TasksPage() {
   const hasActiveFilter = filterStatus !== "" || filterAssigneeId !== "";
 
   return (
-    <div key={mode} className="flex flex-col gap-6 p-6 md:p-8">
-      {/* Notion-style header */}
+    <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="border-border flex flex-col gap-4 border-b border-gray-200 pb-6">
-        <PageHeadline
-          title="업무"
-          description="할 일을 보드·리스트·마인드맵·업무일지로 보고, 담당자·마감일을 지정해 관리합니다."
-        />
+        <PageHeadline title="업무" description="업무를 목록으로 보고, 상태와 담당자를 관리합니다." />
         <div className="flex flex-wrap items-center gap-3">
-          <Tabs
-            value={view}
-            onValueChange={(v: any) => setView(v as "board" | "table" | "tree" | "logs")}
-            className="w-auto"
-          >
-            <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5">
-              <TabsTrigger value="board" className="gap-2 rounded-md px-3">
-                <LayoutGrid className="size-4" />
-                보드
-              </TabsTrigger>
-              <TabsTrigger value="table" className="gap-2 rounded-md px-3">
-                <List className="size-4" />
-                리스트
-              </TabsTrigger>
-              <TabsTrigger value="tree" className="gap-2 rounded-md px-3">
-                <GitBranch className="size-4" />
-                업무 마인드맵
-              </TabsTrigger>
-              <TabsTrigger value="logs" className="gap-2 rounded-md px-3">
-                <FileText className="size-4" />
-                일지
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
-                className={cn("border-gray-200 text-muted-foreground", hasActiveFilter && "border-amber-400 text-amber-700")}
+                className={cn(
+                  "border-gray-200 text-muted-foreground",
+                  hasActiveFilter && "border-amber-400 text-amber-700"
+                )}
               >
                 <Filter className="mr-2 size-4" />
                 필터
-                {hasActiveFilter && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px]">적용중</span>}
+                {hasActiveFilter && (
+                  <span className="ml-1 rounded bg-amber-100 px-1 text-[10px]">적용중</span>
+                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64" align="start">
               <div className="space-y-3">
                 <p className="text-sm font-medium">상태</p>
-                <Select value={filterStatus || "all"} onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}>
+                <Select
+                  value={filterStatus || "all"}
+                  onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}
+                >
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="전체" />
                   </SelectTrigger>
@@ -296,7 +183,10 @@ export default function TasksPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-sm font-medium">담당자</p>
-                <Select value={filterAssigneeId || "all"} onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}>
+                <Select
+                  value={filterAssigneeId || "all"}
+                  onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}
+                >
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="전체" />
                   </SelectTrigger>
@@ -309,7 +199,15 @@ export default function TasksPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setFilterStatus(""); setFilterAssigneeId(""); }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    setFilterStatus("");
+                    setFilterAssigneeId("");
+                  }}
+                >
                   필터 초기화
                 </Button>
               </div>
@@ -325,14 +223,8 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* 모드가 바뀌면 이 블록 전체를 파괴 후 재생성해 데이터를 확실히 갱신 */}
-      <div key={mode}>
-      {tasksLoading && tasks.length === 0 && view !== "logs" ? (
-        <p className="text-muted-foreground py-12 text-center text-sm">
-          업무 목록을 불러오는 중...
-        </p>
-      ) : view === "logs" ? (
-        <WorkLogTab />
+      {tasksLoading && tasks.length === 0 ? (
+        <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
       ) : filteredTasks.length === 0 ? (
         <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
           <p className="mb-4 text-sm">업무가 없습니다.</p>
@@ -341,95 +233,6 @@ export default function TasksPage() {
             새로 만들기
           </Button>
         </div>
-      ) : view === "tree" ? (
-        <TaskTreeView
-          tasks={filteredTasks.map((t: any) => ({
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            dueDate: t.dueDate,
-            isCompleted: t.isCompleted,
-            status: t.status,
-            priority: t.priority,
-            parentId: t.parentId,
-            isCollapsed: false,
-            assignedTo: t.assignedTo,
-          }))}
-          taskLinks={taskLinks}
-          onRefresh={refreshTasks}
-          onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
-          onCreateTask={(parentId: any) => {
-            setCreateParentId(parentId);
-            setCreateOpen(true);
-          }}
-        />
-      ) : view === "board" ? (
-        <DragDropContext onDragEnd={handleDragEnd as any}>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {STATUS_LIST.map(({ value, label }) => (
-              <div
-                key={value}
-                className="border-border flex flex-col rounded-lg border border-gray-200 bg-muted/20"
-              >
-                <div className="border-border flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                  <span className="text-sm font-medium text-foreground">{label}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {tasksByStatus[value].length}개
-                  </span>
-                </div>
-                <Droppable droppableId={value}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={cn(
-                        "min-h-[120px] flex-1 space-y-2 p-3 transition-colors",
-                        snapshot.isDraggingOver && "bg-muted/40"
-                      )}
-                    >
-                      {tasksByStatus[value].map((task, index) => (
-                        <Draggable key={task.id} draggableId={task.id} index={index}>
-                          {(provided: any) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              onClick={() => router.push(`/tasks/${task.id}`)}
-                              className="border-border cursor-pointer rounded-lg border border-gray-200 bg-card p-3 shadow-sm transition-shadow hover:shadow-md"
-                            >
-                              <p
-                                className={cn(
-                                  "font-medium text-foreground line-clamp-2",
-                                  task.isCompleted && "text-muted-foreground line-through"
-                                )}
-                              >
-                                {task.title}
-                              </p>
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarFallback className="text-[10px]">
-                                    {(task.assignedTo?.name ?? "?").slice(0, 1)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
-                                  {priorityLabel(task.priority)}
-                                </Badge>
-                                <span className="text-muted-foreground text-xs">
-                                  {format(new Date(task.dueDate), "M월 d일", { locale: ko })}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </div>
-            ))}
-          </div>
-        </DragDropContext>
       ) : (
         <div className="border-border overflow-hidden rounded-lg border border-gray-200">
           <Table>
@@ -502,40 +305,16 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* 스킬트리 (대분류) */}
-      <TaskCategoryTree
-        categories={categories}
-        tasks={filteredTasks.map((t: any) => ({
-          id: t.id,
-          title: t.title,
-          dueDate: t.dueDate,
-          isCompleted: t.isCompleted,
-          status: t.status,
-          priority: t.priority,
-          categoryId: t.categoryId ?? null,
-          assignedTo: t.assignedTo,
-        }))}
-        onRefresh={refreshTasks}
-        defaultAssignedToId={session?.user?.id ?? null}
-        workspace={mode}
-      />
-      </div>
-
       <CreateTaskModal
         open={createOpen}
         onOpenChange={(open: any) => {
           setCreateOpen(open);
-          if (!open) setCreateParentId(null);
         }}
         onCreated={() => {
           refreshTasks();
           setCreateOpen(false);
-          setCreateParentId(null);
         }}
-        parentId={createParentId}
-        orderIndex={tasks.length}
       />
-
     </div>
   );
 }
