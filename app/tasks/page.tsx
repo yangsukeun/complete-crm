@@ -39,6 +39,7 @@ import { WorkLogTab } from "./components/work-log-tab";
 import { formatUserName } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { cn } from "@/lib/utils";
 
 const TaskTreeView = dynamic(() => import("./components/view-tree").then((m) => m.TaskTreeView), {
@@ -372,52 +373,72 @@ export default function TasksPage() {
           }}
         />
       ) : view === "board" ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {STATUS_LIST.map(({ value, label }) => (
-            <div
-              key={value}
-              className="border-border flex flex-col rounded-lg border border-gray-200 bg-muted/20"
-            >
-              <div className="border-border flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                <span className="text-sm font-medium text-foreground">{label}</span>
-                <span className="text-muted-foreground text-xs">
-                  {tasksByStatus[value].length}개
-                </span>
-              </div>
-              <div className="min-h-[120px] flex-1 space-y-2 p-3">
-                {tasksByStatus[value].map((task) => (
-                  <div
-                    key={task.id}
-                    onClick={() => router.push(`/tasks/${task.id}`)}
-                    className="border-border cursor-pointer rounded-lg border border-gray-200 bg-card p-3 shadow-sm transition-shadow hover:shadow-md"
-                  >
-                    <p
+        <DragDropContext onDragEnd={handleDragEnd as any}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {STATUS_LIST.map(({ value, label }) => (
+              <div
+                key={value}
+                className="border-border flex flex-col rounded-lg border border-gray-200 bg-muted/20"
+              >
+                <div className="border-border flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                  <span className="text-sm font-medium text-foreground">{label}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {tasksByStatus[value].length}개
+                  </span>
+                </div>
+                <Droppable droppableId={value}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
                       className={cn(
-                        "font-medium text-foreground line-clamp-2",
-                        task.isCompleted && "text-muted-foreground line-through"
+                        "min-h-[120px] flex-1 space-y-2 p-3 transition-colors",
+                        snapshot.isDraggingOver && "bg-muted/40"
                       )}
                     >
-                      {task.title}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-[10px]">
-                          {(task.assignedTo?.name ?? "?").slice(0, 1)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
-                        {priorityLabel(task.priority)}
-                      </Badge>
-                      <span className="text-muted-foreground text-xs">
-                        {format(new Date(task.dueDate), "M월 d일", { locale: ko })}
-                      </span>
+                      {tasksByStatus[value].map((task, index) => (
+                        <Draggable key={task.id} draggableId={task.id} index={index}>
+                          {(provided: any) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              onClick={() => router.push(`/tasks/${task.id}`)}
+                              className="border-border cursor-pointer rounded-lg border border-gray-200 bg-card p-3 shadow-sm transition-shadow hover:shadow-md"
+                            >
+                              <p
+                                className={cn(
+                                  "font-medium text-foreground line-clamp-2",
+                                  task.isCompleted && "text-muted-foreground line-through"
+                                )}
+                              >
+                                {task.title}
+                              </p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-[10px]">
+                                    {(task.assignedTo?.name ?? "?").slice(0, 1)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
+                                  {priorityLabel(task.priority)}
+                                </Badge>
+                                <span className="text-muted-foreground text-xs">
+                                  {format(new Date(task.dueDate), "M월 d일", { locale: ko })}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
                     </div>
-                  </div>
-                ))}
+                  )}
+                </Droppable>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </DragDropContext>
       ) : (
         <div className="border-border overflow-hidden rounded-lg border border-gray-200">
           <Table>
