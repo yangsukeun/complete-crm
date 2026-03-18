@@ -146,9 +146,7 @@ export function AdminEmployeesClient({
               totalAvailable: d.totalAvailable,
             });
             setAnnualCarryOver(String(d.annualCarryOver ?? 0));
-            if (myRole === "EXECUTIVE" && (d.manualDeduction ?? 0) > 0) {
-              setManualDeduction(String(d.manualDeduction));
-            }
+            setManualDeduction(String(d.manualDeduction ?? 0));
           }
         })
         .catch(() => setLeaveBalance(null));
@@ -479,18 +477,18 @@ export function AdminEmployeesClient({
                   onChange={(e: any) => setJoinDate(e.target.value)}
                 />
               </div>
-              {/* 휴가 소진: 마스터(대표/임원)는 언제든 사용 처리·되돌리기 가능, 일반 관리자는 최초 1회만 */}
+              {/* 휴가 소진(차감): 대표/관리자는 언제든 수정·되돌리기 가능, 그 외는 최초 1회만 */}
               <div className="space-y-2 border-t pt-4">
-                <Label className="text-sm font-medium">휴가 소진 (이미 사용한 연차)</Label>
-                {leaveBalance && leaveBalance.manualDeduction > 0 && myRole !== "EXECUTIVE" ? (
+                <Label className="text-sm font-medium">휴가 소진 (이미 사용한 연차, 일)</Label>
+                {leaveBalance && leaveBalance.manualDeduction > 0 && myRole !== "EXECUTIVE" && myRole !== "ADMIN" ? (
                   <p className="text-muted-foreground text-sm">
                     이미 소진 처리됨: <strong>{leaveBalance.manualDeduction}일</strong> (수정 불가)
                   </p>
                 ) : (
                   <>
                     <p className="text-muted-foreground text-xs">
-                      {myRole === "EXECUTIVE"
-                        ? "마스터 계정: 사용 처리 또는 0으로 되돌릴 수 있습니다."
+                      {(myRole === "EXECUTIVE" || myRole === "ADMIN")
+                        ? "대표/관리자: 연차 차감을 언제든 다시 입력하거나 0으로 되돌릴 수 있습니다."
                         : "시스템 도입 전에 이미 사용한 연차가 있으면 여기 입력 후 저장하세요. 최초 1회만 설정 가능합니다."}
                     </p>
                     <Input

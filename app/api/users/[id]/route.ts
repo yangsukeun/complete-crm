@@ -103,7 +103,8 @@ export async function PATCH(
         const balance = await prisma.leaveBalance.findUnique({
           where: { userId_year: { userId: id, year } },
         });
-        const isMaster = role === "EXECUTIVE";
+        // EXECUTIVE/ADMIN: 언제든 연차 차감(소진) 재입력 가능. 그 외: 최초 1회만.
+        const canAlwaysEditDeduction = role === "EXECUTIVE" || role === "ADMIN";
         if (!balance) {
           await prisma.leaveBalance.create({
             data: {
@@ -115,7 +116,7 @@ export async function PATCH(
               annualCarryOver: 0,
             },
           });
-        } else if (balance.manualDeduction === 0 || isMaster) {
+        } else if (balance.manualDeduction === 0 || canAlwaysEditDeduction) {
           await prisma.leaveBalance.update({
             where: { userId_year: { userId: id, year } },
             data: { manualDeduction: parsed.data.manualDeduction },

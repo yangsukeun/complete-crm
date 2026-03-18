@@ -47,12 +47,6 @@ export async function GET(
           },
           orderBy: { createdAt: "asc" },
         },
-        revisions: {
-          include: {
-            user: { select: { id: true, name: true, position: true } },
-          },
-          orderBy: { createdAt: "desc" },
-        },
       },
     });
     if (!task) {

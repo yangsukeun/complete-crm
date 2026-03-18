@@ -358,9 +358,11 @@ export async function PATCH(req: Request) {
               annualTotal: entitlement,
               annualUsed: 0,
               manualDeduction: (parsed.data as any).manualDeduction,
+              annualCarryOver: 0,
             },
           });
-        } else if (balance.manualDeduction === 0) {
+        } else {
+          // 관리자: 언제든 연차 차감(소진) 재입력 가능
           await prisma.leaveBalance.update({
             where: { userId_year: { userId: session.user.id, year } },
             data: { manualDeduction: (parsed.data as any).manualDeduction },
