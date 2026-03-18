@@ -116,7 +116,7 @@ export function AppNav() {
 
   // 직원만 채팅 미읽음 배지 표시
   useEffect(() => {
-    if (!session?.user?.id || pathname === "/choose-mode" || effectiveMode !== "company" || session?.user?.role !== "USER") {
+    if (!session?.user?.id || pathname === "/choose-mode" || effectiveMode !== "company" || session.user.role !== "USER") {
       setChatUnreadCount(0);
       return;
     }
@@ -126,7 +126,7 @@ export function AppNav() {
         .then((list: any) => {
           let count = 0;
           for (const c of list) {
-            if (!c.lastMessage || (c.lastMessage.user && c.lastMessage.user.id === session?.user?.id)) continue;
+            if (!c.lastMessage || c.lastMessage.user.id === session.user?.id) continue;
             const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
             if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
           }
@@ -148,7 +148,7 @@ export function AppNav() {
           .then((list: any) => {
             let count = 0;
             for (const c of list) {
-              if (!c.lastMessage || (c.lastMessage.user && c.lastMessage.user.id === session?.user?.id)) continue;
+              if (!c.lastMessage || c.lastMessage.user.id === session.user?.id) continue;
               const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
               if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
             }
@@ -262,8 +262,7 @@ export function AppNav() {
         : "bg-gray-100 text-gray-700";
   })();
 
-  const user = session?.user;
-  const userInitial = (user?.name ?? user?.email ?? "?").slice(0, 1).toUpperCase();
+  const userInitial = (session?.user?.name ?? session?.user?.email ?? "?").slice(0, 1).toUpperCase();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
@@ -469,7 +468,7 @@ export function AppNav() {
           <NotificationBell />
 
           {/* User Dropdown (프로필/내 정보/로그아웃) */}
-          {user && (
+          {session?.user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -484,7 +483,7 @@ export function AppNav() {
                   </Avatar>
                   <div className="hidden flex-col items-start text-left lg:flex">
                     <span className="text-sm font-medium text-gray-900">
-                      {user?.name ?? user?.email ?? "사용자"}
+                      {session?.user?.name ?? "사용자"}
                     </span>
                     {roleLabel && (
                       <span className="text-xs text-gray-500">{roleLabel}</span>
@@ -496,8 +495,8 @@ export function AppNav() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">{user?.name ?? user?.email ?? ""}</p>
-                    <p className="text-xs text-gray-500">{user?.email ?? ""}</p>
+                    <p className="text-sm font-medium">{session?.user?.name ?? session?.user?.email ?? ""}</p>
+                    <p className="text-xs text-gray-500">{session?.user?.email ?? ""}</p>
                     {roleLabel && (
                       <span className={cn("inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium", badgeClass)}>
                         {roleLabel}

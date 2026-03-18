@@ -13,20 +13,17 @@ export function Providers({
   children: React.ReactNode;
   session?: Session | null;
 }) {
-  // session.user가 null이면 클라이언트에서 reading 'email' 등 null 참조 오류 방지
-  const safeSession =
-    session != null && session.user != null ? session : undefined;
   return (
     <SessionProvider
       basePath="/api/auth"
-      session={safeSession ?? undefined}
+      session={session ?? undefined}
       refetchInterval={0}
       refetchOnWindowFocus={false}
     >
       <AIAssistProvider>
         <WorkspaceThemeSync />
         {children}
-        {safeSession?.user && <AIAssistFloat />}
+        {session?.user && <AIAssistFloat />}
       </AIAssistProvider>
     </SessionProvider>
   );
