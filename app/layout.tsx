@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import Script from "next/script";
 import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
@@ -8,7 +7,6 @@ import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { Providers } from "@/components/providers";
 import { AppNav } from "@/components/app-nav";
-import { OneSignalUserSync } from "@/components/OneSignalUserSync";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -72,22 +70,7 @@ export default async function RootLayout({
       <body
         className={`${typeof geistSans?.variable === "string" ? geistSans.variable : ""} ${typeof geistMono?.variable === "string" ? geistMono.variable : ""} antialiased`}
       >
-        <Script
-          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
-          strategy="lazyOnload"
-        />
-        <Script id="onesignal-init" strategy="lazyOnload">
-          {`
-            window.OneSignalDeferred = window.OneSignalDeferred || [];
-            OneSignalDeferred.push(async function(OneSignal) {
-              await OneSignal.init({
-                appId: "${process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? ""}"
-              });
-            });
-          `}
-        </Script>
         <Providers session={session ?? undefined}>
-          <OneSignalUserSync />
           <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>
             <AppNav />
           </Suspense>
