@@ -19,53 +19,18 @@ const authSecret =
   process.env.AUTH_SECRET ??
   (process.env.NODE_ENV === "development" ? "dev-secret-change-in-production" : undefined);
 
-const DEV_SESSION_COOKIE = "dev_user_id";
-
-/** 개발 환경: 쿠키에 저장된 로그인 사용자 ID로 세션 반환 (NextAuth 완전 우회) */
-async function getDevCookieSession(): Promise<{ user: any; expires: string } | null> {
-  if (process.env.NODE_ENV !== "development") return null;
-  try {
-    const { cookies } = await import("next/headers");
-    const store = await cookies();
-    const userId = store.get(DEV_SESSION_COOKIE)?.value;
-    if (!userId || typeof userId !== "string") return null;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, name: true, email: true, role: true, permissions: true, badgePreset: true },
-    });
-    if (!user) return null;
-    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: (user.permissions ?? undefined) as string | undefined,
-        badgePreset: user.badgePreset ?? undefined,
-      },
-      expires: expires.toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** NextAuth 세션 또는 개발용 쿠키 세션 반환. 로그아웃 시 null (개발에서도 첫 ADMIN 자동 로그인 없음) */
+/** NextAuth JWT 세션만 사용 (로컬·배포 동일) */
 export async function getAppSession() {
   try {
-    const session = await auth();
-    if (session?.user?.id) return session;
-    if (process.env.NODE_ENV !== "development") return null;
-    const devCookieSession = await getDevCookieSession();
-    return devCookieSession;
+    return await auth();
   } catch (e) {
     console.error("[getAppSession]", e);
     return null;
   }
 }
 
-export { DEV_SESSION_COOKIE };
+/** 레거시 dev_user_id 쿠키명 — 로그아웃 시 정리용 */
+export const DEV_SESSION_COOKIE = "dev_user_id";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -85,29 +50,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // 성능: 프로덕션에서는 /api/auth/session 호출이 빈번하므로,
       // 매번 DB에서 name/email/badgePreset을 갱신하지 않는다.
       // 필요 시 환경 변수로 활성화 가능.
-      const refreshFromDb =
-        process.env.NODE_ENV === "development" ||
-        process.env.SESSION_REFRESH_FROM_DB === "true";
+      const refreshFromDb = process.env.SESSION_REFRESH_FROM_DB === "true";
       if (!refreshFromDb) return base ?? params.session;
       try {
-        let user: { name: string; email: string | null; badgePreset?: string | null } | null = null;
+        let user: {
+          name: string;
+          email: string | null;
+          role: string;
+          permissions: string | null;
+          badgePreset?: string | null;
+        } | null = null;
         try {
           user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { name: true, email: true, badgePreset: true },
+            select: { name: true, email: true, role: true, permissions: true, badgePreset: true },
           });
         } catch (selectErr) {
           const msg = String((selectErr as Error)?.message ?? "");
           if (msg.includes("badgePreset") || msg.includes("Unknown field")) {
             user = await prisma.user.findUnique({
               where: { id: userId },
-              select: { name: true, email: true },
+              select: { name: true, email: true, role: true, permissions: true },
             });
           } else throw selectErr;
         }
         if (user && base?.user) {
           base.user.name = user.name;
           base.user.email = user.email ?? null;
+          // JWT에는 예전 role이 남아 있을 수 있음(db seed·역할 변경 후에도). 개발/옵션 시 DB 기준으로 맞춤.
+          base.user.role = user.role;
+          (base.user as { permissions?: string | null }).permissions = user.permissions ?? undefined;
           (base.user as Record<string, unknown>).badgePreset = user.badgePreset ?? undefined;
         }
       } catch {
@@ -167,14 +139,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return null;
           }
           let ok = await compare(passwordRaw, user.password);
-          // 개발: 비교 실패 시 DB 해시 복구
-          if (!ok && process.env.NODE_ENV === "development") {
-            const rehashed = await hash(passwordRaw, 10);
-            await prisma.user.update({ where: { id: user.id }, data: { password: rehashed } });
-            ok = await compare(passwordRaw, rehashed);
-            if (ok) console.warn("[auth] 비밀번호 해시 복구 후 로그인:", emailRaw);
-          }
-          // 프로덕션 포함: DB에 bcrypt가 아닌 값이 저장된 경우 입력값으로 재저장 후 로그인 허용
+          // DB에 bcrypt가 아닌 값이 저장된 경우 입력값으로 재저장 후 로그인 허용
           if (!ok && passwordRaw.length >= 4 && !user.password.startsWith("$2")) {
             const rehashed = await hash(passwordRaw, 10);
             await prisma.user.update({ where: { id: user.id }, data: { password: rehashed } });

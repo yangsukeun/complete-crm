@@ -7,10 +7,6 @@ export function LogoutButton() {
     <button
       type="button"
       onClick={() => {
-        if (process.env.NODE_ENV === "development") {
-          window.location.href = "/api/auth/dev-logout";
-          return;
-        }
         signOut({ callbackUrl: "/login" });
       }}
       className="fixed top-4 right-4 text-xs text-slate-400 hover:text-slate-200 transition-colors py-1.5 px-2.5 rounded border border-slate-600/50 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-700/50"

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { put } from "@vercel/blob";
 import { getAppSession } from "@/auth";
 import path from "path";
 import fs from "fs";
@@ -82,11 +83,33 @@ export async function POST(req: Request) {
 
     const fileExt = getExt(mime, file.name);
     const filename = `u-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${fileExt}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    /** Vercel 등 읽기 전용 FS: BLOB_READ_WRITE_TOKEN 설정 시 Vercel Blob 사용 */
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+    if (blobToken) {
+      const blob = await put(`board-content/${filename}`, buffer, {
+        access: "public",
+        token: blobToken,
+        contentType: mime || undefined,
+      });
+      return NextResponse.json({ url: blob.url, name: file.name });
+    }
+
+    if (process.env.VERCEL) {
+      return NextResponse.json(
+        {
+          error:
+            "배포 환경에서 파일 저장을 쓰려면 Vercel Blob 토큰이 필요합니다. 프로젝트 → Storage → Connect, 또는 BLOB_READ_WRITE_TOKEN 환경 변수를 설정하세요.",
+        },
+        { status: 503 }
+      );
+    }
+
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     }
     const filepath = path.join(UPLOAD_DIR, filename);
-    const buffer = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(filepath, buffer);
 
     const url = `/uploads/content/${filename}`;

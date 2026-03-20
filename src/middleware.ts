@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/signup", "/api/auth"];
-const DEV_SESSION_COOKIE = "dev_user_id";
 const NEXTAUTH_COOKIES = [
   "next-auth.session-token",
   "__Secure-next-auth.session-token",
@@ -18,7 +17,6 @@ function isPublic(pathname: string): boolean {
 }
 
 function hasAuthCookie(request: NextRequest): boolean {
-  if (request.cookies.get(DEV_SESSION_COOKIE)?.value) return true;
   if (NEXTAUTH_COOKIES.some((name) => request.cookies.get(name)?.value)) return true;
   return false;
 }

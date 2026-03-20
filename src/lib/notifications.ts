@@ -2,7 +2,15 @@ import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
 import { sendPushToUser } from "./notifications/push";
 
-export type NotificationTypeEnum = "DEADLINE" | "ASSIGNED" | "COMMENT" | "STAGNANT" | "BOARD_MENTION" | "CHAT_MESSAGE" | "NOTICE_POSTED";
+export type NotificationTypeEnum =
+  | "DEADLINE"
+  | "ASSIGNED"
+  | "COMMENT"
+  | "STAGNANT"
+  | "BOARD_MENTION"
+  | "TASK_BODY_MENTION"
+  | "CHAT_MESSAGE"
+  | "NOTICE_POSTED";
 export type NotificationPriority = "high" | "medium" | "low";
 
 type CreateNotificationInput = {
@@ -20,6 +28,7 @@ const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriorit
   COMMENT: "medium",
   STAGNANT: "low",
   BOARD_MENTION: "medium",
+  TASK_BODY_MENTION: "medium",
   CHAT_MESSAGE: "medium",
   NOTICE_POSTED: "high",
 };
@@ -51,6 +60,57 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
 
   // push: 내부 알림이 우선, push는 best-effort
   if ((priority === "high" || priority === "medium") && actorId && actorId !== userId) {
+    await sendPushToUser({
+      userId,
+      title: "새 알림",
+      message,
+      url: link || undefined,
+      priority,
+    });
+  }
+}
+
+/**
+ * 업무 본문 @멘션 알림. DB에 TASK_BODY_MENTION enum이 없으면 BOARD_MENTION으로 폴백(마이그레이션 전 배포 대비).
+ * 수신자(userId) 기준으로 Notification 행만 생성하므로, 멘션 시점에 해당 사용자가 로그아웃이어도 이후 로그인하면 목록에 그대로 나온다.
+ */
+export async function createTaskBodyMentionNotification(input: {
+  userId: string;
+  message: string;
+  link?: string;
+  actorId: string | null;
+}): Promise<void> {
+  const { userId, message, link = "", actorId } = input;
+  const priority: NotificationPriority = DEFAULT_PRIORITY_BY_TYPE.TASK_BODY_MENTION;
+  let inserted = false;
+  try {
+    await prisma.notification.create({
+      data: { userId, type: "TASK_BODY_MENTION", message, link },
+    });
+    inserted = true;
+    if (process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1") {
+      console.info("[Notification] 업무 본문 호출 알림 저장됨 (TASK_BODY_MENTION)", { userId });
+    }
+  } catch (e) {
+    console.warn("[Notification] TASK_BODY_MENTION 저장 실패 → BOARD_MENTION 시도(DB enum/마이그레이션 확인):", e);
+    try {
+      await prisma.notification.create({
+        data: { userId, type: "BOARD_MENTION", message, link },
+      });
+      inserted = true;
+      if (process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1") {
+        console.info("[Notification] 업무 본문 호출 알림 저장됨 (BOARD_MENTION 폴백)", { userId });
+      }
+    } catch (e2) {
+      console.error("[Notification] 멘션 알림(DB) 생성 실패:", e2);
+    }
+  }
+  if (
+    inserted &&
+    (priority === "high" || priority === "medium") &&
+    actorId &&
+    actorId !== userId
+  ) {
     await sendPushToUser({
       userId,
       title: "새 알림",

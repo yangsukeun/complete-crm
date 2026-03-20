@@ -23,12 +23,13 @@ import {
   getMultiColumnSlashMenuItems,
   locales as multiColumnLocales,
 } from "@blocknote/xl-multi-column";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, User } from "lucide-react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getYoutubeVideoId, taskBodySchema } from "@/lib/blocknote-youtube";
+import { getYoutubeVideoId } from "@/lib/blocknote-youtube";
+import { taskBodySchema } from "@/lib/task-body-schema";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
@@ -38,7 +39,8 @@ const koreanDictionary = {
   ...ko,
   placeholders: {
     ...ko.placeholders,
-    default: "내용을 입력하세요. '/' 를 누르면 토글·제목·목록을 넣을 수 있어요.",
+    default:
+      "내용을 입력하세요. '/' 블록 · '@' 동료 호출 · 줄 앞 # - [] 단축키를 쓸 수 있어요.",
     heading: "제목",
     toggleListItem: "토글을 켜거나 끌 내용",
     bulletListItem: "목록 항목",
@@ -106,6 +108,51 @@ function makeColumnListBlock(count: number) {
       children: [{ type: "paragraph" as const }],
     })),
   };
+}
+
+/** @ : 본문에서 동료 멘션 → 저장 시 알림 및 TaskMention 동기화 */
+function TaskMentionMenu() {
+  const editor = useBlockNoteEditor();
+  const [users, setUsers] = useState<
+    Array<{ id: string; name: string; email: string; department: string | null; position: string | null }>
+  >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/users/list")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) setUsers(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const getItems = useMemo(
+    () => async (query: string) => {
+      const items = users.map((u) => ({
+        title: u.name,
+        subtext: [u.position, u.department, u.email].filter(Boolean).join(" · ") || u.email,
+        aliases: [u.name, u.email, u.department ?? "", u.position ?? ""].filter(Boolean) as string[],
+        group: "동료 호출",
+        icon: (
+          <User className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden />
+        ),
+        onItemClick: () => {
+          editor.insertInlineContent([
+            { type: "userMention", props: { userId: u.id, label: u.name } },
+            " ",
+          ] as never);
+        },
+      }));
+      return filterSuggestionItems(items, query);
+    },
+    [editor, users]
+  );
+
+  return <SuggestionMenuController triggerCharacter="@" getItems={getItems} />;
 }
 
 function TaskSlashMenu() {
@@ -188,25 +235,43 @@ export function TaskBodyEditor({
 
   useEffect(() => {
     if (!editor || !taskId) return;
-    if (loadedForTaskIdRef.current === taskId) return;
+
     const raw = (initialDescription ?? "").trim();
-    loadedForTaskIdRef.current = taskId;
-    if (!raw) return;
-    try {
-      const parsed = parseStoredTaskBody(raw);
-      if (parsed?.format === "blocks" && parsed.blocks.length > 0) {
-        editor.replaceBlocks(editor.document, parsed.blocks as any);
-        return;
-      }
-      if (parsed?.format === "markdown") {
-        const blocks = editor.tryParseMarkdownToBlocks(parsed.markdown);
-        if (blocks.length > 0) {
-          editor.replaceBlocks(editor.document, blocks);
-        }
-      }
-    } catch {
-      // ignore parse/replace errors
+    if (!raw) {
+      loadedForTaskIdRef.current = taskId;
+      return;
     }
+
+    // 이미 이 업무 본문을 에디터에 반영했다면 다시 넣지 않음 (Strict Mode·부모 리렌더와 무관하게 사용자 편집 유지)
+    if (loadedForTaskIdRef.current === taskId) return;
+
+    // replaceBlocks는 React 렌더/useEffect 동기 구간에서 호출 시 flushSync 경고가 난다.
+    // ref는 apply 성공 후에만 설정해, Strict Mode에서 cleanup이 타이머만 취소하고 "이미 로드됨"으로 잘못 막는 문제를 방지한다.
+    const apply = () => {
+      try {
+        const parsed = parseStoredTaskBody(raw);
+        if (parsed?.format === "blocks" && parsed.blocks.length > 0) {
+          editor.replaceBlocks(editor.document, parsed.blocks as any);
+          loadedForTaskIdRef.current = taskId;
+          return;
+        }
+        if (parsed?.format === "blocks") {
+          loadedForTaskIdRef.current = taskId;
+          return;
+        }
+        if (parsed?.format === "markdown") {
+          const blocks = editor.tryParseMarkdownToBlocks(parsed.markdown);
+          if (blocks.length > 0) {
+            editor.replaceBlocks(editor.document, blocks);
+          }
+          loadedForTaskIdRef.current = taskId;
+        }
+      } catch {
+        // ignore parse/replace errors
+      }
+    };
+    const id = window.setTimeout(apply, 0);
+    return () => window.clearTimeout(id);
   }, [editor, taskId, initialDescription]);
 
   const performSave = useCallback(async () => {
@@ -321,6 +386,7 @@ export function TaskBodyEditor({
           sideMenu={false}
           slashMenu={false}
         >
+          <TaskMentionMenu />
           <TaskSlashMenu />
           <FormattingToolbarController formattingToolbar={() => <FormattingToolbar />} />
           <SideMenuController sideMenu={NotionStyleSideMenu} />
@@ -359,7 +425,9 @@ export function TaskBodyEditor({
 
       <p className="mt-4 w-full max-w-none px-0 text-[11px] leading-relaxed text-muted-foreground">
         <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">/</kbd>
-        &nbsp;블록 삽입 · <strong>두 열~여섯 열</strong>로 페이지를 가로로 나눌 수 있어요 (노션처럼 블록을
+        &nbsp;블록 ·{" "}
+        <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">@</kbd>
+        &nbsp;동료 호출(알림) · <strong>두 열~여섯 열</strong>로 페이지를 가로로 나눌 수 있어요 (노션처럼 블록을
         블록 <strong>왼쪽·오른쪽 가장자리</strong>로 드래그하면 열을 더 만들거나 합칠 수 있습니다)
         · 줄 맨 앞{" "}
         <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">#</kbd>

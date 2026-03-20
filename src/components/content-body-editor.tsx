@@ -15,7 +15,7 @@ import {
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { cn } from "@/lib/utils";
-import { taskBodySchema } from "@/lib/blocknote-youtube";
+import { taskBodySchema } from "@/lib/task-body-schema";
 
 const DEBOUNCE_MS = 800;
 

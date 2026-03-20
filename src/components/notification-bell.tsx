@@ -141,9 +141,9 @@ export function NotificationBell() {
                       <p className="line-clamp-2 flex-1 font-medium text-foreground">
                         {n.message}
                       </p>
-                      {n.type === "BOARD_MENTION" && (
+                      {(n.type === "BOARD_MENTION" || n.type === "TASK_BODY_MENTION") && (
                         <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
-                          태그
+                          {n.type === "TASK_BODY_MENTION" ? "호출" : "태그"}
                         </span>
                       )}
                     </div>

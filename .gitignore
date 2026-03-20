@@ -32,3 +32,6 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# 업로드된 사용자 파일 (로컬 전용)
+public/uploads/content/

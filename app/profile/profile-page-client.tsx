@@ -520,10 +520,6 @@ export function ProfilePageClient({
               variant="outline"
               size="sm"
               onClick={() => {
-                if (process.env.NODE_ENV === "development") {
-                  window.location.href = "/api/auth/dev-logout";
-                  return;
-                }
                 signOut({ callbackUrl: "/login" });
               }}
               className="gap-2"

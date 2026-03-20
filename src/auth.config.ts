@@ -10,12 +10,8 @@ export const authConfig: NextAuthConfig = {
       const path = request.nextUrl.pathname;
       const isLogin = path.startsWith("/login");
       const isSignup = path.startsWith("/signup");
-      const isDevLogin = path.startsWith("/dev-login");
       if (isLogin) return isLoggedIn ? Response.redirect(new URL("/dashboard", request.nextUrl)) : true;
       if (isSignup) return true; // 숨겨진 초기 관리자 가입용 (비로그인 허용)
-      if (isDevLogin) return true; // 개발 전용 우회 로그인
-      // 개발 환경: 로그인 없이 접속 허용 → 레이아웃에서 getAppSession으로 첫 ADMIN 세션 사용
-      if (!isLoggedIn && process.env.NODE_ENV === "development") return true;
       return isLoggedIn ? true : false;
     },
     signIn() {

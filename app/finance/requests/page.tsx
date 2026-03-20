@@ -33,7 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Wallet, Plus, CheckCircle, FileText } from "lucide-react";
+import { ArrowLeft, Wallet, Plus, CheckCircle, FileText, ListChecks } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
@@ -71,6 +72,44 @@ function formatAmount(n: number) {
   return new Intl.NumberFormat("ko-KR").format(n) + "원";
 }
 
+const MEMO_PREVIEW_CHARS = 36;
+
+/** 내용(메모) 열: 고정 폭·글자수 말줄임, 클릭 시 전체 보기 */
+function PaymentMemoCell({ description }: { description: string | null }) {
+  const [open, setOpen] = useState(false);
+  const raw = (description ?? "").trim();
+  if (!raw) return <span className="text-muted-foreground">-</span>;
+  const short =
+    raw.length > MEMO_PREVIEW_CHARS ? `${raw.slice(0, MEMO_PREVIEW_CHARS)}…` : raw;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground hover:text-foreground block w-full max-w-[11rem] truncate text-left text-sm underline-offset-2 hover:underline"
+        title="클릭하여 전체 메모 보기"
+      >
+        {short}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>메모 · 내용</DialogTitle>
+          </DialogHeader>
+          <p className="text-foreground max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words text-sm">
+            {raw}
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 const VENDOR_CATEGORIES = ["인쇄", "식대", "용역", "자재", "기타"];
 
 export default function FinanceRequestsPage() {
@@ -86,6 +125,8 @@ export default function FinanceRequestsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [batchCompleting, setBatchCompleting] = useState(false);
+  const [selectedCompleteIds, setSelectedCompleteIds] = useState<Set<string>>(new Set());
   const [paymentAlertUnreadCount, setPaymentAlertUnreadCount] = useState<number | undefined>(undefined);
   const [vendorModalOpen, setVendorModalOpen] = useState(false);
   const [vendorSaving, setVendorSaving] = useState(false);
@@ -408,6 +449,42 @@ export default function FinanceRequestsPage() {
     }
   };
 
+  const handleBatchComplete = async () => {
+    const ids = Array.from(selectedCompleteIds);
+    if (ids.length === 0) {
+      toast.error("이체완료할 건을 선택하세요.");
+      return;
+    }
+    if (!confirm(`선택한 ${ids.length}건을 한 번에 이체완료로 처리할까요? 실제 이체를 마친 뒤 눌러 주세요.`)) return;
+    setBatchCompleting(true);
+    try {
+      const res = await fetch("/api/finance/requests/batch-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "일괄 처리 실패");
+      toast.success(`${data.count ?? ids.length}건을 이체완료로 처리했습니다.`);
+      setSelectedCompleteIds(new Set());
+      await fetchRequests(true);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "일괄 처리에 실패했습니다.");
+    } finally {
+      setBatchCompleting(false);
+    }
+  };
+
+  const toggleSelectComplete = (id: string) => {
+    setSelectedCompleteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   if (authStatus === "loading" || authStatus === "unauthenticated") {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -429,6 +506,17 @@ export default function FinanceRequestsPage() {
   const pendingTotal = pendingList.filter((r: any) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
   const showTwoSections =
     isExecutiveTransferExecutor || (isExecutive && !loading && requests.length === 0);
+
+  /** 일괄 이체완료: 이체 담당자(팀장 제외), 단일 화면·분할 화면 동일 규칙 */
+  const canBatchComplete =
+    !isTeamLead && (showTwoSections ? allowTransferComplete : canComplete);
+
+  const approvedPendingForBatch = visiblePendingRequests.filter((r: any) => r.status === "TEAM_LEAD_APPROVED");
+  const approvedRequestsForBatch = visibleRequests.filter((r: any) => r.status === "TEAM_LEAD_APPROVED");
+  const batchList = showTwoSections ? approvedPendingForBatch : approvedRequestsForBatch;
+  const selectedBatchSum = batchList
+    .filter((r: any) => selectedCompleteIds.has(r.id))
+    .reduce((sum: number, r: any) => sum + r.amount, 0);
 
   const statusBadge = (status: string) => {
     if (status === "PENDING") return <Badge className="bg-amber-500/90 hover:bg-amber-500/90">승인대기</Badge>;
@@ -498,6 +586,43 @@ export default function FinanceRequestsPage() {
         <>
           <section className="space-y-3">
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">결제 요청 / 이체 대기</h2>
+            {canBatchComplete && approvedPendingForBatch.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+                <ListChecks className="size-5 text-emerald-700 dark:text-emerald-400" aria-hidden />
+                <span className="text-sm text-muted-foreground">
+                  이체대기 건을 여러 개 선택 후 한 번에 이체완료 처리할 수 있습니다. (같은 업체·묶음 이체에 활용)
+                </span>
+                <span className="text-sm font-medium tabular-nums">
+                  선택 {selectedCompleteIds.size}건 · {formatAmount(selectedBatchSum)}
+                </span>
+                <Button
+                  type="button"
+                        size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedCompleteIds((prev) => {
+                      const next = new Set(prev);
+                      approvedPendingForBatch.forEach((r: any) => next.add(r.id));
+                      return next;
+                    });
+                  }}
+                >
+                  이체대기 전부 선택
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedCompleteIds(new Set())}>
+                  선택 해제
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={selectedCompleteIds.size === 0 || batchCompleting}
+                  onClick={handleBatchComplete}
+                >
+                  {batchCompleting ? "처리 중..." : "선택 건 일괄 이체완료"}
+                </Button>
+              </div>
+            )}
             {visiblePendingRequests.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/30 py-8 text-center">
                 <p className="text-muted-foreground text-sm">이체 대기 중인 건이 없습니다.</p>
@@ -507,10 +632,36 @@ export default function FinanceRequestsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-slate-200 dark:border-slate-800">
+                      {canBatchComplete && (
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={
+                              approvedPendingForBatch.length > 0 &&
+                              approvedPendingForBatch.every((row: any) => selectedCompleteIds.has(row.id))
+                            }
+                            onCheckedChange={(c) => {
+                              if (c === true) {
+                                setSelectedCompleteIds((prev) => {
+                                  const next = new Set(prev);
+                                  approvedPendingForBatch.forEach((row: any) => next.add(row.id));
+                                  return next;
+                                });
+                              } else {
+                                setSelectedCompleteIds((prev) => {
+                                  const next = new Set(prev);
+                                  approvedPendingForBatch.forEach((row: any) => next.delete(row.id));
+                                  return next;
+                                });
+                              }
+                            }}
+                            aria-label="이체대기 전부 선택"
+                          />
+                        </TableHead>
+                      )}
                       <TableHead className="font-medium">요청일시</TableHead>
                       <TableHead className="font-medium">요청자</TableHead>
                       <TableHead className="font-medium">거래처</TableHead>
-                      <TableHead className="font-medium">내용</TableHead>
+                      <TableHead className="font-medium w-[11rem] max-w-[11rem]">내용</TableHead>
                       <TableHead className="font-medium">견적서</TableHead>
                       <TableHead className="font-medium">은행/계좌</TableHead>
                       <TableHead className="font-medium text-right">금액</TableHead>
@@ -521,6 +672,19 @@ export default function FinanceRequestsPage() {
                   <TableBody>
                     {visiblePendingRequests.map((r: any) => (
                       <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
+                        {canBatchComplete && (
+                          <TableCell className="w-10 align-middle">
+                            {r.status === "TEAM_LEAD_APPROVED" ? (
+                              <Checkbox
+                                checked={selectedCompleteIds.has(r.id)}
+                                onCheckedChange={() => toggleSelectComplete(r.id)}
+                                aria-label={`${r.vendor?.name ?? ""} 선택`}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </TableCell>
+                        )}
                         <TableCell className="text-muted-foreground text-sm">
                           {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                         </TableCell>
@@ -531,8 +695,8 @@ export default function FinanceRequestsPage() {
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {(r.description ?? "").trim() ? <span className="line-clamp-2">{r.description}</span> : "-"}
+                        <TableCell className="w-[11rem] max-w-[11rem] align-top">
+                          <PaymentMemoCell description={r.description} />
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.quotation ? (
@@ -613,7 +777,7 @@ export default function FinanceRequestsPage() {
                       <TableHead className="font-medium">요청일시</TableHead>
                       <TableHead className="font-medium">요청자</TableHead>
                       <TableHead className="font-medium">거래처</TableHead>
-                      <TableHead className="font-medium">내용</TableHead>
+                      <TableHead className="font-medium w-[11rem] max-w-[11rem]">내용</TableHead>
                       <TableHead className="font-medium">견적서</TableHead>
                       <TableHead className="font-medium">은행/계좌</TableHead>
                       <TableHead className="font-medium text-right">금액</TableHead>
@@ -634,8 +798,8 @@ export default function FinanceRequestsPage() {
                           )}
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {(r.description ?? "").trim() ? <span className="line-clamp-2">{r.description}</span> : "-"}
+                        <TableCell className="w-[11rem] max-w-[11rem] align-top">
+                          <PaymentMemoCell description={r.description} />
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.quotation ? (
@@ -680,14 +844,78 @@ export default function FinanceRequestsPage() {
           )}
         </div>
       ) : (
+        <>
+          {canBatchComplete && approvedRequestsForBatch.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+              <ListChecks className="size-5 text-emerald-700 dark:text-emerald-400" aria-hidden />
+              <span className="text-sm text-muted-foreground">
+                이체대기 건을 여러 개 선택 후 일괄 이체완료할 수 있습니다.
+              </span>
+              <span className="text-sm font-medium tabular-nums">
+                선택 {selectedCompleteIds.size}건 · {formatAmount(selectedBatchSum)}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedCompleteIds((prev) => {
+                    const next = new Set(prev);
+                    approvedRequestsForBatch.forEach((row: any) => next.add(row.id));
+                    return next;
+                  });
+                }}
+              >
+                이체대기 전부 선택
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedCompleteIds(new Set())}>
+                선택 해제
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700"
+                disabled={selectedCompleteIds.size === 0 || batchCompleting}
+                onClick={handleBatchComplete}
+              >
+                {batchCompleting ? "처리 중..." : "선택 건 일괄 이체완료"}
+              </Button>
+            </div>
+          )}
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/50 overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="border-slate-200 dark:border-slate-800">
+                {canBatchComplete && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={
+                        approvedRequestsForBatch.length > 0 &&
+                        approvedRequestsForBatch.every((row: any) => selectedCompleteIds.has(row.id))
+                      }
+                      onCheckedChange={(c) => {
+                        if (c === true) {
+                          setSelectedCompleteIds((prev) => {
+                            const next = new Set(prev);
+                            approvedRequestsForBatch.forEach((row: any) => next.add(row.id));
+                            return next;
+                          });
+                        } else {
+                          setSelectedCompleteIds((prev) => {
+                            const next = new Set(prev);
+                            approvedRequestsForBatch.forEach((row: any) => next.delete(row.id));
+                            return next;
+                          });
+                        }
+                      }}
+                      aria-label="이체대기 전부 선택"
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="font-medium">요청일시</TableHead>
                 {(isTeamLead || isExecutive || isTransferExecutor) && <TableHead className="font-medium">요청자</TableHead>}
                 <TableHead className="font-medium">거래처</TableHead>
-                <TableHead className="font-medium">내용</TableHead>
+                <TableHead className="font-medium w-[11rem] max-w-[11rem]">내용</TableHead>
                 <TableHead className="font-medium">견적서</TableHead>
                 <TableHead className="font-medium">은행/계좌</TableHead>
                 <TableHead className="font-medium text-right">금액</TableHead>
@@ -698,6 +926,19 @@ export default function FinanceRequestsPage() {
             <TableBody>
               {visibleRequests.map((r: any) => (
                 <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
+                  {canBatchComplete && (
+                    <TableCell className="w-10 align-middle">
+                      {r.status === "TEAM_LEAD_APPROVED" ? (
+                        <Checkbox
+                          checked={selectedCompleteIds.has(r.id)}
+                          onCheckedChange={() => toggleSelectComplete(r.id)}
+                          aria-label={`${r.vendor?.name ?? ""} 선택`}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(r.requestedAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                   </TableCell>
@@ -710,8 +951,8 @@ export default function FinanceRequestsPage() {
                     </TableCell>
                   )}
                   <TableCell>{r.vendor.name}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {(r.description ?? "").trim() ? <span className="line-clamp-2">{r.description}</span> : "-"}
+                  <TableCell className="w-[11rem] max-w-[11rem] align-top">
+                    <PaymentMemoCell description={r.description} />
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {r.quotation ? (
@@ -795,6 +1036,7 @@ export default function FinanceRequestsPage() {
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

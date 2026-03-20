@@ -23,6 +23,7 @@ const TYPE_LABELS: Record<string, string> = {
   COMMENT: "댓글",
   STAGNANT: "미진행",
   BOARD_MENTION: "태그",
+  TASK_BODY_MENTION: "업무 호출",
   CHAT_MESSAGE: "채팅",
   NOTICE_POSTED: "공지",
 };

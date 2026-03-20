@@ -1,12 +1,4 @@
-import {
-  BlockNoteSchema,
-  createBlockConfig,
-  createBlockSpec,
-  defaultBlockSpecs,
-  defaultInlineContentSpecs,
-  defaultProps,
-  defaultStyleSpecs,
-} from "@blocknote/core";
+import { createBlockConfig, createBlockSpec, defaultBlockSpecs, defaultProps } from "@blocknote/core";
 
 /**
  * YouTube 영상 ID 추출 (watch, youtu.be, embed, shorts, music 등)
@@ -200,9 +192,3 @@ export const taskBodyBlockSpecs = {
   youtube: createYoutubeBlockSpec(),
   linkPreview: createLinkPreviewBlockSpec(),
 };
-
-export const taskBodySchema = BlockNoteSchema.create({
-  blockSpecs: taskBodyBlockSpecs,
-  inlineContentSpecs: defaultInlineContentSpecs,
-  styleSpecs: defaultStyleSpecs,
-});

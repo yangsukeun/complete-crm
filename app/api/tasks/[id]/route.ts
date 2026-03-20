@@ -3,7 +3,9 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
-import { createNotificationWithOptions } from "@/lib/notifications";
+import { createNotificationWithOptions, createTaskBodyMentionNotification } from "@/lib/notifications";
+import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
+import { syncTaskMentionsForTask } from "@/lib/task-mention-sync";
 import { format } from "date-fns";
 
 export async function GET(
@@ -208,6 +210,10 @@ export async function PATCH(
         newValue: data.isCompleted ? "완료" : "미완료",
       });
     }
+
+    /** DEBUG_TASK_MENTION=1 일 때 응답 헤더용 (알림을 보낸 멘션 대상 수) */
+    let mentionNotifyCountForDebug: number | undefined;
+
     // TaskRevision 테이블이 없는 환경에서도 상태 변경이 깨지지 않도록 방어
     if (revisions.length > 0 && (prisma as any).taskRevision) {
       try {
@@ -286,7 +292,71 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json(task);
+    // 본문 @멘션: 본문이 실제로 바뀐 저장마다 현재 멘션된 전원에게 알림(본인 제외).
+    // Notification은 수신자 userId로만 저장되므로, 멘션 당시 수신자가 로그아웃이어도 이후 로그인 시 /notifications 에서 동일하게 조회됨.
+    if (data.description !== undefined) {
+      const prev = new Set(extractMentionedUserIdsFromTaskDescription(existing.description));
+      const nextList = extractMentionedUserIdsFromTaskDescription(data.description);
+      const nextUnique = [...new Set(nextList)];
+      const descChanged = (data.description ?? null) !== (existing.description ?? null);
+      /** 저장할 때마다 알림: 본문 변경 시 멘션된 모든 사용자(작성자 제외) */
+      const toNotifyRaw = descChanged
+        ? nextUnique.filter((uid) => uid !== session.user.id)
+        : [];
+      /** FK·무결성: User 테이블에 없는 id는 알림 생성 스킵 (로그만) */
+      let toNotify = toNotifyRaw;
+      if (toNotifyRaw.length > 0) {
+        const existingUsers = await prisma.user.findMany({
+          where: { id: { in: toNotifyRaw } },
+          select: { id: true },
+        });
+        const ok = new Set(existingUsers.map((u) => u.id));
+        const missing = toNotifyRaw.filter((id) => !ok.has(id));
+        if (missing.length > 0) {
+          console.warn("[tasks] @멘션 알림: DB에 없는 userId (무시됨)", { missing });
+        }
+        toNotify = toNotifyRaw.filter((id) => ok.has(id));
+      }
+      mentionNotifyCountForDebug = toNotify.length;
+      const debugMention =
+        process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1";
+      if (debugMention) {
+        console.warn("[tasks] @멘션 추출", {
+          taskId: id,
+          prevCount: prev.size,
+          nextCount: nextUnique.length,
+          descChanged,
+          toNotify,
+          descIsDoc: String(data.description ?? "").startsWith("__BN_DOC_V1__"),
+          actorId: session.user.id,
+        });
+      }
+
+      const actorName =
+        (session.user as { name?: string }).name ||
+        (await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } }))?.name ||
+        "팀원";
+      for (const uid of toNotify) {
+        try {
+          await createTaskBodyMentionNotification({
+            userId: uid,
+            message: `${actorName}님이 '${existing.title}' 업무 페이지에서 회원님을 호출했습니다.`,
+            link: `/tasks/${id}`,
+            actorId: session.user.id,
+          });
+        } catch (notifyErr) {
+          console.error("[tasks] mention notify:", notifyErr);
+        }
+      }
+
+      await syncTaskMentionsForTask(id, nextUnique);
+    }
+
+    const res = NextResponse.json(task);
+    if (mentionNotifyCountForDebug !== undefined && process.env.DEBUG_TASK_MENTION === "1") {
+      res.headers.set("X-Debug-Mention-Notify-Count", String(mentionNotifyCountForDebug));
+    }
+    return res;
   } catch (e) {
     console.error(e);
     return NextResponse.json(

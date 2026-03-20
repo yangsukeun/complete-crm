@@ -2,9 +2,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// 앱 쿼리: DATABASE_URL (Supabase Transaction pooler 6543 가능)
+// migrate/deploy/db pull: DIRECT_URL (직접 연결 5432 권장 — 풀러에서는 마이그레이션이 비거나 실패하기 쉬움)
+// 둘 다 직접 연결만 쓰면 두 변수에 같은 URI 넣으면 됨.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 
@@ -98,13 +102,14 @@ enum DailyWorkLogStatus {
 
 // 알림 타입
 enum NotificationType {
-  DEADLINE      // 마감 임박
-  ASSIGNED      // 업무 배정
-  COMMENT       // 댓글
-  STAGNANT      // 장기 미진행
-  BOARD_MENTION // 게시판에서 태그(멘션)됨
-  CHAT_MESSAGE  // 채팅 메시지
-  NOTICE_POSTED // 공지 등록
+  DEADLINE           // 마감 임박
+  ASSIGNED           // 업무 배정
+  COMMENT            // 댓글
+  STAGNANT           // 장기 미진행
+  BOARD_MENTION      // 게시판에서 태그(멘션)됨
+  TASK_BODY_MENTION  // 업무 본문에서 @멘션
+  CHAT_MESSAGE       // 채팅 메시지
+  NOTICE_POSTED      // 공지 등록
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
@@ -162,6 +167,7 @@ model User {
   accessLogs            AccessLog[]
   activityLogs          ActivityLog[]
   taskRevisions         TaskRevision[]
+  taskMentions          TaskMention[]
   dailyWorkLogs         DailyWorkLog[]
   notifications         Notification[]
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
@@ -332,12 +338,26 @@ model Task {
   additionalParents TaskLink[] @relation("TaskLinkChild")
   additionalChildren TaskLink[] @relation("TaskLinkParent")
   revisions        TaskRevision[]
+  mentions         TaskMention[]
   @@index([assignedToId])
   @@index([createdById])
   @@index([parentId])
   @@index([categoryId])
   @@index([dueDate])
   @@index([scope])
+}
+
+// 업무 본문 @멘션으로 호출된 사용자 (동기화·알림용)
+model TaskMention {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@index([taskId])
 }
 
 // 업무 간 추가 연결 (다대다 관계 - 하나의 하위 업무가 여러 상위 업무에 연결)

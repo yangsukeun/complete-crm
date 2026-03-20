@@ -3,8 +3,7 @@ import { getAppSession } from "@/auth";
 const AUTH_TIMEOUT_MS = 10000;
 
 /**
- * getAppSession() 사용. 개발 환경에서는 비로그인 시 첫 ADMIN 세션으로 동작.
- * auth()가 DB 등으로 인해 응답하지 않을 때를 대비해 타임아웃 적용.
+ * getAppSession() (= NextAuth 세션). 응답 지연 시 타임아웃.
  */
 export async function authWithTimeout(): Promise<any> {
   try {
