@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import React, { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,12 +27,18 @@ import {
   ArrowLeft,
   Download,
   History,
+  StretchHorizontal,
+  AlignLeft,
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
+import { CreateTaskModal } from "@/components/create-task-modal";
+
+/** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
+const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
 
 type TaskDetail = {
   id: string;
@@ -40,12 +46,26 @@ type TaskDetail = {
   description: string | null;
   dueDate: string;
   isCompleted: boolean;
+  isCollapsed?: boolean;
   priority: string;
   scope?: "TEAM" | "PERSONAL";
+  parentId?: string | null;
+  parent?: { id: string; title: string } | null;
   assignedTo: { id: string; name: string; email: string; position?: string | null };
   createdBy: { id: string; name: string; position?: string | null };
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
+  children?: {
+    id: string;
+    title: string;
+    dueDate: string;
+    isCompleted: boolean;
+    status?: string | null;
+    priority: string;
+    orderIndex: number;
+    isCollapsed?: boolean;
+    assignedTo: { id: string; name: string; email: string; position?: string | null };
+  }[];
   revisions?: {
     id: string;
     field: string;
@@ -55,6 +75,40 @@ type TaskDetail = {
     user: { id: string; name: string; position?: string | null };
   }[];
 };
+
+class ClientErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(err: unknown) {
+    console.error(err);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback ?? (
+          <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+            <p className="font-medium">본문 에디터 로딩 중 오류가 발생했습니다.</p>
+            <p className="text-muted-foreground mt-1">페이지는 유지되며, 새로고침 후 다시 시도해보세요.</p>
+            <div className="mt-3">
+              <Button size="sm" variant="outline" onClick={() => location.reload()}>
+                새로고침
+              </Button>
+            </div>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function TaskDetailPage() {
   const params = useParams();
@@ -70,6 +124,28 @@ export default function TaskDetailPage() {
   const [commentBody, setCommentBody] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
+  const [createChildOpen, setCreateChildOpen] = useState(false);
+  const [mountEditor, setMountEditor] = useState(false);
+  const [pageFullWidth, setPageFullWidth] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return localStorage.getItem(TASK_PAGE_WIDTH_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+
+  const togglePageWidth = useCallback(() => {
+    setPageFullWidth((w) => {
+      const next = !w;
+      try {
+        localStorage.setItem(TASK_PAGE_WIDTH_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const fetchTask = useCallback(async () => {
     if (!taskId) return;
@@ -90,6 +166,22 @@ export default function TaskDetailPage() {
     if (taskId) fetchTask();
     else setTask(null);
   }, [taskId, fetchTask]);
+
+  // 본문 에디터: 다음 페인트 직후 마운트(레이아웃 안정) — 예전 800ms 대기 제거로 체감 속도 개선
+  useEffect(() => {
+    setMountEditor(false);
+    if (!taskId) return;
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!cancelled) setMountEditor(true);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [taskId]);
 
   const handleToggleComplete = async () => {
     if (!task) return;
@@ -209,44 +301,81 @@ export default function TaskDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
-        <div className="mb-6 flex items-center justify-between gap-2">
+      <div
+        className={cn(
+          "mx-auto min-w-0 box-border py-6",
+          pageFullWidth
+            ? "w-full max-w-full px-4 sm:px-6 lg:px-10 xl:px-12"
+            : "max-w-3xl px-4 md:px-8"
+        )}
+      >
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
             <Link href="/tasks">
               <ArrowLeft className="mr-2 size-4" />
               목록으로
             </Link>
           </Button>
-          {task.scope === "TEAM" && (
+          <div className="flex items-center gap-1">
             <Button
+              type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
-              disabled={copyingToPersonal}
-              onClick={async () => {
-                setCopyingToPersonal(true);
-                try {
-                  const result = (await copyTaskToPersonal(task.id)) as any;
-                  if (result?.ok) {
-                    toast.success("개인 업무로 저장되었습니다.");
-                  } else {
-                    toast.error(result?.error ?? "개인 업무로 저장에 실패했습니다.");
-                  }
-                } finally {
-                  setCopyingToPersonal(false);
-                }
-              }}
+              className="text-muted-foreground shrink-0"
+              title={pageFullWidth ? "좁게 보기 (읽기용)" : "페이지 전체 너비로 확장"}
+              onClick={togglePageWidth}
             >
-              <Download className="mr-2 size-4" />
-              내 서랍으로 가져오기
+              {pageFullWidth ? (
+                <>
+                  <AlignLeft className="mr-1.5 size-4" />
+                  <span className="hidden sm:inline">좁게</span>
+                </>
+              ) : (
+                <>
+                  <StretchHorizontal className="mr-1.5 size-4" />
+                  <span className="hidden sm:inline">전체 너비</span>
+                </>
+              )}
             </Button>
-          )}
+            {task.scope === "TEAM" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                disabled={copyingToPersonal}
+                onClick={async () => {
+                  setCopyingToPersonal(true);
+                  try {
+                    const result = (await copyTaskToPersonal(task.id)) as any;
+                    if (result?.ok) {
+                      toast.success("개인 업무로 저장되었습니다.");
+                    } else {
+                      toast.error(result?.error ?? "개인 업무로 저장에 실패했습니다.");
+                    }
+                  } finally {
+                    setCopyingToPersonal(false);
+                  }
+                }}
+              >
+                <Download className="mr-2 size-4" />
+                내 서랍으로 가져오기
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-muted-foreground mb-6 text-sm">
           업무 상세를 보고, 담당·마감일·본문을 수정하거나 업무일지에 기록할 수 있습니다.
         </p>
 
         <div className="px-2 pb-10">
+          {task.parent ? (
+            <div className="mb-4 text-sm text-muted-foreground">
+              상위 페이지:{" "}
+              <Link href={`/tasks/${task.parent.id}`} className="text-primary hover:underline">
+                {task.parent.title}
+              </Link>
+            </div>
+          ) : null}
           <div className="flex items-start gap-3">
             <Checkbox
               checked={task.isCompleted}
@@ -285,73 +414,154 @@ export default function TaskDetailPage() {
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.createdBy ? formatUserName(task.createdBy) : "삭제된 사용자"}</span>
           </div>
 
-          <div className="border-t border-border/50 px-2 py-6">
-            <TaskBodyEditorDynamic
-              taskId={task.id}
-              initialDescription={task.description}
-              onSaved={fetchTask}
-            />
+          {/* 본문 — 노션처럼 제목 아래로 이어지는 페이지 본문 */}
+          <div className="border-t border-border/40 px-0 py-8">
+            <ClientErrorBoundary>
+              {mountEditor ? (
+                <TaskBodyEditorDynamic taskId={task.id} initialDescription={task.description} onSaved={fetchTask} />
+              ) : (
+                <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  본문 에디터 로딩 중...
+                </div>
+              )}
+            </ClientErrorBoundary>
           </div>
 
           <div className="px-2 py-6">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Link2 className="size-4" />
-              링크 및 첨부
-            </div>
-            {task.attachments.length === 0 && !showAddAttach ? (
-              <button
-                type="button"
-                onClick={() => setShowAddAttach(true)}
-                className="flex w-full items-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-              >
-                <Plus className="size-4" />
-                링크 추가
-              </button>
-            ) : (
-              <div className="space-y-2">
-                {task.attachments.map((a: any) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center"
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Link2 className="size-4" />
+                  링크 및 첨부
+                </div>
+                {task.attachments.length === 0 && !showAddAttach ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAttach(true)}
+                    className="flex w-full items-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                   >
-                    <FilePreviewDialog
-                      url={a.url}
-                      name={a.name}
-                      triggerVariant="ghost"
-                      triggerClassName="w-full justify-start rounded-lg border bg-card px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
-                    />
-                  </div>
-                ))}
-                {showAddAttach ? (
-                  <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Select value={attachType} onValueChange={(v: any) => setAttachType(v as "LINK" | "VIDEO" | "FILE")}>
-                        <SelectTrigger className="h-8 w-24 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="LINK">링크</SelectItem>
-                          <SelectItem value="VIDEO">동영상</SelectItem>
-                          <SelectItem value="FILE">파일</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input placeholder="URL" value={attachUrl} onChange={(e: any) => setAttachUrl(e.target.value)} className="h-8 min-w-[120px] flex-1 text-sm" />
-                      <Input placeholder="이름 (선택)" value={attachName} onChange={(e: any) => setAttachName(e.target.value)} className="h-8 w-28 text-sm" />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={handleAddAttachment} disabled={addingAttach}>추가</Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setShowAddAttach(false); setAttachUrl(""); setAttachName(""); }}>취소</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => setShowAddAttach(true)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground">
                     <Plus className="size-4" />
                     링크 추가
                   </button>
+                ) : (
+                  <div className="space-y-2">
+                    {task.attachments.map((a: any) => (
+                      <div key={a.id} className="flex items-center">
+                        <FilePreviewDialog
+                          url={a.url}
+                          name={a.name}
+                          triggerVariant="ghost"
+                          triggerClassName="w-full justify-start rounded-lg border bg-card px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
+                        />
+                      </div>
+                    ))}
+                    {showAddAttach ? (
+                      <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Select
+                            value={attachType}
+                            onValueChange={(v: any) => setAttachType(v as "LINK" | "VIDEO" | "FILE")}
+                          >
+                            <SelectTrigger className="h-8 w-24 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="LINK">링크</SelectItem>
+                              <SelectItem value="VIDEO">동영상</SelectItem>
+                              <SelectItem value="FILE">파일</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            placeholder="URL"
+                            value={attachUrl}
+                            onChange={(e: any) => setAttachUrl(e.target.value)}
+                            className="h-8 min-w-[120px] flex-1 text-sm"
+                          />
+                          <Input
+                            placeholder="이름 (선택)"
+                            value={attachName}
+                            onChange={(e: any) => setAttachName(e.target.value)}
+                            className="h-8 w-28 text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={handleAddAttachment} disabled={addingAttach}>
+                            추가
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setShowAddAttach(false);
+                              setAttachUrl("");
+                              setAttachName("");
+                            }}
+                          >
+                            취소
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddAttach(true)}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      >
+                        <Plus className="size-4" />
+                        링크 추가
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
+
+          {/* 하위 페이지: 본문에서 구분된 하위 글은 별도 페이지로 정리 */}
+          <div className="border-t px-2 py-6">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <FileText className="size-4" />
+                  하위 페이지
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  본문에서 구분되는 하위 주제는 <strong>하위 페이지 추가</strong>로 별도 페이지로 정리할 수 있습니다.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setCreateChildOpen(true)} className="shrink-0">
+                <Plus className="mr-2 size-4" />
+                하위 페이지 추가
+              </Button>
+            </div>
+            {(task.children ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">하위 페이지가 없습니다. 위 버튼으로 추가하세요.</p>
+            ) : (
+              <ul className="space-y-2">
+                {(task.children ?? []).map((c) => (
+                  <li key={c.id}>
+                    <Link
+                      href={`/tasks/${c.id}`}
+                      className="flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm transition-colors hover:bg-muted/50"
+                    >
+                      <span className="font-medium">{c.title}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(c.dueDate), "M/d", { locale: ko })}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
+
+          <CreateTaskModal
+            open={createChildOpen}
+            onOpenChange={setCreateChildOpen}
+            parentId={task.id}
+            orderIndex={(task.children ?? []).length}
+            defaultAssignedToId={task.assignedTo?.id ?? null}
+            onCreated={() => {
+              fetchTask();
+              setCreateChildOpen(false);
+            }}
+          />
 
           {task.revisions && task.revisions.length > 0 && (
             <div className="border-t px-2 py-6">
@@ -405,11 +615,11 @@ export default function TaskDetailPage() {
               {task.comments.map((c: any) => (
                 <li key={c.id} className="flex gap-3">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                    {(c.user.name ?? "?").slice(0, 1)}
+                    {(c?.user?.name ?? "?").slice(0, 1)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-muted-foreground">
-                      {formatUserName(c.user)}
+                      {formatUserName(c?.user)}
                       <span className="ml-2">{format(new Date(c.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}</span>
                     </p>
                     <p className="mt-0.5 text-[15px] leading-relaxed whitespace-pre-wrap">{c.body}</p>

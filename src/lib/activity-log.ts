@@ -3,6 +3,95 @@ import prisma from "@/lib/prisma";
 
 export type ActivityActionType = "TASK_CREATED" | "TASK_COMPLETED" | "COMMENT_ADDED" | "SCHEDULE_CREATED" | "LOGIN" | "CHECK_IN" | "CHECK_OUT";
 
+function formatStatusLabel(status: string): string {
+  if (status === "TODO") return "준비";
+  if (status === "IN_PROGRESS") return "진행중";
+  if (status === "DONE") return "완료";
+  return status;
+}
+
+function buildStatusMarker(taskId: string, status: string): string {
+  return `<!--task-status:${taskId}:${status}-->`;
+}
+
+const TASK_STATUS_MARKER_RE = /<!--task-status:[^>]+-->\s*/g;
+const AUTO_SECTION_TITLE = "## 업무 상태 변경(자동 기록)";
+
+export function stripTaskStatusMarkers(content: string): string {
+  return (content ?? "").replace(TASK_STATUS_MARKER_RE, "");
+}
+
+export function extractTaskStatusMarkers(content: string): string {
+  const matches = (content ?? "").match(TASK_STATUS_MARKER_RE) ?? [];
+  return matches.join("").trim() ? `${matches.join("").trim()}\n` : "";
+}
+
+/**
+ * 업무 상태가 특정 단계로 "최초" 이동했을 때, 업무일지(DailyWorkLog)에 1회만 자동 기록.
+ * - 최초 판단: 해당 사용자 전체 DailyWorkLog(content)에서 marker가 한 번이라도 있으면 기록하지 않음
+ * - 기록 위치: 해당 날짜(dateStr)의 DailyWorkLog content 마지막에 한 줄 추가
+ */
+export async function appendWorkLogOnceForTaskStatus(params: {
+  userId: string;
+  dateStr: string; // YYYY-MM-DD
+  taskId: string;
+  taskTitle: string;
+  status: "TODO" | "IN_PROGRESS" | "DONE";
+}): Promise<void> {
+  if (!(prisma as { dailyWorkLog?: unknown }).dailyWorkLog) return;
+  const marker = buildStatusMarker(params.taskId, params.status);
+  try {
+    const already = await prisma.dailyWorkLog.findFirst({
+      where: {
+        userId: params.userId,
+        content: { contains: marker },
+      },
+      select: { id: true },
+    });
+    if (already) return;
+  } catch (e) {
+    console.error("[DailyWorkLog] 최초 상태 기록 여부 확인 실패:", e);
+    return;
+  }
+
+  const statusLabel = formatStatusLabel(params.status);
+  const time = format(new Date(), "HH:mm");
+  const line = `- [${time}] '${params.taskTitle || "(제목 없음)"}' → ${statusLabel} 이동\n`;
+
+  try {
+    const existing = await prisma.dailyWorkLog.findUnique({
+      where: { userId_date: { userId: params.userId, date: params.dateStr } },
+      select: { id: true, content: true },
+    });
+    const baseContentRaw = existing?.content ?? "";
+    const baseContent = stripTaskStatusMarkers(baseContentRaw).trimEnd();
+    const markerBlock = `${marker}\n`;
+
+    let nextContent: string;
+    if (baseContent.includes(AUTO_SECTION_TITLE)) {
+      // 이미 자동 기록 섹션이 있으면 그 아래에 한 줄만 추가
+      nextContent = `${baseContent}\n${line}\n${markerBlock}`;
+    } else {
+      // 섹션이 없으면 새로 만들기
+      const prefix = baseContent ? `${baseContent}\n\n` : "";
+      nextContent = `${prefix}${AUTO_SECTION_TITLE}\n\n${line}\n${markerBlock}`;
+    }
+
+    if (!existing) {
+      await prisma.dailyWorkLog.create({
+        data: { userId: params.userId, date: params.dateStr, content: nextContent, status: "DRAFT" },
+      });
+    } else {
+      await prisma.dailyWorkLog.update({
+        where: { id: existing.id },
+        data: { content: nextContent },
+      });
+    }
+  } catch (e) {
+    console.error("[DailyWorkLog] 상태 자동 기록 실패:", e);
+  }
+}
+
 /**
  * 활동 로그 1건 기록 (업무 생성/완료/댓글/일정 등록/로그인/출퇴근)
  * @param ipAddress 출퇴근 시 IP (업무일지에 수정 불가로 표시)

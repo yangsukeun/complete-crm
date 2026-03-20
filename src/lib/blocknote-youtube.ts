@@ -8,16 +8,37 @@ import {
   defaultStyleSpecs,
 } from "@blocknote/core";
 
-/** Extract YouTube video ID from url (youtube.com/watch?v=ID, youtu.be/ID) */
-function getYoutubeVideoId(url: string): string | null {
+/**
+ * YouTube 영상 ID 추출 (watch, youtu.be, embed, shorts, music 등)
+ */
+export function getYoutubeVideoId(url: string): string | null {
   if (!url || typeof url !== "string") return null;
   const u = url.trim();
-  const m = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  return m ? m[1] : null;
+
+  let m = u.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+  if (m) return m[1];
+  m = u.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i);
+  if (m) return m[1];
+  m = u.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i);
+  if (m) return m[1];
+  m = u.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/i);
+  if (m) return m[1];
+  // watch?v=ID / &v=ID (파라미터 순서 무관)
+  const vMatch = u.match(/[?&]v=([a-zA-Z0-9_-]{11})(?:&|#|$)/i);
+  if (vMatch) return vMatch[1];
+  // 일부 모바일/리다이렉트 URL
+  m = u.match(/youtube\.com\/watch\?[^#]*vi?=([a-zA-Z0-9_-]{11})/i);
+  if (m) return m[1];
+
+  return null;
 }
 
 function isYoutubeUrl(url: string): boolean {
   return /youtube\.com|youtu\.be/i.test(url || "");
+}
+
+function safeText(s: string): string {
+  return String(s ?? "").replace(/[<>&]/g, (ch) => (ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : "&amp;"));
 }
 
 const createYoutubeBlockConfig = createBlockConfig(() => ({
@@ -91,9 +112,93 @@ export const createYoutubeBlockSpec = createBlockSpec(
   }),
 );
 
+const createLinkPreviewBlockConfig = createBlockConfig(() => ({
+  type: "linkPreview" as const,
+  propSchema: {
+    textAlignment: defaultProps.textAlignment,
+    backgroundColor: defaultProps.backgroundColor,
+    url: { default: "" as const },
+  },
+  content: "none" as const,
+}));
+
+export const createLinkPreviewBlockSpec = createBlockSpec(
+  createLinkPreviewBlockConfig,
+  () => ({
+    render(block) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "bn-link-preview-wrapper";
+      wrapper.style.maxWidth = "100%";
+      const url = (block.props as { url?: string }).url || "";
+
+      const card = document.createElement("div");
+      card.className =
+        "rounded-lg border bg-card p-3 flex gap-3 items-start hover:bg-muted/30 transition-colors";
+      card.setAttribute("contenteditable", "false");
+
+      const img = document.createElement("img");
+      img.className = "h-14 w-14 rounded object-cover border bg-muted hidden";
+      img.alt = "";
+
+      const body = document.createElement("div");
+      body.className = "min-w-0 flex-1";
+
+      const title = document.createElement("div");
+      title.className = "font-medium text-sm truncate";
+      title.textContent = url ? "미리보기 불러오는 중..." : "URL을 입력하세요";
+
+      const desc = document.createElement("div");
+      desc.className = "text-xs text-muted-foreground line-clamp-2 mt-1";
+      desc.textContent = url ? "" : "예: https://...";
+
+      const footer = document.createElement("div");
+      footer.className = "text-[10px] text-muted-foreground mt-2 truncate";
+      footer.textContent = url;
+
+      body.appendChild(title);
+      body.appendChild(desc);
+      body.appendChild(footer);
+      card.appendChild(img);
+      card.appendChild(body);
+
+      if (url) {
+        card.style.cursor = "pointer";
+        card.addEventListener("click", () => {
+          window.open(url, "_blank", "noopener,noreferrer");
+        });
+        fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data: any) => {
+            if (!data) return;
+            title.textContent = data.title || url;
+            desc.textContent = data.description || "";
+            footer.textContent = data.siteName ? `${data.siteName} · ${url}` : url;
+            if (data.image) {
+              img.src = data.image;
+              img.classList.remove("hidden");
+            }
+          })
+          .catch(() => {
+            title.textContent = url;
+          });
+      }
+
+      wrapper.appendChild(card);
+      return { dom: wrapper };
+    },
+    toExternalHTML(block) {
+      const url = (block.props as { url?: string }).url || "";
+      const div = document.createElement("div");
+      div.innerHTML = `<a href="${safeText(url)}">${safeText(url || "링크")}</a>`;
+      return { dom: div };
+    },
+  })
+);
+
 export const taskBodyBlockSpecs = {
   ...defaultBlockSpecs,
   youtube: createYoutubeBlockSpec(),
+  linkPreview: createLinkPreviewBlockSpec(),
 };
 
 export const taskBodySchema = BlockNoteSchema.create({

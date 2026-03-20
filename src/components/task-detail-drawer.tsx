@@ -324,7 +324,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
         side="right"
         showCloseButton={true}
         ariaTitle="업무 상세"
-        className="max-h-[100vh] w-full overflow-hidden p-0 gap-0 border-0 bg-background sm:max-w-xl"
+        className="max-h-[100vh] w-full overflow-hidden p-0 gap-0 border-0 bg-background sm:max-w-[min(96vw,1680px)]"
       >
         {loading ? (
           <div className="flex min-h-[320px] items-center justify-center px-8">

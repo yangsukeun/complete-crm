@@ -1,43 +1,92 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/mantine";
-// 한국어 로케일 임포트
-import { ko } from "@blocknote/core/locales";
+import { combineByGroup } from "@blocknote/core";
+import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import {
-  // Formatting Toolbar (플로팅 툴바)
+  useCreateBlockNote,
+  useBlockNoteEditor,
   FormattingToolbar,
   FormattingToolbarController,
-  // Side Menu
   SideMenu,
   SideMenuController,
   AddBlockButton,
   DragHandleButton,
+  SuggestionMenuController,
+  getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
+import { BlockNoteView } from "@blocknote/mantine";
+import { ko } from "@blocknote/core/locales";
+import {
+  withMultiColumn,
+  multiColumnDropCursor,
+  getMultiColumnSlashMenuItems,
+  locales as multiColumnLocales,
+} from "@blocknote/xl-multi-column";
+import { LayoutGrid } from "lucide-react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { taskBodySchema } from "@/lib/blocknote-youtube";
-import { Badge } from "@/components/ui/badge";
+import { getYoutubeVideoId, taskBodySchema } from "@/lib/blocknote-youtube";
+import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
-// 한국어 사전 + 커스텀 플레이스홀더 오버라이드
+// 한국어 사전 + 노션에 가까운 플레이스홀더 (일반 제목은 접히지 않음 — 접기는 / 토글·접을 수 있는 제목 사용)
 const koreanDictionary = {
   ...ko,
   placeholders: {
     ...ko.placeholders,
-    default: "내용을 입력하거나 '/'를 눌러 메뉴를 여세요",
+    default: "내용을 입력하세요. '/' 를 누르면 토글·제목·목록을 넣을 수 있어요.",
     heading: "제목",
+    toggleListItem: "토글을 켜거나 끌 내용",
     bulletListItem: "목록 항목",
     numberedListItem: "목록 항목",
     checkListItem: "할 일",
   },
 };
 
-// 노션 스타일 사이드 메뉴 (드래그 핸들 + 블록 추가)
+function isUrl(s: string): boolean {
+  return /^https?:\/\/\S+$/i.test((s ?? "").trim());
+}
+
+function isYoutubeUrl(s: string): boolean {
+  return /youtube\.com|youtu\.be/i.test(s ?? "") || getYoutubeVideoId(s ?? "") !== null;
+}
+
+/** 붙여넣기 끝의 ),. 등 제거 */
+function stripTrailingJunkFromUrl(url: string): string {
+  return url.replace(/[),.;>\]'"]+$/g, "");
+}
+
+/** 클립보드 텍스트에서 단일 URL 추출 (줄바꿈 앞 첫 줄, 문장 속 URL도 시도) */
+function extractUrlFromPlainPaste(raw: string): string | null {
+  const first = raw.trim().split(/\n/)[0]?.trim() ?? "";
+  if (!first) return null;
+  const cleaned = stripTrailingJunkFromUrl(first);
+  if (isUrl(cleaned)) return cleaned;
+  const m = first.match(/https?:\/\/[^\s<>"']+/i);
+  if (m) {
+    const u = stripTrailingJunkFromUrl(m[0]);
+    if (isUrl(u)) return u;
+  }
+  return null;
+}
+
+/** URL만 붙일 때 현재 빈 문단을 임베드 블록으로 바꿀지 여부 */
+function isParagraphEffectivelyEmpty(block: { type?: string; content?: unknown } | null): boolean {
+  if (!block || block.type !== "paragraph") return false;
+  const c = block.content;
+  if (c == null || (Array.isArray(c) && c.length === 0)) return true;
+  if (!Array.isArray(c)) return false;
+  return c.every((item: unknown) => {
+    const it = item as { type?: string; text?: string };
+    if (it?.type === "text") return !(String(it.text ?? "").trim());
+    return false;
+  });
+}
+
 function NotionStyleSideMenu() {
   return (
     <SideMenu>
@@ -45,6 +94,52 @@ function NotionStyleSideMenu() {
       <DragHandleButton key="dragHandleButton" />
     </SideMenu>
   );
+}
+
+/** / 메뉴: 기본 블록 + 2·3열(패키지) + 4·5·6열(커스텀), 최대 6열까지 */
+function makeColumnListBlock(count: number) {
+  return {
+    type: "columnList" as const,
+    children: Array.from({ length: count }, () => ({
+      type: "column" as const,
+      props: { width: 1 },
+      children: [{ type: "paragraph" as const }],
+    })),
+  };
+}
+
+function TaskSlashMenu() {
+  const editor = useBlockNoteEditor();
+  const getItems = useMemo(
+    () => async (query: string) => {
+      const wideCols = [4, 5, 6].map((n) => ({
+        title: `${n}열`,
+        subtext: `${n}개 열을 나란히 배치합니다. 블록을 옆 가장자리로 드래그하면 열을 더 나눌 수 있어요.`,
+        aliases: [`${n}열`, `${n}칸`, "열 나누기", "칸", "columns", "column"],
+        group: "기본 블록",
+        icon: (
+          <LayoutGrid
+            className="size-[18px] shrink-0 text-muted-foreground"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+        ),
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(editor, makeColumnListBlock(n) as any);
+        },
+      }));
+      return filterSuggestionItems(
+        combineByGroup(
+          getDefaultReactSlashMenuItems(editor),
+          getMultiColumnSlashMenuItems(editor),
+          wideCols
+        ),
+        query
+      );
+    },
+    [editor]
+  );
+  return <SuggestionMenuController triggerCharacter="/" getItems={getItems} />;
 }
 
 type TaskBodyEditorProps = {
@@ -60,7 +155,6 @@ export function TaskBodyEditor({
   onSaved,
   className,
 }: TaskBodyEditorProps) {
-  // 파일 업로드 핸들러
   const uploadFile = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -70,51 +164,60 @@ export function TaskBodyEditor({
     return data.url;
   }, []);
 
-  // 한국어 사전 메모이제이션
-  const dictionary = useMemo(() => koreanDictionary, []);
+  const dictionary = useMemo(
+    () => ({
+      ...koreanDictionary,
+      multi_column: multiColumnLocales.ko,
+    }),
+    []
+  );
 
-  // BlockNote 에디터 생성
   const editor = useCreateBlockNote({
-    schema: taskBodySchema,
+    schema: withMultiColumn(taskBodySchema),
     uploadFile,
-    // 한국어 로컬라이제이션
     dictionary,
-    // 기본 설정
     defaultStyles: true,
+    dropCursor: multiColumnDropCursor,
   });
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const loadedInitialRef = useRef(false);
+  const loadedForTaskIdRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
 
-  // 초기 콘텐츠 로드
   useEffect(() => {
-    if (!editor || loadedInitialRef.current) return;
+    if (!editor || !taskId) return;
+    if (loadedForTaskIdRef.current === taskId) return;
     const raw = (initialDescription ?? "").trim();
-    loadedInitialRef.current = true;
+    loadedForTaskIdRef.current = taskId;
     if (!raw) return;
     try {
-      const blocks = editor.tryParseMarkdownToBlocks(raw);
-      if (blocks.length > 0) {
-        editor.replaceBlocks(editor.document, blocks);
+      const parsed = parseStoredTaskBody(raw);
+      if (parsed?.format === "blocks" && parsed.blocks.length > 0) {
+        editor.replaceBlocks(editor.document, parsed.blocks as any);
+        return;
+      }
+      if (parsed?.format === "markdown") {
+        const blocks = editor.tryParseMarkdownToBlocks(parsed.markdown);
+        if (blocks.length > 0) {
+          editor.replaceBlocks(editor.document, blocks);
+        }
       }
     } catch {
       // ignore parse/replace errors
     }
-  }, [editor, initialDescription]);
+  }, [editor, taskId, initialDescription]);
 
-  // 자동 저장
   const performSave = useCallback(async () => {
     if (!editor) return;
     setSaveStatus("saving");
     try {
-      const markdown = editor.blocksToMarkdownLossy(editor.document);
+      const stored = serializeTaskBodyForStore(editor);
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: markdown || null }),
+        body: JSON.stringify({ description: stored }),
       });
       if (!res.ok) throw new Error("저장 실패");
       setSaveStatus("saved");
@@ -126,14 +229,12 @@ export function TaskBodyEditor({
     }
   }, [taskId, editor]);
 
-  // Cleanup
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
-  // 변경 시 디바운스 저장
   const handleChange = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -142,106 +243,131 @@ export function TaskBodyEditor({
     }, AUTO_SAVE_DEBOUNCE_MS);
   }, [performSave]);
 
+  /* 캡처 단계: ProseMirror 기본 붙여넣기(인라인 링크)보다 먼저 처리해야 유튜브 임베드 블록이 들어감 */
+  const handlePasteCapture = useCallback(
+    (e: React.ClipboardEvent) => {
+      try {
+        const dt = e.clipboardData;
+        if (!dt) return;
+        if (dt.files && dt.files.length > 0) return;
+
+        const urlText = extractUrlFromPlainPaste(dt.getData("text/plain") ?? "");
+        if (!urlText) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const block = isYoutubeUrl(urlText)
+          ? { type: "youtube" as const, props: { url: urlText } }
+          : { type: "linkPreview" as const, props: { url: urlText } };
+
+        const cur = editor.getTextCursorPosition();
+        const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+        if (!refBlock) return;
+
+        if (isParagraphEffectivelyEmpty(refBlock)) {
+          editor.replaceBlocks([refBlock], [block as any]);
+        } else {
+          editor.insertBlocks([block as any], refBlock, "after");
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [editor]
+  );
+
   return (
     <div className={cn("flex flex-col", className)}>
-      {/* 헤더: 타이틀 + 저장 상태 */}
-      <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-100 mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700">📝 본문</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-            자동저장
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          {saveStatus === "saving" && (
-            <span className="text-xs text-amber-600 animate-pulse flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-              저장 중...
-            </span>
-          )}
-          {saveStatus === "saved" && (
-            <span className="text-xs text-green-600 flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-green-500" />
-              저장됨
-            </span>
-          )}
-        </div>
+      {/* 노션처럼 본문 위는 최소 정보만 (저장 상태) */}
+      <div className="mb-1 flex min-h-[22px] justify-end">
+        {saveStatus === "saving" && (
+          <span className="text-[11px] tabular-nums text-amber-600/90 animate-pulse">
+            저장 중…
+          </span>
+        )}
+        {saveStatus === "saved" && (
+          <span className="text-[11px] tabular-nums text-muted-foreground">저장됨</span>
+        )}
       </div>
 
-      {/* 에디터 영역 - 노션 스타일 + 플로팅 툴바 */}
-      <div 
+      <div
         className={cn(
-          "notion-editor-wrapper",
-          "min-h-[320px] rounded-lg relative",
-          // 스태킹 컨텍스트 분리 - Sheet 내부에서도 툴바가 위에 표시되도록
-          "isolate",
-          // overflow 제거 - 툴바가 잘리지 않도록
-          "overflow-visible",
-          // 에디터 내부 스타일 오버라이드
-          "[&_.bn-editor]:min-h-[280px]",
-          "[&_.bn-editor]:px-3",
-          "[&_.bn-editor]:py-4",
-          "[&_.bn-editor]:overflow-visible",
-          // 블록 스타일
-          "[&_.bn-block-outer]:my-1",
-          "[&_.bn-block-content]:leading-relaxed",
-          // Mantine 컨테이너 스타일
-          "[&_.bn-mantine]:border-0",
-          "[&_.bn-mantine]:bg-transparent",
-          "[&_.bn-mantine]:rounded-lg",
-          "[&_.bn-mantine]:overflow-visible",
+          "notion-editor-wrapper notion-page-like",
+          "relative isolate min-h-[min(60vh,520px)] overflow-visible rounded-md",
+          "border-0 bg-transparent shadow-none",
+          "[&_.bn-editor]:mx-0 [&_.bn-editor]:w-full [&_.bn-editor]:max-w-none [&_.bn-editor]:min-h-[280px] [&_.bn-editor]:px-0 [&_.bn-editor]:py-3 sm:[&_.bn-editor]:px-1",
+          "[&_.bn-editor]:text-base",
+          "[&_.bn-block-outer]:my-0.5 [&_.bn-block-content]:leading-[1.65]",
+          "[&_.bn-mantine]:border-0 [&_.bn-mantine]:bg-transparent [&_.bn-mantine]:shadow-none",
           "[&_.bn-container]:overflow-visible",
-          // 텍스트 스타일
-          "[&_.bn-inline-content]:text-[15px]",
-          "[&_.bn-inline-content]:leading-[1.7]",
-          "[&_h1_.bn-inline-content]:text-2xl",
-          "[&_h1_.bn-inline-content]:font-bold",
-          "[&_h2_.bn-inline-content]:text-xl",
-          "[&_h2_.bn-inline-content]:font-semibold",
-          "[&_h3_.bn-inline-content]:text-lg",
-          "[&_h3_.bn-inline-content]:font-medium",
-          // 코드 블록 스타일
-          "[&_code]:bg-gray-100",
-          "[&_code]:px-1.5",
-          "[&_code]:py-0.5",
-          "[&_code]:rounded",
-          "[&_code]:text-sm",
-          "[&_code]:font-mono",
-          "[&_code]:text-violet-600",
-          // 체크박스 스타일
-          "[&_.bn-checkbox]:accent-violet-500"
+          "[&_.bn-inline-content]:text-[16px] [&_.bn-inline-content]:leading-[1.65] [&_.bn-inline-content]:text-foreground/95",
+          "[&_h1_.bn-inline-content]:text-[1.875rem] [&_h1_.bn-inline-content]:font-bold [&_h1_.bn-inline-content]:leading-tight [&_h1_.bn-inline-content]:pt-2 [&_h1_.bn-inline-content]:pb-1",
+          "[&_h2_.bn-inline-content]:text-[1.5rem] [&_h2_.bn-inline-content]:font-semibold [&_h2_.bn-inline-content]:leading-snug [&_h2_.bn-inline-content]:pt-1.5 [&_h2_.bn-inline-content]:pb-0.5",
+          "[&_h3_.bn-inline-content]:text-[1.25rem] [&_h3_.bn-inline-content]:font-semibold [&_h3_.bn-inline-content]:leading-snug [&_h3_.bn-inline-content]:pt-1 [&_h3_.bn-inline-content]:pb-0.5",
+          "[&_p]:my-[3px] [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0",
+          "[&_code]:rounded-md [&_code]:bg-muted [&_code]:px-1 [&_code]:py-px [&_code]:font-mono [&_code]:text-[0.9em]",
+          "[&_.bn-checkbox]:accent-primary",
+          "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2"
         )}
         style={{ isolation: "isolate" }}
+        onPasteCapture={handlePasteCapture}
       >
         <BlockNoteView
           editor={editor}
           theme="light"
           onChange={handleChange}
-          // 기본 툴바 비활성화 - 커스텀 플로팅 툴바 사용
           formattingToolbar={false}
           sideMenu={false}
-          slashMenu={true}
+          slashMenu={false}
         >
-          {/* 플로팅 서식 툴바 - 텍스트 선택 시에만 표시 */}
-          <FormattingToolbarController
-            formattingToolbar={() => <FormattingToolbar />}
-          />
-          
-          {/* 커스텀 사이드 메뉴 */}
+          <TaskSlashMenu />
+          <FormattingToolbarController formattingToolbar={() => <FormattingToolbar />} />
           <SideMenuController sideMenu={NotionStyleSideMenu} />
         </BlockNoteView>
       </div>
 
-      {/* 도움말 */}
-      <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
-        <p className="text-xs text-gray-500 leading-relaxed">
-          <span className="font-medium text-gray-700">💡 사용법:</span>{" "}
-          <kbd className="px-1.5 py-0.5 bg-white rounded border text-[10px] mx-0.5">텍스트 드래그</kbd> 서식 툴바 표시 | 
-          <kbd className="px-1.5 py-0.5 bg-white rounded border text-[10px] mx-0.5">/</kbd> 블록 메뉴 | 
-          <kbd className="px-1.5 py-0.5 bg-white rounded border text-[10px] mx-0.5">⋮⋮</kbd> 드래그로 블록 이동 |
-          이미지/파일 드래그 또는 붙여넣기(Ctrl+V)
-        </p>
-      </div>
+      <style jsx global>{`
+        .notion-editor-wrapper .bn-formatting-toolbar,
+        .bn-formatting-toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
+          max-width: 340px;
+          background: #fff;
+        }
+        .notion-editor-wrapper .bn-formatting-toolbar .bn-button-group:not(:last-child),
+        .bn-formatting-toolbar .bn-button-group:not(:last-child) {
+          padding-right: 8px;
+          border-right: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        /* 다열: 좁은 화면에서는 가로 스크롤, 각 열은 유연하게 수축 */
+        .notion-page-like .bn-block-column-list {
+          gap: 0.5rem;
+          width: 100%;
+          overflow-x: auto;
+        }
+        .notion-page-like .bn-block-column {
+          min-width: 4.5rem;
+          flex: 1 1 0;
+        }
+      `}</style>
+
+      <p className="mt-4 w-full max-w-none px-0 text-[11px] leading-relaxed text-muted-foreground">
+        <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">/</kbd>
+        &nbsp;블록 삽입 · <strong>두 열~여섯 열</strong>로 페이지를 가로로 나눌 수 있어요 (노션처럼 블록을
+        블록 <strong>왼쪽·오른쪽 가장자리</strong>로 드래그하면 열을 더 만들거나 합칠 수 있습니다)
+        · 줄 맨 앞{" "}
+        <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">#</kbd>
+        , <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">-</kbd>
+        , <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">[]</kbd> ·
+        왼쪽 <span className="font-mono">⋮⋮</span>로 순서 이동 · 접기는 <strong>토글</strong> /
+        <strong>접을 수 있는 제목</strong>
+      </p>
     </div>
   );
 }

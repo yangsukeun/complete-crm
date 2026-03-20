@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { getOrCreateDailyWorkLog } from "@/lib/activity-log";
+import { extractTaskStatusMarkers, getOrCreateDailyWorkLog, stripTaskStatusMarkers } from "@/lib/activity-log";
 import { format } from "date-fns";
 
 /**
@@ -30,6 +30,8 @@ export async function GET(req: Request) {
     const log = await getOrCreateDailyWorkLog(userId, dateStr);
     return NextResponse.json({
       ...log,
+      // 내부 중복 방지 마커는 UI에 노출하지 않음
+      content: stripTaskStatusMarkers(log.content ?? ""),
       monthDeadlines: log.monthDeadlines ?? [],
     });
   } catch (e) {
@@ -69,7 +71,13 @@ export async function PATCH(req: Request) {
     }
 
     const data: { content?: string; status?: "DRAFT" | "SUBMITTED" } = {};
-    if (typeof body.content === "string") data.content = body.content;
+    if (typeof body.content === "string") {
+      // 사용자가 저장하는 content에는 내부 마커를 포함시키지 않고,
+      // 기존 마커는 DB에서 추출해 뒤에 다시 붙여 중복 방지 상태를 유지한다.
+      const preservedMarkers = extractTaskStatusMarkers(existing.content ?? "");
+      const cleaned = stripTaskStatusMarkers(body.content ?? "").trimEnd();
+      data.content = preservedMarkers ? `${cleaned}\n\n${preservedMarkers}` : cleaned;
+    }
     if (body.status === "DRAFT" || body.status === "SUBMITTED") data.status = body.status;
 
     const updated = await prisma.dailyWorkLog.update({

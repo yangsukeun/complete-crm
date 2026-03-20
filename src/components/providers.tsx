@@ -1,10 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
 import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
-import { AIAssistFloat } from "@/components/ai-assist-float";
+
+const AIAssistFloat = dynamic(
+  () => import("@/components/ai-assist-float").then((m) => m.AIAssistFloat),
+  { ssr: false }
+);
 
 export function Providers({
   children,

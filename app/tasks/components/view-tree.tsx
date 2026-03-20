@@ -813,17 +813,26 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
 
-  // 레이아웃 적용 + 저장된 위치 병합 (드래그로 옮긴 위치 유지)
+  // 레이아웃 적용 + 저장된 위치 병합 (드래그로 옮긴 위치 유지) — 다음 프레임에 적용해 React DOM과 충돌 방지
   useEffect(() => {
-    if (!layoutedNodes?.length) return;
-    const saved = loadSavedPositions();
-    const merged = layoutedNodes.map((node: any) => {
-      const pos = saved[node.id];
-      return pos ? { ...node, position: pos } : node;
+    if (!layoutedNodes?.length && !layoutedEdges?.length) return;
+    const raf = requestAnimationFrame(() => {
+      const saved = loadSavedPositions();
+      const merged = (layoutedNodes || []).map((node: any) => {
+        const pos = saved[node.id];
+        return pos ? { ...node, position: pos } : node;
+      });
+      setNodes(merged.length ? merged : layoutedNodes || []);
+      setEdges(layoutedEdges || []);
+      requestAnimationFrame(() => {
+        try {
+          fitView({ padding: 0.2 });
+        } catch {
+          // unmount 등으로 fitView 실패 시 무시
+        }
+      });
     });
-    setNodes(merged);
-    if (layoutedEdges) setEdges(layoutedEdges);
-    setTimeout(() => fitView({ padding: 0.2 }), 100);
+    return () => cancelAnimationFrame(raf);
   }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView]);
 
   // 노드 드래그 끝났을 때 위치 저장 (자유 배치 유지)

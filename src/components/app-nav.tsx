@@ -67,6 +67,9 @@ const financeGroupLinks: { href: string; label: string; icon: typeof Wallet; fea
 ];
 
 const CHAT_READ_KEY = "chat_read_";
+/** 백그라운드 탭에서 API 부하 감소 (5초 → 12초, 숨김 시 아래에서 지연) */
+const NAV_POLL_MS = 12_000;
+const NAV_POLL_HIDDEN_MS = 45_000;
 
 export function AppNav() {
   const pathname = usePathname();
@@ -116,7 +119,7 @@ export function AppNav() {
 
   // 직원만 채팅 미읽음 배지 표시
   useEffect(() => {
-    if (!session?.user?.id || pathname === "/choose-mode" || effectiveMode !== "company" || session.user.role !== "USER") {
+    if (!session?.user?.id || pathname === "/choose-mode" || effectiveMode !== "company" || session?.user?.role !== "USER") {
       setChatUnreadCount(0);
       return;
     }
@@ -126,7 +129,7 @@ export function AppNav() {
         .then((list: any) => {
           let count = 0;
           for (const c of list) {
-            if (!c.lastMessage || c.lastMessage.user.id === session.user?.id) continue;
+            if (!c.lastMessage || c.lastMessage.user?.id === session?.user?.id) continue;
             const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
             if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
           }
@@ -134,9 +137,25 @@ export function AppNav() {
         })
         .catch(() => setChatUnreadCount(0));
     };
+    const schedule = () => {
+      const ms =
+        typeof document !== "undefined" && document.visibilityState === "hidden"
+          ? NAV_POLL_HIDDEN_MS
+          : NAV_POLL_MS;
+      return window.setInterval(run, ms);
+    };
     run();
-    const t = setInterval(run, 5000);
-    return () => clearInterval(t);
+    let t = schedule();
+    const onVis = () => {
+      clearInterval(t);
+      if (typeof document !== "undefined" && document.visibilityState === "visible") run();
+      t = schedule();
+    };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(t);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVis);
+    };
   }, [session?.user?.id, session?.user?.role, effectiveMode, pathname]);
 
   useEffect(() => {
@@ -148,7 +167,7 @@ export function AppNav() {
           .then((list: any) => {
             let count = 0;
             for (const c of list) {
-              if (!c.lastMessage || c.lastMessage.user.id === session.user?.id) continue;
+              if (!c.lastMessage || c.lastMessage.user?.id === session?.user?.id) continue;
               const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
               if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
             }
@@ -180,9 +199,20 @@ export function AppNav() {
           setPaymentAlertLabel("알림");
         });
     };
+    const schedule = () => {
+      const ms =
+        typeof document !== "undefined" && document.visibilityState === "hidden"
+          ? NAV_POLL_HIDDEN_MS
+          : NAV_POLL_MS;
+      return window.setInterval(run, ms);
+    };
     run();
-    const t = setInterval(run, 5000);
-    const onVisibility = () => { if (typeof document !== "undefined" && document.visibilityState === "visible") run(); };
+    let t = schedule();
+    const onVisibility = () => {
+      clearInterval(t);
+      if (typeof document !== "undefined" && document.visibilityState === "visible") run();
+      t = schedule();
+    };
     if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
     return () => {
       clearInterval(t);

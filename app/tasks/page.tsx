@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Component, type ReactNode, useCallback, useMemo, useState } from "react";
+import React, { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
@@ -28,7 +28,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { CreateTaskModal } from "@/components/create-task-modal";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
 import { Plus, Filter, GitBranch, FileText, List as ListIcon } from "lucide-react";
@@ -62,9 +61,14 @@ const WorkLogTab = dynamic(
   }
 );
 
+const CreateTaskModal = dynamic(
+  () => import("@/components/create-task-modal").then((m) => m.CreateTaskModal),
+  { ssr: false }
+);
+
 const STATUS_LIST = [
-  { value: "TODO", label: "할 일" },
-  { value: "IN_PROGRESS", label: "진행 중" },
+  { value: "TODO", label: "준비" },
+  { value: "IN_PROGRESS", label: "진행중" },
   { value: "DONE", label: "완료" },
 ] as const;
 
@@ -73,7 +77,8 @@ type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 type Task = {
   id: string;
   title: string;
-  description: string | null;
+  /** 목록 API에서는 비워 둠(용량). 상세에서만 로드 */
+  description?: string | null;
   dueDate: string;
   isCompleted: boolean;
   status?: TaskStatus | null;
@@ -101,6 +106,10 @@ function priorityLabel(priority: string) {
   if (priority === "HIGH") return "높음";
   if (priority === "LOW") return "낮음";
   return "보통";
+}
+
+function statusLabel(status: TaskStatus) {
+  return STATUS_LIST.find((s) => s.value === status)?.label ?? status;
 }
 
 function tasksFetcher(url: string): Promise<Task[]> {
@@ -144,17 +153,40 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "">("");
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
   const [view, setView] = useState<"list" | "mindmap" | "log">("list");
+  const [mindmapMounted, setMindmapMounted] = useState(false);
+
+  // 마인드맵 탭 진입 후 한 프레임 뒤에 마운트 → removeChild 등 DOM 충돌 완화
+  useEffect(() => {
+    if (view !== "mindmap") {
+      setMindmapMounted(false);
+      return;
+    }
+    const t = requestAnimationFrame(() => {
+      setMindmapMounted(true);
+    });
+    return () => cancelAnimationFrame(t);
+  }, [view]);
 
   const { data: tasksData = [], mutate: mutateTasks, isLoading: tasksLoading } = useSWR<Task[]>(
     authStatus === "authenticated" ? "/api/tasks" : null,
     tasksFetcher,
-    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 5000 }
+    {
+      keepPreviousData: true,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 12_000,
+    }
   );
 
   const { data: linksData = [], mutate: mutateLinks, isLoading: linksLoading } = useSWR<TaskLink[]>(
     authStatus === "authenticated" && view === "mindmap" ? "/api/tasks/links" : null,
     linksFetcher,
-    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 5000 }
+    {
+      keepPreviousData: true,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 12_000,
+    }
   );
 
   const tasks = Array.isArray(tasksData) ? tasksData : [];
@@ -230,7 +262,7 @@ export default function TasksPage() {
             <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5">
               <TabsTrigger value="list" className="gap-2 rounded-md px-3">
                 <ListIcon className="size-4" />
-                투두리스트
+                todoo
               </TabsTrigger>
               <TabsTrigger value="mindmap" className="gap-2 rounded-md px-3">
                 <GitBranch className="size-4" />
@@ -325,25 +357,29 @@ export default function TasksPage() {
         </div>
       </div>
 
-      <ViewErrorBoundary>
+      <ViewErrorBoundary key={view}>
         {view === "log" ? (
           <WorkLogTab />
         ) : view === "mindmap" ? (
-          tasksLoading && tasks.length === 0 ? (
+          !mindmapMounted ? (
+            <p className="text-muted-foreground py-12 text-center text-sm">마인드맵 준비 중...</p>
+          ) : tasksLoading && tasks.length === 0 ? (
             <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
           ) : linksLoading ? (
             <p className="text-muted-foreground py-12 text-center text-sm">연결 정보를 불러오는 중...</p>
           ) : (
-            <TaskTreeView
-              tasks={mindmapTasks as any}
-              taskLinks={taskLinks as any}
-              onRefresh={refreshTasks}
-              onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
-              onCreateTask={(parentId: any) => {
-                setCreateParentId(parentId);
-                setCreateOpen(true);
-              }}
-            />
+            <div key="mindmap" className="min-h-[480px] w-full">
+              <TaskTreeView
+                tasks={mindmapTasks as any}
+                taskLinks={taskLinks as any}
+                onRefresh={refreshTasks}
+                onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
+                onCreateTask={(parentId: any) => {
+                  setCreateParentId(parentId);
+                  setCreateOpen(true);
+                }}
+              />
+            </div>
           )
         ) : tasksLoading && tasks.length === 0 ? (
           <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
@@ -363,74 +399,111 @@ export default function TasksPage() {
             </Button>
           </div>
         ) : (
-          <div className="border-border overflow-hidden rounded-lg border border-gray-200">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-gray-200 hover:bg-transparent">
-                  <TableHead className="text-muted-foreground font-medium">제목</TableHead>
-                  <TableHead className="text-muted-foreground w-[120px] font-medium">상태</TableHead>
-                  <TableHead className="text-muted-foreground w-[90px] font-medium">우선순위</TableHead>
-                  <TableHead className="text-muted-foreground w-[110px] font-medium">마감일</TableHead>
-                  <TableHead className="text-muted-foreground w-[100px] font-medium">담당자</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTasks.map((task: any) => (
-                  <TableRow
-                    key={task.id}
-                    className="border-gray-200 cursor-pointer transition-colors hover:bg-muted/50"
-                    onClick={() => router.push(`/tasks/${task.id}`)}
-                  >
-                    <TableCell>
-                      <span
-                        className={cn(
-                          "font-medium",
-                          task.isCompleted && "text-muted-foreground line-through"
-                        )}
-                      >
-                        {task.title}
-                      </span>
-                    </TableCell>
-                    <TableCell onClick={(e: any) => e.stopPropagation()}>
-                      <Select
-                        value={getEffectiveStatus(task)}
-                        onValueChange={(v: any) => updateTaskStatus(task.id, v as TaskStatus)}
-                        disabled={updatingStatusId === task.id}
-                      >
-                        <SelectTrigger className="h-8 border-gray-200 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {STATUS_LIST.map((s: any) => (
-                            <SelectItem key={s.value} value={s.value}>
-                              {s.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={priorityVariant(task.priority)} className="text-xs">
-                        {priorityLabel(task.priority)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {format(new Date(task.dueDate), "yyyy년 M월 d일", { locale: ko })}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-[10px]">
-                            {(task.assignedTo?.name ?? "?").slice(0, 1)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm">{formatUserName(task.assignedTo)}</span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {STATUS_LIST.map((col) => {
+              const list = filteredTasks.filter((t: any) => getEffectiveStatus(t) === col.value);
+              return (
+                <div key={col.value} className="border-border flex flex-col rounded-lg border border-gray-200 bg-muted/20">
+                  <div className="border-border flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                    <span className="text-sm font-medium text-foreground">{col.label}</span>
+                    <span className="text-muted-foreground text-xs">{list.length}개</span>
+                  </div>
+                  <div className="flex-1 space-y-2 p-3">
+                    {list.length === 0 ? (
+                      <p className="text-muted-foreground py-6 text-center text-xs">없음</p>
+                    ) : (
+                      list.map((task: any) => {
+                        const s = getEffectiveStatus(task);
+                        const prev = s === "DONE" ? "IN_PROGRESS" : s === "IN_PROGRESS" ? "TODO" : null;
+                        const next = s === "TODO" ? "IN_PROGRESS" : s === "IN_PROGRESS" ? "DONE" : null;
+                        return (
+                          <div
+                            key={task.id}
+                            className="border-border rounded-lg border border-gray-200 bg-card p-3 shadow-sm"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/tasks/${task.id}`)}
+                              className="w-full text-left"
+                            >
+                              <p
+                                className={cn(
+                                  "font-medium text-foreground line-clamp-2",
+                                  task.isCompleted && "text-muted-foreground line-through"
+                                )}
+                              >
+                                {task.title}
+                              </p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
+                                  {priorityLabel(task.priority)}
+                                </Badge>
+                                <span className="text-muted-foreground text-xs">
+                                  {format(new Date(task.dueDate), "M월 d일", { locale: ko })}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-[10px]">
+                                    {(task.assignedTo?.name ?? "?").slice(0, 1)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-muted-foreground text-xs">
+                                  {formatUserName(task.assignedTo)}
+                                </span>
+                              </div>
+                            </button>
+                            <div className="mt-3 flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2 text-xs"
+                                disabled={!prev || updatingStatusId === task.id}
+                                onClick={() => prev && updateTaskStatus(task.id, prev as any)}
+                              >
+                                ←
+                              </Button>
+                              <div className="flex-1" onClick={(e: any) => e.stopPropagation()}>
+                                <Select
+                                  value={s}
+                                  onValueChange={(v: any) => updateTaskStatus(task.id, v as TaskStatus)}
+                                  disabled={updatingStatusId === task.id}
+                                >
+                                  <SelectTrigger className="h-8 border-gray-200 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {STATUS_LIST.map((opt: any) => (
+                                      <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2 text-xs"
+                                disabled={!next || updatingStatusId === task.id}
+                                onClick={() => next && updateTaskStatus(task.id, next as any)}
+                              >
+                                →
+                              </Button>
+                            </div>
+                            <p className="mt-2 text-[10px] text-muted-foreground">
+                              현재: {statusLabel(s)}
+                            </p>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </ViewErrorBoundary>

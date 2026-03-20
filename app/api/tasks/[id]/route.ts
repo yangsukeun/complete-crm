@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import { createActivityLog } from "@/lib/activity-log";
+import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
 import { createNotificationWithOptions } from "@/lib/notifications";
+import { format } from "date-fns";
 
 export async function GET(
   req: Request,
@@ -19,6 +20,28 @@ export async function GET(
     const task = await prisma.task.findUnique({
       where: { id },
       include: {
+        parent: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        children: {
+          select: {
+            id: true,
+            title: true,
+            dueDate: true,
+            isCompleted: true,
+            status: true,
+            priority: true,
+            orderIndex: true,
+            isCollapsed: true,
+            assignedTo: {
+              select: { id: true, name: true, email: true, position: true },
+            },
+          },
+          orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
+        },
         assignedTo: {
           select: {
             id: true,
@@ -185,16 +208,21 @@ export async function PATCH(
         newValue: data.isCompleted ? "완료" : "미완료",
       });
     }
-    if (revisions.length > 0) {
-      await prisma.taskRevision.createMany({
-        data: revisions.map((r) => ({
-          taskId: id,
-          userId: session.user.id,
-          field: r.field,
-          oldValue: r.oldValue,
-          newValue: r.newValue,
-        })),
-      });
+    // TaskRevision 테이블이 없는 환경에서도 상태 변경이 깨지지 않도록 방어
+    if (revisions.length > 0 && (prisma as any).taskRevision) {
+      try {
+        await (prisma as any).taskRevision.createMany({
+          data: revisions.map((r) => ({
+            taskId: id,
+            userId: session.user.id,
+            field: r.field,
+            oldValue: r.oldValue,
+            newValue: r.newValue,
+          })),
+        });
+      } catch (revErr) {
+        console.error("[tasks] revision write skipped:", revErr);
+      }
     }
 
     const task = await prisma.task.update({
@@ -231,11 +259,21 @@ export async function PATCH(
       },
     });
 
-    const becameDone =
-      (data.status === "DONE" || body.status === "DONE") &&
-      existing.status !== "DONE";
+    const nextStatus = (data.status ?? existing.status) as any;
+    const becameDone = nextStatus === "DONE" && existing.status !== "DONE";
     if (becameDone) {
       await createActivityLog(session.user.id, "TASK_COMPLETED", existing.title);
+    }
+
+    // 최초 단계 이동 자동 기록 (준비/진행중/완료)
+    if (data.status && data.status !== existing.status) {
+      void appendWorkLogOnceForTaskStatus({
+        userId: session.user.id,
+        dateStr: format(new Date(), "yyyy-MM-dd"),
+        taskId: existing.id,
+        taskTitle: existing.title,
+        status: data.status,
+      });
     }
 
     if (data.assignedToId && data.assignedToId !== existing.assignedToId && data.assignedToId !== session.user.id) {

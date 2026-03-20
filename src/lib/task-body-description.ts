@@ -1,0 +1,65 @@
+/**
+ * 업무 본문 저장: 마크다운만 쓰면 토글·다열 등 BlockNote 블록 타입이 유지되지 않습니다.
+ * 접두 + JSON 으로 블록 트리를 저장하고, 구 데이터는 마크다운으로 그대로 불러옵니다.
+ */
+export const TASK_BODY_DOC_PREFIX = "__BN_DOC_V1__\n";
+
+export type ParsedStoredTaskBody =
+  | { format: "blocks"; blocks: unknown[] }
+  | { format: "markdown"; markdown: string };
+
+/** DB/서버에서 온 문자열을 블록 JSON 또는 레거시 마크다운으로 구분 */
+export function parseStoredTaskBody(raw: string | null | undefined): ParsedStoredTaskBody | null {
+  const t = (raw ?? "").trim();
+  if (!t) return null;
+  if (t.startsWith(TASK_BODY_DOC_PREFIX)) {
+    try {
+      const parsed = JSON.parse(t.slice(TASK_BODY_DOC_PREFIX.length)) as {
+        v?: number;
+        blocks?: unknown[];
+      };
+      if (parsed?.v === 1 && Array.isArray(parsed.blocks)) {
+        return { format: "blocks", blocks: parsed.blocks };
+      }
+    } catch {
+      /* 손상된 JSON은 마크다운으로 재시도 */
+    }
+    return { format: "markdown", markdown: raw ?? "" };
+  }
+  return { format: "markdown", markdown: raw ?? "" };
+}
+
+type EditorForSerialize = {
+  document: unknown;
+  /** BlockNote 제네릭과 맞추기 위해 any 허용 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  blocksToMarkdownLossy: (blocks?: any) => string;
+};
+
+/**
+ * 에디터 내용을 DB에 넣을 문자열로 직렬화 (토글/다열 등 보존).
+ * 완전히 비어 있으면 null (기존과 동일하게 빈 본문).
+ */
+export function serializeTaskBodyForStore(editor: EditorForSerialize): string | null {
+  const md = editor.blocksToMarkdownLossy(editor.document).trim();
+  if (!md) return null;
+  const payload = {
+    v: 1 as const,
+    blocks: JSON.parse(JSON.stringify(editor.document)) as unknown[],
+  };
+  return TASK_BODY_DOC_PREFIX + JSON.stringify(payload);
+}
+
+/**
+ * 목록·미리보기 등에서 원문이 JSON 포맷이면 짧은 안내만 표시 (선택).
+ */
+export function taskBodyPlainTextPreview(raw: string | null | undefined, maxLen = 120): string {
+  const parsed = parseStoredTaskBody(raw);
+  if (!parsed) return "";
+  if (parsed.format === "markdown") {
+    const s = parsed.markdown.replace(/\s+/g, " ").trim();
+    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+  }
+  const mdFromBlocks = "(구조화된 본문)";
+  return mdFromBlocks;
+}

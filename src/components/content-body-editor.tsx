@@ -23,8 +23,9 @@ const koreanDictionary = {
   ...ko,
   placeholders: {
     ...ko.placeholders,
-    default: "내용을 입력하거나 '/'를 눌러 메뉴를 여세요",
+    default: "내용을 입력하세요. '/' 를 누르면 토글·제목·목록을 넣을 수 있어요.",
     heading: "제목",
+    toggleListItem: "토글을 켜거나 끌 내용",
     bulletListItem: "목록 항목",
     numberedListItem: "목록 항목",
     checkListItem: "할 일",
@@ -117,7 +118,7 @@ export function ContentBodyEditor({
     <div className={cn("flex flex-col", className)}>
       <div
         className={cn(
-          "notion-editor-wrapper rounded-lg relative isolate overflow-visible",
+          "notion-editor-wrapper notion-page-like rounded-lg relative isolate overflow-visible",
           "[&_.bn-editor]:px-3 [&_.bn-editor]:py-4 [&_.bn-editor]:overflow-visible",
           "[&_.bn-block-outer]:my-1 [&_.bn-block-content]:leading-relaxed",
           "[&_.bn-mantine]:border-0 [&_.bn-mantine]:bg-transparent [&_.bn-mantine]:rounded-lg [&_.bn-mantine]:overflow-visible",
