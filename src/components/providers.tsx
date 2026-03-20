@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
+import { OneSignalBridge } from "@/components/one-signal-bridge";
 import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
 
@@ -25,6 +26,7 @@ export function Providers({
       refetchInterval={0}
       refetchOnWindowFocus={false}
     >
+      <OneSignalBridge userId={session?.user?.id} />
       <AIAssistProvider>
         <WorkspaceThemeSync />
         {children}
