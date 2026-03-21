@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
-import { createNotificationWithOptions } from "@/lib/notifications";
+import { createTaskWithNotifications } from "@/lib/tasks/create-task";
 import { z } from "zod";
-import { format } from "date-fns";
 
 const createSchema = z.object({
   title: z.string().min(1),
@@ -95,48 +93,21 @@ export async function POST(req: Request) {
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
-    const task = await prisma.task.create({
+    const task = await createTaskWithNotifications({
+      createdById: session.user.id,
+      scope,
       data: {
         title: parsed.data.title,
         description: parsed.data.description ?? null,
-        dueDate: new Date(parsed.data.dueDate),
+        dueDate: parsed.data.dueDate,
         priority: parsed.data.priority ?? "MEDIUM",
         status: parsed.data.status ?? "TODO",
         assignedToId: parsed.data.assignedToId || session.user.id,
-        createdById: session.user.id,
         parentId: parsed.data.parentId ?? null,
         categoryId: parsed.data.categoryId ?? null,
         orderIndex: parsed.data.orderIndex ?? 0,
-        scope: scope === "PERSONAL" ? "PERSONAL" : "TEAM",
-      },
-      include: {
-        assignedTo: { select: { name: true, position: true } },
-        createdBy: { select: { name: true, position: true } },
       },
     });
-
-    const dueDateStr = parsed.data.dueDate.slice(0, 10);
-    const timestampForLog = dueDateStr ? new Date(dueDateStr + "T12:00:00") : undefined;
-    await createActivityLog(session.user.id, "TASK_CREATED", task.title, undefined, timestampForLog ? { timestamp: timestampForLog } : undefined);
-
-    // 최초 "준비(TODO)" 자동 기록: 생성 시 1회만 업무일지에 남김
-    void appendWorkLogOnceForTaskStatus({
-      userId: session.user.id,
-      dateStr: format(new Date(), "yyyy-MM-dd"),
-      taskId: task.id,
-      taskTitle: task.title,
-      status: (task.status as any) ?? "TODO",
-    });
-
-    if (task.assignedToId && task.assignedToId !== session.user.id) {
-      await createNotificationWithOptions({
-        userId: task.assignedToId,
-        type: "ASSIGNED",
-        message: `'${task.title}' 업무가 배정되었습니다.`,
-        link: `/tasks/${task.id}`,
-        actorId: session.user.id,
-      });
-    }
 
     return NextResponse.json(task);
   } catch (e) {

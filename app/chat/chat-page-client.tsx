@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -19,11 +26,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Calendar, ImagePlus, MessageCircle, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Calendar, ClipboardList, ImagePlus, MessageCircle, Plus, Search, Send, Trash2 } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 
-type User = { id: string; name: string; email: string; department: string | null; position?: string | null };
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  department: string | null;
+  position?: string | null;
+  role?: string;
+};
 type ChatItem = {
   id: string;
   isGroup: boolean;
@@ -36,7 +50,16 @@ type Message = {
   body: string;
   createdAt: string;
   isDeleted?: boolean;
+  isSystem?: boolean;
   user: { id: string; name: string; position?: string | null };
+};
+
+type DelegateParsed = {
+  assigneeUserId: string | null;
+  title: string;
+  dueDate: string;
+  confidence: number;
+  assigneeName: string | null;
 };
 type ScheduleItem = {
   id: string;
@@ -78,6 +101,20 @@ export function ChatPageClient() {
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
+
+  const isExecutive =
+    session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
+  const [delegateTaskMode, setDelegateTaskMode] = useState(false);
+  const [delegateModalOpen, setDelegateModalOpen] = useState(false);
+  const [delegateParsed, setDelegateParsed] = useState<DelegateParsed | null>(null);
+  const [delegatePendingText, setDelegatePendingText] = useState("");
+  const [delegateConfirmLoading, setDelegateConfirmLoading] = useState(false);
+  const [delegateForm, setDelegateForm] = useState({
+    assigneeUserId: "",
+    title: "",
+    dueDate: "",
+  });
+  const [delegateModalUsers, setDelegateModalUsers] = useState<User[]>([]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -240,6 +277,19 @@ export function ChatPageClient() {
   }, [scheduleModalOpen]);
 
   useEffect(() => {
+    if (delegateModalOpen) {
+      fetch("/api/users/list")
+        .then((r: any) => (r.ok ? r.json() : []))
+        .then((list: User[]) =>
+          setDelegateModalUsers(
+            list.filter((u) => u.role === "USER" || u.role === "TEAM_LEAD")
+          )
+        )
+        .catch(() => setDelegateModalUsers([]));
+    }
+  }, [delegateModalOpen]);
+
+  useEffect(() => {
     if (mentionOpen && users.length === 0) {
       fetch("/api/users/list")
         .then((r: any) => (r.ok ? r.json() : []))
@@ -279,9 +329,146 @@ export function ChatPageClient() {
     }
   };
 
+  const postChatAndAppendSystem = useCallback(
+    async (userMessageBody: string, systemLine: string) => {
+      if (!selectedChatId || !session?.user) return;
+      const optimisticId = `temp-${Date.now()}`;
+      const optimisticMessage: Message = {
+        id: optimisticId,
+        body: userMessageBody,
+        createdAt: new Date().toISOString(),
+        user: {
+          id: session.user.id!,
+          name: session.user.name ?? session.user.email ?? "",
+          position: (session.user as { position?: string | null }).position ?? undefined,
+        },
+      };
+      setMessages((prev: Message[]) => [...prev, optimisticMessage]);
+      requestAnimationFrame(() => scrollToBottom());
+      try {
+        const res = await fetch(`/api/chats/${selectedChatId}/messages`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-workspace": "TEAM",
+          },
+          body: JSON.stringify({ body: userMessageBody }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "전송 실패");
+        setMessages((prev: Message[]) =>
+          prev.map((m: Message) => (m.id === optimisticId ? data : m))
+        );
+        const sys: Message = {
+          id: `sys-${Date.now()}`,
+          body: systemLine,
+          createdAt: new Date().toISOString(),
+          isSystem: true,
+          user: { id: "__system__", name: "시스템", position: null },
+        };
+        setMessages((prev: Message[]) => [...prev, sys]);
+        fetchChats();
+      } catch (e) {
+        setMessages((prev: Message[]) => prev.filter((m: Message) => m.id !== optimisticId));
+        throw e;
+      }
+    },
+    [selectedChatId, session?.user, fetchChats, scrollToBottom]
+  );
+
+  const handleDelegateConfirm = async () => {
+    if (!delegateForm.assigneeUserId || !delegateForm.title.trim() || !delegateForm.dueDate) {
+      toast.error("담당자·업무 제목·마감일을 확인하세요.");
+      return;
+    }
+    setDelegateConfirmLoading(true);
+    try {
+      const res = await fetch("/api/ai/delegate-task", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-workspace": "TEAM",
+        },
+        body: JSON.stringify({
+          confirm: true,
+          assigneeUserId: delegateForm.assigneeUserId,
+          title: delegateForm.title.trim(),
+          dueDate: delegateForm.dueDate,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "등록 실패");
+      const assigneeName =
+        (data.assigneeName as string) || data.task?.assignedTo?.name || "담당자";
+      const taskTitle = data.task?.title as string;
+      setDelegateModalOpen(false);
+      setDelegateParsed(null);
+      const line = `✅ ${assigneeName}님께 ${taskTitle} 업무가 등록되었습니다`;
+      await postChatAndAppendSystem(delegatePendingText, line);
+      toast.success("업무가 등록되었습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "업무 등록에 실패했습니다.");
+    } finally {
+      setDelegateConfirmLoading(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!selectedChatId || !newMessage.trim() || !session?.user) return;
     const body = newMessage.trim();
+
+    if (delegateTaskMode && isExecutive) {
+      setSending(true);
+      try {
+        const res = await fetch("/api/ai/delegate-task", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-workspace": "TEAM",
+          },
+          body: JSON.stringify({ text: body }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "업무 지시 처리 실패");
+
+        if (data.needsConfirmation && data.parsed) {
+          const p = data.parsed as DelegateParsed;
+          setDelegateParsed(p);
+          setDelegatePendingText(body);
+          setDelegateForm({
+            assigneeUserId: p.assigneeUserId ?? "",
+            title: p.title,
+            dueDate: p.dueDate,
+          });
+          setDelegateModalOpen(true);
+          setNewMessage("");
+          return;
+        }
+
+        if (data.created && data.task) {
+          const assigneeName =
+            (data.assigneeName as string) ||
+            data.task.assignedTo?.name ||
+            "담당자";
+          const title = data.task.title as string;
+          setNewMessage("");
+          await postChatAndAppendSystem(
+            body,
+            `✅ ${assigneeName}님께 ${title} 업무가 등록되었습니다`
+          );
+          toast.success("업무가 등록되었습니다.");
+          return;
+        }
+
+        throw new Error("응답 형식이 올바르지 않습니다.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "업무 지시에 실패했습니다.");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     setNewMessage("");
     const optimisticId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {
@@ -584,6 +771,16 @@ export function ChatPageClient() {
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden">
                     {messages.map((m: any) => {
+                      if (m.isSystem || m.user?.id === "__system__") {
+                        return (
+                          <div
+                            key={m.id}
+                            className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-900"
+                          >
+                            {m.body}
+                          </div>
+                        );
+                      }
                       const isMine = session?.user?.id === m.user.id;
                       const canDelete =
                         isMine &&
@@ -651,8 +848,21 @@ export function ChatPageClient() {
                   </div>
                 )}
                 {isParticipant ? (
-                  <div className="relative flex gap-2 pt-2">
-                    <div className="relative flex-1">
+                  <div className="relative flex flex-wrap items-end gap-2 pt-2">
+                    {isExecutive && (
+                      <Button
+                        type="button"
+                        variant={delegateTaskMode ? "default" : "outline"}
+                        size="sm"
+                        className="shrink-0 gap-1"
+                        title="켜면 전송 시 AI가 업무를 등록합니다 (대표·관리자)"
+                        onClick={() => setDelegateTaskMode((v: boolean) => !v)}
+                      >
+                        <ClipboardList className="size-4" />
+                        업무지시
+                      </Button>
+                    )}
+                    <div className="relative min-w-0 flex-1 basis-[200px]">
                       <Textarea
                         ref={messageInputRef}
                         placeholder="메시지 입력... (Enter 전송, Shift+Enter 줄바꿈, @멘션, 📅 일정, Ctrl+V 이미지·파일)"
@@ -800,6 +1010,79 @@ export function ChatPageClient() {
               </button>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={delegateModalOpen} onOpenChange={setDelegateModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>업무 지시 확인</DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground text-sm">
+            AI 판단 신뢰도가 낮아 내용을 확인한 뒤 등록합니다. 담당자·제목·마감일을 수정할 수 있습니다.
+          </p>
+          {delegateParsed && (
+            <p className="text-xs text-muted-foreground">
+              신뢰도: {(delegateParsed.confidence * 100).toFixed(0)}%
+            </p>
+          )}
+          <div className="grid gap-3 py-2">
+            <div className="space-y-1">
+              <Label>담당자</Label>
+              <Select
+                value={delegateForm.assigneeUserId || undefined}
+                onValueChange={(v: string) =>
+                  setDelegateForm((f: typeof delegateForm) => ({ ...f, assigneeUserId: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="직원 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {delegateModalUsers.map((u: User) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {formatUserName(u)}
+                      {u.department ? ` · ${u.department}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="delegate-title">업무 제목</Label>
+              <Input
+                id="delegate-title"
+                value={delegateForm.title}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setDelegateForm((f: typeof delegateForm) => ({ ...f, title: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="delegate-due">마감일 (KST)</Label>
+              <Input
+                id="delegate-due"
+                type="date"
+                value={delegateForm.dueDate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setDelegateForm((f: typeof delegateForm) => ({ ...f, dueDate: e.target.value }))
+                }
+              />
+            </div>
+            {delegatePendingText && (
+              <div className="rounded-md bg-muted/50 p-2 text-xs">
+                <span className="font-medium">원문:</span> {delegatePendingText}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDelegateModalOpen(false)}>
+              취소
+            </Button>
+            <Button onClick={handleDelegateConfirm} disabled={delegateConfirmLoading}>
+              {delegateConfirmLoading ? "등록 중..." : "업무 등록"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

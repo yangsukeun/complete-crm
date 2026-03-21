@@ -41,6 +41,7 @@
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
+    "googleapis": "^171.4.0",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
@@ -57,6 +58,7 @@
     "swr": "^2.4.0",
     "tailwind-merge": "^3.4.0",
     "tw-animate-css": "^1.4.0",
+    "webdav": "^5.9.0",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"

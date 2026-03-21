@@ -24,7 +24,7 @@ complete-crm/
 ├── app/             # 페이지 (login, dashboard, schedule, tasks, admin, api)
 ├── prisma/
 ├── public/
-├── src/             # auth, middleware, components, lib, types
+├── src/             # auth, middleware, components, lib (storage 등), types
 ├── .env
 ├── package.json
 └── tsconfig.json    # paths: @/* → ./src/*
@@ -77,6 +77,22 @@ GEMINI_API_KEY=여기에_키
 ```
 
 변경 후 서버를 다시 시작하세요.
+
+## 파일 저장소 (게시판·채팅·에디터 `/api/upload`)
+
+게시판 첨부 등은 모두 **`/api/upload`** 로 올라가며, `STORAGE_PROVIDER`와 환경 변수로 백엔드를 고릅니다. 자세한 키는 **`.env.example`** 참고.
+
+| 모드 | 설명 |
+|------|------|
+| **auto** (기본) | `BLOB_READ_WRITE_TOKEN` 있으면 Vercel Blob. Vercel에서 토큰 없으면 Drive/WebDAV가 모두 설정돼 있을 때만 그쪽 사용. 로컬에서는 주로 `public/uploads/content`. |
+| **vercel-blob** | `BLOB_READ_WRITE_TOKEN` 필수 |
+| **google-drive** | 서비스 계정 + `GOOGLE_DRIVE_FOLDER_ID`. 폴더는 서비스 계정 이메일에 **편집자**로 공유 필요. 응답 `url`은 Drive 보기 링크. |
+| **webdav** | 시놀로지 **WebDAV** 등. `WEBDAV_URL`, 계정, **`WEBDAV_PUBLIC_BASE_URL`**(브라우저에서 열 수 있는 HTTPS 경로) 필요. |
+| **local** | `public/uploads/content` (Vercel에서는 사용 불가) |
+
+**NAS만 백업용으로 쓰기:** 주 저장소는 Blob 또는 Drive로 두고 `STORAGE_MIRROR_WEBDAV=true` 로 설정하면, 업로드 성공 후 같은 파일을 WebDAV 경로에 한 번 더 올립니다. (NAS에 공개 URL이 없어도 미러 업로드는 가능합니다.)
+
+**한글 파일:** `.hwp` / `.hwpx` 업로드 허용이 추가되어 있습니다.
 
 ## 변경 사항 반영하기 (커밋 & 푸시)
 

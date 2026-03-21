@@ -16,6 +16,7 @@ export async function GET() {
       email: string;
       department: string | null;
       position: string | null;
+      role: string;
       currentProject: { id: string; name: string; brand: { name: string } } | null;
     }>;
     try {
@@ -27,6 +28,7 @@ export async function GET() {
           email: true,
           department: true,
           position: true,
+          role: true,
           currentProject: { select: { id: true, name: true, brand: { select: { name: true } } } },
         },
         orderBy: { name: "asc" },
@@ -41,6 +43,7 @@ export async function GET() {
           email: true,
           department: true,
           position: true,
+          role: true,
         },
         orderBy: { name: "asc" },
       });

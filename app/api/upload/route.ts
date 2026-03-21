@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
 import { getAppSession } from "@/auth";
-import path from "path";
-import fs from "fs";
+import { storeUploadedFile, resolveStorageProvider } from "@/lib/storage";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "content");
-const MAX_SIZE = 50 * 1024 * 1024; // 50MB (교육자료 동영상 등)
+export const runtime = "nodejs";
+
+const MAX_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
@@ -24,13 +23,34 @@ const ALLOWED_FILE_TYPES = [
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "text/plain",
+  "application/x-hwp",
+  "application/haansofthwp",
+  "application/vnd.hancom.hwp",
+  "application/vnd.hancom.hwpx",
+  "application/vnd.hancom.hwpml.document",
 ];
 
-// 브라우저가 MIME을 비우거나 octet-stream으로 보낼 때 확장자로 허용
 const ALLOWED_EXTENSIONS = new Set([
-  "pdf", "doc", "docx", "xls", "xlsx", "txt",
-  "jpg", "jpeg", "png", "gif", "webp", "bmp",
-  "mp4", "webm", "ogg", "mov", "m4v", "avi",
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "txt",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "bmp",
+  "mp4",
+  "webm",
+  "ogg",
+  "mov",
+  "m4v",
+  "avi",
+  "hwp",
+  "hwpx",
 ]);
 
 function getExt(mime: string, fileName?: string): string {
@@ -46,6 +66,11 @@ function getExt(mime: string, fileName?: string): string {
     "video/quicktime": "mov",
     "video/x-msvideo": "avi",
     "video/x-m4v": "m4v",
+    "application/x-hwp": "hwp",
+    "application/haansofthwp": "hwp",
+    "application/vnd.hancom.hwp": "hwp",
+    "application/vnd.hancom.hwpx": "hwpx",
+    "application/vnd.hancom.hwpml.document": "hwp",
   };
   if (map[mime]) return map[mime];
   if (fileName) {
@@ -71,12 +96,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "파일 크기는 50MB 이하여야 합니다." }, { status: 400 });
     }
     const mime = (file.type || "").toLowerCase() || "application/octet-stream";
-    const extFromName = (file.name || "").split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "") || "";
+    const extFromName =
+      (file.name || "").split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "") || "";
     const allowedByMime = ALLOWED_IMAGE_TYPES.includes(mime) || ALLOWED_FILE_TYPES.includes(mime);
     const allowedByExt = extFromName && ALLOWED_EXTENSIONS.has(extFromName);
     if (!allowedByMime && !allowedByExt) {
       return NextResponse.json(
-        { error: "지원 형식: 이미지, 동영상(MP4/WebM/OGG/MOV 등), PDF, 문서, 텍스트. (확장자: " + [...ALLOWED_EXTENSIONS].slice(0, 10).join(", ") + " 등)" },
+        {
+          error:
+            "지원 형식: 이미지, 동영상, PDF, Office, 한글(hwp/hwpx), 텍스트 등. (확장자: " +
+            [...ALLOWED_EXTENSIONS].slice(0, 12).join(", ") +
+            " 등)",
+        },
         { status: 400 }
       );
     }
@@ -85,37 +116,35 @@ export async function POST(req: Request) {
     const filename = `u-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${fileExt}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    /** Vercel 등 읽기 전용 FS: BLOB_READ_WRITE_TOKEN 설정 시 Vercel Blob 사용 */
-    const blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
-    if (blobToken) {
-      const blob = await put(`board-content/${filename}`, buffer, {
-        access: "public",
-        token: blobToken,
-        contentType: mime || undefined,
-      });
-      return NextResponse.json({ url: blob.url, name: file.name });
+    const provider = resolveStorageProvider();
+    if (provider === "vercel-blob" && !process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
+      if (process.env.VERCEL) {
+        return NextResponse.json(
+          {
+            error:
+              "배포 환경에서 저장소가 설정되지 않았습니다. BLOB_READ_WRITE_TOKEN, 또는 Google Drive / NAS(WebDAV) 환경 변수를 설정하세요. README의 파일 저장소 절을 참고하세요.",
+          },
+          { status: 503 }
+        );
+      }
     }
 
-    if (process.env.VERCEL) {
-      return NextResponse.json(
-        {
-          error:
-            "배포 환경에서 파일 저장을 쓰려면 Vercel Blob 토큰이 필요합니다. 프로젝트 → Storage → Connect, 또는 BLOB_READ_WRITE_TOKEN 환경 변수를 설정하세요.",
-        },
-        { status: 503 }
-      );
-    }
+    const result = await storeUploadedFile({
+      buffer,
+      filename,
+      mime,
+      originalName: file.name,
+    });
 
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-    const filepath = path.join(UPLOAD_DIR, filename);
-    fs.writeFileSync(filepath, buffer);
-
-    const url = `/uploads/content/${filename}`;
-    return NextResponse.json({ url, name: file.name });
+    return NextResponse.json({
+      url: result.url,
+      name: result.name,
+      provider: result.provider,
+      ...(result.mirrorWarning ? { mirrorWarning: result.mirrorWarning } : {}),
+    });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "업로드에 실패했습니다." }, { status: 500 });
+    const msg = e instanceof Error ? e.message : "업로드에 실패했습니다.";
+    return NextResponse.json({ error: msg.length < 400 ? msg : "업로드에 실패했습니다." }, { status: 500 });
   }
 }

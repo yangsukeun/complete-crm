@@ -11,3 +11,8 @@ export function startOfDayKst(date: Date): Date {
   const kstStart = startOfDay(kst);
   return new Date(kstStart.getTime() - KST_OFFSET_MS);
 }
+
+/** 오늘 날짜 YYYY-MM-DD (Asia/Seoul) — AI 업무 마감일 등 */
+export function todayYmdKst(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+}
