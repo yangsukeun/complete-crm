@@ -3,8 +3,8 @@
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 /** Google이 모델 ID를 바꾸는 경우가 있어, 404 시 아래 순으로 한 번씩 재시도 */
-const GEMINI_MODEL_FALLBACKS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash-lite"] as const;
-export const GEMINI_DEFAULT_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL_FALLBACKS = ["gemini-1.5-flash", "gemini-2.5-flash-lite"] as const;
+export const GEMINI_DEFAULT_MODEL = "gemini-1.5-flash";
 const NOTEBOOK_LLM_DEFAULT_MODEL = "llama3.2";
 
 export type AIProvider = "gemini" | "openai" | "notebook";
