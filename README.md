@@ -63,7 +63,7 @@ AI_PROVIDER=gemini
 
 # Gemini (기본일 때)
 GEMINI_API_KEY=여기에_키
-# GEMINI_MODEL=gemini-1.5-flash
+# GEMINI_MODEL=gemini-2.0-flash
 
 # GPT로 바꿀 때
 # AI_PROVIDER=openai

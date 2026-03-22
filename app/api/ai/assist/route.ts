@@ -162,6 +162,27 @@ export async function POST(req: Request) {
       content = await callAiByProvider(provider, messages);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "API 오류";
+      const errorDetail = {
+        route: "/api/ai/assist",
+        provider,
+        message: e instanceof Error ? e.message : String(e),
+        name: e instanceof Error ? e.name : typeof e,
+        stack: e instanceof Error ? e.stack : undefined,
+        ...(provider === "gemini" && {
+          geminiModel: process.env.GEMINI_MODEL?.trim() || "(env 미설정 → 코드 기본값)",
+          hasGeminiApiKey: Boolean(process.env.GEMINI_API_KEY?.trim()),
+        }),
+        ...(provider === "openai" && {
+          hasOpenAiApiKey: Boolean(process.env.OPENAI_API_KEY?.trim()),
+        }),
+        ...(provider === "notebook" && {
+          notebookLlmUrlSet: Boolean(process.env.NOTEBOOK_LLM_URL?.trim()),
+        }),
+      };
+      // Vercel → Project → Logs 에서 [AI assist] 로 검색
+      console.log("[AI assist] AI API 호출 실패 (상세)", JSON.stringify(errorDetail, null, 2));
+      console.error("[AI assist] AI API 호출 실패", errorDetail);
+
       return NextResponse.json(
         { error: `AI 처리 중 오류가 발생했습니다. ${msg} API 키·URL과 한도를 확인하세요.` },
         { status: 502 }
