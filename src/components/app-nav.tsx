@@ -25,6 +25,7 @@ import {
   Megaphone,
   Image,
   FolderOpen,
+  Sparkles,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -47,6 +48,7 @@ const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboar
   { href: "/announcements", label: "공지사항", icon: Megaphone, featureKey: "announcements", companyOnly: true },
   { href: "/board", label: "게시판", icon: FolderOpen, featureKey: "board", companyOnly: true },
   { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true },
+  { href: "/ai-secretary", label: "AI 비서", icon: Sparkles },
 ];
 
 // [업무]
@@ -361,6 +363,22 @@ export function AppNav() {
               </Link>
             </Button>
           )}
+
+          <Button
+            variant="ghost"
+            asChild
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+              pathname === "/ai-secretary" || pathname.startsWith("/ai-secretary/")
+                ? "bg-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            )}
+          >
+            <Link href="/ai-secretary" prefetch={true} className="flex items-center gap-1.5">
+              <Sparkles className="size-4" />
+              <span>AI 비서</span>
+            </Link>
+          </Button>
 
           {/* [인사/일정 관리] - 인디고/블루 */}
           {hrLinks.length > 0 && (

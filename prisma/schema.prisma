@@ -171,6 +171,7 @@ model User {
   dailyWorkLogs         DailyWorkLog[]
   notifications         Notification[]
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
+  aiSecretaryConversations AiConversation[]
   @@index([currentProjectId])
 }
 
@@ -680,6 +681,32 @@ model Position {
 }
 
 // 견적서 등에 표시할 회사 정보 (싱글톤, 관리자만 수정)
+// AI 비서 채팅 — 날짜(KST YYYY-MM-DD)별 스레드, 새로고침 후에도 유지
+model AiConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateKey   String   // YYYY-MM-DD (Asia/Seoul)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  AiConversationMessage[]
+  @@unique([userId, dateKey])
+  @@index([userId])
+  @@map("ai_conversations")
+}
+
+model AiConversationMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String         // user | assistant
+  content        String         @db.Text
+  createdAt      DateTime       @default(now())
+  orderIndex     Int            @default(0)
+  @@index([conversationId, orderIndex])
+  @@map("ai_conversation_messages")
+}
+
 model CompanyInfo {
   id                   String   @id @default(cuid())
   name                 String   // 회사명

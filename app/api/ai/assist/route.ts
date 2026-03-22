@@ -7,6 +7,7 @@ import {
   callAiByProvider,
   getProvider,
 } from "@/lib/ai/assist-client";
+import { sendSecretaryMessage } from "@/lib/ai-secretary/run-chat";
 
 const ACTION_PROMPTS: Record<
   string,
@@ -104,6 +105,35 @@ export async function POST(req: Request) {
       }
     }
     const action = typeof body.action === "string" ? body.action.trim() : "";
+
+    if (action === "secretary_chat") {
+      const dateKey = typeof body.dateKey === "string" ? body.dateKey.trim() : "";
+      const secMsg = typeof body.message === "string" ? body.message : "";
+      try {
+        const { reply } = await sendSecretaryMessage({
+          userId: session.user.id,
+          role: session.user.role ?? "USER",
+          dateKey,
+          message: secMsg,
+          requestedProvider,
+        });
+        return NextResponse.json({ text: reply });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "오류";
+        if (msg.includes("비어") || msg.includes("형식")) {
+          return NextResponse.json({ error: msg }, { status: 400 });
+        }
+        if (msg.includes("API_KEY") || msg.includes("NOTEBOOK_LLM")) {
+          return NextResponse.json({ error: msg }, { status: 503 });
+        }
+        console.error("[AI assist] secretary_chat", e);
+        return NextResponse.json(
+          { error: `AI 처리 중 오류가 발생했습니다. ${msg} API 키·URL과 한도를 확인하세요.` },
+          { status: 502 }
+        );
+      }
+    }
+
     const text = typeof body.text === "string" ? body.text : "";
     const topic = typeof body.topic === "string" ? body.topic : undefined;
     const chatMessage = typeof body.message === "string" ? body.message.trim() : "";
