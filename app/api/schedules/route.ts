@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScope, getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { createActivityLog } from "@/lib/activity-log";
+import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -83,17 +84,33 @@ export async function POST(req: Request) {
 
     await createActivityLog(session.user.id, "SCHEDULE_CREATED", schedule.title, undefined, { timestamp: schedule.startTime });
 
-    const inviteUserIds = parsed.data.inviteUserIds ?? [];
+    const rawInvites = parsed.data.inviteUserIds ?? [];
+    const inviteUserIds = [
+      ...new Set(
+        rawInvites.filter(
+          (id): id is string => typeof id === "string" && id.length > 0 && id !== session.user.id
+        )
+      ),
+    ];
+
     if (inviteUserIds.length > 0) {
       await prisma.scheduleInvite.createMany({
-        data: inviteUserIds
-          .filter((id: any) => id !== session.user.id)
-          .map((toUserId: any) => ({
-            scheduleId: schedule.id,
-            fromUserId: session.user.id!,
-            toUserId,
-            status: "PENDING",
-          })),
+        data: inviteUserIds.map((toUserId) => ({
+          scheduleId: schedule.id,
+          fromUserId: session.user.id!,
+          toUserId,
+          status: "PENDING" as const,
+        })),
+        skipDuplicates: true,
+      });
+
+      await notifyScheduleInviteesAfterCreate({
+        organizerId: session.user.id,
+        inviteeUserIds: inviteUserIds,
+        scheduleTitle: schedule.title,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        isAllDay: schedule.isAllDay,
       });
     }
 

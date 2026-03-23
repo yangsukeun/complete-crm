@@ -70,7 +70,7 @@ export async function buildSecretaryDataContext(params: {
       const emailDisplay = [e.workEmail, e.email].filter(Boolean).join(" · ") || "없음";
       const contactDisplay = [e.phone, e.workPhone].filter(Boolean).join(" / ") || "없음";
       lines.push(
-        `- 이름: ${e.name} | 이메일: ${emailDisplay} | 부서: ${e.department ?? "미지정"} | 연락처: ${contactDisplay}`
+        `- 직원ID: ${e.id} | 이름: ${e.name} | 이메일: ${emailDisplay} | 부서: ${e.department ?? "미지정"} | 연락처: ${contactDisplay}`
       );
     }
   } else {

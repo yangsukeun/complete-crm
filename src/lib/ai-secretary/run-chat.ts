@@ -14,6 +14,8 @@ import {
 } from "@/lib/ai/assist-client";
 import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
 import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
+import { createActivityLog } from "@/lib/activity-log";
+import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -36,6 +38,18 @@ const SECRETARY_TOOLS = [
         },
         description: { type: "string", description: "일정 설명 (선택)" },
         isAllDay: { type: "boolean", description: "종일 일정 여부 (기본값: false)" },
+        inviteeUserIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "함께할 직원의 User ID 배열. 시스템 참고 데이터 '직원 연락처 목록'에 표시된 직원ID 값을 사용. 있으면 해당 사용자에게 일정 초대·알림·채팅이 갑니다.",
+        },
+        inviteeNames: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "초대할 직원 이름 배열(ID를 모를 때). DB에서 이름이 정확히 일치하는 사람이 한 명일 때만 초대됩니다.",
+        },
       },
       required: ["title", "startTime", "endTime"],
     },
@@ -68,13 +82,40 @@ async function executeTool(
 ): Promise<string> {
   try {
     if (name === "create_schedule") {
-      const { title, startTime, endTime, description, isAllDay } = input as {
+      const {
+        title,
+        startTime,
+        endTime,
+        description,
+        isAllDay,
+        inviteeUserIds: rawInviteeIds,
+        inviteeNames: rawInviteeNames,
+      } = input as {
         title: string;
         startTime: string;
         endTime: string;
         description?: string;
         isAllDay?: boolean;
+        inviteeUserIds?: string[];
+        inviteeNames?: string[];
       };
+
+      const fromIds = Array.isArray(rawInviteeIds)
+        ? rawInviteeIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+        : [];
+      const invitees = new Set<string>(fromIds);
+      const names = Array.isArray(rawInviteeNames) ? rawInviteeNames : [];
+      for (const n of names) {
+        if (typeof n !== "string" || !n.trim()) continue;
+        const found = await prisma.user.findMany({
+          where: { name: n.trim() },
+          select: { id: true },
+        });
+        if (found.length === 1) invitees.add(found[0].id);
+      }
+      invitees.delete(userId);
+      const inviteeList = [...invitees];
+
       const schedule = await prisma.schedule.create({
         data: {
           title,
@@ -86,6 +127,31 @@ async function executeTool(
           scope: "PERSONAL",
         },
       });
+
+      await createActivityLog(userId, "SCHEDULE_CREATED", schedule.title, undefined, {
+        timestamp: schedule.startTime,
+      });
+
+      if (inviteeList.length > 0) {
+        await prisma.scheduleInvite.createMany({
+          data: inviteeList.map((toUserId) => ({
+            scheduleId: schedule.id,
+            fromUserId: userId,
+            toUserId,
+            status: "PENDING" as const,
+          })),
+          skipDuplicates: true,
+        });
+        await notifyScheduleInviteesAfterCreate({
+          organizerId: userId,
+          inviteeUserIds: inviteeList,
+          scheduleTitle: schedule.title,
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          isAllDay: schedule.isAllDay,
+        });
+      }
+
       const fmt = (d: Date) =>
         new Intl.DateTimeFormat("ko-KR", {
           timeZone: "Asia/Seoul",
@@ -95,7 +161,11 @@ async function executeTool(
           minute: "2-digit",
           hour12: false,
         }).format(d);
-      return `✅ 일정이 등록되었습니다.\n- 제목: ${schedule.title}\n- 시작: ${fmt(schedule.startTime)}\n- 종료: ${fmt(schedule.endTime)}`;
+      let out = `✅ 일정이 등록되었습니다.\n- 제목: ${schedule.title}\n- 시작: ${fmt(schedule.startTime)}\n- 종료: ${fmt(schedule.endTime)}`;
+      if (inviteeList.length > 0) {
+        out += `\n- 참석자 ${inviteeList.length}명에게 알림·채팅을 보냈습니다.`;
+      }
+      return out;
     }
 
     if (name === "create_task") {
