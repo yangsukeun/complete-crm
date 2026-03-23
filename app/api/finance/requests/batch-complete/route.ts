@@ -92,17 +92,14 @@ export async function POST(req: Request) {
       )
     );
 
-    for (const r of rows) {
-      if (r.requesterId) {
-        try {
-          await prisma.paymentRequestAlert.create({
-            data: { id: cuidLike(), requestId: r.id, userId: r.requesterId },
-          });
-        } catch (e: unknown) {
-          const err = e as { code?: string };
-          if (err?.code !== "P2002") throw e;
-        }
-      }
+    const alertData = rows
+      .filter((r) => r.requesterId)
+      .map((r) => ({ id: cuidLike(), requestId: r.id, userId: r.requesterId! }));
+    if (alertData.length > 0) {
+      await prisma.paymentRequestAlert.createMany({
+        data: alertData,
+        skipDuplicates: true,
+      });
     }
 
     await prisma.paymentRequestAlert.updateMany({

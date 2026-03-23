@@ -3,7 +3,6 @@ import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
-import * as XLSX from "xlsx";
 
 type Row = Record<string, unknown>;
 
@@ -35,6 +34,7 @@ export async function POST(req: Request) {
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
+    const XLSX = await import("xlsx");
     const workbook = XLSX.read(buf, { type: "buffer" });
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
     if (!firstSheet) {

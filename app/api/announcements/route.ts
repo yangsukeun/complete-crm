@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { createNotificationWithOptions } from "@/lib/notifications";
+import { createNotificationsForManyUsers } from "@/lib/notifications";
 import { z } from "zod";
 
 export type PollOption = { text: string; voterIds: string[] };
@@ -119,15 +119,13 @@ export async function POST(req: Request) {
     });
     const link = `/announcements/${created.id}`;
     const message = `새 공지: ${created.title}`;
-    for (const u of recipients) {
-      await createNotificationWithOptions({
-        userId: u.id,
-        type: "NOTICE_POSTED",
-        message,
-        link,
-        actorId: session.user.id,
-      });
-    }
+    await createNotificationsForManyUsers({
+      userIds: recipients.map((u) => u.id),
+      type: "NOTICE_POSTED",
+      message,
+      link,
+      actorId: session.user.id,
+    });
 
     return NextResponse.json({
       ...created,

@@ -98,7 +98,20 @@ export function AiSecretaryClient() {
       if (!res.ok) throw new Error(data.error || "전송 실패");
       setNewMessage("");
       await fetchMessages(selectedDateKey);
-      await fetchList();
+      // 목록 전체 재조회 대신 현재 날짜 preview만 로컬 업데이트
+      setConversations((prev) => {
+        const preview = t.slice(0, 60);
+        const exists = prev.find((c) => c.dateKey === selectedDateKey);
+        if (exists) {
+          return prev.map((c) =>
+            c.dateKey === selectedDateKey ? { ...c, preview } : c
+          );
+        }
+        return [
+          { id: selectedDateKey, dateKey: selectedDateKey, updatedAt: new Date().toISOString(), preview },
+          ...prev,
+        ];
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "전송 실패");
     } finally {

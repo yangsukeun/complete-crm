@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       "lucide-react",
       "@mantine/core",
       "@mantine/hooks",
+      "date-fns",
     ],
   },
   images: {

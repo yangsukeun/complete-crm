@@ -177,44 +177,90 @@ export async function checkDeadlines(): Promise<void> {
     const tomorrowEnd = endOfDay(addDays(now, 1));
 
     const tasks = await prisma.task.findMany({
-    where: {
-      isCompleted: false,
-      dueDate: { gte: todayStart, lte: tomorrowEnd },
-    },
-    select: { id: true, title: true, dueDate: true, assignedToId: true },
-  });
-
-  for (const task of tasks) {
-    if (!task.assignedToId) continue;
-    const dayStart = startOfDay(new Date(task.dueDate));
-    const dayEnd = endOfDay(new Date(task.dueDate));
-    const existing = await prisma.notification.findFirst({
       where: {
-        userId: task.assignedToId,
-        type: "DEADLINE",
-        link: `/tasks/${task.id}`,
-        createdAt: { gte: dayStart, lte: dayEnd },
+        isCompleted: false,
+        dueDate: { gte: todayStart, lte: tomorrowEnd },
+        assignedToId: { not: null },
       },
+      select: { id: true, title: true, dueDate: true, assignedToId: true },
     });
-    if (existing) continue;
 
-    const dueDateStr = task.dueDate.toLocaleDateString("ko-KR", {
-      month: "long",
-      day: "numeric",
+    if (tasks.length === 0) return;
+
+    // 한 번에 기존 알림 조회 (N+1 → 1)
+    const taskLinks = tasks.map((t) => `/tasks/${t.id}`);
+    const existingNotifications = await prisma.notification.findMany({
+      where: {
+        type: "DEADLINE",
+        link: { in: taskLinks },
+        createdAt: { gte: todayStart, lte: tomorrowEnd },
+      },
+      select: { link: true },
     });
-    const isToday = startOfDay(new Date(task.dueDate)).getTime() === todayStart.getTime();
-    const message = isToday
-      ? `'${task.title}' 마감이 오늘입니다.`
-      : `'${task.title}' 마감이 1일 남았습니다. (${dueDateStr})`;
+    const existingLinkSet = new Set(existingNotifications.map((n) => n.link));
 
-    await createNotification(
-      task.assignedToId,
-      "DEADLINE",
-      message,
-      `/tasks/${task.id}`
-    );
-  }
+    for (const task of tasks) {
+      if (!task.assignedToId) continue;
+      if (existingLinkSet.has(`/tasks/${task.id}`)) continue;
+
+      const dueDateStr = task.dueDate.toLocaleDateString("ko-KR", {
+        month: "long",
+        day: "numeric",
+      });
+      const isToday = startOfDay(new Date(task.dueDate)).getTime() === todayStart.getTime();
+      const message = isToday
+        ? `'${task.title}' 마감이 오늘입니다.`
+        : `'${task.title}' 마감이 1일 남았습니다. (${dueDateStr})`;
+
+      await createNotification(
+        task.assignedToId,
+        "DEADLINE",
+        message,
+        `/tasks/${task.id}`
+      );
+    }
   } catch (e) {
     console.error("[Notification] checkDeadlines 실패:", e);
+  }
+}
+
+/**
+ * 여러 수신자에게 동일한 알림을 한 번에 생성 (createMany 배치)
+ * - DB INSERT는 1회, 푸시는 병렬 전송
+ */
+export async function createNotificationsForManyUsers(input: {
+  userIds: string[];
+  type: NotificationTypeEnum;
+  message: string;
+  link?: string;
+  actorId?: string | null;
+}): Promise<void> {
+  const { userIds, type, message, link = "", actorId = null } = input;
+  if (userIds.length === 0) return;
+
+  // 1) DB 배치 INSERT
+  try {
+    await prisma.notification.createMany({
+      data: userIds.map((userId) => ({ userId, type, message, link })),
+      skipDuplicates: true,
+    });
+  } catch (e) {
+    console.error("[Notification] createMany 실패:", e);
+  }
+
+  // 2) 푸시 병렬 전송
+  const priority: NotificationPriority = DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
+  const shouldSendPush =
+    (priority === "high" || priority === "medium") &&
+    (actorId == null && (type === "DEADLINE" || type === "NOTICE_POSTED"));
+
+  if (shouldSendPush) {
+    await Promise.all(
+      userIds.map((userId) =>
+        sendPushToUser({ userId, title: "새 알림", message, url: link || undefined, priority }).catch(
+          (e) => console.error("[Notification] push 실패:", userId, e)
+        )
+      )
+    );
   }
 }

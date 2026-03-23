@@ -342,6 +342,7 @@ model Task {
   revisions        TaskRevision[]
   mentions         TaskMention[]
   @@index([assignedToId])
+  @@index([assignedToId, dueDate])
   @@index([createdById])
   @@index([parentId])
   @@index([categoryId])
@@ -471,6 +472,7 @@ model ChatMessage {
   createdAt DateTime @default(now())
   isDeleted Boolean  @default(false)
   @@index([chatId])
+  @@index([chatId, isDeleted])
   @@index([userId])
 }
 
@@ -489,6 +491,7 @@ model Announcement {
   // 투표 — JSON: [{ "text": "선택지", "voterIds": ["userId1", ...] }]
   pollData     String?   // JSON string
   @@index([createdAt])
+  @@index([createdById])
 }
 
 // 자료실 게시판 — 회사 자료·교육자료 등 (첨부파일 URL 배열)
@@ -504,6 +507,7 @@ model BoardPost {
   comments    BoardPostComment[]
   @@index([createdAt])
   @@index([category])
+  @@index([createdById])
 }
 
 // 게시판 댓글 (멘션된 사용자 ID 배열 저장 → 알림 발송)
@@ -531,6 +535,7 @@ model Notification {
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
   @@index([userId])
+  @@index([userId, isRead])
   @@index([isRead])
   @@index([createdAt])
   @@index([userId, createdAt])
