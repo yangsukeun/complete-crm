@@ -76,6 +76,19 @@ export function getProvider(): AIProvider {
   return "gemini";
 }
 
+/**
+ * AI 비서 `/api/ai-secretary/chat` 전용: body가 아닌 서버 `AI_PROVIDER`만 사용.
+ * 미설정 시 기본 `claude` (일반 `getProvider()`는 기본이 gemini라 분리)
+ */
+export function getSecretaryProviderFromEnv(): AIProvider {
+  const raw = (process.env.AI_PROVIDER ?? "claude").trim().toLowerCase();
+  if (raw === "openai" || raw === "gpt") return "openai";
+  if (raw === "notebook" || raw === "local" || raw === "ollama") return "notebook";
+  if (raw === "claude" || raw === "anthropic") return "claude";
+  if (raw === "gemini") return "gemini";
+  return "claude";
+}
+
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 function parseGeminiApiError(status: number, errText: string): string {

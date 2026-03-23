@@ -79,6 +79,7 @@ export async function sendSecretaryMessage(params: {
   const trimmed = message.trim();
   if (!trimmed) throw new Error("메시지가 비어 있습니다.");
 
+  /** 라우트에서 `getSecretaryProviderFromEnv()`로 넘기면 DB `preferredAiProvider`보다 서버 설정이 우선 */
   const providerRaw = requestedProvider ?? (await resolveAiProviderForUser(userId));
 
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
@@ -154,6 +155,9 @@ export async function sendSecretaryMessage(params: {
       });
     }
   }
+
+  console.log("provider:", provider);
+  console.log("API KEY exists:", !!process.env.CLAUDE_API_KEY);
 
   const reply = await callAiByProvider(provider, chatMessages);
 
