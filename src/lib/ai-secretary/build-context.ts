@@ -2,7 +2,8 @@ import prisma from "@/lib/prisma";
 import { isExecutiveLike } from "@/lib/ai-secretary/prompts";
 
 /**
- * 대화 시점 기준 역할에 맞는 DB 컨텍스트 문자열 (시스템 메시지에 붙임)
+ * 대화 시점 기준 역할에 맞는 DB 컨텍스트 문자열.
+ * `run-chat.ts`에서 system 메시지 본문에 그대로 붙습니다 (EXECUTIVE/ADMIN은 전 직원 연락처 텍스트 포함).
  */
 export async function buildSecretaryDataContext(params: {
   userId: string;
@@ -36,6 +37,44 @@ export async function buildSecretaryDataContext(params: {
   lines.push(`- 직원: ${user?.name ?? "?"} (${user?.email ?? ""})`);
   lines.push(`- 부서: ${user?.department ?? "미지정"} / 직책: ${user?.position ?? "미지정"}`);
   lines.push(`- 대화 기준일(KST): ${dateKey}`);
+
+  /** EXECUTIVE/ADMIN: DB 전체 직원 → 이름·이메일·부서·연락처를 시스템 프롬프트용 평문으로 삽입 */
+  let executiveEmployees: {
+    id: string;
+    name: string;
+    email: string;
+    department: string | null;
+    phone: string | null;
+    workPhone: string | null;
+    workEmail: string | null;
+  }[] = [];
+  if (isExecutiveLike(role)) {
+    executiveEmployees = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+        phone: true,
+        workPhone: true,
+        workEmail: true,
+      },
+      orderBy: { name: "asc" },
+    });
+    lines.push("");
+    lines.push("=== 직원 연락처 목록 ===");
+    lines.push(
+      "(회사 전체 직원 DB 기준. 이름·이메일·부서·연락처 질문에는 아래 줄을 근거로 답하세요.)"
+    );
+    for (const e of executiveEmployees) {
+      const emailDisplay = [e.workEmail, e.email].filter(Boolean).join(" · ") || "없음";
+      const contactDisplay = [e.phone, e.workPhone].filter(Boolean).join(" / ") || "없음";
+      lines.push(
+        `- 이름: ${e.name} | 이메일: ${emailDisplay} | 부서: ${e.department ?? "미지정"} | 연락처: ${contactDisplay}`
+      );
+    }
+  }
+
   lines.push("");
   lines.push(`### 해당일 일정 (${dateKey})`);
   if (schedules.length === 0) lines.push("- (없음)");
@@ -56,21 +95,7 @@ export async function buildSecretaryDataContext(params: {
     }
   }
 
-  if (isExecutiveLike(role)) {
-    /** EXECUTIVE/ADMIN: 전 직원 — 시스템이 로드한 사실 데이터로 AI가 그대로 인용 가능하게 */
-    const employees = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        department: true,
-        position: true,
-        phone: true,
-        workPhone: true,
-        workEmail: true,
-      },
-      orderBy: { name: "asc" },
-    });
+  if (isExecutiveLike(role) && executiveEmployees.length > 0) {
     const openByUser = await prisma.task.groupBy({
       by: ["assignedToId"],
       where: { isCompleted: false, assignedToId: { not: null } },
@@ -79,21 +104,8 @@ export async function buildSecretaryDataContext(params: {
     const countMap = new Map(openByUser.map((x) => [x.assignedToId!, x._count._all]));
 
     lines.push("");
-    lines.push("=== 직원 연락처 목록 ===");
-    lines.push(
-      "(회사 전체 직원 DB 기준. 사용자가 이름·이메일·부서·연락처를 물으면 아래 줄을 근거로 답하세요.)"
-    );
-    for (const e of employees) {
-      const emailDisplay = [e.workEmail, e.email].filter(Boolean).join(" · ") || "없음";
-      const contactDisplay = [e.phone, e.workPhone].filter(Boolean).join(" / ") || "없음";
-      lines.push(
-        `- 이름: ${e.name} | 이메일: ${emailDisplay} | 부서: ${e.department ?? "미지정"} | 연락처: ${contactDisplay}`
-      );
-    }
-
-    lines.push("");
     lines.push("### 직원별 미완료 업무 건수 (참고)");
-    for (const e of employees) {
+    for (const e of executiveEmployees) {
       const c = countMap.get(e.id) ?? 0;
       lines.push(`- ${e.name}: ${c}건`);
     }
