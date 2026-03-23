@@ -8,11 +8,210 @@ import {
   logClaudeEnvForVercel,
   maskApiKeyForLog,
   resolveProviderWithAvailableKeys,
+  CLAUDE_DEFAULT_MODEL,
   type AIProvider,
   type ChatMessage,
 } from "@/lib/ai/assist-client";
 import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
 import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
+
+// ─── Tool definitions ────────────────────────────────────────────────────────
+
+const SECRETARY_TOOLS = [
+  {
+    name: "create_schedule",
+    description:
+      "사용자의 캘린더에 새 일정을 등록합니다. 일정·스케줄 등록 요청이 오면 반드시 이 도구를 사용하세요.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "일정 제목" },
+        startTime: {
+          type: "string",
+          description: "시작 시간 (ISO 8601, 예: 2025-03-24T09:00:00+09:00)",
+        },
+        endTime: {
+          type: "string",
+          description: "종료 시간 (ISO 8601, 예: 2025-03-24T10:00:00+09:00)",
+        },
+        description: { type: "string", description: "일정 설명 (선택)" },
+        isAllDay: { type: "boolean", description: "종일 일정 여부 (기본값: false)" },
+      },
+      required: ["title", "startTime", "endTime"],
+    },
+  },
+  {
+    name: "create_task",
+    description:
+      "새 업무(Task)를 생성합니다. 업무·할 일 생성 요청이 오면 반드시 이 도구를 사용하세요.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "업무 제목" },
+        description: { type: "string", description: "업무 설명 (선택)" },
+        dueDate: {
+          type: "string",
+          description: "마감일 (YYYY-MM-DD, 예: 2025-03-24)",
+        },
+      },
+      required: ["title", "dueDate"],
+    },
+  },
+] as const;
+
+// ─── Tool executor ────────────────────────────────────────────────────────────
+
+async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  userId: string
+): Promise<string> {
+  try {
+    if (name === "create_schedule") {
+      const { title, startTime, endTime, description, isAllDay } = input as {
+        title: string;
+        startTime: string;
+        endTime: string;
+        description?: string;
+        isAllDay?: boolean;
+      };
+      const schedule = await prisma.schedule.create({
+        data: {
+          title,
+          startTime: new Date(startTime),
+          endTime: new Date(endTime),
+          description: description ?? null,
+          isAllDay: isAllDay ?? false,
+          userId,
+          scope: "PERSONAL",
+        },
+      });
+      const fmt = (d: Date) =>
+        new Intl.DateTimeFormat("ko-KR", {
+          timeZone: "Asia/Seoul",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(d);
+      return `✅ 일정이 등록되었습니다.\n- 제목: ${schedule.title}\n- 시작: ${fmt(schedule.startTime)}\n- 종료: ${fmt(schedule.endTime)}`;
+    }
+
+    if (name === "create_task") {
+      const { title, description, dueDate } = input as {
+        title: string;
+        description?: string;
+        dueDate: string;
+      };
+      const task = await prisma.task.create({
+        data: {
+          title,
+          description: description ?? null,
+          dueDate: new Date(`${dueDate}T00:00:00+09:00`),
+          assignedToId: userId,
+          createdById: userId,
+          status: "TODO",
+          isCompleted: false,
+          scope: "PERSONAL",
+        },
+      });
+      return `✅ 업무가 생성되었습니다.\n- 제목: ${task.title}\n- 마감: ${dueDate}`;
+    }
+
+    return `알 수 없는 도구: ${name}`;
+  } catch (e) {
+    return `도구 실행 실패 (${name}): ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+// ─── Anthropic tool-use loop ─────────────────────────────────────────────────
+
+type AnthropicContent =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
+
+type AnthropicMessage =
+  | { role: "user" | "assistant"; content: string }
+  | { role: "user"; content: { type: "tool_result"; tool_use_id: string; content: string }[] }
+  | { role: "assistant"; content: AnthropicContent[] };
+
+async function callAnthropicWithToolLoop(
+  apiKey: string,
+  systemPrompt: string,
+  messages: AnthropicMessage[],
+  userId: string
+): Promise<string> {
+  const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+  const model = process.env.CLAUDE_MODEL?.trim() || CLAUDE_DEFAULT_MODEL;
+  const maxTokens = Math.max(1, Number(process.env.CLAUDE_MAX_TOKENS) || 1000);
+  const headerKey = (process.env.CLAUDE_API_KEY ?? "").trim() || apiKey;
+
+  const currentMessages = [...messages];
+  const MAX_LOOPS = 5;
+
+  for (let loop = 0; loop < MAX_LOOPS; loop++) {
+    const body = {
+      model,
+      max_tokens: maxTokens,
+      temperature: 0.3,
+      system: systemPrompt,
+      tools: SECRETARY_TOOLS,
+      messages: currentMessages,
+    };
+
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": headerKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(`Claude API 오류 (${res.status}): ${raw.slice(0, 300)}`);
+    }
+
+    const data = JSON.parse(raw) as {
+      stop_reason: string;
+      content: AnthropicContent[];
+    };
+
+    if (data.stop_reason !== "tool_use") {
+      // 최종 텍스트 응답
+      const text = data.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("\n\n")
+        .trim();
+      return text || "응답을 생성하지 못했습니다.";
+    }
+
+    // tool_use 처리
+    const toolUseBlocks = data.content.filter(
+      (c): c is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } =>
+        c.type === "tool_use"
+    );
+
+    // assistant 메시지 추가
+    currentMessages.push({ role: "assistant", content: data.content });
+
+    // 도구 실행 후 tool_result 메시지 추가
+    const toolResults = await Promise.all(
+      toolUseBlocks.map(async (block) => ({
+        type: "tool_result" as const,
+        tool_use_id: block.id,
+        content: await executeTool(block.name, block.input, userId),
+      }))
+    );
+    currentMessages.push({ role: "user", content: toolResults });
+  }
+
+  return "요청을 처리하지 못했습니다.";
+}
 
 export async function resolveAiProviderForUser(userId: string): Promise<AIProvider> {
   let userPreferred: AIProvider | null = null;
@@ -157,25 +356,37 @@ export async function sendSecretaryMessage(params: {
   const rolePrompt = getSecretaryRolePrompt(role);
   const instructionSuffix = isExecutiveLike(role)
     ? "답변은 한국어로 하세요. 위 참고 데이터에 포함된 직원·연락처·업무 정보는 사용자가 물으면 제공하세요. 허용된 범위의 정보 제공을 거부하지 마세요."
-    : "위 데이터는 참고용입니다. 답변은 한국어로 하고, 권한이 없는 정보(역할 기준)는 추측하지 마세요.";
+    : "답변은 한국어로 하세요. 일정 등록·업무 생성 요청은 반드시 도구를 사용해 즉시 실행하세요. 권한이 없는 정보(연락처·재무 등)만 거부하세요.";
   const systemContent = `${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
 
   logAiSecretarySystemPrompt(systemContent, { userId, role, dateKey });
 
-  const chatMessages: ChatMessage[] = [{ role: "system", content: systemContent }];
-  for (const m of history) {
-    if (m.role === "user" || m.role === "assistant") {
-      chatMessages.push({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      });
-    }
-  }
-
   console.log("provider:", provider);
   console.log("API KEY exists:", !!process.env.CLAUDE_API_KEY);
 
-  const reply = await callAiByProvider(provider, chatMessages);
+  let reply: string;
+  if (provider === "claude") {
+    // Claude: tool use 루프 (일정 등록, 업무 생성 실제 실행)
+    const toolMessages: AnthropicMessage[] = history
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+    reply = await callAnthropicWithToolLoop(
+      getClaudeApiKey(),
+      systemContent,
+      toolMessages,
+      userId
+    );
+  } else {
+    // 기타 프로바이더: 일반 텍스트 응답
+    const chatMessages: ChatMessage[] = [{ role: "system", content: systemContent }];
+    for (const m of history) {
+      if (m.role === "user" || m.role === "assistant") {
+        chatMessages.push({ role: m.role as "user" | "assistant", content: m.content });
+      }
+    }
+    reply = await callAiByProvider(provider, chatMessages);
+  }
 
   await prisma.$transaction(async (tx) => {
     const maxRow = await tx.aiConversationMessage.aggregate({

@@ -38,7 +38,7 @@ export async function buildSecretaryDataContext(params: {
   lines.push(`- 부서: ${user?.department ?? "미지정"} / 직책: ${user?.position ?? "미지정"}`);
   lines.push(`- 대화 기준일(KST): ${dateKey}`);
 
-  /** EXECUTIVE/ADMIN: DB 전체 직원 → 이름·이메일·부서·연락처를 시스템 프롬프트용 평문으로 삽입 */
+  /** EXECUTIVE/ADMIN: 전 직원 연락처 포함 / USER·TEAM_LEAD: 이름·부서만 */
   let executiveEmployees: {
     id: string;
     name: string;
@@ -72,6 +72,20 @@ export async function buildSecretaryDataContext(params: {
       lines.push(
         `- 이름: ${e.name} | 이메일: ${emailDisplay} | 부서: ${e.department ?? "미지정"} | 연락처: ${contactDisplay}`
       );
+    }
+  } else {
+    // 일반 직원·팀장: 이름·부서만 (연락처·이메일 미포함)
+    const colleagues = await prisma.user.findMany({
+      where: { id: { not: userId } },
+      select: { id: true, name: true, department: true, position: true },
+      orderBy: { name: "asc" },
+    });
+    if (colleagues.length > 0) {
+      lines.push("");
+      lines.push("=== 동료 직원 목록 (이름·부서만, 연락처 미포함) ===");
+      for (const c of colleagues) {
+        lines.push(`- ${c.name} | 부서: ${c.department ?? "미지정"} | 직책: ${c.position ?? "미지정"}`);
+      }
     }
   }
 
