@@ -29,8 +29,13 @@
 - **Pooling**: `DATABASE_URL`에 Supabase **Pooler(6543)** 사용 권장(앱 쿼리). `DIRECT_URL`은 마이그레이션용 5432.
 - **인덱스**: 자주 쓰는 필터·정렬 컬럼에 복합 인덱스 추가(위 마이그레이션).
 
-## 5. 추가 권장 (미적용 시)
+## 5. 번들·이미지·캐시 (최근 반영)
 
-- 번들 상세: `@next/bundle-analyzer`로 페이지별 청크 확인.
-- `next/image`: 원격 로고·아바타 URL에 `remotePatterns` 설정 후 교체.
+- **번들**: `@next/bundle-analyzer` 설치, `npm run analyze` → `.next/analyze/client.html`. 요약은 **`docs/PERFORMANCE-BUNDLE.md`**.
+- **`next/image`**: 주요 `<img>`를 `next/image`로 교체, Vercel Blob용 `images.remotePatterns`(`*.public.blob.vercel-storage.com`) 설정. 동적/외부 URL은 `unoptimized`로 안전 처리.
+- **직원 목록 캐시**: 직원 생성·수정·삭제·일괄 가입·프로필 수정 등에서 `revalidateTag("users-list", "max")` 호출.
+
+## 6. 추가 권장 (선택)
+
 - `/tasks`·`/chat`: 서버 컴포넌트로 분리 가능한 영역 점진적 분리.
+- BlockNote·React Flow 등 대형 라이브러리는 **필요한 라우트/탭에서만** dynamic import 유지.

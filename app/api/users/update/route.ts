@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
@@ -62,6 +63,8 @@ export async function PATCH(req: NextRequest) {
         updatedAt: true,
       } as any,
     });
+
+    revalidateTag("users-list", "max");
 
     return NextResponse.json({
       ...(updated as any),

@@ -10,7 +10,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(
   _req: Request,
-  context: { params: Promise<{ dateKey: string }> | { dateKey: string } }
+  context: { params: Promise<{ dateKey: string }> }
 ) {
   try {
     const session = await getAppSession();
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
-    const params = await Promise.resolve(context.params);
+    const params = await context.params;
     const rawKey = params?.dateKey ?? "";
     const decoded = decodeURIComponent(rawKey);
     if (!DATE_RE.test(decoded)) {

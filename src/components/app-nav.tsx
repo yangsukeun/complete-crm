@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import NextImage from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -306,7 +307,14 @@ export function AppNav() {
             className="flex items-center gap-2 font-bold text-gray-900 transition-colors hover:text-violet-600"
           >
             {logoUrl ? (
-              <img src={logoUrl} alt="COMPLETE CRM" className="h-8 w-auto max-w-[140px] object-contain" />
+              <NextImage
+                src={logoUrl}
+                alt="COMPLETE CRM"
+                width={140}
+                height={32}
+                className="h-8 w-auto max-w-[140px] object-contain"
+                unoptimized
+              />
             ) : (
               <div className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm">
                 <Command className="size-4" />

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { z } from "zod";
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
         role: "ADMIN",
       },
     });
+
+    revalidateTag("users-list", "max");
 
     return NextResponse.json({ success: true, message: "계정이 생성되었습니다. 로그인 페이지에서 로그인하세요." });
   } catch (e) {

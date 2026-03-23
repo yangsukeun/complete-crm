@@ -17,6 +17,7 @@ import { PageHeadline } from "@/components/page-headline";
 import { ArrowLeft, FileDown, Mail, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import Image from "next/image";
 
 export type CompanyViewData = {
   name: string;
@@ -184,18 +185,24 @@ export function QuotationView({
                     <span className="flex items-center gap-2">
                       대표 {company.representative}
                       {company.stampImageUrl && (
-                        <img
+                        <Image
                           src={company.stampImageUrl}
                           alt="도장"
+                          width={48}
+                          height={48}
+                          unoptimized
                           className="h-12 w-12 object-contain print:h-10 print:w-10"
                         />
                       )}
                     </span>
                   )}
                   {!company.representative && company.stampImageUrl && (
-                    <img
+                    <Image
                       src={company.stampImageUrl}
                       alt="도장"
+                      width={48}
+                      height={48}
+                      unoptimized
                       className="h-12 w-12 object-contain print:h-10 print:w-10"
                     />
                   )}

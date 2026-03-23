@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Save, Upload, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import NextImage from "next/image";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
@@ -120,9 +121,12 @@ export function LogoUploadForm() {
         <h3 className="mb-3 text-sm font-medium text-gray-700">미리보기</h3>
         <div className="flex min-h-[80px] items-center justify-center rounded-lg bg-gray-50 p-4">
           {displayUrl ? (
-            <img
+            <NextImage
               src={displayUrl}
               alt="로고 미리보기"
+              width={256}
+              height={64}
+              unoptimized
               className="max-h-16 w-auto max-w-full object-contain"
             />
           ) : (

@@ -1,5 +1,6 @@
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
+import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
 import { sendPushToUser } from "./notifications/push";
 
 export type NotificationTypeEnum =
@@ -58,8 +59,38 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
     console.error("[Notification] 생성 실패:", e);
   }
 
-  // push: 내부 알림이 우선, push는 best-effort
-  if ((priority === "high" || priority === "medium") && actorId && actorId !== userId) {
+  /** 푸시: 타인 행위(actor) 알림 + 시스템(DEADLINE/NOTICE 등 actor 없음) */
+  const shouldSendPush =
+    (priority === "high" || priority === "medium") &&
+    ((actorId != null && actorId !== userId) ||
+      (actorId == null && (type === "DEADLINE" || type === "NOTICE_POSTED")));
+
+  if (isOneSignalServerDebug()) {
+    if (!shouldSendPush) {
+      console.log("[Notification→push] ⑦ 스킵", {
+        userId,
+        type,
+        priority,
+        actorId: actorId ?? null,
+        reason:
+          priority !== "high" && priority !== "medium"
+            ? "priority가 low"
+            : actorId != null && actorId === userId
+              ? "actorId === 수신자(본인 알림)"
+              : actorId == null && type !== "DEADLINE" && type !== "NOTICE_POSTED"
+                ? "actorId 없음(시스템 타입만 푸시 허용: DEADLINE, NOTICE_POSTED)"
+                : "기타",
+      });
+    } else {
+      console.log("[Notification→push] ⑦ sendPushToUser 호출", {
+        userId,
+        type,
+        actorId: actorId ?? null,
+      });
+    }
+  }
+
+  if (shouldSendPush) {
     await sendPushToUser({
       userId,
       title: "새 알림",
@@ -105,12 +136,26 @@ export async function createTaskBodyMentionNotification(input: {
       console.error("[Notification] 멘션 알림(DB) 생성 실패:", e2);
     }
   }
-  if (
+  const shouldSendPushMention =
     inserted &&
     (priority === "high" || priority === "medium") &&
-    actorId &&
-    actorId !== userId
-  ) {
+    actorId != null &&
+    actorId !== userId;
+
+  if (isOneSignalServerDebug()) {
+    if (!shouldSendPushMention) {
+      console.log("[Notification→push] ⑦(멘션) 스킵", {
+        userId,
+        inserted,
+        priority,
+        actorId: actorId ?? null,
+      });
+    } else {
+      console.log("[Notification→push] ⑦(멘션) sendPushToUser", { userId, actorId });
+    }
+  }
+
+  if (shouldSendPushMention) {
     await sendPushToUser({
       userId,
       title: "새 알림",

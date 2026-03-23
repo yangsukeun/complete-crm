@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
@@ -149,6 +150,8 @@ export async function PATCH(
       }
     }
 
+    revalidateTag("users-list", "max");
+
     return NextResponse.json(user);
   } catch (e) {
     console.error(e);
@@ -226,6 +229,7 @@ export async function DELETE(
     }
 
     await prisma.user.delete({ where: { id } });
+    revalidateTag("users-list", "max");
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error(e);

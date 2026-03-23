@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
@@ -431,6 +432,8 @@ export async function PATCH(req: Request) {
       annualUsed,
       manualDeduction,
     };
+
+    revalidateTag("users-list", "max");
 
     return NextResponse.json(res);
   } catch (e) {

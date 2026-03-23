@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Save, Upload, X } from "lucide-react";
+import Image from "next/image";
 
 type CompanyInfo = {
   id: string;
@@ -292,9 +293,12 @@ export function AdminCompanyForm() {
           {form.stampImageUrl && (
             <>
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900/50">
-                <img
+                <Image
                   src={form.stampImageUrl}
                   alt="도장 미리보기"
+                  width={56}
+                  height={56}
+                  unoptimized
                   className="h-14 w-14 object-contain"
                 />
                 <Button

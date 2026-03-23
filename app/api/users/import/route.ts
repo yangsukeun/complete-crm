@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
@@ -127,6 +128,10 @@ export async function POST(req: Request) {
           message: e instanceof Error ? e.message : "등록 실패",
         });
       }
+    }
+
+    if (created.length > 0) {
+      revalidateTag("users-list", "max");
     }
 
     return NextResponse.json({

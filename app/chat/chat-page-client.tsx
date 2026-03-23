@@ -29,6 +29,7 @@ import { ko } from "date-fns/locale";
 import { Calendar, ClipboardList, ImagePlus, MessageCircle, Plus, Search, Send, Trash2 } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
+import Image from "next/image";
 
 type User = {
   id: string;
@@ -818,10 +819,13 @@ export function ChatPageClient() {
                                   if (imgMatch) {
                                     const src = imgMatch[2];
                                     return (
-                                      <span key={i} className="mt-1 block">
-                                        <img
+                                      <span key={i} className="relative mt-1 block max-h-64 max-w-full">
+                                        <Image
                                           src={src}
                                           alt={imgMatch[1] || "이미지"}
+                                          width={800}
+                                          height={256}
+                                          unoptimized
                                           className="max-h-64 max-w-full rounded object-contain"
                                         />
                                       </span>

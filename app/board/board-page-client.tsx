@@ -28,6 +28,7 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { ContentBodyEditor } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import Image from "next/image";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -454,10 +455,13 @@ export function BoardPageClient({
                     {/* 이미지/영상 미리보기 또는 플레이스홀더 */}
                     <div className="relative aspect-video w-full bg-muted">
                       {media?.type === "image" ? (
-                        <img
+                        <Image
                           src={media.url}
                           alt={media.name || b.title}
-                          className="h-full w-full object-cover"
+                          fill
+                          sizes="(max-width: 768px) 100vw, 50vw"
+                          unoptimized
+                          className="object-cover"
                         />
                       ) : media?.type === "video" ? (
                         <video

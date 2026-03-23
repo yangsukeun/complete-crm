@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { ExternalLink, FileText, Image as ImageIcon, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -123,8 +124,14 @@ export function FilePreviewDialog({
 
         <div className="flex-1 overflow-auto rounded-md border bg-background">
           {kind === "image" && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={embedUrl} alt={title} className="max-h-[70vh] w-auto max-w-full mx-auto p-3 object-contain" />
+            <Image
+              src={embedUrl}
+              alt={title}
+              width={1200}
+              height={900}
+              unoptimized
+              className="max-h-[70vh] w-auto max-w-full mx-auto p-3 object-contain"
+            />
           )}
           {kind === "video" && (
             <video src={embedUrl} controls className="w-full max-h-[70vh] bg-black" />

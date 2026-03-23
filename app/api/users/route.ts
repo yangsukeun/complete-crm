@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
@@ -112,6 +113,8 @@ export async function POST(req: Request) {
         joinDate: true,
       },
     });
+
+    revalidateTag("users-list", "max");
 
     return NextResponse.json({
       ...user,
