@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /** 날짜별 대화 목록 (최신순) */
 export async function GET() {
   try {

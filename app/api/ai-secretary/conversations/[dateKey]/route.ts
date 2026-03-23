@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
+/** 날짜별 메시지는 항상 최신 DB 기준 (GET 캐시 방지) */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(
   _req: Request,
-  context: { params: Promise<{ dateKey: string }> }
+  context: { params: Promise<{ dateKey: string }> | { dateKey: string } }
 ) {
   try {
     const session = await getAppSession();
@@ -14,8 +18,9 @@ export async function GET(
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
-    const { dateKey } = await context.params;
-    const decoded = decodeURIComponent(dateKey);
+    const params = await Promise.resolve(context.params);
+    const rawKey = params?.dateKey ?? "";
+    const decoded = decodeURIComponent(rawKey);
     if (!DATE_RE.test(decoded)) {
       return NextResponse.json({ error: "날짜 형식이 올바르지 않습니다." }, { status: 400 });
     }

@@ -8,7 +8,7 @@ import {
   type ChatMessage,
 } from "@/lib/ai/assist-client";
 import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
-import { getSecretaryRolePrompt } from "@/lib/ai-secretary/prompts";
+import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
 
 export async function resolveAiProviderForUser(userId: string): Promise<AIProvider> {
   let userPreferred: AIProvider | null = null;
@@ -84,7 +84,10 @@ export async function sendSecretaryMessage(params: {
 
   const ctx = await buildSecretaryDataContext({ userId, role, dateKey });
   const rolePrompt = getSecretaryRolePrompt(role);
-  const systemContent = `${rolePrompt}\n\n${ctx}\n\n위 데이터는 참고용입니다. 답변은 한국어로 하고, 권한이 없는 정보(역할 기준)는 추측하지 마세요.`;
+  const instructionSuffix = isExecutiveLike(role)
+    ? "답변은 한국어로 하세요. 위 참고 데이터에 포함된 직원·연락처·업무 정보는 사용자가 물으면 제공하세요. 허용된 범위의 정보 제공을 거부하지 마세요."
+    : "위 데이터는 참고용입니다. 답변은 한국어로 하고, 권한이 없는 정보(역할 기준)는 추측하지 마세요.";
+  const systemContent = `${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
 
   const chatMessages: ChatMessage[] = [{ role: "system", content: systemContent }];
   for (const m of history) {

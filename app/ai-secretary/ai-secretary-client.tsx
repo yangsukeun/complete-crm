@@ -23,6 +23,8 @@ export function AiSecretaryClient() {
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  /** 날짜 빠르게 바꿀 때 이전 요청이 나중에 도착해 덮어쓰는 것 방지 */
+  const messagesFetchSeq = useRef(0);
 
   const today = useMemo(() => todayYmdKst(), []);
 
@@ -32,7 +34,7 @@ export function AiSecretaryClient() {
 
   const fetchList = useCallback(async () => {
     try {
-      const res = await fetch("/api/ai-secretary/conversations");
+      const res = await fetch("/api/ai-secretary/conversations", { cache: "no-store" });
       if (!res.ok) throw new Error("list");
       const data = (await res.json()) as { conversations?: ConvRow[] };
       setConversations(data.conversations ?? []);
@@ -48,17 +50,28 @@ export function AiSecretaryClient() {
   }, [fetchList]);
 
   const fetchMessages = useCallback(async (dateKey: string) => {
+    const seq = ++messagesFetchSeq.current;
     setLoadingMsgs(true);
+    setMessages([]);
     try {
-      const res = await fetch(`/api/ai-secretary/conversations/${encodeURIComponent(dateKey)}`);
-      if (!res.ok) throw new Error("messages");
-      const data = (await res.json()) as { messages?: Msg[] };
-      setMessages(data.messages ?? []);
-    } catch {
-      toast.error("메시지를 불러오지 못했습니다.");
-      setMessages([]);
+      const res = await fetch(`/api/ai-secretary/conversations/${encodeURIComponent(dateKey)}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) {
+        const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { messages?: Msg[]; conversation?: unknown };
+      if (seq !== messagesFetchSeq.current) return;
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch (e) {
+      if (seq === messagesFetchSeq.current) {
+        toast.error(e instanceof Error ? e.message : "메시지를 불러오지 못했습니다.");
+        setMessages([]);
+      }
     } finally {
-      setLoadingMsgs(false);
+      if (seq === messagesFetchSeq.current) setLoadingMsgs(false);
     }
   }, []);
 

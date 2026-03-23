@@ -58,7 +58,16 @@ export async function buildSecretaryDataContext(params: {
 
   if (isExecutiveLike(role)) {
     const employees = await prisma.user.findMany({
-      select: { id: true, name: true, department: true, position: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+        position: true,
+        phone: true,
+        workPhone: true,
+        workEmail: true,
+      },
       orderBy: { name: "asc" },
     });
     const openByUser = await prisma.task.groupBy({
@@ -69,10 +78,14 @@ export async function buildSecretaryDataContext(params: {
     const countMap = new Map(openByUser.map((x) => [x.assignedToId!, x._count._all]));
 
     lines.push("");
-    lines.push("### 전체 직원·미완료 업무 건수 (요약)");
+    lines.push("### 전체 직원 연락처·부서 (대표/관리자 조회용 — 질문 시 그대로 안내 가능)");
     for (const e of employees) {
       const c = countMap.get(e.id) ?? 0;
-      lines.push(`- ${e.name} (${e.department ?? "부서"} / ${e.position ?? "직책"}): 미완료 ${c}건`);
+      const phone = [e.phone, e.workPhone].filter(Boolean).join(" / ") || "없음";
+      const emails = [e.email, e.workEmail].filter(Boolean).join(" / ") || "없음";
+      lines.push(
+        `- 이름: ${e.name} | 이메일: ${emails} | 부서: ${e.department ?? "미지정"} | 직책: ${e.position ?? "미지정"} | 연락처(휴대/업무): ${phone} | 미완료 업무: ${c}건`
+      );
     }
 
     const allOpen = await prisma.task.findMany({
