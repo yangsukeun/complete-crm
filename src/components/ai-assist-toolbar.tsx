@@ -91,7 +91,7 @@ export function AIAssistToolbar({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
           <DropdownMenuLabel className="text-xs text-muted-foreground">
-            글쓰기 도움
+            AI 기능
           </DropdownMenuLabel>
           {ACTIONS.map(({ id, label, icon: Icon, desc }) => (
             <DropdownMenuItem

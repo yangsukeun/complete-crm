@@ -182,7 +182,7 @@ export async function POST(req: Request) {
 
     if (action === "chat") {
       const systemContent =
-        "당신은 COMPLETE CRM의 AI 비서입니다. 회사 내부 글쓰기, 요약, 확장, 톤 변경, 번역 등 글쓰기 관련 요청에 친절하고 전문적으로 답합니다. 한국어로 답하며, 요청이 불명확하면 한두 가지 예시를 들어 확인합니다.";
+        "당신은 COMPLETE CRM의 AI 비서입니다. 업무 질문, 일정 안내, 문서 작성, 요약, 번역 등 모든 업무 관련 요청에 적극적으로 답변합니다. 한국어로 답하세요.";
       let historySlice = chatHistory
         .slice(-20)
         .map((m: { role: "user" | "assistant"; content: string }) => ({

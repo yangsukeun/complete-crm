@@ -135,14 +135,13 @@ export function AIAssistFloat() {
         role: m.role,
         content: m.content,
       }));
-      const res = await fetch("/api/ai/assist", {
+      const todayKey = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+      const res = await fetch("/api/ai-secretary/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "chat",
+          dateKey: todayKey,
           message: text,
-          messages: history.slice(-20),
-          ...(provider != null ? { provider } : {}),
         }),
         signal: ac.signal,
       });
@@ -278,7 +277,7 @@ export function AIAssistFloat() {
               <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-muted-foreground">
                 <Sparkles className="size-8 mb-2 text-violet-400" />
                 <p>무엇이든 물어보세요.</p>
-                <p className="mt-1">초안 작성, 요약, 확장, 톤 변경, 번역 등 글쓰기를 도와드립니다.</p>
+                <p className="mt-1">일정 등록, 업무 생성, 문서 작성, 질문 등 무엇이든 도와드립니다.</p>
                 {ctx?.target && (
                   <p className="mt-2 text-xs">선택한 입력 칸에 적용하려면 답변을 길게 눌 후 &quot;칸에 적용&quot;을 선택하세요.</p>
                 )}
