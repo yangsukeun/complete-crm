@@ -1,5 +1,5 @@
-import { LoadingFallback } from "@/components/loading-fallback";
+import { BoardPostSkeleton } from "@/components/detail/detail-skeletons";
 
 export default function BoardPostLoading() {
-  return <LoadingFallback />;
+  return <BoardPostSkeleton />;
 }

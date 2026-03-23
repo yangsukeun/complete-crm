@@ -115,7 +115,7 @@ export function QuotationView({
         <div className="flex items-center gap-2">
           {canEdit && (
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/quotations/${quotation.id}/edit`}>
+              <Link href={`/quotations/${quotation.id}/edit`} prefetch={true}>
                 <Pencil className="mr-2 size-4" />
                 수정
               </Link>

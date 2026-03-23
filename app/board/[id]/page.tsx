@@ -9,6 +9,9 @@ import { BoardPostComments } from "./board-post-comments";
 import { BoardPostActions } from "./board-post-actions";
 import { ArrowLeft } from "lucide-react";
 
+/** 로그인·회사 모드 전용 — generateStaticParams 미적용 */
+export const dynamic = "force-dynamic";
+
 export default async function BoardPostPage({
   params,
 }: {
@@ -41,6 +44,7 @@ export default async function BoardPostPage({
       <div className="flex items-center gap-3">
         <Link
           href="/board"
+          prefetch={true}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />

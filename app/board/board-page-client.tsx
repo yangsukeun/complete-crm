@@ -451,7 +451,7 @@ export function BoardPageClient({
                   key={`board-${b.id}`}
                   className="overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md"
                 >
-                  <Link href={`/board/${b.id}`} className="block outline-none">
+                  <Link href={`/board/${b.id}`} prefetch={true} className="block outline-none">
                     {/* 이미지/영상 미리보기 또는 플레이스홀더 */}
                     <div className="relative aspect-video w-full bg-muted">
                       {media?.type === "image" ? (

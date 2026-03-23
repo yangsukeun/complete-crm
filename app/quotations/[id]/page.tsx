@@ -3,6 +3,9 @@ import prisma from "@/lib/prisma";
 import { getAppSession } from "@/auth";
 import { QuotationView } from "./quotation-view";
 
+/** 로그인·견적별 데이터이므로 generateStaticParams 미적용 (항상 동적). */
+export const dynamic = "force-dynamic";
+
 export default async function QuotationPage({
   params,
 }: {
@@ -18,19 +21,39 @@ export default async function QuotationPage({
   }
 
   const { id } = await params;
-  const quotation = await prisma.quotation.findUnique({
-    where: { id },
-    include: {
-      issuedBy: { select: { name: true } },
-      items: { orderBy: { sortOrder: "asc" } },
-    },
-  });
+  const [quotation, company] = await Promise.all([
+    prisma.quotation.findUnique({
+      where: { id },
+      include: {
+        issuedBy: { select: { name: true } },
+        items: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            description: true,
+            quantity: true,
+            unitPrice: true,
+            amount: true,
+            sortOrder: true,
+          },
+        },
+      },
+    }),
+    prisma.companyInfo.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: {
+        name: true,
+        businessNumber: true,
+        representative: true,
+        address: true,
+        phone: true,
+        email: true,
+        fax: true,
+        stampImageUrl: true,
+      },
+    }),
+  ]);
 
   if (!quotation) notFound();
-
-  const company = await prisma.companyInfo.findFirst({
-    orderBy: { updatedAt: "desc" },
-  });
 
   const data = {
     id: quotation.id,
@@ -56,18 +79,7 @@ export default async function QuotationPage({
   };
   const canEdit = session.user.id === quotation.issuedById;
 
-  const companyData = company
-    ? {
-        name: company.name,
-        businessNumber: company.businessNumber,
-        representative: company.representative,
-        address: company.address,
-        phone: company.phone,
-        email: company.email,
-        fax: company.fax,
-        stampImageUrl: company.stampImageUrl,
-      }
-    : null;
+  const companyData = company;
 
   return <QuotationView quotation={data} company={companyData} canEdit={canEdit} />;
 }

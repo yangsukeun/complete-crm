@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { CreateTaskModal } from "@/components/create-task-modal";
+import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
 
 /** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
 const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
@@ -270,11 +271,7 @@ export default function TaskDetailPage() {
   }
 
   if (loading && !task) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-muted-foreground text-sm">불러오는 중...</p>
-      </div>
-    );
+    return <TaskDetailSkeleton />;
   }
 
   if (!task) {
@@ -282,7 +279,7 @@ export default function TaskDetailPage() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
         <p className="text-muted-foreground">업무를 불러올 수 없습니다.</p>
         <Button variant="outline" asChild>
-          <Link href="/tasks">
+          <Link href="/tasks" prefetch={true}>
             <ArrowLeft className="mr-2 size-4" />
             목록으로
           </Link>
@@ -311,7 +308,7 @@ export default function TaskDetailPage() {
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
-            <Link href="/tasks">
+            <Link href="/tasks" prefetch={true}>
               <ArrowLeft className="mr-2 size-4" />
               목록으로
             </Link>
@@ -371,7 +368,7 @@ export default function TaskDetailPage() {
           {task.parent ? (
             <div className="mb-4 text-sm text-muted-foreground">
               상위 페이지:{" "}
-              <Link href={`/tasks/${task.parent.id}`} className="text-primary hover:underline">
+              <Link href={`/tasks/${task.parent.id}`} prefetch={true} className="text-primary hover:underline">
                 {task.parent.title}
               </Link>
             </div>
@@ -538,6 +535,7 @@ export default function TaskDetailPage() {
                   <li key={c.id}>
                     <Link
                       href={`/tasks/${c.id}`}
+                      prefetch={true}
                       className="flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm transition-colors hover:bg-muted/50"
                     >
                       <span className="font-medium">{c.title}</span>

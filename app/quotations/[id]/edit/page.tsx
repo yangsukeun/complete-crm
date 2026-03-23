@@ -31,7 +31,7 @@ export default async function QuotationEditPage({
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-4">
         <p className="text-muted-foreground">견적서 발행자만 수정할 수 있습니다.</p>
-        <Link href={`/quotations/${id}`} className="text-primary text-sm font-medium hover:underline">
+        <Link href={`/quotations/${id}`} prefetch={true} className="text-primary text-sm font-medium hover:underline">
           견적서 보기로 돌아가기
         </Link>
       </div>

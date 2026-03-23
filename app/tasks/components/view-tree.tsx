@@ -66,6 +66,8 @@ type TreeViewProps = {
   taskLinks: TaskLink[];
   onRefresh: () => void;
   onTaskClick: (taskId: string) => void;
+  /** 호버 시 상세 라우트 prefetch (next/router) */
+  onTaskHover?: (taskId: string) => void;
   onCreateTask: (parentId: string | null) => void;
 };
 
@@ -280,7 +282,7 @@ function getPriorityBadge(priority: string) {
 
 // Custom Task Node
 function TaskNode({ data, id, selected }: NodeProps) {
-  const { task, onToggleCollapse, onTitleChange, onAddChild, onTaskClick, nodeStyle } = data as {
+  const { task, onToggleCollapse, onTitleChange, onAddChild, onTaskClick, onTaskHover, nodeStyle } = data as {
     task: TaskData;
     hasChildren: boolean;
     isCollapsed: boolean;
@@ -288,6 +290,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
     onTitleChange: (id: string, title: string) => void;
     onAddChild: (parentId: string) => void;
     onTaskClick: (taskId: string) => void;
+    onTaskHover?: (taskId: string) => void;
     nodeStyle: NodeStyle;
   };
 
@@ -362,6 +365,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onMouseEnter={() => onTaskHover?.(task.id)}
       data-node-id={id}
     >
       {/* Top Handle */}
@@ -484,9 +488,11 @@ const nodeTypes = {
 function UncategorizedTaskItem({
   task,
   onTaskClick,
+  onTaskHover,
 }: {
   task: TaskData;
   onTaskClick: (id: string) => void;
+  onTaskHover?: (id: string) => void;
 }) {
   const priority = getPriorityBadge(task.priority);
 
@@ -501,6 +507,7 @@ function UncategorizedTaskItem({
       draggable
       onDragStart={handleDragStart}
       onClick={() => onTaskClick(task.id)}
+      onMouseEnter={() => onTaskHover?.(task.id)}
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg border bg-card cursor-grab active:cursor-grabbing",
         "hover:shadow-md hover:border-violet-300 transition-all",
@@ -535,7 +542,7 @@ function UncategorizedTaskItem({
 }
 
 // Main Tree View (Inner)
-function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask }: TreeViewProps) {
+function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onTaskHover, onCreateTask }: TreeViewProps) {
   const { fitView } = useReactFlow();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -808,7 +815,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
     });
     const mindMapNodes = getMindMapLayout(nodes, allEdges, rootIds);
     return { layoutedNodes: mindMapNodes, layoutedEdges: allEdges };
-  }, [treeTasks, taskLinks, collapsedIds, stagedRootIds, onCreateTask, onTaskClick, handleToggleCollapse, handleTitleChange, getVisibleTasks, getNodeStyle]);
+  }, [treeTasks, taskLinks, collapsedIds, stagedRootIds, onCreateTask, onTaskClick, onTaskHover, handleToggleCollapse, handleTitleChange, getVisibleTasks, getNodeStyle]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
@@ -1241,6 +1248,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onCreateTask 
                 key={task.id}
                 task={task}
                 onTaskClick={onTaskClick}
+                onTaskHover={onTaskHover}
               />
             ))}
           </div>

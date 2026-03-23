@@ -19,65 +19,82 @@ export async function GET(
     }
 
     const { id } = await params;
-    const task = await prisma.task.findUnique({
-      where: { id },
-      include: {
-        parent: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
-        children: {
-          select: {
-            id: true,
-            title: true,
-            dueDate: true,
-            isCompleted: true,
-            status: true,
-            priority: true,
-            orderIndex: true,
-            isCollapsed: true,
-            assignedTo: {
-              select: { id: true, name: true, email: true, position: true },
+    const [scope, task, revisions] = await Promise.all([
+      getServerWorkspaceScopeFromRequest(req),
+      prisma.task.findUnique({
+        where: { id },
+        include: {
+          parent: {
+            select: {
+              id: true,
+              title: true,
             },
           },
-          orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
-        },
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            position: true,
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            position: true,
-          },
-        },
-        attachments: true,
-        comments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                position: true,
+          children: {
+            select: {
+              id: true,
+              title: true,
+              dueDate: true,
+              isCompleted: true,
+              status: true,
+              priority: true,
+              orderIndex: true,
+              isCollapsed: true,
+              assignedTo: {
+                select: { id: true, name: true, email: true, position: true },
               },
             },
+            orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
           },
-          orderBy: { createdAt: "asc" },
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              position: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              position: true,
+            },
+          },
+          attachments: {
+            select: {
+              id: true,
+              type: true,
+              url: true,
+              name: true,
+              createdAt: true,
+            },
+          },
+          comments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: true,
+                },
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          },
         },
-      },
-    });
+      }),
+      prisma.taskRevision.findMany({
+        where: { taskId: id },
+        orderBy: { createdAt: "asc" },
+        include: {
+          user: { select: { id: true, name: true, position: true } },
+        },
+      }),
+    ]);
     if (!task) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    const scope = await getServerWorkspaceScopeFromRequest(req);
     const taskScope = (task as { scope?: string }).scope ?? "TEAM";
     if (taskScope !== scope) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -88,7 +105,10 @@ export async function GET(
     if (!isAdmin && !isAssignee && !isCreator) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json(task);
+    return NextResponse.json({
+      ...task,
+      revisions,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

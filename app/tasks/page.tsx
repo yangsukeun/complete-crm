@@ -2,6 +2,7 @@
 
 import React, { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -374,6 +375,7 @@ export default function TasksPage() {
                 taskLinks={taskLinks as any}
                 onRefresh={refreshTasks}
                 onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
+                onTaskHover={(taskId: string) => router.prefetch(`/tasks/${taskId}`)}
                 onCreateTask={(parentId: any) => {
                   setCreateParentId(parentId);
                   setCreateOpen(true);
@@ -421,10 +423,10 @@ export default function TasksPage() {
                             key={task.id}
                             className="border-border rounded-lg border border-gray-200 bg-card p-3 shadow-sm"
                           >
-                            <button
-                              type="button"
-                              onClick={() => router.push(`/tasks/${task.id}`)}
-                              className="w-full text-left"
+                            <Link
+                              href={`/tasks/${task.id}`}
+                              prefetch={true}
+                              className="block w-full text-left outline-none"
                             >
                               <p
                                 className={cn(
@@ -452,7 +454,7 @@ export default function TasksPage() {
                                   {formatUserName(task.assignedTo)}
                                 </span>
                               </div>
-                            </button>
+                            </Link>
                             <div className="mt-3 flex items-center gap-2">
                               <Button
                                 type="button"

@@ -30,6 +30,9 @@ import { Calendar, ClipboardList, ImagePlus, MessageCircle, Plus, Search, Send, 
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import Image from "next/image";
+import Link from "next/link";
+import { ChatMessagesSkeleton } from "@/components/detail/detail-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type User = {
   id: string;
@@ -74,12 +77,12 @@ type ScheduleItem = {
 const CHAT_READ_KEY = "chat_read_";
 const DELETE_ALLOWED_MS = 10 * 60 * 1000; // 10분
 
-export function ChatPageClient() {
+export function ChatPageClient({ initialChatId = null }: { initialChatId?: string | null }) {
   const router = useRouter();
   const { data: session } = useSession();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageLoading, setMessageLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
@@ -319,10 +322,8 @@ export function ChatPageClient() {
       if (!res.ok) throw new Error(data.error ?? "생성 실패");
       setModalOpen(false);
       fetchChats();
-      setSelectedChatId(data.id);
-      setMessages([]);
-      fetchMessages(data.id);
       toast.success("대화가 시작되었습니다.");
+      router.push(`/chat/${data.id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "생성에 실패했습니다.");
     } finally {
@@ -650,6 +651,7 @@ export function ChatPageClient() {
       setChats((prev: any) => prev.filter((c: any) => c.id !== selectedChatId));
       setSelectedChatId(null);
       setMessages([]);
+      router.push("/chat");
       toast.success("채팅방에서 나갔습니다.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "채팅방 나가기에 실패했습니다.");
@@ -687,7 +689,14 @@ export function ChatPageClient() {
             )}
             <div className="flex-1 overflow-y-auto">
               {loading ? (
-                <p className="text-muted-foreground p-4 text-center text-sm">불러오는 중...</p>
+                <div className="space-y-2 p-3">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="flex flex-col gap-2 rounded-md border border-transparent px-2 py-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-full" />
+                    </div>
+                  ))}
+                </div>
               ) : chats.length === 0 ? (
                 <p className="text-muted-foreground p-4 text-center text-sm">
                   대화가 없습니다. 새 대화를 시작하세요.
@@ -700,9 +709,9 @@ export function ChatPageClient() {
                 <ul className="divide-y">
                   {filteredChats.map((chat: any) => (
                   <li key={chat.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedChatId(chat.id)}
+                    <Link
+                      href={`/chat/${chat.id}`}
+                      prefetch={true}
                       className={`flex w-full flex-col gap-0.5 px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
                         selectedChatId === chat.id ? "bg-muted" : ""
                       }`}
@@ -727,7 +736,7 @@ export function ChatPageClient() {
                           {formatUserName(chat.lastMessage.user)}: {chat.lastMessage.body}
                         </span>
                       )}
-                    </button>
+                    </Link>
                   </li>
                   ))}
                 </ul>
@@ -766,9 +775,7 @@ export function ChatPageClient() {
               </div>
               <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2">
                 {messageLoading ? (
-                  <p className="text-muted-foreground py-4 text-center text-sm">
-                    메시지를 불러오는 중...
-                  </p>
+                  <ChatMessagesSkeleton />
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden">
                     {messages.map((m: any) => {

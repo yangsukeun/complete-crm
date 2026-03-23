@@ -263,7 +263,9 @@ export default function QuotationsPage() {
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" asChild>
-                      <Link href={`/quotations/${q.id}`}>보기</Link>
+                      <Link href={`/quotations/${q.id}`} prefetch={true}>
+                        보기
+                      </Link>
                     </Button>
                   </TableCell>
                 </TableRow>

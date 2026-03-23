@@ -11,6 +11,6 @@ const ChatPageClient = dynamic(
   }
 );
 
-export function ChatClientWrapper() {
-  return <ChatPageClient />;
+export function ChatClientWrapper({ initialChatId }: { initialChatId?: string | null }) {
+  return <ChatPageClient initialChatId={initialChatId != null ? initialChatId : null} />;
 }
