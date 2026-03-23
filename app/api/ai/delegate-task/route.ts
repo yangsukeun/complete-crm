@@ -10,6 +10,7 @@ import {
   callAiByProvider,
   getClaudeApiKey,
   getProvider,
+  resolveProviderWithAvailableKeys,
 } from "@/lib/ai/assist-client";
 import { todayYmdKst } from "@/lib/date-kst";
 
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
     }
 
     const serverDefault = getProvider();
-    const provider: AIProvider =
+    const providerRaw: AIProvider =
       (typeof body.provider === "string" &&
       (body.provider === "gemini" ||
         body.provider === "openai" ||
@@ -162,6 +163,13 @@ export async function POST(req: Request) {
     const openAiKey = process.env.OPENAI_API_KEY?.trim();
     const claudeKey = getClaudeApiKey();
     const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
+
+    const provider = resolveProviderWithAvailableKeys(providerRaw, {
+      gemini: !!geminiKey,
+      openai: !!openAiKey,
+      claude: !!claudeKey,
+      notebook: !!notebookUrl,
+    });
 
     if (provider === "gemini" && !geminiKey) {
       return NextResponse.json(

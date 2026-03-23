@@ -7,6 +7,7 @@ import {
   callAiByProvider,
   getClaudeApiKey,
   getProvider,
+  resolveProviderWithAvailableKeys,
 } from "@/lib/ai/assist-client";
 import { sendSecretaryMessage } from "@/lib/ai-secretary/run-chat";
 
@@ -79,12 +80,19 @@ export async function POST(req: Request) {
     }
 
     const serverDefault = getProvider();
-    const provider: AIProvider = requestedProvider ?? userPreferred ?? serverDefault;
+    const providerRaw: AIProvider = requestedProvider ?? userPreferred ?? serverDefault;
 
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const openAiKey = process.env.OPENAI_API_KEY?.trim();
     const claudeKey = getClaudeApiKey();
     const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
+
+    const provider = resolveProviderWithAvailableKeys(providerRaw, {
+      gemini: !!geminiKey,
+      openai: !!openAiKey,
+      claude: !!claudeKey,
+      notebook: !!notebookUrl,
+    });
 
     if (provider === "gemini" && !geminiKey) {
       return NextResponse.json(
@@ -134,7 +142,12 @@ export async function POST(req: Request) {
         if (msg.includes("비어") || msg.includes("형식")) {
           return NextResponse.json({ error: msg }, { status: 400 });
         }
-        if (msg.includes("API_KEY") || msg.includes("NOTEBOOK_LLM") || msg.includes("ANTHROPIC")) {
+        if (
+          msg.includes("API_KEY") ||
+          msg.includes("NOTEBOOK_LLM") ||
+          msg.includes("ANTHROPIC") ||
+          msg.includes("CLAUDE_API")
+        ) {
           return NextResponse.json({ error: msg }, { status: 503 });
         }
         console.error("[AI assist] secretary_chat", e);

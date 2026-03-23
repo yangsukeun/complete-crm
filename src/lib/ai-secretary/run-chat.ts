@@ -5,6 +5,7 @@ import {
   callAiByProvider,
   getClaudeApiKey,
   getProvider,
+  resolveProviderWithAvailableKeys,
   type AIProvider,
   type ChatMessage,
 } from "@/lib/ai/assist-client";
@@ -76,12 +77,19 @@ export async function sendSecretaryMessage(params: {
   const trimmed = message.trim();
   if (!trimmed) throw new Error("메시지가 비어 있습니다.");
 
-  const provider = requestedProvider ?? (await resolveAiProviderForUser(userId));
+  const providerRaw = requestedProvider ?? (await resolveAiProviderForUser(userId));
 
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
   const openAiKey = process.env.OPENAI_API_KEY?.trim();
   const claudeKey = getClaudeApiKey();
   const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
+  const provider = resolveProviderWithAvailableKeys(providerRaw, {
+    gemini: !!geminiKey,
+    openai: !!openAiKey,
+    claude: !!claudeKey,
+    notebook: !!notebookUrl,
+  });
+
   if (provider === "gemini" && !geminiKey) throw new Error("GEMINI_API_KEY가 없습니다.");
   if (provider === "openai" && !openAiKey) throw new Error("OPENAI_API_KEY가 없습니다.");
   if (provider === "claude" && !claudeKey) {

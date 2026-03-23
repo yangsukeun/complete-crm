@@ -41,7 +41,12 @@ export async function POST(req: Request) {
     if (msg.includes("비어") || msg.includes("형식")) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }
-    if (msg.includes("API_KEY") || msg.includes("NOTEBOOK_LLM")) {
+    if (
+      msg.includes("API_KEY") ||
+      msg.includes("NOTEBOOK_LLM") ||
+      msg.includes("ANTHROPIC") ||
+      msg.includes("CLAUDE_API")
+    ) {
       return NextResponse.json({ error: msg }, { status: 503 });
     }
     console.error("[ai-secretary/chat]", e);

@@ -50,7 +50,8 @@ export function AIAssistFloat() {
     claude: false,
     notebook: false,
   });
-  const [provider, setProvider] = useState<AIProvider>("gemini");
+  /** 초기값을 gemini로 두면 서버에 provider가 고정 전달되어 Gemini 키 오류가 난다. null이면 서버 기본(AI_PROVIDER) 사용 */
+  const [provider, setProvider] = useState<AIProvider | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const cancelRequestedRef = useRef(false);
@@ -141,7 +142,7 @@ export function AIAssistFloat() {
           action: "chat",
           message: text,
           messages: history.slice(-20),
-          provider,
+          ...(provider != null ? { provider } : {}),
         }),
         signal: ac.signal,
       });
@@ -214,6 +215,8 @@ export function AIAssistFloat() {
     (k: any) => (providers as any)[k]
   );
 
+  const selectValue = provider ?? availableProviders[0];
+
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
       {/* 채팅 패널 — 제미나이 스타일 */}
@@ -230,8 +233,8 @@ export function AIAssistFloat() {
                 <Sparkles className="size-4" />
               </div>
               <span className="truncate font-semibold text-gray-900">AI 비서</span>
-              {availableProviders.length > 0 && (
-                <Select value={provider} onValueChange={onProviderChange}>
+              {availableProviders.length > 0 && selectValue && (
+                <Select value={selectValue} onValueChange={onProviderChange}>
                   <SelectTrigger size="sm" className="h-8 w-auto min-w-0 max-w-[130px] border-gray-200">
                     <SelectValue placeholder="AI 선택" />
                   </SelectTrigger>

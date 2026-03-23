@@ -6,15 +6,40 @@ const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models
 /** Google이 모델 ID를 바꾸는 경우가 있어, 404 시 아래 순으로 한 번씩 재시도 */
 const GEMINI_MODEL_FALLBACKS = ["gemini-1.5-flash", "gemini-2.5-flash-lite"] as const;
 export const GEMINI_DEFAULT_MODEL = "gemini-1.5-flash";
-/** Anthropic 대시보드/문서의 모델 ID — `CLAUDE_MODEL`로 덮어씀 */
-export const CLAUDE_DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
+/** `CLAUDE_MODEL` 미설정 시 기본 (Anthropic 콘솔 모델 ID) */
+export const CLAUDE_DEFAULT_MODEL = "claude-sonnet-4-6";
 const NOTEBOOK_LLM_DEFAULT_MODEL = "llama3.2";
 
 export type AIProvider = "gemini" | "openai" | "notebook" | "claude";
 
 /** `.env` 기준 권장: `CLAUDE_API_KEY`. 호환용으로 `ANTHROPIC_API_KEY`도 허용 */
+/** 서버에서만 사용. 우선 `CLAUDE_API_KEY`, 없으면 `ANTHROPIC_API_KEY` */
 export function getClaudeApiKey(): string {
   return (process.env.CLAUDE_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "").trim();
+}
+
+/** 요청 프로바이더에 해당 API 키가 없으면, 서버 기본값·Claude 등 사용 가능한 쪽으로 폴백 */
+export function resolveProviderWithAvailableKeys(
+  wanted: AIProvider,
+  keys: { gemini: boolean; openai: boolean; claude: boolean; notebook: boolean }
+): AIProvider {
+  const ok = (p: AIProvider) =>
+    (p === "gemini" && keys.gemini) ||
+    (p === "openai" && keys.openai) ||
+    (p === "claude" && keys.claude) ||
+    (p === "notebook" && keys.notebook);
+
+  if (ok(wanted)) return wanted;
+
+  const serverDefault = getProvider();
+  const tryOrder: AIProvider[] = [serverDefault, "claude", "gemini", "openai", "notebook"];
+  const seen = new Set<string>();
+  for (const p of tryOrder) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    if (ok(p)) return p;
+  }
+  return wanted;
 }
 
 export function getProvider(): AIProvider {
@@ -130,21 +155,24 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
   }));
 
   const model = process.env.CLAUDE_MODEL?.trim() || CLAUDE_DEFAULT_MODEL;
+  const systemPrompt = systemMessage?.content ?? "";
   const body: Record<string, unknown> = {
     model,
-    max_tokens: 4096,
+    max_tokens: 1000,
     temperature: 0.3,
     messages: anthropicMessages,
   };
-  if (systemMessage?.content) {
-    body.system = systemMessage.content;
+  if (systemPrompt) {
+    body.system = systemPrompt;
   }
+
+  const headerKey = (process.env.CLAUDE_API_KEY ?? "").trim() || apiKey;
 
   const res = await fetch(ANTHROPIC_MESSAGES_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
+      "x-api-key": headerKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(body),
