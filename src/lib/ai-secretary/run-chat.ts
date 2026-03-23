@@ -151,12 +151,27 @@ async function callAnthropicWithToolLoop(
   const MAX_LOOPS = 5;
 
   for (let loop = 0; loop < MAX_LOOPS; loop++) {
+    // 첫 번째 루프에서 사용자 메시지에 일정/업무 관련 키워드가 있으면 tool_choice: "any"로 강제.
+    // 일반 대화(인사, 질문 등)는 "auto"로 유지.
+    let toolChoice: { type: string } = { type: "auto" };
+    if (loop === 0) {
+      const lastMsg = [...currentMessages].reverse().find((m) => m.role === "user");
+      const msgText = typeof lastMsg?.content === "string" ? lastMsg.content : "";
+      const ACTION_KEYWORDS = [
+        "일정", "스케줄", "회의", "약속", "캘린더", "등록해", "추가해", "잡아줘", "잡아 줘",
+        "업무", "태스크", "task", "할 일", "할일", "생성해", "만들어",
+      ];
+      if (ACTION_KEYWORDS.some((k) => msgText.includes(k))) {
+        toolChoice = { type: "any" };
+      }
+    }
     const body = {
       model,
       max_tokens: maxTokens,
       temperature: 0.3,
       system: systemPrompt,
       tools: SECRETARY_TOOLS,
+      tool_choice: toolChoice,
       messages: currentMessages,
     };
 
