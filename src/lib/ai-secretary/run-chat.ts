@@ -35,6 +35,21 @@ function validateDateKey(dateKey: string): void {
   }
 }
 
+type KeyFlags = { gemini: boolean; openai: boolean; claude: boolean; notebook: boolean };
+
+/**
+ * 라우트에서 `AI_PROVIDER`로 고정된 경우: 다른 프로바이더로 폴백하지 않음.
+ * (폴백 시 Gemini로만 나가고 Claude 호출이 안 되는 문제·잘못된 503/502 혼선 방지)
+ */
+function assertKeysForProvider(provider: AIProvider, keys: KeyFlags): void {
+  if (provider === "gemini" && !keys.gemini) throw new Error("GEMINI_API_KEY가 없습니다.");
+  if (provider === "openai" && !keys.openai) throw new Error("OPENAI_API_KEY가 없습니다.");
+  if (provider === "claude" && !keys.claude) {
+    throw new Error("CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)가 없습니다.");
+  }
+  if (provider === "notebook" && !keys.notebook) throw new Error("NOTEBOOK_LLM_URL이 없습니다.");
+}
+
 /** Vercel 로그 길이 제한 대비 — 긴 system 프롬프트를 나눠 출력 */
 function logAiSecretarySystemPrompt(systemContent: string, meta: { userId: string; role: string; dateKey: string }) {
   const tag = "[AI secretary] system prompt";
@@ -86,19 +101,20 @@ export async function sendSecretaryMessage(params: {
   const openAiKey = process.env.OPENAI_API_KEY?.trim();
   const claudeKey = getClaudeApiKey();
   const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
-  const provider = resolveProviderWithAvailableKeys(providerRaw, {
+  const keyFlags: KeyFlags = {
     gemini: !!geminiKey,
     openai: !!openAiKey,
     claude: !!claudeKey,
     notebook: !!notebookUrl,
-  });
+  };
 
-  if (provider === "gemini" && !geminiKey) throw new Error("GEMINI_API_KEY가 없습니다.");
-  if (provider === "openai" && !openAiKey) throw new Error("OPENAI_API_KEY가 없습니다.");
-  if (provider === "claude" && !claudeKey) {
-    throw new Error("CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)가 없습니다.");
-  }
-  if (provider === "notebook" && !notebookUrl) throw new Error("NOTEBOOK_LLM_URL이 없습니다.");
+  /** 서버가 명시한 프로바이더(라우트에서 항상 전달): 폴백 없이 해당 API만 사용 → Claude 미호출 버그 제거 */
+  const provider: AIProvider =
+    requestedProvider != null
+      ? providerRaw
+      : resolveProviderWithAvailableKeys(providerRaw, keyFlags);
+
+  assertKeysForProvider(provider, keyFlags);
 
   console.log("[AI secretary] provider resolved (Vercel Functions 로그)", {
     providerRaw,
