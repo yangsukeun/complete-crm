@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { getCachedDepartments } from "@/lib/cache/settings-lists";
 import { z } from "zod";
 
 const createSchema = z.object({ name: z.string().min(1).max(100) });
@@ -11,10 +13,7 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const list = await prisma.department.findMany({
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, sortOrder: true },
-    });
+    const list = await getCachedDepartments();
     return NextResponse.json(list);
   } catch (e) {
     console.error(e);
@@ -54,6 +53,7 @@ export async function POST(req: Request) {
     const created = await prisma.department.create({
       data: { name, sortOrder: nextOrder },
     });
+    revalidateTag("departments", "max");
     return NextResponse.json(created);
   } catch (e) {
     console.error("POST /api/settings/departments error:", e);

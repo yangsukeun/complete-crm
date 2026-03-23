@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
@@ -16,6 +17,7 @@ export async function DELETE(
     }
     const { id } = await params;
     await prisma.position.delete({ where: { id } });
+    revalidateTag("positions", "max");
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

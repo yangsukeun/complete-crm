@@ -141,6 +141,7 @@ model User {
   permissions   String?   // 계정별 사용 가능 기능 (JSON 배열, 없으면 역할 기본값 사용)
   badgePreset   String?   // 헤더 뱃지/아바타 스타일: default | violet | amber | emerald | blue
   preferredAiProvider String?   // AI 비서: gemini | openai | notebook (null이면 서버 기본값)
+  oneSignalPlayerId String?     // OneSignal 구독 ID(디버그). 푸시 타깃은 external_id=User.id
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
@@ -446,6 +447,7 @@ model Chat {
   updatedAt DateTime @updatedAt
   participants ChatParticipant[]
   messages   ChatMessage[]
+  @@index([updatedAt])
 }
 
 model ChatParticipant {
@@ -531,6 +533,7 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 // 접속 로그 (하루 최초 접속·IP 기록, 출근 보조용)

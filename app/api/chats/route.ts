@@ -39,7 +39,12 @@ export async function GET() {
           messages: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            include: { user: { select: userSelect } },
+            select: {
+              id: true,
+              body: true,
+              createdAt: true,
+              user: { select: userSelect },
+            },
           },
         },
         orderBy: { updatedAt: "desc" },
@@ -66,7 +71,12 @@ export async function GET() {
             messages: {
               orderBy: { createdAt: "desc" },
               take: 1,
-              include: { user: { select: userSelect } },
+              select: {
+                id: true,
+                body: true,
+                createdAt: true,
+                user: { select: userSelect },
+              },
             },
           },
         },

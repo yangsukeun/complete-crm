@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock } from "lucide-react";
 import { format, addDays } from "date-fns";
@@ -10,11 +11,21 @@ import { authWithTimeout } from "@/lib/auth-safe";
 import { formatUserName } from "@/lib/utils";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import { getDashboardSalesStats } from "@/lib/dashboard-sales";
-import { DashboardAttendance } from "@/components/dashboard-attendance";
-import { DashboardAnnouncements } from "@/components/dashboard-announcements";
-import { DashboardSalesSection } from "@/components/dashboard-sales-section";
 import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
+
+const DashboardAttendance = dynamic(
+  () => import("@/components/dashboard-attendance").then((m) => m.DashboardAttendance),
+  { ssr: true, loading: () => <div className="h-14 w-full max-w-md animate-pulse rounded-lg bg-muted/40" /> }
+);
+const DashboardAnnouncements = dynamic(
+  () => import("@/components/dashboard-announcements").then((m) => m.DashboardAnnouncements),
+  { ssr: true, loading: () => <div className="h-32 animate-pulse rounded-lg bg-muted/30" /> }
+);
+const DashboardSalesSection = dynamic(
+  () => import("@/components/dashboard-sales-section").then((m) => m.DashboardSalesSection),
+  { ssr: true, loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/30" /> }
+);
 
 export default async function DashboardPage() {
   const session = await authWithTimeout();
@@ -42,6 +53,13 @@ export default async function DashboardPage() {
         where: { assignedToId: session.user.id, isCompleted: false },
         orderBy: { dueDate: "asc" },
         take: 10,
+        select: {
+          id: true,
+          title: true,
+          dueDate: true,
+          isCompleted: true,
+          status: true,
+        },
       }),
       prisma.schedule.findMany({
         where: {
@@ -161,20 +179,21 @@ export default async function DashboardPage() {
   if (isAdmin) {
     const year = new Date().getFullYear();
     const weekEnd = addDays(todayStart, 7);
-    const adminUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { joinDate: true },
-    });
-    const joinDate = adminUser?.joinDate ?? new Date();
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
 
     const [
+      adminUser,
       employeeCount,
       todayAttendances,
       tasksCreatedByMe,
       adminTodayAttendance,
       adminUpcomingSchedules,
+      adminLeaveBalance,
+      salesStats,
     ] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { joinDate: true },
+      }),
       prisma.user.count({ where: { role: "USER" } }),
       prisma.attendance.findMany({
         where: { date: todayStart },
@@ -182,7 +201,15 @@ export default async function DashboardPage() {
       }),
       prisma.task.findMany({
         where: { createdById: session.user.id },
-        include: { assignedTo: { select: { name: true, position: true } } },
+        select: {
+          id: true,
+          title: true,
+          dueDate: true,
+          isCompleted: true,
+          status: true,
+          priority: true,
+          assignedTo: { select: { name: true, position: true } },
+        },
         orderBy: { dueDate: "asc" },
         take: 100,
       }),
@@ -197,15 +224,21 @@ export default async function DashboardPage() {
         orderBy: { startTime: "asc" },
         take: 5,
       }),
+      (async () => {
+        try {
+          return await prisma.leaveBalance.findUnique({
+            where: { userId_year: { userId: session.user.id, year } },
+          });
+        } catch (e) {
+          console.error("[dashboard] leaveBalance fetch:", e);
+          return null;
+        }
+      })(),
+      getDashboardSalesStats(),
     ]);
-    let adminLeaveBalance: Awaited<ReturnType<typeof prisma.leaveBalance.findUnique>> = null;
-    try {
-      adminLeaveBalance = await prisma.leaveBalance.findUnique({
-        where: { userId_year: { userId: session.user.id, year } },
-      });
-    } catch (e) {
-      console.error("[dashboard] leaveBalance fetch:", e);
-    }
+
+    const joinDate = adminUser?.joinDate ?? new Date();
+    const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
 
     const completedTasks = tasksCreatedByMe.filter((t: any) => t.isCompleted);
     const progressPercent =
@@ -218,7 +251,6 @@ export default async function DashboardPage() {
     const totalLeave = annualTotal + carryOver;
     const remaining = Math.max(0, totalLeave - used - manual);
     const incompleteCount = tasksCreatedByMe.filter((t: any) => !t.isCompleted).length;
-    const salesStats = await getDashboardSalesStats();
 
     return (
       <div className="flex flex-col gap-6 p-4 md:p-6">
@@ -390,41 +422,52 @@ export default async function DashboardPage() {
   // 회사 모드 · User: 일정·업무·남은 연차·목표 + 출퇴근
   const year = new Date().getFullYear();
   const weekEnd = addDays(new Date(), 7);
-  const userForLeave = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { joinDate: true },
-  });
+
+  const [userForLeave, myTasks, myTodayAttendance, upcomingSchedules, salesStats, leaveBalance] =
+    await Promise.all([
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { joinDate: true },
+      }),
+      prisma.task.findMany({
+        where: { assignedToId: session.user.id, isCompleted: false },
+        orderBy: { dueDate: "asc" },
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          dueDate: true,
+          isCompleted: true,
+          status: true,
+          createdBy: { select: { name: true, position: true } },
+        },
+      }),
+      prisma.attendance.findUnique({
+        where: { userId_date: { userId: session.user.id, date: todayStart } },
+      }),
+      prisma.schedule.findMany({
+        where: {
+          userId: session.user.id,
+          startTime: { gte: new Date(), lte: weekEnd },
+        },
+        orderBy: { startTime: "asc" },
+        take: 5,
+      }),
+      getDashboardSalesStats(),
+      (async () => {
+        try {
+          return await prisma.leaveBalance.findUnique({
+            where: { userId_year: { userId: session.user.id, year } },
+          });
+        } catch (e) {
+          console.error("[dashboard] leaveBalance fetch:", e);
+          return null;
+        }
+      })(),
+    ]);
+
   const joinDate = userForLeave?.joinDate ?? new Date();
   const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
-
-  const [myTasks, myTodayAttendance, upcomingSchedules, salesStats] = await Promise.all([
-    prisma.task.findMany({
-      where: { assignedToId: session.user.id, isCompleted: false },
-      orderBy: { dueDate: "asc" },
-      take: 10,
-      include: { createdBy: { select: { name: true, position: true } } },
-    }),
-    prisma.attendance.findUnique({
-      where: { userId_date: { userId: session.user.id, date: todayStart } },
-    }),
-    prisma.schedule.findMany({
-      where: {
-        userId: session.user.id,
-        startTime: { gte: new Date(), lte: weekEnd },
-      },
-      orderBy: { startTime: "asc" },
-      take: 5,
-    }),
-    getDashboardSalesStats(),
-  ]);
-  let leaveBalance: Awaited<ReturnType<typeof prisma.leaveBalance.findUnique>> = null;
-  try {
-    leaveBalance = await prisma.leaveBalance.findUnique({
-      where: { userId_year: { userId: session.user.id, year } },
-    });
-  } catch (e) {
-    console.error("[dashboard] leaveBalance fetch:", e);
-  }
 
   const carryOver = leaveBalance?.annualCarryOver ?? 0;
   const used = leaveBalance?.annualUsed ?? 0;
