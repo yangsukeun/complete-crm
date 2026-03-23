@@ -9,6 +9,7 @@ import { Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { todayYmdKst } from "@/lib/date-kst";
 import { PageHeadline } from "@/components/page-headline";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 
 type ConvRow = { id: string; dateKey: string; updatedAt: string; preview: string };
 type Msg = { id: string; role: string; content: string; createdAt: string };
@@ -186,13 +187,17 @@ export function AiSecretaryClient() {
                       return (
                         <div
                           key={m.id}
-                          className={`max-w-[min(85%,560px)] rounded-lg px-3 py-2 text-sm ${
+                          className={`max-w-[min(85%,680px)] rounded-lg px-3 py-2 text-sm ${
                             isUser
                               ? "ml-auto bg-primary text-primary-foreground"
                               : "mr-auto bg-muted/50"
                           }`}
                         >
-                          <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          {isUser ? (
+                            <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          ) : (
+                            <MarkdownRenderer content={m.content} />
+                          )}
                           <span
                             className={`mt-1 block text-[10px] ${isUser ? "text-primary-foreground/80" : "text-muted-foreground"}`}
                           >
