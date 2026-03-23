@@ -36,6 +36,7 @@ export function logClaudeEnvForVercel(context: string): void {
   console.log(`[AI assist-client][Claude][env] ${context}`, {
     AI_PROVIDER: process.env.AI_PROVIDER ?? "(unset)",
     CLAUDE_MODEL: process.env.CLAUDE_MODEL ?? "(unset, using default)",
+    CLAUDE_MAX_TOKENS: process.env.CLAUDE_MAX_TOKENS ?? "(unset → 1000)",
     NODE_ENV: process.env.NODE_ENV,
     env_CLAUDE_API_KEY_set: fromClaude.length > 0,
     env_ANTHROPIC_API_KEY_set: fromAnthropic.length > 0,
@@ -90,6 +91,12 @@ export function getSecretaryProviderFromEnv(): AIProvider {
 }
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+/** Anthropic Messages API `max_tokens` — `CLAUDE_MAX_TOKENS` 미설정 시 1000 */
+function getClaudeMaxTokensFromEnv(): number {
+  const n = Number(process.env.CLAUDE_MAX_TOKENS) || 1000;
+  return Math.max(1, Math.floor(n));
+}
 
 function parseGeminiApiError(status: number, errText: string): string {
   try {
@@ -197,9 +204,10 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
 
   const model = process.env.CLAUDE_MODEL?.trim() || CLAUDE_DEFAULT_MODEL;
   const systemPrompt = systemMessage?.content ?? "";
+  const maxTokens = getClaudeMaxTokensFromEnv();
   const body: Record<string, unknown> = {
     model,
-    max_tokens: 1000,
+    max_tokens: maxTokens,
     temperature: 0.3,
     messages: anthropicMessages,
   };
@@ -207,12 +215,14 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
     body.system = systemPrompt;
   }
 
+  /** `CLAUDE_API_KEY` 우선, 없으면 `getClaudeApiKey()`로 넘어온 키(ANTHROPIC_API_KEY 등) */
   const headerKey = (process.env.CLAUDE_API_KEY ?? "").trim() || apiKey;
 
   try {
     console.log("[AI assist-client][Claude] stage: prepare", {
       url: ANTHROPIC_MESSAGES_URL,
       model,
+      max_tokens: maxTokens,
       messagesCount: anthropicMessages.length,
       systemChars: systemPrompt.length,
       headerKey_source: (process.env.CLAUDE_API_KEY ?? "").trim() ? "CLAUDE_API_KEY" : "param_apiKey",
@@ -222,6 +232,7 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
     let res: Response;
     try {
       console.log("[AI assist-client][Claude] stage: fetch_start");
+      /* Anthropic Messages API — callAiByProvider(claude) → 여기서 POST */
       res = await fetch(ANTHROPIC_MESSAGES_URL, {
         method: "POST",
         headers: {
