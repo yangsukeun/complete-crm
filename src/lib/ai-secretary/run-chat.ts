@@ -31,6 +31,35 @@ function validateDateKey(dateKey: string): void {
   }
 }
 
+/** Vercel 로그 길이 제한 대비 — 긴 system 프롬프트를 나눠 출력 */
+function logAiSecretarySystemPrompt(systemContent: string, meta: { userId: string; role: string; dateKey: string }) {
+  const tag = "[AI secretary] system prompt";
+  const debugFull =
+    process.env.DEBUG_AI_SECRETARY_SYSTEM === "1" || process.env.NODE_ENV === "development";
+
+  const emailLike = /@|이메일:|email:/i.test(systemContent);
+  console.log(`${tag} (meta)`, {
+    ...meta,
+    charLength: systemContent.length,
+    contextLikelyHasEmailField: emailLike,
+  });
+
+  if (debugFull) {
+    const chunkSize = 6000;
+    if (systemContent.length <= chunkSize) {
+      console.log(`${tag} (full)\n`, systemContent);
+    } else {
+      for (let i = 0; i < systemContent.length; i += chunkSize) {
+        const part = Math.floor(i / chunkSize) + 1;
+        const total = Math.ceil(systemContent.length / chunkSize);
+        console.log(`${tag} (full part ${part}/${total})\n`, systemContent.slice(i, i + chunkSize));
+      }
+    }
+  } else {
+    console.log(`${tag} (preview 800자, 전체는 DEBUG_AI_SECRETARY_SYSTEM=1)\n`, systemContent.slice(0, 800));
+  }
+}
+
 /**
  * assist/route.ts와 동일하게 callAiByProvider 사용 — DB 저장 포함
  */
@@ -88,6 +117,8 @@ export async function sendSecretaryMessage(params: {
     ? "답변은 한국어로 하세요. 위 참고 데이터에 포함된 직원·연락처·업무 정보는 사용자가 물으면 제공하세요. 허용된 범위의 정보 제공을 거부하지 마세요."
     : "위 데이터는 참고용입니다. 답변은 한국어로 하고, 권한이 없는 정보(역할 기준)는 추측하지 마세요.";
   const systemContent = `${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
+
+  logAiSecretarySystemPrompt(systemContent, { userId, role, dateKey });
 
   const chatMessages: ChatMessage[] = [{ role: "system", content: systemContent }];
   for (const m of history) {
