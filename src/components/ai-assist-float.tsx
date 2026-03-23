@@ -23,11 +23,12 @@ import { useAIAssistTarget } from "@/components/ai-assist-context";
 import { cn } from "@/lib/utils";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
-type AIProvider = "gemini" | "openai" | "notebook";
+type AIProvider = "gemini" | "openai" | "notebook" | "claude";
 
 const PROVIDER_LABELS: Record<AIProvider, string> = {
   gemini: "Gemini",
   openai: "GPT",
+  claude: "Claude",
   notebook: "노트북 LLM",
 };
 
@@ -38,9 +39,15 @@ export function AIAssistFloat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
-  const [providers, setProviders] = useState<{ gemini: boolean; openai: boolean; notebook: boolean }>({
+  const [providers, setProviders] = useState<{
+    gemini: boolean;
+    openai: boolean;
+    claude: boolean;
+    notebook: boolean;
+  }>({
     gemini: false,
     openai: false,
+    claude: false,
     notebook: false,
   });
   const [provider, setProvider] = useState<AIProvider>("gemini");
@@ -73,17 +80,25 @@ export function AIAssistFloat() {
           }
         }
         if (provRes.ok) {
-          const p = (await provRes.json()) as { gemini?: boolean; openai?: boolean; notebook?: boolean };
+          const p = (await provRes.json()) as {
+            gemini?: boolean;
+            openai?: boolean;
+            claude?: boolean;
+            notebook?: boolean;
+          };
           const next = {
             gemini: !!p.gemini,
             openai: !!p.openai,
+            claude: !!p.claude,
             notebook: !!p.notebook,
           };
           setProviders(next);
-          const available = (["gemini", "openai", "notebook"] as const).filter((k: any) => (next as any)[k]);
+          const available = (["gemini", "openai", "claude", "notebook"] as const).filter(
+            (k: any) => (next as any)[k]
+          );
           const pref = profile?.preferredAiProvider;
           const chosen =
-            pref === "gemini" || pref === "openai" || pref === "notebook"
+            pref === "gemini" || pref === "openai" || pref === "notebook" || pref === "claude"
               ? (available.includes(pref) ? pref : available[0])
               : available[0];
           if (chosen) setProvider(chosen);
@@ -195,7 +210,9 @@ export function AIAssistFloat() {
     }
   };
 
-  const availableProviders = (["gemini", "openai", "notebook"] as const).filter((k: any) => (providers as any)[k]);
+  const availableProviders = (["gemini", "openai", "claude", "notebook"] as const).filter(
+    (k: any) => (providers as any)[k]
+  );
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">

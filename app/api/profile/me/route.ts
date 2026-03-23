@@ -154,7 +154,7 @@ export async function GET() {
 
 const badgePresetSchema = z.enum(["default", "violet", "amber", "emerald", "blue"]).optional().nullable();
 
-const aiProviderSchema = z.enum(["gemini", "openai", "notebook"]).optional().nullable();
+const aiProviderSchema = z.enum(["gemini", "openai", "notebook", "claude"]).optional().nullable();
 
 const updateByUserSchema = z.object({
   name: z.string().min(1).optional(),

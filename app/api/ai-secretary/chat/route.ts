@@ -18,7 +18,10 @@ export async function POST(req: Request) {
     const message = typeof body.message === "string" ? body.message : "";
     const bodyProvider = body.provider;
     const requestedProvider: AIProvider | null =
-      bodyProvider === "gemini" || bodyProvider === "openai" || bodyProvider === "notebook"
+      bodyProvider === "gemini" ||
+      bodyProvider === "openai" ||
+      bodyProvider === "notebook" ||
+      bodyProvider === "claude"
         ? bodyProvider
         : null;
 

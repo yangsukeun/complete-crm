@@ -3,6 +3,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import {
   callAiByProvider,
+  getClaudeApiKey,
   getProvider,
   type AIProvider,
   type ChatMessage,
@@ -18,7 +19,7 @@ export async function resolveAiProviderForUser(userId: string): Promise<AIProvid
       select: { preferredAiProvider: true },
     });
     const p = (u as { preferredAiProvider?: string | null } | null)?.preferredAiProvider;
-    if (p === "gemini" || p === "openai" || p === "notebook") userPreferred = p;
+    if (p === "gemini" || p === "openai" || p === "notebook" || p === "claude") userPreferred = p;
   } catch {
     /* preferredAiProvider 없을 수 있음 */
   }
@@ -79,9 +80,13 @@ export async function sendSecretaryMessage(params: {
 
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
   const openAiKey = process.env.OPENAI_API_KEY?.trim();
+  const claudeKey = getClaudeApiKey();
   const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
   if (provider === "gemini" && !geminiKey) throw new Error("GEMINI_API_KEY가 없습니다.");
   if (provider === "openai" && !openAiKey) throw new Error("OPENAI_API_KEY가 없습니다.");
+  if (provider === "claude" && !claudeKey) {
+    throw new Error("CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)가 없습니다.");
+  }
   if (provider === "notebook" && !notebookUrl) throw new Error("NOTEBOOK_LLM_URL이 없습니다.");
 
   const conversation = await prisma.$transaction(async (tx) => {

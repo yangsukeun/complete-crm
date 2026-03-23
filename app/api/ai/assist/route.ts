@@ -5,6 +5,7 @@ import {
   type AIProvider,
   type ChatMessage,
   callAiByProvider,
+  getClaudeApiKey,
   getProvider,
 } from "@/lib/ai/assist-client";
 import { sendSecretaryMessage } from "@/lib/ai-secretary/run-chat";
@@ -58,7 +59,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const bodyProvider = body.provider;
     const requestedProvider =
-      bodyProvider === "gemini" || bodyProvider === "openai" || bodyProvider === "notebook"
+      bodyProvider === "gemini" ||
+      bodyProvider === "openai" ||
+      bodyProvider === "notebook" ||
+      bodyProvider === "claude"
         ? bodyProvider
         : null;
 
@@ -69,7 +73,7 @@ export async function POST(req: Request) {
         select: { preferredAiProvider: true },
       });
       const p = (u as { preferredAiProvider?: string | null } | null)?.preferredAiProvider;
-      if (p === "gemini" || p === "openai" || p === "notebook") userPreferred = p;
+      if (p === "gemini" || p === "openai" || p === "notebook" || p === "claude") userPreferred = p;
     } catch {
       // preferredAiProvider 컬럼 없을 수 있음
     }
@@ -79,6 +83,7 @@ export async function POST(req: Request) {
 
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const openAiKey = process.env.OPENAI_API_KEY?.trim();
+    const claudeKey = getClaudeApiKey();
     const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
 
     if (provider === "gemini" && !geminiKey) {
@@ -90,6 +95,12 @@ export async function POST(req: Request) {
     if (provider === "openai" && !openAiKey) {
       return NextResponse.json(
         { error: "GPT를 사용하려면 .env에 OPENAI_API_KEY를 설정하세요." },
+        { status: 503 }
+      );
+    }
+    if (provider === "claude" && !claudeKey) {
+      return NextResponse.json(
+        { error: "Claude를 사용하려면 .env에 CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)를 설정하세요." },
         { status: 503 }
       );
     }
@@ -123,7 +134,7 @@ export async function POST(req: Request) {
         if (msg.includes("비어") || msg.includes("형식")) {
           return NextResponse.json({ error: msg }, { status: 400 });
         }
-        if (msg.includes("API_KEY") || msg.includes("NOTEBOOK_LLM")) {
+        if (msg.includes("API_KEY") || msg.includes("NOTEBOOK_LLM") || msg.includes("ANTHROPIC")) {
           return NextResponse.json({ error: msg }, { status: 503 });
         }
         console.error("[AI assist] secretary_chat", e);
@@ -204,6 +215,10 @@ export async function POST(req: Request) {
         }),
         ...(provider === "openai" && {
           hasOpenAiApiKey: Boolean(process.env.OPENAI_API_KEY?.trim()),
+        }),
+        ...(provider === "claude" && {
+          claudeModel: process.env.CLAUDE_MODEL?.trim() || "(env 미설정 → 코드 기본값)",
+          hasClaudeApiKey: Boolean(getClaudeApiKey()),
         }),
         ...(provider === "notebook" && {
           notebookLlmUrlSet: Boolean(process.env.NOTEBOOK_LLM_URL?.trim()),

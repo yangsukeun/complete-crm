@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
+import { getClaudeApiKey } from "@/lib/ai/assist-client";
 
 /** 로그인 사용자에게 사용 가능한 AI 프로바이더 목록 반환 (키/URL 노출 없음) */
 export async function GET() {
@@ -10,10 +11,12 @@ export async function GET() {
     }
     const gemini = !!process.env.GEMINI_API_KEY?.trim();
     const openai = !!process.env.OPENAI_API_KEY?.trim();
+    const claude = !!getClaudeApiKey();
     const notebook = !!process.env.NOTEBOOK_LLM_URL?.trim();
     return NextResponse.json({
       gemini,
       openai,
+      claude,
       notebook,
     });
   } catch (e) {

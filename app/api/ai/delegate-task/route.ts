@@ -8,6 +8,7 @@ import {
   type AIProvider,
   type ChatMessage,
   callAiByProvider,
+  getClaudeApiKey,
   getProvider,
 } from "@/lib/ai/assist-client";
 import { todayYmdKst } from "@/lib/date-kst";
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
         select: { preferredAiProvider: true },
       });
       const p = (u as { preferredAiProvider?: string | null } | null)?.preferredAiProvider;
-      if (p === "gemini" || p === "openai" || p === "notebook") userPreferred = p;
+      if (p === "gemini" || p === "openai" || p === "notebook" || p === "claude") userPreferred = p;
     } catch {
       // ignore
     }
@@ -150,12 +151,16 @@ export async function POST(req: Request) {
     const serverDefault = getProvider();
     const provider: AIProvider =
       (typeof body.provider === "string" &&
-      (body.provider === "gemini" || body.provider === "openai" || body.provider === "notebook")
+      (body.provider === "gemini" ||
+        body.provider === "openai" ||
+        body.provider === "notebook" ||
+        body.provider === "claude")
         ? body.provider
         : null) ?? userPreferred ?? serverDefault;
 
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const openAiKey = process.env.OPENAI_API_KEY?.trim();
+    const claudeKey = getClaudeApiKey();
     const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
 
     if (provider === "gemini" && !geminiKey) {
@@ -167,6 +172,12 @@ export async function POST(req: Request) {
     if (provider === "openai" && !openAiKey) {
       return NextResponse.json(
         { error: "GPT를 사용하려면 .env에 OPENAI_API_KEY를 설정하세요." },
+        { status: 503 }
+      );
+    }
+    if (provider === "claude" && !claudeKey) {
+      return NextResponse.json(
+        { error: "Claude를 사용하려면 .env에 CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)를 설정하세요." },
         { status: 503 }
       );
     }
