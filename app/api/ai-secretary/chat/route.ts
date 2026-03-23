@@ -27,6 +27,13 @@ export async function POST(req: Request) {
 
     const role = session.user.role ?? "USER";
 
+    console.log("[ai-secretary/chat] POST (Vercel Functions 로그)", {
+      userId: session.user.id,
+      dateKey,
+      bodyProvider: bodyProvider ?? null,
+      messageLen: typeof message === "string" ? message.length : 0,
+    });
+
     const { reply } = await sendSecretaryMessage({
       userId: session.user.id,
       role,

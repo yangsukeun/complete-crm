@@ -5,6 +5,8 @@ import {
   callAiByProvider,
   getClaudeApiKey,
   getProvider,
+  logClaudeEnvForVercel,
+  maskApiKeyForLog,
   resolveProviderWithAvailableKeys,
   type AIProvider,
   type ChatMessage,
@@ -96,6 +98,16 @@ export async function sendSecretaryMessage(params: {
     throw new Error("CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)가 없습니다.");
   }
   if (provider === "notebook" && !notebookUrl) throw new Error("NOTEBOOK_LLM_URL이 없습니다.");
+
+  console.log("[AI secretary] provider resolved (Vercel Functions 로그)", {
+    providerRaw,
+    provider,
+    claudeKeyPresent: !!claudeKey,
+    claudeKeyMasked: maskApiKeyForLog(claudeKey),
+  });
+  if (provider === "claude") {
+    logClaudeEnvForVercel("sendSecretaryMessage:using_claude");
+  }
 
   const conversation = await prisma.$transaction(async (tx) => {
     const conv = await tx.aiConversation.upsert({

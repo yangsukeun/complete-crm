@@ -18,6 +18,32 @@ export function getClaudeApiKey(): string {
   return (process.env.CLAUDE_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "").trim();
 }
 
+/** Vercel Functions 로그용 — 전체 키는 절대 출력하지 않음 */
+export function maskApiKeyForLog(key: string): string {
+  const k = key.trim();
+  if (!k) return "(empty)";
+  if (k.length <= 12) return "***";
+  return `${k.slice(0, 8)}…${k.slice(-4)} (len=${k.length})`;
+}
+
+/**
+ * CLAUDE_API_KEY 등이 런타임에 로드되는지 확인 (Vercel 대시보드 → Functions 로그)
+ */
+export function logClaudeEnvForVercel(context: string): void {
+  const fromClaude = (process.env.CLAUDE_API_KEY ?? "").trim();
+  const fromAnthropic = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+  const effective = getClaudeApiKey();
+  console.log(`[AI assist-client][Claude][env] ${context}`, {
+    AI_PROVIDER: process.env.AI_PROVIDER ?? "(unset)",
+    CLAUDE_MODEL: process.env.CLAUDE_MODEL ?? "(unset, using default)",
+    NODE_ENV: process.env.NODE_ENV,
+    env_CLAUDE_API_KEY_set: fromClaude.length > 0,
+    env_ANTHROPIC_API_KEY_set: fromAnthropic.length > 0,
+    effective_key_present: effective.length > 0,
+    effective_key_masked: maskApiKeyForLog(effective),
+  });
+}
+
 /** 요청 프로바이더에 해당 API 키가 없으면, 서버 기본값·Claude 등 사용 가능한 쪽으로 폴백 */
 export function resolveProviderWithAvailableKeys(
   wanted: AIProvider,
@@ -147,6 +173,8 @@ function parseAnthropicApiError(status: number, errText: string): string {
  * @see https://docs.anthropic.com/en/api/messages
  */
 export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Promise<string> {
+  logClaudeEnvForVercel("callAnthropic:entry");
+
   const systemMessage = messages.find((m) => m.role === "system");
   const rest = messages.filter((m) => m.role !== "system");
   const anthropicMessages = rest.map((m) => ({
@@ -168,33 +196,93 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
 
   const headerKey = (process.env.CLAUDE_API_KEY ?? "").trim() || apiKey;
 
-  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": headerKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    console.log("[AI assist-client][Claude] stage: prepare", {
+      url: ANTHROPIC_MESSAGES_URL,
+      model,
+      messagesCount: anthropicMessages.length,
+      systemChars: systemPrompt.length,
+      headerKey_source: (process.env.CLAUDE_API_KEY ?? "").trim() ? "CLAUDE_API_KEY" : "param_apiKey",
+      headerKey_masked: maskApiKeyForLog(headerKey),
+    });
 
-  const errText = await res.text();
-  if (!res.ok) {
-    console.error("[AI assist-client] Anthropic error", res.status, errText);
-    throw new Error(parseAnthropicApiError(res.status, errText));
+    let res: Response;
+    try {
+      console.log("[AI assist-client][Claude] stage: fetch_start");
+      res = await fetch(ANTHROPIC_MESSAGES_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": headerKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+      });
+      console.log("[AI assist-client][Claude] stage: fetch_done", { ok: res.ok, status: res.status });
+    } catch (fetchErr) {
+      console.error("[AI assist-client][Claude] stage: fetch_threw", {
+        name: fetchErr instanceof Error ? fetchErr.name : typeof fetchErr,
+        message: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+        stack: fetchErr instanceof Error ? fetchErr.stack : undefined,
+      });
+      throw fetchErr;
+    }
+
+    const errText = await res.text();
+
+    if (!res.ok) {
+      console.error("[AI assist-client][Claude] stage: http_error", {
+        status: res.status,
+        statusText: res.statusText,
+        bodyPreview: errText.length > 800 ? `${errText.slice(0, 800)}…` : errText,
+      });
+      throw new Error(parseAnthropicApiError(res.status, errText));
+    }
+
+    let data: {
+      content?: { type?: string; text?: string }[];
+      stop_reason?: string;
+    };
+    try {
+      data = JSON.parse(errText) as {
+        content?: { type?: string; text?: string }[];
+        stop_reason?: string;
+      };
+    } catch (parseErr) {
+      console.error("[AI assist-client][Claude] stage: json_parse_failed", {
+        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        rawPreview: errText.length > 400 ? `${errText.slice(0, 400)}…` : errText,
+      });
+      throw new Error("Claude API 응답 JSON 파싱 실패");
+    }
+
+    const parts =
+      data.content
+        ?.filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
+        .map((c) => c.text) ?? [];
+    const text = parts.join("\n\n").trim();
+    if (!text) {
+      console.error("[AI assist-client][Claude] stage: empty_text", {
+        stop_reason: data.stop_reason,
+        contentBlocks: data.content?.length ?? 0,
+      });
+      throw new Error("Claude가 내용을 생성하지 못했습니다.");
+    }
+
+    console.log("[AI assist-client][Claude] stage: success", {
+      replyChars: text.length,
+      stop_reason: data.stop_reason,
+    });
+    return text;
+  } catch (e) {
+    console.error("[AI assist-client][Claude] callAnthropic failed (caught)", {
+      isError: e instanceof Error,
+      name: e instanceof Error ? e.name : undefined,
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
+    throw e;
   }
-
-  const data = JSON.parse(errText) as {
-    content?: { type?: string; text?: string }[];
-    stop_reason?: string;
-  };
-  const parts =
-    data.content
-      ?.filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
-      .map((c) => c.text) ?? [];
-  const text = parts.join("\n\n").trim();
-  if (!text) throw new Error("Claude가 내용을 생성하지 못했습니다.");
-  return text;
 }
 
 export async function callOpenAI(apiKey: string, messages: ChatMessage[]): Promise<string> {
@@ -268,8 +356,13 @@ export async function callAiByProvider(
   }
   if (provider === "claude") {
     if (!claudeKey) {
+      logClaudeEnvForVercel("callAiByProvider:claude_missing_key");
       throw new Error("CLAUDE_API_KEY(또는 ANTHROPIC_API_KEY)가 없습니다.");
     }
+    console.log("[AI assist-client] callAiByProvider → Claude", {
+      provider,
+      key_masked: maskApiKeyForLog(claudeKey),
+    });
     return callAnthropic(claudeKey, messages);
   }
   if (!notebookUrl) throw new Error("NOTEBOOK_LLM_URL이 없습니다.");
