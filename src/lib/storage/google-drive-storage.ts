@@ -29,20 +29,51 @@ function getServiceAccountCreds(): { client_email: string; private_key: string }
   );
 }
 
-/** `storeGoogleDrive`가 반환하는 링크 및 drive.google.com/open?id= 형태 */
+/**
+ * DB에 저장된 링크에서 Drive 파일 ID 추출.
+ * - https://drive.google.com/file/d/FILE_ID/view?usp=...
+ * - //drive.google.com/... (프로토콜 상대)
+ * - drive.google.com/... (스킴 없음)
+ * - /file/d/ID/... (경로만)
+ * - open?id=FILE_ID
+ */
 export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
-  const s = url.trim();
-  const m = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/.exec(s);
-  if (m) return m[1];
+  const raw = url.trim();
+  if (!raw) return null;
+
+  let s = raw;
+  if (s.startsWith("//")) s = `https:${s}`;
+  else if (!/^https?:\/\//i.test(s) && /drive\.google\.com/i.test(s)) s = `https://${s.replace(/^\/+/, "")}`;
+
+  const pathMatch = /drive\.google\.com\/file\/d\/([^/?#]+)/i.exec(s);
+  if (pathMatch) {
+    let seg = pathMatch[1].trim();
+    try {
+      seg = decodeURIComponent(seg);
+    } catch {
+      /* keep seg */
+    }
+    if (seg.length < 5) return null;
+    return seg;
+  }
+
   try {
     const u = new URL(s);
-    if (!u.hostname.endsWith("drive.google.com")) return null;
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host !== "drive.google.com") return null;
     const id = u.searchParams.get("id");
-    if (id && /^[a-zA-Z0-9_-]+$/.test(id)) return id;
+    if (!id) return null;
+    let decoded = id.trim();
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      /* keep decoded */
+    }
+    if (decoded.length < 5) return null;
+    return decoded;
   } catch {
-    /* invalid URL */
+    return null;
   }
-  return null;
 }
 
 /**
@@ -51,7 +82,11 @@ export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
  */
 export async function deleteFile(fileId: string): Promise<void> {
   const id = fileId?.trim();
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) return;
+  /** Drive ID는 보통 alnum + _- ; 과도하게 막으면 파싱 결과가 버려짐 */
+  if (!id || id.length < 5 || /[/\s#?&]/.test(id)) {
+    console.log("[storage] deleteFile 스킵(유효하지 않은 fileId)", { idPreview: id?.slice(0, 24) });
+    return;
+  }
 
   const hasCreds = Boolean(
     process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() ||
@@ -59,24 +94,31 @@ export async function deleteFile(fileId: string): Promise<void> {
         process.env.GOOGLE_PRIVATE_KEY?.trim())
   );
   if (!hasCreds) {
-    console.warn("[storage] Drive deleteFile 스킵(서비스 계정 없음):", id);
+    console.warn("[storage] deleteFile 스킵(서비스 계정 env 없음)", { fileId: id.slice(0, 16) });
     return;
   }
 
+  console.log("[storage] deleteFile API 호출", { fileId: id.slice(0, 12) + "…" });
   try {
     const { client_email, private_key } = getServiceAccountCreds();
+    /** 공유 드라이브·삭제에서 drive.file만으로 403 나는 경우 대비 (서비스 계정 전용) */
     const auth = new google.auth.JWT({
       email: client_email,
       key: private_key,
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
+      scopes: [
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive",
+      ],
     });
     const drive = google.drive({ version: "v3", auth });
     await drive.files.delete({
       fileId: id,
       supportsAllDrives: true,
     });
+    console.log("[storage] deleteFile 성공", { fileId: id.slice(0, 12) + "…" });
   } catch (e) {
-    console.error("[storage] Google Drive deleteFile 실패 (CRM 흐름은 유지):", id, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[storage] deleteFile 실패 (CRM 흐름은 유지)", { fileId: id.slice(0, 16), msg: msg.slice(0, 200) });
   }
 }
 

@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+
 function safeParseBoardAttachments(raw: string | null | undefined): { url: string; name: string }[] {
   try {
     const parsed = JSON.parse(raw || "[]") as unknown;
@@ -168,13 +170,33 @@ export async function DELETE(
     }
 
     const attachmentUrls = safeParseBoardAttachments(post.attachments).map((a) => a.url);
+    console.log("[board DELETE] 시작", {
+      postId: id,
+      attachmentCount: attachmentUrls.length,
+      rawAttachmentsLen: (post.attachments ?? "").length,
+    });
+    attachmentUrls.forEach((u, i) => {
+      const fid = parseGoogleDriveFileIdFromUrl(u);
+      console.log("[board DELETE] 첨부 URL 파싱", {
+        index: i,
+        urlPreview: u.slice(0, 96),
+        parsedFileId: fid ? `${fid.slice(0, 8)}…` : null,
+        skippedDrive: !fid,
+      });
+    });
+
     await prisma.boardPost.delete({ where: { id } });
+    console.log("[board DELETE] DB 게시글 삭제 완료", { postId: id });
+
     await Promise.all(
-      attachmentUrls.map((u) => {
+      attachmentUrls.map(async (u, i) => {
         const fid = parseGoogleDriveFileIdFromUrl(u);
-        return fid ? deleteFile(fid) : Promise.resolve();
+        if (!fid) return;
+        console.log("[board DELETE] deleteFile 호출", { index: i, fileIdPrefix: fid.slice(0, 12) });
+        await deleteFile(fid);
       })
     );
+    console.log("[board DELETE] Drive 정리 완료", { postId: id, triedUrls: attachmentUrls.length });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
