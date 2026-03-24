@@ -25,13 +25,24 @@ export async function DELETE(
 
     const me = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { id: true, role: true, currentProjectId: true, email: true },
+      select: {
+        id: true,
+        role: true,
+        currentProjectId: true,
+        email: true,
+      },
     });
     const role = (me?.role ?? session.user.role) as string | undefined;
+    const memberRow = await prisma.project.findFirst({
+      where: { id, users: { some: { id: session.user.id } } },
+      select: { id: true },
+    });
+    const isProjectMember = !!memberRow;
     const canDelete =
       isExecutive(role) ||
       isMasterEmail(me?.email ?? (session.user as any)?.email) ||
-      me?.currentProjectId === id;
+      me?.currentProjectId === id ||
+      isProjectMember;
 
     if (!canDelete) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

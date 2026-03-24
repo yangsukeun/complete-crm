@@ -27,6 +27,7 @@ import {
   Image,
   FolderOpen,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -254,7 +255,7 @@ export function AppNav() {
         { href: "/admin/logs", label: "업무일지 조회", icon: FileText },
         { href: "/admin/departments-positions", label: "부서·직책", icon: Layers },
         { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban },
-        { href: "/admin/deleted-projects", label: "삭제된 프로젝트", icon: FolderKanban },
+        { href: "/admin/trash", label: "삭제된 항목", icon: Trash2 },
         { href: "/admin/company", label: "회사 정보", icon: Building2 },
         { href: "/admin/settings/logo", label: "로고 설정", icon: Image },
       ]

@@ -341,7 +341,7 @@ export function AdminProjectsClient() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-muted-foreground text-sm">
-              삭제된 프로젝트입니다. 퇴사 등 이력 보존을 위해 관리자만 확인할 수 있습니다. 전체 목록은 <Link href="/admin/deleted-projects" className="text-primary underline">삭제된 프로젝트</Link>에서 볼 수 있습니다.
+              삭제된 프로젝트입니다. 퇴사 등 이력 보존을 위해 관리자만 확인할 수 있습니다. 전체 목록은 <Link href="/admin/trash" className="text-primary underline">삭제된 항목</Link>에서 볼 수 있습니다.
             </p>
             {deletedProjectsInBrand.length === 0 ? (
               <p className="text-muted-foreground text-sm">삭제된 프로젝트가 없습니다.</p>

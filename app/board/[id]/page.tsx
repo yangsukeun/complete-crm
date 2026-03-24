@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
+import { canUserViewBoardPost } from "@/lib/board-access";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardPostContent } from "./board-post-content";
 import { BoardPostComments } from "./board-post-comments";
@@ -27,9 +28,24 @@ export default async function BoardPostPage({
   const { id } = await params;
   const post = await prisma.boardPost.findUnique({
     where: { id },
-    include: { createdBy: { select: { name: true, position: true } } },
+    include: { createdBy: { select: { name: true, position: true, role: true } } },
   });
   if (!post) notFound();
+
+  const role = session.user.role ?? "";
+  if (
+    !canUserViewBoardPost(
+      {
+        deletedAt: post.deletedAt,
+        workspaceScope: post.workspaceScope,
+        createdById: post.createdById,
+      },
+      session.user.id,
+      role
+    )
+  ) {
+    notFound();
+  }
 
   const attachments = (() => {
     try {

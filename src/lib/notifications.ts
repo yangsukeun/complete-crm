@@ -11,7 +11,8 @@ export type NotificationTypeEnum =
   | "BOARD_MENTION"
   | "TASK_BODY_MENTION"
   | "CHAT_MESSAGE"
-  | "NOTICE_POSTED";
+  | "NOTICE_POSTED"
+  | "WORK_LOG_SUBMITTED";
 export type NotificationPriority = "high" | "medium" | "low";
 
 type CreateNotificationInput = {
@@ -32,6 +33,7 @@ const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriorit
   TASK_BODY_MENTION: "medium",
   CHAT_MESSAGE: "medium",
   NOTICE_POSTED: "high",
+  WORK_LOG_SUBMITTED: "high",
 };
 
 /**

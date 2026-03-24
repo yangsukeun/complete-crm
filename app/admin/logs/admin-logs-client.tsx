@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarIcon, Loader2, Lock, User } from "lucide-react";
@@ -35,6 +36,7 @@ type Employee = {
 };
 
 export function AdminLogsClient({ employees }: { employees: Employee[] }) {
+  const searchParams = useSearchParams();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [dateStr, setDateStr] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -69,6 +71,13 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
   useEffect(() => {
     loadLog();
   }, [loadLog]);
+
+  useEffect(() => {
+    const uid = searchParams.get("userId");
+    const d = searchParams.get("date");
+    if (uid && employees.some((e) => e.id === uid)) setSelectedUserId(uid);
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDateStr(d);
+  }, [searchParams, employees]);
 
   const selectedEmployee = employees.find((e: any) => e?.id === selectedUserId);
 

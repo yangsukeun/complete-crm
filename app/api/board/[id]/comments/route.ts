@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { canUserViewBoardPost } from "@/lib/board-access";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
@@ -21,8 +22,22 @@ export async function GET(
     }
 
     const { id: postId } = await params;
+    const role = (session.user as { role?: string }).role ?? "";
     const post = await prisma.boardPost.findUnique({ where: { id: postId } });
     if (!post) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (
+      !canUserViewBoardPost(
+        {
+          deletedAt: post.deletedAt,
+          workspaceScope: post.workspaceScope,
+          createdById: post.createdById,
+        },
+        session.user.id,
+        role
+      )
+    ) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -93,8 +108,22 @@ export async function POST(
     }
 
     const { id: postId } = await params;
+    const role = (session.user as { role?: string }).role ?? "";
     const post = await prisma.boardPost.findUnique({ where: { id: postId } });
     if (!post) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (
+      !canUserViewBoardPost(
+        {
+          deletedAt: post.deletedAt,
+          workspaceScope: post.workspaceScope,
+          createdById: post.createdById,
+        },
+        session.user.id,
+        role
+      )
+    ) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

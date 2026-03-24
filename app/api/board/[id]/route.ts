@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { canUserViewBoardPost } from "@/lib/board-access";
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
 
@@ -40,11 +41,26 @@ export async function GET(
     }
 
     const { id } = await params;
+    const role = (session.user as { role?: string }).role ?? "";
     const post = await prisma.boardPost.findUnique({
       where: { id },
-      include: { createdBy: { select: { name: true, position: true } } },
+      include: { createdBy: { select: { name: true, position: true, role: true } } },
     });
     if (!post) {
+      return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    if (
+      !canUserViewBoardPost(
+        {
+          deletedAt: post.deletedAt,
+          workspaceScope: post.workspaceScope,
+          createdById: post.createdById,
+        },
+        session.user.id,
+        role
+      )
+    ) {
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
 
@@ -53,8 +69,10 @@ export async function GET(
       title: post.title,
       description: post.description ?? "",
       category: post.category,
+      workspaceScope: post.workspaceScope,
       attachments: JSON.parse(post.attachments || "[]") as { url: string; name: string }[],
       createdAt: post.createdAt.toISOString(),
+      createdById: post.createdById,
       createdByName: post.createdBy?.name ?? "삭제된 사용자",
       createdByPosition: post.createdBy?.position ?? null,
     });
@@ -80,7 +98,22 @@ export async function PATCH(
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const role = (session.user as { role?: string }).role;
+    const role = (session.user as { role?: string }).role ?? "";
+    if (
+      post.deletedAt ||
+      !canUserViewBoardPost(
+        {
+          deletedAt: post.deletedAt,
+          workspaceScope: post.workspaceScope,
+          createdById: post.createdById,
+        },
+        session.user.id,
+        role
+      )
+    ) {
+      return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
+    }
+
     const isAdmin = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
     const isAuthor = post.createdById === session.user.id;
     if (!isAuthor && !isAdmin) {
@@ -163,40 +196,32 @@ export async function DELETE(
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const role = (session.user as { role?: string }).role;
+    const role = (session.user as { role?: string }).role ?? "";
+    if (
+      post.deletedAt ||
+      !canUserViewBoardPost(
+        {
+          deletedAt: post.deletedAt,
+          workspaceScope: post.workspaceScope,
+          createdById: post.createdById,
+        },
+        session.user.id,
+        role
+      )
+    ) {
+      return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
+    }
+
     const isAdmin = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
     if (post.createdById !== session.user.id && !isAdmin) {
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 
-    const attachmentUrls = safeParseBoardAttachments(post.attachments).map((a) => a.url);
-    console.log("[board DELETE] 시작", {
-      postId: id,
-      attachmentCount: attachmentUrls.length,
-      rawAttachmentsLen: (post.attachments ?? "").length,
+    const now = new Date();
+    await prisma.boardPost.update({
+      where: { id },
+      data: { deletedAt: now, deletedById: session.user.id },
     });
-    attachmentUrls.forEach((u, i) => {
-      const fid = parseGoogleDriveFileIdFromUrl(u);
-      console.log("[board DELETE] 첨부 URL 파싱", {
-        index: i,
-        urlPreview: u.slice(0, 96),
-        parsedFileId: fid ? `${fid.slice(0, 8)}…` : null,
-        skippedDrive: !fid,
-      });
-    });
-
-    await prisma.boardPost.delete({ where: { id } });
-    console.log("[board DELETE] DB 게시글 삭제 완료", { postId: id });
-
-    await Promise.all(
-      attachmentUrls.map(async (u, i) => {
-        const fid = parseGoogleDriveFileIdFromUrl(u);
-        if (!fid) return;
-        console.log("[board DELETE] deleteFile 호출", { index: i, fileIdPrefix: fid.slice(0, 12) });
-        await deleteFile(fid);
-      })
-    );
-    console.log("[board DELETE] Drive 정리 완료", { postId: id, triedUrls: attachmentUrls.length });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

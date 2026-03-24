@@ -110,6 +110,7 @@ enum NotificationType {
   TASK_BODY_MENTION  // 업무 본문에서 @멘션
   CHAT_MESSAGE       // 채팅 메시지
   NOTICE_POSTED      // 공지 등록
+  WORK_LOG_SUBMITTED // 업무일지 제출
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
@@ -164,6 +165,7 @@ model User {
   quotations            Quotation[]
   announcements         Announcement[]
   boardPosts            BoardPost[]
+  boardPostsDeletedByMe BoardPost[]       @relation("BoardPostDeletedBy")
   boardPostComments    BoardPostComment[]
   accessLogs            AccessLog[]
   activityLogs          ActivityLog[]
@@ -501,13 +503,19 @@ model BoardPost {
   description String?           @default("")
   category    String             // "COMPANY" | "TRAINING"
   attachments String            @default("[]") // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
+  workspaceScope WorkspaceScope @default(TEAM) // PERSONAL: 임원·관리자 개인 자료(직원 목록에서 숨김)
   createdById String
   createdBy   User              @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime          @default(now())
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?             @relation("BoardPostDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   comments    BoardPostComment[]
   @@index([createdAt])
   @@index([category])
   @@index([createdById])
+  @@index([deletedAt])
+  @@index([workspaceScope])
 }
 
 // 게시판 댓글 (멘션된 사용자 ID 배열 저장 → 알림 발송)

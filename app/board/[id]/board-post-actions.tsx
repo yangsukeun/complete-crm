@@ -135,7 +135,7 @@ export function BoardPostActions({
   };
 
   const handleDelete = async () => {
-    if (!confirm("이 자료를 삭제하시겠습니까?")) return;
+    if (!confirm("이 자료를 삭제(숨김)할까요? 관리자는 휴지통에서 복원하거나 영구 삭제할 수 있습니다.")) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/board/${postId}`, { method: "DELETE" });

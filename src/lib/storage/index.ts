@@ -21,9 +21,10 @@ export function resolveStorageProvider(): StorageProviderId {
     if (raw === "local") return "local";
   }
 
-  /** Vercel: 100MB 이하 가벼운 파일은 Drive 우선(설정 시). Blob은 명시 토큰 있을 때만 auto에서 사용 */
+  /** auto: 서비스 계정+폴더 설정 시 어디서나 Drive 우선(통일) */
+  if (canUseGoogleDrive()) return "google-drive";
+
   if (process.env.VERCEL) {
-    if (canUseGoogleDrive()) return "google-drive";
     if (canUseWebdav()) return "webdav";
     if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) return "vercel-blob";
     return "vercel-blob";

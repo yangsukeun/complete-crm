@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { extractTaskStatusMarkers, getOrCreateDailyWorkLog, stripTaskStatusMarkers } from "@/lib/activity-log";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { format } from "date-fns";
 
 /**
@@ -21,10 +22,11 @@ export async function GET(req: Request) {
     const targetUserId = searchParams.get("userId") ?? null;
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    /** 직원은 본인만; 팀장도 타인 일지 조회 불가. 임원·관리자만 userId 지정 가능 */
     const userId = targetUserId && isAdmin ? targetUserId : session.user.id;
 
     if (targetUserId && !isAdmin) {
-      return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+      return NextResponse.json({ error: "다른 직원의 업무일지는 조회할 수 없습니다." }, { status: 403 });
     }
 
     const log = await getOrCreateDailyWorkLog(userId, dateStr);
@@ -78,12 +80,39 @@ export async function PATCH(req: Request) {
       const cleaned = stripTaskStatusMarkers(body.content ?? "").trimEnd();
       data.content = preservedMarkers ? `${cleaned}\n\n${preservedMarkers}` : cleaned;
     }
+    const becameSubmitted =
+      body.status === "SUBMITTED" && existing.status !== "SUBMITTED";
     if (body.status === "DRAFT" || body.status === "SUBMITTED") data.status = body.status;
 
     const updated = await prisma.dailyWorkLog.update({
       where: { id: existing.id },
       data,
     });
+
+    if (becameSubmitted) {
+      const submitter = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { name: true },
+      });
+      const name = submitter?.name?.trim() || "직원";
+      const link = `/admin/logs?userId=${encodeURIComponent(session.user.id)}&date=${encodeURIComponent(dateStr)}`;
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
+        select: { id: true },
+      });
+      await Promise.all(
+        admins.map((a) =>
+          createNotificationWithOptions({
+            userId: a.id,
+            type: "WORK_LOG_SUBMITTED",
+            message: `${name}님이 업무일지를 제출했습니다`,
+            link,
+            actorId: session.user.id,
+            priority: "high",
+          })
+        )
+      );
+    }
 
     return NextResponse.json({
       id: updated.id,

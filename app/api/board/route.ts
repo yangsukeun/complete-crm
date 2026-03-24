@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { boardVisibilityWhere } from "@/lib/board-access";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -25,6 +26,8 @@ function safeParseAttachments(raw: string | null | undefined): { url: string; na
   }
 }
 
+const workspaceScopeSchema = z.enum(["TEAM", "PERSONAL"]);
+
 const createSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.preprocess(
@@ -32,6 +35,7 @@ const createSchema = z.object({
     z.string().max(50000)
   ),
   category: categorySchema,
+  workspaceScope: workspaceScopeSchema.optional().default("TEAM"),
   attachments: z.preprocess(
     (v) => (Array.isArray(v) ? v : []),
     z
@@ -54,12 +58,15 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
+    const role = (session.user as { role?: string }).role ?? "";
+    const vis = boardVisibilityWhere(session.user.id, role);
+    const where =
+      category && (category === "COMPANY" || category === "TRAINING")
+        ? { AND: [vis, { category: category as "COMPANY" | "TRAINING" }] }
+        : vis;
 
     const list = await prisma.boardPost.findMany({
-      where:
-        category && (category === "COMPANY" || category === "TRAINING")
-          ? { category }
-          : undefined,
+      where,
       orderBy: { createdAt: "desc" },
       take: 100,
       select: {
@@ -67,6 +74,7 @@ export async function GET(req: Request) {
         title: true,
         description: true,
         category: true,
+        workspaceScope: true,
         attachments: true,
         createdAt: true,
         createdById: true,
@@ -85,6 +93,7 @@ export async function GET(req: Request) {
         createdById: p.createdById,
         createdByName: p.createdBy?.name ?? "삭제된 사용자",
         createdByPosition: p.createdBy?.position ?? null,
+        workspaceScope: p.workspaceScope,
       }))
     );
   } catch (e) {
@@ -128,6 +137,7 @@ export async function POST(req: Request) {
         title: parsed.data.title.trim(),
         description: parsed.data.description.trim() || null,
         category: parsed.data.category,
+        workspaceScope: parsed.data.workspaceScope,
         attachments: JSON.stringify(attachments),
         createdById: session.user.id,
       },
@@ -136,6 +146,7 @@ export async function POST(req: Request) {
         title: true,
         description: true,
         category: true,
+        workspaceScope: true,
         attachments: true,
         createdAt: true,
       },
@@ -146,6 +157,7 @@ export async function POST(req: Request) {
       title: created.title,
       description: created.description ?? "",
       category: created.category,
+      workspaceScope: created.workspaceScope,
       createdAt: created.createdAt.toISOString(),
       attachments: safeParseAttachments(created.attachments),
     });

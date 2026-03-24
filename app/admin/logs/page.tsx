@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
@@ -28,16 +29,18 @@ export default async function AdminLogsPage() {
         title="업무일지 조회"
         description="직원을 선택하고 날짜를 지정하면 해당 날짜의 자동 생성된 업무일지를 볼 수 있습니다."
       />
-      <AdminLogsClient
-      employees={employees.map((e: any) => ({
-          id: e?.id ?? "",
-          name: e?.name ?? "",
-          email: e?.email ?? "",
-          department: e?.department ?? "",
-          position: e?.position ?? "",
-          role: e?.role ?? "",
-        }))}
-      />
+      <Suspense fallback={<p className="text-muted-foreground text-sm">불러오는 중...</p>}>
+        <AdminLogsClient
+          employees={employees.map((e: any) => ({
+            id: e?.id ?? "",
+            name: e?.name ?? "",
+            email: e?.email ?? "",
+            department: e?.department ?? "",
+            position: e?.position ?? "",
+            role: e?.role ?? "",
+          }))}
+        />
+      </Suspense>
     </div>
   );
 }

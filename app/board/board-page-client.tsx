@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { useWorkspaceStore } from "@/store/workspace-store";
 import { ContentBodyEditor } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import Image from "next/image";
@@ -51,6 +52,7 @@ type BoardItem = {
   title: string;
   description: string;
   category: string;
+  workspaceScope?: "TEAM" | "PERSONAL";
   attachments: AttachmentItem[];
   createdAt: string;
   createdById?: string;
@@ -134,6 +136,7 @@ export function BoardPageClient({
   const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -195,6 +198,7 @@ export function BoardPageClient({
           title: title.trim(),
           description: bodyContent.trim() || "",
           category,
+          workspaceScope: currentWorkspace === "MY" ? "PERSONAL" : "TEAM",
           attachments,
         }),
       });
@@ -287,7 +291,7 @@ export function BoardPageClient({
   };
 
   const handleDeleteBoard = async (id: string) => {
-    if (!confirm("이 자료를 삭제하시겠습니까?")) return;
+    if (!confirm("이 자료를 삭제(숨김)할까요? 관리자는 휴지통에서 복원하거나 영구 삭제할 수 있습니다.")) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/board/${id}`, { method: "DELETE" });
@@ -481,9 +485,16 @@ export function BoardPageClient({
                           )}
                         </div>
                       )}
-                      <span className="absolute right-2 top-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
-                        {CATEGORY_LABEL[b.category] ?? b.category}
-                      </span>
+                      <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+                        <span className="rounded bg-black/50 px-2 py-0.5 text-xs text-white">
+                          {CATEGORY_LABEL[b.category] ?? b.category}
+                        </span>
+                        {b.workspaceScope === "PERSONAL" && (
+                          <span className="rounded bg-violet-600/90 px-2 py-0.5 text-xs text-white">
+                            개인
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
