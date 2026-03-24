@@ -138,7 +138,10 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
   const auth = new google.auth.JWT({
     email: client_email,
     key: private_key,
-    scopes: ["https://www.googleapis.com/auth/drive.file"],
+    scopes: [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
+    ],
   });
   const drive = google.drive({ version: "v3", auth });
 
@@ -161,10 +164,11 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
     throw new Error("Drive 업로드 후 file id를 받지 못했습니다.");
   }
 
-  const anyoneReader =
-    process.env.GOOGLE_DRIVE_ANYONE_READER?.trim() === "1" ||
-    process.env.GOOGLE_DRIVE_ANYONE_READER?.trim()?.toLowerCase() === "true";
-  if (anyoneReader) {
+  /** CRM 본문·미리보기에서 <img>로 바로 쓰려면 "링크가 있는 모든 사용자" 읽기 필요 */
+  const skipPublic =
+    process.env.GOOGLE_DRIVE_SKIP_PUBLIC_PERMISSION?.trim() === "1" ||
+    process.env.GOOGLE_DRIVE_SKIP_PUBLIC_PERMISSION?.trim()?.toLowerCase() === "true";
+  if (!skipPublic) {
     try {
       await drive.permissions.create({
         fileId,
@@ -172,10 +176,16 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
         supportsAllDrives: true,
       });
     } catch (e) {
-      console.error("[storage] GOOGLE_DRIVE_ANYONE_READER permission 실패:", e);
+      console.error("[storage] Drive anyone reader permission 실패 (이미지 열람이 제한될 수 있음):", e);
     }
   }
 
-  const url = `https://drive.google.com/file/d/${fileId}/view`;
+  const mime = (input.mime || "").toLowerCase();
+  const isImage = mime.startsWith("image/");
+  /** 페이지 URL(/view)은 img src에 부적합 → 공개 이미지는 직접 표시 URL */
+  const url = isImage
+    ? `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
+    : `https://drive.google.com/file/d/${fileId}/view`;
+
   return { url, name: input.originalName, provider: "google-drive" };
 }

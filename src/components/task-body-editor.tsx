@@ -62,6 +62,26 @@ function stripTrailingJunkFromUrl(url: string): string {
   return url.replace(/[),.;>\]'"]+$/g, "");
 }
 
+/** 클립보드에서 이미지 파일만 추출 (Windows 캡처·스크린샷 붙여넣기 등) */
+function getClipboardImageFile(dt: DataTransfer): File | null {
+  if (dt.files?.length) {
+    for (let i = 0; i < dt.files.length; i++) {
+      const f = dt.files[i];
+      if (f.type.startsWith("image/")) return f;
+    }
+  }
+  if (dt.items?.length) {
+    for (let i = 0; i < dt.items.length; i++) {
+      const it = dt.items[i];
+      if (it.kind === "file" && it.type.startsWith("image/")) {
+        const f = it.getAsFile();
+        if (f) return f;
+      }
+    }
+  }
+  return null;
+}
+
 /** 클립보드 텍스트에서 단일 URL 추출 (줄바꿈 앞 첫 줄, 문장 속 URL도 시도) */
 function extractUrlFromPlainPaste(raw: string): string | null {
   const first = raw.trim().split(/\n/)[0]?.trim() ?? "";
@@ -308,12 +328,47 @@ export function TaskBodyEditor({
     }, AUTO_SAVE_DEBOUNCE_MS);
   }, [performSave]);
 
-  /* 캡처 단계: ProseMirror 기본 붙여넣기(인라인 링크)보다 먼저 처리해야 유튜브 임베드 블록이 들어감 */
+  /* 캡처 단계: 이미지 파일 → /api/upload 후 영구 URL 블록 삽입(blob URL 방지). URL만 붙일 때는 유튜브/링크 프리뷰 */
   const handlePasteCapture = useCallback(
     (e: React.ClipboardEvent) => {
       try {
         const dt = e.clipboardData;
         if (!dt) return;
+
+        const imageFile = getClipboardImageFile(dt);
+        if (imageFile) {
+          e.preventDefault();
+          e.stopPropagation();
+          const cur = editor.getTextCursorPosition();
+          const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+          void toast.promise(
+            (async () => {
+              const url = await uploadFile(imageFile);
+              if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
+              const block = {
+                type: "image" as const,
+                props: {
+                  url,
+                  name: imageFile.name?.replace(/\s+/g, "-") || "pasted-image.png",
+                  caption: "",
+                  showPreview: true,
+                },
+              };
+              if (isParagraphEffectivelyEmpty(refBlock)) {
+                editor.replaceBlocks([refBlock], [block as never]);
+              } else {
+                editor.insertBlocks([block as never], refBlock, "after");
+              }
+            })(),
+            {
+              loading: "이미지 업로드 중…",
+              success: "이미지를 넣었습니다.",
+              error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+            }
+          );
+          return;
+        }
+
         if (dt.files && dt.files.length > 0) return;
 
         const urlText = extractUrlFromPlainPaste(dt.getData("text/plain") ?? "");
@@ -339,7 +394,7 @@ export function TaskBodyEditor({
         // ignore
       }
     },
-    [editor]
+    [editor, uploadFile]
   );
 
   return (
