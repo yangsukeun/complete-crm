@@ -43,6 +43,7 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
   });
   const drive = google.drive({ version: "v3", auth });
 
+  /** 공유 드라이브(Team Drive) 내 폴더가 부모일 때 필수 — 없으면 404/403으로 업로드 실패 */
   const res = await drive.files.create({
     requestBody: {
       name: input.filename,
@@ -53,6 +54,7 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
       body: Readable.from(input.buffer),
     },
     fields: "id",
+    supportsAllDrives: true,
   });
 
   const fileId = res.data.id;
@@ -68,6 +70,7 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
       await drive.permissions.create({
         fileId,
         requestBody: { role: "reader", type: "anyone" },
+        supportsAllDrives: true,
       });
     } catch (e) {
       console.error("[storage] GOOGLE_DRIVE_ANYONE_READER permission 실패:", e);
