@@ -6,7 +6,6 @@ import {
   type ChatMessage,
   callAiByProvider,
   getClaudeApiKey,
-  getProvider,
   resolveProviderWithAvailableKeys,
 } from "@/lib/ai/assist-client";
 import { sendSecretaryMessage } from "@/lib/ai-secretary/run-chat";
@@ -79,8 +78,7 @@ export async function POST(req: Request) {
       // preferredAiProvider 컬럼 없을 수 있음
     }
 
-    const serverDefault = getProvider();
-    const providerRaw: AIProvider = requestedProvider ?? userPreferred ?? serverDefault;
+    const providerRaw: AIProvider = requestedProvider ?? userPreferred ?? "gemini";
 
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const openAiKey = process.env.OPENAI_API_KEY?.trim();

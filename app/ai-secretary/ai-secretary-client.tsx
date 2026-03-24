@@ -5,6 +5,13 @@ import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { todayYmdKst } from "@/lib/date-kst";
@@ -14,8 +21,14 @@ import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 type ConvRow = { id: string; dateKey: string; updatedAt: string; preview: string };
 type Msg = { id: string; role: string; content: string; createdAt: string };
 
+const AI_EXEC_LABELS = { gemini: "Gemini", claude: "Claude" } as const;
+
 export function AiSecretaryClient() {
   const { data: session } = useSession();
+  const canPickAiProvider =
+    session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
+  const [aiKeys, setAiKeys] = useState({ gemini: false, claude: false });
+  const [savedAiProvider, setSavedAiProvider] = useState<"gemini" | "claude">("gemini");
   const [conversations, setConversations] = useState<ConvRow[]>([]);
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -49,6 +62,59 @@ export function AiSecretaryClient() {
   useEffect(() => {
     void fetchList();
   }, [fetchList]);
+
+  useEffect(() => {
+    if (!canPickAiProvider) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [kRes, pRes] = await Promise.all([
+          fetch("/api/ai/providers", { cache: "no-store" }),
+          fetch("/api/profile/me", { cache: "no-store" }),
+        ]);
+        if (cancelled) return;
+        if (kRes.ok) {
+          const k = (await kRes.json()) as { gemini?: boolean; claude?: boolean };
+          setAiKeys({ gemini: !!k.gemini, claude: !!k.claude });
+        }
+        if (pRes.ok) {
+          const p = (await pRes.json()) as { preferredAiProvider?: string | null };
+          const pref = p.preferredAiProvider;
+          if (pref === "gemini" || pref === "claude") setSavedAiProvider(pref);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canPickAiProvider]);
+
+  const execAiChoices = useMemo(
+    () => (["gemini", "claude"] as const).filter((x) => aiKeys[x]),
+    [aiKeys]
+  );
+  const aiSelectValue =
+    execAiChoices.length > 0 && execAiChoices.includes(savedAiProvider)
+      ? savedAiProvider
+      : execAiChoices[0] ?? "gemini";
+
+  const onAiProviderChange = async (v: string) => {
+    if (v !== "gemini" && v !== "claude") return;
+    try {
+      const res = await fetch("/api/profile/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferredAiProvider: v }),
+      });
+      if (!res.ok) throw new Error("save");
+      setSavedAiProvider(v);
+      toast.success(`${AI_EXEC_LABELS[v]}(으)로 저장했습니다. 다음 대화부터 적용됩니다.`);
+    } catch {
+      toast.error("AI 설정 저장에 실패했습니다.");
+    }
+  };
 
   const fetchMessages = useCallback(async (dateKey: string) => {
     const seq = ++messagesFetchSeq.current;
@@ -181,9 +247,25 @@ export function AiSecretaryClient() {
             </CardContent>
           ) : (
             <>
-              <div className="flex items-center border-b px-4 py-2">
-                <span className="font-medium">{selectedDateKey}</span>
-                <span className="text-muted-foreground ml-2 text-sm">AI 비서</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="font-medium">{selectedDateKey}</span>
+                  <span className="text-muted-foreground text-sm">AI 비서</span>
+                </div>
+                {canPickAiProvider && execAiChoices.length > 0 && (
+                  <Select value={aiSelectValue} onValueChange={onAiProviderChange}>
+                    <SelectTrigger size="sm" className="h-8 w-[140px] border-gray-200">
+                      <SelectValue placeholder="모델" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {execAiChoices.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {AI_EXEC_LABELS[p]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2">
                 {loadingMsgs ? (

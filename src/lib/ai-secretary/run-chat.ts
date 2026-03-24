@@ -4,11 +4,12 @@ import prisma from "@/lib/prisma";
 import {
   callAiByProvider,
   getClaudeApiKey,
-  getProvider,
   logClaudeEnvForVercel,
   maskApiKeyForLog,
   resolveProviderWithAvailableKeys,
   CLAUDE_DEFAULT_MODEL,
+  GEMINI_API_BASE,
+  GEMINI_MODEL_FALLBACKS,
   type AIProvider,
   type ChatMessage,
 } from "@/lib/ai/assist-client";
@@ -298,6 +299,159 @@ async function callAnthropicWithToolLoop(
   return "요청을 처리하지 못했습니다.";
 }
 
+/** Gemini generateContent + function calling (일정 등록·업무 생성 — Claude와 동일 도구) */
+async function callGeminiWithToolLoop(
+  apiKey: string,
+  systemPrompt: string,
+  history: { role: string; content: string }[],
+  userId: string
+): Promise<string> {
+  const declarations = SECRETARY_TOOLS.map((t) => ({
+    name: t.name,
+    description: t.description,
+    parameters: t.input_schema as unknown as Record<string, unknown>,
+  }));
+
+  const contents: { role: "user" | "model"; parts: Record<string, unknown>[] }[] = [];
+  for (const m of history) {
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    const role = m.role === "user" ? ("user" as const) : ("model" as const);
+    const text = m.content ?? "";
+    if (role === "model" && !text.trim()) continue;
+    if (role === "user" && !text.trim()) continue;
+    contents.push({ role, parts: [{ text }] });
+  }
+
+  const envModel = process.env.GEMINI_MODEL?.trim();
+  const tryModels = envModel
+    ? [envModel, ...GEMINI_MODEL_FALLBACKS.filter((mod) => mod !== envModel)]
+    : [...GEMINI_MODEL_FALLBACKS];
+
+  const ACTION_KEYWORDS = [
+    "일정", "스케줄", "회의", "약속", "캘린더", "등록해", "추가해", "잡아줘", "잡아 줘",
+    "업무", "태스크", "task", "할 일", "할일", "생성해", "만들어",
+  ];
+
+  const MAX_LOOPS = 5;
+  for (let loop = 0; loop < MAX_LOOPS; loop++) {
+    let toolChoiceMode = "AUTO";
+    if (loop === 0) {
+      const lastUser = [...history].reverse().find((m) => m.role === "user");
+      const msgText = lastUser?.content ?? "";
+      if (ACTION_KEYWORDS.some((k) => msgText.includes(k))) {
+        toolChoiceMode = "ANY";
+      }
+    }
+
+    const maxOut = Math.max(256, Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 2048);
+    const body: Record<string, unknown> = {
+      contents,
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      tools: [{ functionDeclarations: declarations }],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: toolChoiceMode,
+        },
+      },
+      generationConfig: {
+        maxOutputTokens: maxOut,
+        temperature: 0.3,
+      },
+    };
+
+    type CandPart = {
+      text?: string;
+      functionCall?: { name?: string; args?: Record<string, unknown> };
+    };
+    type GeminiGenResponse = {
+      candidates?: { content?: { parts?: CandPart[] }; finishReason?: string }[];
+      promptFeedback?: { blockReason?: string };
+    };
+    let data: GeminiGenResponse | null = null;
+    let last404 = "";
+
+    for (let mi = 0; mi < tryModels.length; mi++) {
+      const model = tryModels[mi];
+      const url = `${GEMINI_API_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const raw = await res.text();
+      if (res.status === 404 && mi < tryModels.length - 1) {
+        last404 = raw;
+        continue;
+      }
+      if (!res.ok) {
+        throw new Error(`Gemini API 오류 (${res.status}): ${raw.slice(0, 400)}`);
+      }
+      data = JSON.parse(raw) as GeminiGenResponse;
+      break;
+    }
+    if (!data) {
+      throw new Error(`Gemini 모델을 찾을 수 없습니다: ${last404.slice(0, 200)}`);
+    }
+
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`Gemini 요청 차단: ${data.promptFeedback.blockReason}`);
+    }
+
+    const cand = data.candidates?.[0];
+    const parts = cand?.content?.parts ?? [];
+    const functionCalls = parts
+      .map((p) => p.functionCall)
+      .filter((fc): fc is NonNullable<typeof fc> & { name: string } => Boolean(fc?.name));
+    const texts = parts
+      .map((p) => p.text)
+      .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+
+    if (functionCalls.length > 0) {
+      contents.push({
+        role: "model",
+        parts: functionCalls.map((fc) => ({
+          functionCall: {
+            name: fc.name,
+            args:
+              fc.args && typeof fc.args === "object" && !Array.isArray(fc.args)
+                ? fc.args
+                : {},
+          },
+        })),
+      });
+
+      const resultParts = await Promise.all(
+        functionCalls.map(async (fc) => {
+          const name = fc.name;
+          const args =
+            fc.args && typeof fc.args === "object" && !Array.isArray(fc.args)
+              ? (fc.args as Record<string, unknown>)
+              : {};
+          const out = await executeTool(name, args, userId);
+          return {
+            functionResponse: {
+              name,
+              response: { result: out },
+            },
+          };
+        })
+      );
+
+      contents.push({ role: "user", parts: resultParts });
+      continue;
+    }
+
+    const joined = texts.join("\n\n").trim();
+    if (joined) return joined;
+    if (cand?.finishReason === "MAX_TOKENS") {
+      return "응답이 길이 제한으로 잘렸습니다. 더 짧게 다시 요청해 주세요.";
+    }
+    return "응답을 생성하지 못했습니다.";
+  }
+
+  return "요청을 처리하지 못했습니다.";
+}
+
 export async function resolveAiProviderForUser(userId: string): Promise<AIProvider> {
   let userPreferred: AIProvider | null = null;
   try {
@@ -310,7 +464,8 @@ export async function resolveAiProviderForUser(userId: string): Promise<AIProvid
   } catch {
     /* preferredAiProvider 없을 수 있음 */
   }
-  return userPreferred ?? getProvider();
+  /** 직원 기본: Gemini (null/미설정 시). 임원·관리자만 DB에 claude 등 저장 */
+  return userPreferred ?? "gemini";
 }
 
 function validateDateKey(dateKey: string): void {
@@ -378,7 +533,7 @@ export async function sendSecretaryMessage(params: {
   const trimmed = message.trim();
   if (!trimmed) throw new Error("메시지가 비어 있습니다.");
 
-  /** 라우트에서 `getSecretaryProviderFromEnv()`로 넘기면 DB `preferredAiProvider`보다 서버 설정이 우선 */
+  /** `requestedProvider`가 있으면(테스트 등) DB보다 우선. 일반 요청은 DB·직원 기본 gemini */
   const providerRaw = requestedProvider ?? (await resolveAiProviderForUser(userId));
 
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
@@ -451,7 +606,6 @@ export async function sendSecretaryMessage(params: {
 
   let reply: string;
   if (provider === "claude") {
-    // Claude: tool use 루프 (일정 등록, 업무 생성 실제 실행)
     const toolMessages: AnthropicMessage[] = history
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
@@ -462,8 +616,13 @@ export async function sendSecretaryMessage(params: {
       toolMessages,
       userId
     );
+  } else if (provider === "gemini") {
+    const gKey = geminiKey!;
+    const flatHistory = history
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: m.content }));
+    reply = await callGeminiWithToolLoop(gKey, systemContent, flatHistory, userId);
   } else {
-    // 기타 프로바이더: 일반 텍스트 응답
     const chatMessages: ChatMessage[] = [{ role: "system", content: systemContent }];
     for (const m of history) {
       if (m.role === "user" || m.role === "assistant") {

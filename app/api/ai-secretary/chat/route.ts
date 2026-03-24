@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import { getSecretaryProviderFromEnv } from "@/lib/ai/assist-client";
 import { sendSecretaryMessage } from "@/lib/ai-secretary/run-chat";
 
 /** 서버 환경변수 미설정(callAiByProvider 직전 검사) — 넓은 includes로 API 본문 오류가 503 되는 것 방지 */
@@ -27,25 +26,20 @@ export async function POST(req: Request) {
     const dateKey = typeof body.dateKey === "string" ? body.dateKey.trim() : "";
     const message = typeof body.message === "string" ? body.message : "";
 
-    /** 클라이언트 body 무시 — Vercel `AI_PROVIDER` (기본 claude)만 사용 */
-    const requestedProvider = getSecretaryProviderFromEnv();
-
     const role = session.user.role ?? "USER";
 
     console.log("[ai-secretary/chat] POST (Vercel Functions 로그)", {
       userId: session.user.id,
       dateKey,
-      serverProvider: requestedProvider,
-      AI_PROVIDER_env: process.env.AI_PROVIDER ?? "(unset → default claude)",
       messageLen: typeof message === "string" ? message.length : 0,
     });
 
+    /** DB `preferredAiProvider` + 직원 기본 gemini, 임원은 Claude/Gemini 선택값 유지 */
     const { reply } = await sendSecretaryMessage({
       userId: session.user.id,
       role,
       dateKey,
       message,
-      requestedProvider,
     });
 
     return NextResponse.json({ text: reply });

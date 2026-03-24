@@ -74,7 +74,20 @@ export async function storeUploadedFile(input: StoreFileInput): Promise<StoreFil
       result = await storeVercelBlob(input);
       break;
     case "google-drive":
-      result = await storeGoogleDrive(input);
+      try {
+        result = await storeGoogleDrive(input);
+      } catch (e) {
+        console.error("[storage] Google Drive 업로드 실패, 폴백:", e);
+        if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
+          result = await storeVercelBlob(input);
+        } else if (canUseWebdav()) {
+          result = await storeWebdav(input);
+        } else if (!process.env.VERCEL) {
+          result = await storeLocalFs(input);
+        } else {
+          throw e instanceof Error ? e : new Error(String(e));
+        }
+      }
       break;
     case "webdav":
       result = await storeWebdav(input);

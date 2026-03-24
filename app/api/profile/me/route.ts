@@ -154,7 +154,8 @@ export async function GET() {
 
 const badgePresetSchema = z.enum(["default", "violet", "amber", "emerald", "blue"]).optional().nullable();
 
-const aiProviderSchema = z.enum(["gemini", "openai", "notebook", "claude"]).optional().nullable();
+/** AI 비서: 임원·관리자만 Claude/Gemini 전환 (일반 직원은 스키마에 없어 PATCH로 변경 불가) */
+const executiveAiProviderSchema = z.enum(["gemini", "claude"]).optional().nullable();
 
 const updateByUserSchema = z.object({
   name: z.string().min(1).optional(),
@@ -169,10 +170,10 @@ const updateByUserSchema = z.object({
   department: z.string().optional().nullable(),
   position: z.string().optional().nullable(),
   badgePreset: badgePresetSchema,
-  preferredAiProvider: aiProviderSchema,
 });
 
 const updateByAdminSchema = updateByUserSchema.extend({
+  preferredAiProvider: executiveAiProviderSchema,
   joinDate: z.string().optional(),
   leaveRemaining: z.number().min(0).optional(),
   manualDeduction: z.number().min(0).optional(), // 실제 사용한 일수 (최초 1회만)
@@ -227,8 +228,12 @@ export async function PATCH(req: Request) {
     if (parsed.data.department !== undefined) data.department = parsed.data.department?.trim() || null;
     if (parsed.data.position !== undefined) data.position = parsed.data.position?.trim() || null;
     if (isAdmin && (parsed.data as any).joinDate != null) data.joinDate = new Date((parsed.data as any).joinDate);
-    if (parsed.data.preferredAiProvider !== undefined)
-      data.preferredAiProvider = parsed.data.preferredAiProvider ?? null;
+    if (isAdmin) {
+      const adminPatch = parsed.data as z.infer<typeof updateByAdminSchema>;
+      if (adminPatch.preferredAiProvider !== undefined) {
+        data.preferredAiProvider = adminPatch.preferredAiProvider ?? null;
+      }
+    }
 
     const selectBase = {
       id: true,

@@ -2,9 +2,9 @@
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+export const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 /** Google이 모델 ID를 바꾸는 경우가 있어, 404 시 아래 순으로 한 번씩 재시도 */
-const GEMINI_MODEL_FALLBACKS = ["gemini-1.5-flash", "gemini-2.5-flash-lite"] as const;
+export const GEMINI_MODEL_FALLBACKS = ["gemini-1.5-flash", "gemini-2.5-flash-lite"] as const;
 export const GEMINI_DEFAULT_MODEL = "gemini-1.5-flash";
 /** `CLAUDE_MODEL` 미설정 시 기본 (Anthropic 콘솔 모델 ID) */
 export const CLAUDE_DEFAULT_MODEL = "claude-sonnet-4-6";

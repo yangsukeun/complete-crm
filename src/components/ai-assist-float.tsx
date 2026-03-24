@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -33,7 +34,10 @@ const PROVIDER_LABELS: Record<AIProvider, string> = {
 };
 
 export function AIAssistFloat() {
+  const { data: session } = useSession();
   const ctx = useAIAssistTarget();
+  const canPickAiProvider =
+    session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -94,15 +98,17 @@ export function AIAssistFloat() {
             notebook: !!p.notebook,
           };
           setProviders(next);
-          const available = (["gemini", "openai", "claude", "notebook"] as const).filter(
-            (k: any) => (next as any)[k]
-          );
           const pref = profile?.preferredAiProvider;
-          const chosen =
-            pref === "gemini" || pref === "openai" || pref === "notebook" || pref === "claude"
-              ? (available.includes(pref) ? pref : available[0])
-              : available[0];
-          if (chosen) setProvider(chosen);
+          const execChoices = (["gemini", "claude"] as const).filter((k) => (next as any)[k]);
+          if (canPickAiProvider) {
+            const chosen =
+              pref === "gemini" || pref === "claude"
+                ? execChoices.includes(pref)
+                  ? pref
+                  : execChoices[0]
+                : execChoices[0];
+            if (chosen) setProvider(chosen);
+          }
         }
       } catch {
         // timeout or network: leave providers as-is
@@ -114,7 +120,7 @@ export function AIAssistFloat() {
       clearTimeout(timeout);
       ac.abort();
     };
-  }, [open]);
+  }, [open, canPickAiProvider]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -195,7 +201,8 @@ export function AIAssistFloat() {
   };
 
   const onProviderChange = async (value: string) => {
-    const v = value as AIProvider;
+    if (value !== "gemini" && value !== "claude") return;
+    const v = value as "gemini" | "claude";
     setProvider(v);
     try {
       const res = await fetch("/api/profile/me", {
@@ -210,11 +217,11 @@ export function AIAssistFloat() {
     }
   };
 
-  const availableProviders = (["gemini", "openai", "claude", "notebook"] as const).filter(
-    (k: any) => (providers as any)[k]
-  );
-
-  const selectValue = provider ?? availableProviders[0];
+  const execProviderChoices = (["gemini", "claude"] as const).filter((k) => providers[k]);
+  const selectValue =
+    canPickAiProvider && execProviderChoices.length > 0
+      ? (provider ?? execProviderChoices[0])
+      : undefined;
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
@@ -232,15 +239,15 @@ export function AIAssistFloat() {
                 <Sparkles className="size-4" />
               </div>
               <span className="truncate font-semibold text-gray-900">AI 비서</span>
-              {availableProviders.length > 0 && selectValue && (
+              {canPickAiProvider && execProviderChoices.length > 0 && selectValue && (
                 <Select value={selectValue} onValueChange={onProviderChange}>
                   <SelectTrigger size="sm" className="h-8 w-auto min-w-0 max-w-[130px] border-gray-200">
                     <SelectValue placeholder="AI 선택" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableProviders.map((p: any) => (
+                    {execProviderChoices.map((p) => (
                       <SelectItem key={p} value={p}>
-                        {(PROVIDER_LABELS as any)[p]}
+                        {PROVIDER_LABELS[p]}
                       </SelectItem>
                     ))}
                   </SelectContent>

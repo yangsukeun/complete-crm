@@ -9,7 +9,6 @@ import {
   type ChatMessage,
   callAiByProvider,
   getClaudeApiKey,
-  getProvider,
   resolveProviderWithAvailableKeys,
 } from "@/lib/ai/assist-client";
 import { todayYmdKst } from "@/lib/date-kst";
@@ -149,7 +148,6 @@ export async function POST(req: Request) {
       // ignore
     }
 
-    const serverDefault = getProvider();
     const providerRaw: AIProvider =
       (typeof body.provider === "string" &&
       (body.provider === "gemini" ||
@@ -157,7 +155,7 @@ export async function POST(req: Request) {
         body.provider === "notebook" ||
         body.provider === "claude")
         ? body.provider
-        : null) ?? userPreferred ?? serverDefault;
+        : null) ?? userPreferred ?? "gemini";
 
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const openAiKey = process.env.OPENAI_API_KEY?.trim();
