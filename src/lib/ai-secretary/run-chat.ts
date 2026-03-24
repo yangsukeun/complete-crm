@@ -7,6 +7,7 @@ import {
   logClaudeEnvForVercel,
   maskApiKeyForLog,
   resolveProviderWithAvailableKeys,
+  shouldFallbackGeminiToClaude,
   CLAUDE_DEFAULT_MODEL,
   GEMINI_API_BASE,
   GEMINI_MODEL_FALLBACKS,
@@ -476,10 +477,7 @@ function validateDateKey(dateKey: string): void {
 
 type KeyFlags = { gemini: boolean; openai: boolean; claude: boolean; notebook: boolean };
 
-/**
- * 라우트에서 `AI_PROVIDER`로 고정된 경우: 다른 프로바이더로 폴백하지 않음.
- * (폴백 시 Gemini로만 나가고 Claude 호출이 안 되는 문제·잘못된 503/502 혼선 방지)
- */
+/** 요청 프로바이더에 필요한 API 키 존재 여부 (Gemini 503 등은 sendSecretaryMessage에서 Claude로 폴백) */
 function assertKeysForProvider(provider: AIProvider, keys: KeyFlags): void {
   if (provider === "gemini" && !keys.gemini) throw new Error("GEMINI_API_KEY가 없습니다.");
   if (provider === "openai" && !keys.openai) throw new Error("OPENAI_API_KEY가 없습니다.");
@@ -547,7 +545,6 @@ export async function sendSecretaryMessage(params: {
     notebook: !!notebookUrl,
   };
 
-  /** 서버가 명시한 프로바이더(라우트에서 항상 전달): 폴백 없이 해당 API만 사용 → Claude 미호출 버그 제거 */
   const provider: AIProvider =
     requestedProvider != null
       ? providerRaw
@@ -621,7 +618,29 @@ export async function sendSecretaryMessage(params: {
     const flatHistory = history
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content }));
-    reply = await callGeminiWithToolLoop(gKey, systemContent, flatHistory, userId);
+    const toolMessagesAnthropic: AnthropicMessage[] = history
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    try {
+      reply = await callGeminiWithToolLoop(gKey, systemContent, flatHistory, userId);
+    } catch (e) {
+      if (!shouldFallbackGeminiToClaude(e)) throw e;
+      if (!claudeKey) throw e;
+      console.warn("[AI secretary] Gemini failed; falling back to Claude (로그만)");
+      try {
+        reply = await callAnthropicWithToolLoop(
+          getClaudeApiKey(),
+          systemContent,
+          toolMessagesAnthropic,
+          userId
+        );
+      } catch (e2) {
+        console.error("[AI secretary] Claude fallback failed", e2);
+        throw new Error(
+          "지금은 AI 응답을 생성할 수 없습니다. 잠시 후 다시 시도해 주세요."
+        );
+      }
+    }
   } else {
     const chatMessages: ChatMessage[] = [{ role: "system", content: systemContent }];
     for (const m of history) {

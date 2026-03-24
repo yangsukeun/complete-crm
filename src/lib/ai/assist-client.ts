@@ -98,6 +98,32 @@ function getClaudeMaxTokensFromEnv(): number {
   return Math.max(1, Math.floor(n));
 }
 
+/**
+ * Gemini 일시 장애(429·5xx)·네트워크 오류 시 Claude로 재시도할지 판별.
+ * 인증/요청 오류(4xx)·안전 필터·모델 없음 등은 폴백하지 않음.
+ */
+export function shouldFallbackGeminiToClaude(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (
+    /Gemini 요청 차단|Gemini 응답 중단|Gemini 모델을 찾을 수 없습니다|Gemini가 내용을 생성하지 못했습니다/.test(
+      msg
+    )
+  ) {
+    return false;
+  }
+  const m = /Gemini API 오류 \((\d+)\)/.exec(msg);
+  if (m) {
+    const code = Number(m[1]);
+    if (code === 429) return true;
+    if (code >= 500 && code < 600) return true;
+    return false;
+  }
+  if (/Failed to fetch|NetworkError|ECONNRESET|ETIMEDOUT|fetch failed|ENOTFOUND|socket hang up/i.test(msg)) {
+    return true;
+  }
+  return false;
+}
+
 function parseGeminiApiError(status: number, errText: string): string {
   try {
     const j = JSON.parse(errText) as { error?: { message?: string; status?: string } };
@@ -372,7 +398,24 @@ export async function callAiByProvider(
   const notebookUrl = process.env.NOTEBOOK_LLM_URL?.trim();
   if (provider === "gemini") {
     if (!geminiKey) throw new Error("GEMINI_API_KEY가 없습니다.");
-    return callGemini(geminiKey, messages);
+    try {
+      return await callGemini(geminiKey, messages);
+    } catch (e) {
+      if (!shouldFallbackGeminiToClaude(e)) throw e;
+      if (!claudeKey) {
+        console.warn("[AI assist-client] Gemini failed; no Claude key for fallback");
+        throw e;
+      }
+      console.warn("[AI assist-client] Gemini failed; falling back to Claude (로그만, 사용자에게는 모델명 미노출)");
+      try {
+        return await callAnthropic(claudeKey, messages);
+      } catch (e2) {
+        console.error("[AI assist-client] Claude fallback failed", e2);
+        throw new Error(
+          "지금은 AI 응답을 생성할 수 없습니다. 잠시 후 다시 시도해 주세요."
+        );
+      }
+    }
   }
   if (provider === "openai") {
     if (!openAiKey) throw new Error("OPENAI_API_KEY가 없습니다.");
