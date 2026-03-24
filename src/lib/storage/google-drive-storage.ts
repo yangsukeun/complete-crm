@@ -29,6 +29,57 @@ function getServiceAccountCreds(): { client_email: string; private_key: string }
   );
 }
 
+/** `storeGoogleDrive`가 반환하는 링크 및 drive.google.com/open?id= 형태 */
+export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
+  const s = url.trim();
+  const m = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/.exec(s);
+  if (m) return m[1];
+  try {
+    const u = new URL(s);
+    if (!u.hostname.endsWith("drive.google.com")) return null;
+    const id = u.searchParams.get("id");
+    if (id && /^[a-zA-Z0-9_-]+$/.test(id)) return id;
+  } catch {
+    /* invalid URL */
+  }
+  return null;
+}
+
+/**
+ * 게시판 등에서 첨부 URL이 구글 드라이브 파일이면 삭제 시도.
+ * 실패해도 예외를 밖으로 던지지 않음(CRM 쪽 삭제·저장은 그대로 두기 위함).
+ */
+export async function tryDeleteGoogleDriveFileByUrl(url: string): Promise<void> {
+  const fileId = parseGoogleDriveFileIdFromUrl(url);
+  if (!fileId) return;
+
+  const hasCreds = Boolean(
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() ||
+      (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim() &&
+        process.env.GOOGLE_PRIVATE_KEY?.trim())
+  );
+  if (!hasCreds) {
+    console.warn("[storage] Drive 파일 삭제 스킵(서비스 계정 없음):", fileId);
+    return;
+  }
+
+  try {
+    const { client_email, private_key } = getServiceAccountCreds();
+    const auth = new google.auth.JWT({
+      email: client_email,
+      key: private_key,
+      scopes: ["https://www.googleapis.com/auth/drive.file"],
+    });
+    const drive = google.drive({ version: "v3", auth });
+    await drive.files.delete({
+      fileId,
+      supportsAllDrives: true,
+    });
+  } catch (e) {
+    console.error("[storage] Google Drive 파일 삭제 실패 (CRM 데이터는 유지):", fileId, e);
+  }
+}
+
 export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFileResult> {
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim();
   if (!folderId) {
