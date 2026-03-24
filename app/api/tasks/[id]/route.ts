@@ -92,7 +92,7 @@ export async function GET(
         },
       }),
     ]);
-    if (!task) {
+    if (!task || (task as { deletedAt?: Date | null }).deletedAt) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const taskScope = (task as { scope?: string }).scope ?? "TEAM";
@@ -130,8 +130,8 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await req.json();
-    const existing = await prisma.task.findUnique({
-      where: { id },
+    const existing = await prisma.task.findFirst({
+      where: { id, deletedAt: null },
       include: { assignedTo: { select: { name: true } } },
     });
     if (!existing) {
@@ -387,7 +387,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -397,31 +397,39 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const existing = await prisma.task.findUnique({ where: { id } });
+    const scope = await getServerWorkspaceScopeFromRequest(req);
+    const existing = await prisma.task.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    const existingScope = (existing as { scope?: string }).scope ?? "TEAM";
+    if (existingScope !== scope) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-    // 관리자, 생성자만 삭제 가능
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     const isCreator = existing.createdById === session.user.id;
     if (!isAdmin && !isCreator) {
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 
-    // 하위 업무의 parentId를 null로 변경 (연쇄 삭제 대신)
+    const now = new Date();
+
     await prisma.task.updateMany({
       where: { parentId: id },
       data: { parentId: null },
     });
 
-    // TaskLink 삭제 (추가 연결)
     await prisma.taskLink.deleteMany({
       where: { OR: [{ parentId: id }, { childId: id }] },
     });
 
-    // 업무 삭제
-    await prisma.task.delete({ where: { id } });
+    await prisma.task.update({
+      where: { id },
+      data: { deletedAt: now, deletedById: session.user.id },
+    });
 
     return NextResponse.json({ success: true });
   } catch (e) {

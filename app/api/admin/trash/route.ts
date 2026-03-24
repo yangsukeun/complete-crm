@@ -28,7 +28,7 @@ function safeParseBoardAttachments(raw: string | null | undefined): { url: strin
 
 const mutateSchema = z.object({
   op: z.enum(["restore", "permanent_delete"]),
-  entity: z.enum(["project", "board"]),
+  entity: z.enum(["project", "board", "task"]),
   id: z.string().min(1),
 });
 
@@ -39,7 +39,7 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const [projects, boardPosts] = await Promise.all([
+    const [projects, boardPosts, tasks] = await Promise.all([
       prisma.project.findMany({
         where: { deletedAt: { not: null } },
         select: {
@@ -63,6 +63,18 @@ export async function GET() {
         },
         orderBy: { deletedAt: "desc" },
       }),
+      prisma.task.findMany({
+        where: { deletedAt: { not: null } },
+        select: {
+          id: true,
+          title: true,
+          scope: true,
+          deletedAt: true,
+          createdBy: { select: { id: true, name: true } },
+          deletedBy: { select: { id: true, name: true } },
+        },
+        orderBy: { deletedAt: "desc" },
+      }),
     ]);
 
     return NextResponse.json({
@@ -73,6 +85,10 @@ export async function GET() {
       boardPosts: boardPosts.map((b) => ({
         ...b,
         deletedAt: b.deletedAt?.toISOString() ?? null,
+      })),
+      tasks: tasks.map((t) => ({
+        ...t,
+        deletedAt: t.deletedAt?.toISOString() ?? null,
       })),
     });
   } catch (e) {
@@ -129,6 +145,38 @@ export async function POST(req: Request) {
         }),
       ]);
       await prisma.project.delete({ where: { id } });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (entity === "task") {
+      const deadTask = await prisma.task.findFirst({
+        where: { id, deletedAt: { not: null } },
+        include: { attachments: true },
+      });
+      if (!deadTask) {
+        return NextResponse.json({ error: "삭제된 업무만 처리할 수 있습니다." }, { status: 400 });
+      }
+
+      if (op === "restore") {
+        await prisma.task.update({
+          where: { id },
+          data: { deletedAt: null, deletedById: null },
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      const urls = deadTask.attachments.map((a) => a.url);
+      await prisma.task.updateMany({ where: { parentId: id }, data: { parentId: null } });
+      await prisma.taskLink.deleteMany({
+        where: { OR: [{ parentId: id }, { childId: id }] },
+      });
+      await prisma.task.delete({ where: { id } });
+      await Promise.all(
+        urls.map((u) => {
+          const fid = parseGoogleDriveFileIdFromUrl(u);
+          return fid ? deleteFile(fid) : Promise.resolve();
+        })
+      );
       return NextResponse.json({ ok: true });
     }
 

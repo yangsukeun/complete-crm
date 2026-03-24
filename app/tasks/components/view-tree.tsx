@@ -53,6 +53,8 @@ type TaskData = {
   parentId: string | null;
   isCollapsed: boolean;
   assignedTo: { id: string; name: string; position?: string | null };
+  /** 삭제 권한: 임원/관리자 또는 본인이 생성한 업무만 */
+  createdById?: string | null;
 };
 
 type TaskLink = {
@@ -69,6 +71,9 @@ type TreeViewProps = {
   /** 호버 시 상세 라우트 prefetch (next/router) */
   onTaskHover?: (taskId: string) => void;
   onCreateTask: (parentId: string | null) => void;
+  currentUserId: string;
+  /** EXECUTIVE/ADMIN: 타인이 만든 업무 포함 전체 삭제(소프트) 가능 */
+  isTaskDeleteAdmin: boolean;
 };
 
 // Style settings for tree customization
@@ -542,7 +547,16 @@ function UncategorizedTaskItem({
 }
 
 // Main Tree View (Inner)
-function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onTaskHover, onCreateTask }: TreeViewProps) {
+function TreeViewInner({
+  tasks,
+  taskLinks,
+  onRefresh,
+  onTaskClick,
+  onTaskHover,
+  onCreateTask,
+  currentUserId,
+  isTaskDeleteAdmin,
+}: TreeViewProps) {
   const { fitView } = useReactFlow();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -663,27 +677,46 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onTaskHover, 
     setSelectedNodeIds(nodes.map((n: any) => n.id));
   }, []);
 
-  // Delete selected tasks
-  const deleteSelectedTasks = useCallback(async () => {
-    if (selectedNodeIds.length === 0) return;
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const deletableSelectedIds = useMemo(() => {
+    return selectedNodeIds.filter((tid) => {
+      const t = taskById.get(tid);
+      if (!t) return false;
+      return isTaskDeleteAdmin || (!!t.createdById && t.createdById === currentUserId);
+    });
+  }, [selectedNodeIds, taskById, currentUserId, isTaskDeleteAdmin]);
 
+  const deleteSelectedTasks = useCallback(async () => {
+    if (deletableSelectedIds.length === 0) {
+      if (selectedNodeIds.length > 0) {
+        toast.error("선택한 업무 중 삭제할 수 있는 항목이 없습니다. 본인이 만든 업무만 삭제할 수 있습니다.");
+      }
+      return;
+    }
+
+    const skipped = selectedNodeIds.length - deletableSelectedIds.length;
     const confirmDelete = window.confirm(
-      `선택한 ${selectedNodeIds.length}개의 업무를 삭제하시겠습니까?`
+      skipped > 0
+        ? `삭제 권한이 없는 ${skipped}건을 제외하고, ${deletableSelectedIds.length}개의 업무를 삭제(휴지통 이동)할까요?`
+        : `선택한 ${deletableSelectedIds.length}개의 업무를 삭제(휴지통 이동)할까요?`
     );
     if (!confirmDelete) return;
 
     try {
-      for (const taskId of selectedNodeIds) {
+      for (const taskId of deletableSelectedIds) {
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
-        if (!res.ok) throw new Error("삭제 실패");
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? "삭제 실패");
+        }
       }
-      toast.success(`${selectedNodeIds.length}개의 업무가 삭제되었습니다.`);
+      toast.success(`${deletableSelectedIds.length}개의 업무가 삭제되었습니다.`);
       setSelectedNodeIds([]);
       onRefresh();
-    } catch {
-      toast.error("업무 삭제에 실패했습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "업무 삭제에 실패했습니다.");
     }
-  }, [selectedNodeIds, onRefresh]);
+  }, [deletableSelectedIds, selectedNodeIds.length, onRefresh]);
 
   // Quick create task
   const handleQuickCreate = useCallback(async () => {
@@ -723,12 +756,12 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onTaskHover, 
   // Keyboard handler for delete key
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Delete" && selectedNodeIds.length > 0) {
+      if (e.key === "Delete" && deletableSelectedIds.length > 0) {
         e.preventDefault();
         deleteSelectedTasks();
       }
     },
-    [deleteSelectedTasks, selectedNodeIds]
+    [deleteSelectedTasks, deletableSelectedIds.length]
   );
 
   // Split tasks: tree tasks (have parent OR have children OR staged as root OR has additional links) vs uncategorized
@@ -1044,15 +1077,14 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onTaskHover, 
           </Button>
         </div>
 
-        {/* Delete Selected */}
-        {selectedNodeIds.length > 0 && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={deleteSelectedTasks}
-          >
-            <Trash2 className="size-4 mr-1" />
-            {selectedNodeIds.length}개 삭제
+        {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 업무만 */}
+        {selectedNodeIds.length > 0 && deletableSelectedIds.length > 0 && (
+          <Button variant="destructive" size="sm" onClick={deleteSelectedTasks}>
+            <Trash2 className="mr-1 size-4" />
+            {deletableSelectedIds.length}개 삭제
+            {deletableSelectedIds.length < selectedNodeIds.length ? (
+              <span className="ml-1 text-[10px] opacity-90">(권한 있는 항목만)</span>
+            ) : null}
           </Button>
         )}
 
@@ -1160,7 +1192,7 @@ function TreeViewInner({ tasks, taskLinks, onRefresh, onTaskClick, onTaskHover, 
         </Popover>
 
         <p className="text-xs text-muted-foreground hidden sm:block">
-          💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제
+          💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 업무 또는 관리자)
         </p>
       </div>
 

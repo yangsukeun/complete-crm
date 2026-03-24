@@ -18,7 +18,7 @@ export async function POST(
     }
 
     const { id: taskId } = await params;
-    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    const task = await prisma.task.findFirst({ where: { id: taskId, deletedAt: null } });
     if (!task) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import React, { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
   History,
   StretchHorizontal,
   AlignLeft,
+  Trash2,
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
@@ -54,6 +56,7 @@ type TaskDetail = {
   parent?: { id: string; title: string } | null;
   assignedTo: { id: string; name: string; email: string; position?: string | null };
   createdBy: { id: string; name: string; position?: string | null };
+  createdById?: string | null;
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
   children?: {
@@ -113,6 +116,8 @@ class ClientErrorBoundary extends Component<
 
 export default function TaskDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const { data: session } = useSession();
   const taskId = typeof params.id === "string" ? params.id : null;
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(!!taskId);
@@ -127,6 +132,7 @@ export default function TaskDetailPage() {
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
   const [createChildOpen, setCreateChildOpen] = useState(false);
   const [mountEditor, setMountEditor] = useState(false);
+  const [deletingTask, setDeletingTask] = useState(false);
   const [pageFullWidth, setPageFullWidth] = useState(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -236,6 +242,24 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleDeleteTask = async () => {
+    if (!task) return;
+    if (!confirm("이 업무를 삭제(휴지통 이동)할까요?")) return;
+    setDeletingTask(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "삭제 실패");
+      toast.success("삭제되었습니다.");
+      router.push("/tasks");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+    } finally {
+      setDeletingTask(false);
+    }
+  };
+
   const handleAddComment = async () => {
     if (!taskId || !commentBody.trim()) {
       toast.error("댓글 내용을 입력하세요.");
@@ -295,6 +319,12 @@ export default function TaskDetailPage() {
       : task.priority === "LOW"
         ? "bg-slate-500/10 text-slate-600 dark:text-slate-400"
         : "bg-muted text-muted-foreground";
+
+  const creatorId = task.createdById ?? task.createdBy?.id ?? null;
+  const canDeleteTask =
+    session?.user?.role === "EXECUTIVE" ||
+    session?.user?.role === "ADMIN" ||
+    (!!creatorId && creatorId === session?.user?.id);
 
   return (
     <div className="min-h-screen bg-background">
@@ -356,6 +386,19 @@ export default function TaskDetailPage() {
               >
                 <Download className="mr-2 size-4" />
                 내 서랍으로 가져오기
+              </Button>
+            )}
+            {canDeleteTask && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                disabled={deletingTask}
+                onClick={() => void handleDeleteTask()}
+              >
+                <Trash2 className="size-4" />
+                삭제
               </Button>
             )}
           </div>

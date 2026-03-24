@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeadline } from "@/components/page-headline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FolderKanban, FileText, RotateCcw, Trash2 } from "lucide-react";
+import { FolderKanban, FileText, ListTodo, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type TrashProject = {
@@ -24,9 +24,19 @@ type TrashBoard = {
   deletedBy?: { id: string; name: string } | null;
 };
 
+type TrashTask = {
+  id: string;
+  title: string;
+  scope: string;
+  deletedAt: string | null;
+  createdBy?: { id: string; name: string } | null;
+  deletedBy?: { id: string; name: string } | null;
+};
+
 export function TrashClient() {
   const [projects, setProjects] = useState<TrashProject[]>([]);
   const [boardPosts, setBoardPosts] = useState<TrashBoard[]>([]);
+  const [tasks, setTasks] = useState<TrashTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -38,9 +48,11 @@ export function TrashClient() {
       if (!res.ok) throw new Error(data.error ?? "불러오기 실패");
       setProjects(Array.isArray(data.projects) ? data.projects : []);
       setBoardPosts(Array.isArray(data.boardPosts) ? data.boardPosts : []);
+      setTasks(Array.isArray(data.tasks) ? data.tasks : []);
     } catch {
       setProjects([]);
       setBoardPosts([]);
+      setTasks([]);
       toast.error("휴지통 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
@@ -53,7 +65,7 @@ export function TrashClient() {
 
   const mutate = async (
     op: "restore" | "permanent_delete",
-    entity: "project" | "board",
+    entity: "project" | "board" | "task",
     id: string
   ) => {
     const key = `${op}:${entity}:${id}`;
@@ -79,8 +91,75 @@ export function TrashClient() {
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-4 md:p-6">
       <PageHeadline
         title="삭제된 항목"
-        description="삭제(숨김)된 프로젝트와 게시판 자료입니다. 복원하거나 영구 삭제할 수 있습니다."
+        description="삭제(숨김)된 프로젝트·업무·게시판 자료입니다. 복원하거나 영구 삭제할 수 있습니다."
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ListTodo className="size-5" />
+            삭제된 업무 (Tasks)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-muted-foreground text-sm">불러오는 중...</p>
+          ) : tasks.length === 0 ? (
+            <p className="text-muted-foreground text-sm">항목이 없습니다.</p>
+          ) : (
+            <ul className="space-y-2">
+              {tasks.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex flex-col gap-2 rounded-md border bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="space-y-0.5">
+                    <span className="font-medium">{t.title}</span>
+                    <div className="text-muted-foreground text-xs">
+                      {t.scope === "PERSONAL" ? "개인" : "팀"}
+                      {t.createdBy?.name ? ` · 지시/작성: ${t.createdBy.name}` : ""}
+                      {t.deletedAt ? ` · 삭제: ${new Date(t.deletedAt).toLocaleString("ko-KR")}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      disabled={busyId !== null}
+                      onClick={() => {
+                        if (!confirm("이 업무를 복원할까요?")) return;
+                        void mutate("restore", "task", t.id);
+                      }}
+                    >
+                      <RotateCcw className="size-3.5" />
+                      복원
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="gap-1"
+                      disabled={busyId !== null}
+                      onClick={() => {
+                        if (
+                          !confirm(
+                            "영구 삭제하면 업무·댓글·이력이 DB에서 제거되고, 구글 드라이브 첨부도 삭제됩니다. 계속할까요?"
+                          )
+                        )
+                          return;
+                        void mutate("permanent_delete", "task", t.id);
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                      영구 삭제
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

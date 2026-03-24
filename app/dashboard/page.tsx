@@ -50,7 +50,7 @@ export default async function DashboardPage() {
     const weekEnd = addDays(now, 7);
     const [myTasks, upcomingSchedules] = await Promise.all([
       prisma.task.findMany({
-        where: { assignedToId: session.user.id, isCompleted: false },
+        where: { deletedAt: null, assignedToId: session.user.id, isCompleted: false },
         orderBy: { dueDate: "asc" },
         take: 10,
         select: {
@@ -200,7 +200,7 @@ export default async function DashboardPage() {
         include: { user: { select: { name: true, department: true, position: true } } },
       }),
       prisma.task.findMany({
-        where: { createdById: session.user.id },
+        where: { deletedAt: null, createdById: session.user.id },
         select: {
           id: true,
           title: true,
@@ -430,7 +430,7 @@ export default async function DashboardPage() {
         select: { joinDate: true },
       }),
       prisma.task.findMany({
-        where: { assignedToId: session.user.id, isCompleted: false },
+        where: { deletedAt: null, assignedToId: session.user.id, isCompleted: false },
         orderBy: { dueDate: "asc" },
         take: 10,
         select: {

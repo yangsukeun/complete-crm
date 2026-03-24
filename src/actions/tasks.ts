@@ -23,6 +23,10 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
     return { error: "업무를 찾을 수 없습니다." };
   }
 
+  if (original.deletedAt) {
+    return { error: "삭제된 업무는 가져올 수 없습니다." };
+  }
+
   if (original.scope !== "TEAM") {
     return { error: "공용 업무만 개인으로 가져올 수 있습니다." };
   }

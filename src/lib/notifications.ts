@@ -180,6 +180,7 @@ export async function checkDeadlines(): Promise<void> {
 
     const tasks = await prisma.task.findMany({
       where: {
+        deletedAt: null,
         isCompleted: false,
         dueDate: { gte: todayStart, lte: tomorrowEnd },
         assignedToId: { not: null },

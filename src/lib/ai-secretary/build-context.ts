@@ -26,7 +26,7 @@ export async function buildSecretaryDataContext(params: {
   });
 
   const myTasks = await prisma.task.findMany({
-    where: { assignedToId: userId, isCompleted: false },
+    where: { deletedAt: null, assignedToId: userId, isCompleted: false },
     orderBy: { dueDate: "asc" },
     take: 40,
     select: { title: true, status: true, dueDate: true },
@@ -112,7 +112,7 @@ export async function buildSecretaryDataContext(params: {
   if (isExecutiveLike(role) && executiveEmployees.length > 0) {
     const openByUser = await prisma.task.groupBy({
       by: ["assignedToId"],
-      where: { isCompleted: false, assignedToId: { not: null } },
+      where: { deletedAt: null, isCompleted: false, assignedToId: { not: null } },
       _count: { _all: true },
     });
     const countMap = new Map(openByUser.map((x) => [x.assignedToId!, x._count._all]));
@@ -125,7 +125,7 @@ export async function buildSecretaryDataContext(params: {
     }
 
     const allOpen = await prisma.task.findMany({
-      where: { isCompleted: false },
+      where: { deletedAt: null, isCompleted: false },
       orderBy: { dueDate: "asc" },
       take: 80,
       select: {

@@ -31,7 +31,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, Filter, GitBranch, FileText, List as ListIcon } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon, Trash2 } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -90,6 +90,7 @@ type Task = {
   isCollapsed?: boolean;
   assignedTo: { id: string; name: string; email: string; position?: string | null };
   createdBy: { id: string; name: string; position?: string | null };
+  createdById?: string | null;
 };
 
 function getEffectiveStatus(task: Task): TaskStatus {
@@ -155,6 +156,7 @@ export default function TasksPage() {
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
   const [view, setView] = useState<"list" | "mindmap" | "log">("list");
   const [mindmapMounted, setMindmapMounted] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   // 마인드맵 탭 진입 후 한 프레임 뒤에 마운트 → removeChild 등 DOM 충돌 완화
   useEffect(() => {
@@ -197,6 +199,37 @@ export default function TasksPage() {
     mutateTasks();
     mutateLinks();
   }, [mutateTasks, mutateLinks]);
+
+  const isTaskDeleteAdmin =
+    session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
+  const currentUserId = session?.user?.id ?? "";
+
+  const canDeleteTask = useCallback(
+    (t: Task) => {
+      const cid = t.createdById ?? t.createdBy?.id ?? null;
+      return isTaskDeleteAdmin || (!!cid && cid === currentUserId);
+    },
+    [isTaskDeleteAdmin, currentUserId]
+  );
+
+  const handleDeleteTask = useCallback(
+    async (taskId: string) => {
+      if (!confirm("이 업무를 삭제(휴지통 이동)할까요?")) return;
+      setDeletingTaskId(taskId);
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? "삭제 실패");
+        toast.success("삭제되었습니다.");
+        refreshTasks();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+      } finally {
+        setDeletingTaskId(null);
+      }
+    },
+    [refreshTasks]
+  );
 
   const updateTaskStatus = useCallback(
     async (taskId: string, newStatus: TaskStatus) => {
@@ -251,6 +284,7 @@ export default function TasksPage() {
       parentId: t.parentId ?? null,
       isCollapsed: !!t.isCollapsed,
       assignedTo: t.assignedTo,
+      createdById: t.createdById ?? t.createdBy?.id ?? null,
     }));
   }, [filteredTasks]);
 
@@ -380,6 +414,8 @@ export default function TasksPage() {
                   setCreateParentId(parentId);
                   setCreateOpen(true);
                 }}
+                currentUserId={currentUserId}
+                isTaskDeleteAdmin={isTaskDeleteAdmin}
               />
             </div>
           )
@@ -494,6 +530,23 @@ export default function TasksPage() {
                               >
                                 →
                               </Button>
+                              {canDeleteTask(task) && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                                  title="삭제(휴지통)"
+                                  disabled={deletingTaskId === task.id}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    void handleDeleteTask(task.id);
+                                  }}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              )}
                             </div>
                             <p className="mt-2 text-[10px] text-muted-foreground">
                               현재: {statusLabel(s)}

@@ -27,10 +27,12 @@ export async function GET(req: Request) {
     const scope = await getServerWorkspaceScopeFromRequest(req);
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
 
-    const baseWhere =
+    const visibilityWhere =
       scope === "PERSONAL"
         ? { scope: "PERSONAL" as const, OR: [{ assignedToId: session.user.id }, { createdById: session.user.id }] }
         : { scope: "TEAM" as const, ...(isAdmin ? {} : { OR: [{ assignedToId: session.user.id }, { createdById: session.user.id }] }) };
+
+    const baseWhere = { deletedAt: null, ...visibilityWhere };
 
     // 목록용: 본문(description) 제외 — BlockNote JSON이 크면 페이로드·파싱 비용이 큼. 상세는 /api/tasks/[id]
     const tasks = await prisma.task.findMany({
@@ -47,6 +49,7 @@ export async function GET(req: Request) {
         orderIndex: true,
         isCollapsed: true,
         scope: true,
+        createdById: true,
         assignedTo: {
           select: {
             id: true,

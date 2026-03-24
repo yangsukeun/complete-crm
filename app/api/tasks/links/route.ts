@@ -17,6 +17,10 @@ export async function GET() {
     }
 
     const links = await prisma.taskLink.findMany({
+      where: {
+        parent: { deletedAt: null },
+        child: { deletedAt: null },
+      },
       include: {
         parent: { select: { id: true, title: true } },
         child: { select: { id: true, title: true } },
@@ -53,6 +57,14 @@ export async function POST(req: Request) {
 
     const { parentId, childId } = parsed.data;
 
+    const [parentTask, childTaskCheck] = await Promise.all([
+      prisma.task.findFirst({ where: { id: parentId, deletedAt: null }, select: { id: true } }),
+      prisma.task.findFirst({ where: { id: childId, deletedAt: null }, select: { id: true, parentId: true } }),
+    ]);
+    if (!parentTask || !childTaskCheck) {
+      return NextResponse.json({ error: "업무를 찾을 수 없습니다." }, { status: 404 });
+    }
+
     // 자기 자신에게 연결 방지
     if (parentId === childId) {
       return NextResponse.json(
@@ -63,8 +75,8 @@ export async function POST(req: Request) {
 
     // 순환 참조 방지: childId가 parentId의 조상인지 확인
     async function isAncestor(potentialAncestorId: string, descendantId: string): Promise<boolean> {
-      const task = await prisma.task.findUnique({
-        where: { id: descendantId },
+      const task = await prisma.task.findFirst({
+        where: { id: descendantId, deletedAt: null },
         select: { parentId: true },
       });
       if (!task) return false;
@@ -92,10 +104,7 @@ export async function POST(req: Request) {
     }
 
     // 이미 기본 parentId로 연결되어 있는지 확인
-    const childTask = await prisma.task.findUnique({
-      where: { id: childId },
-      select: { parentId: true },
-    });
+    const childTask = childTaskCheck;
     if (childTask?.parentId === parentId) {
       return NextResponse.json(
         { error: "이미 기본 상위 업무로 연결되어 있습니다." },
