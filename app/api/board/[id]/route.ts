@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { tryDeleteGoogleDriveFileByUrl } from "@/lib/storage/google-drive-storage";
+import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
 
 function safeParseBoardAttachments(raw: string | null | undefined): { url: string; name: string }[] {
@@ -126,7 +126,12 @@ export async function PATCH(
     });
 
     if (removedAttachmentUrls.length > 0) {
-      await Promise.all(removedAttachmentUrls.map((u) => tryDeleteGoogleDriveFileByUrl(u)));
+      await Promise.all(
+        removedAttachmentUrls.map((u) => {
+          const fid = parseGoogleDriveFileIdFromUrl(u);
+          return fid ? deleteFile(fid) : Promise.resolve();
+        })
+      );
     }
 
     return NextResponse.json({
@@ -162,9 +167,14 @@ export async function DELETE(
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 
-    const driveUrls = safeParseBoardAttachments(post.attachments).map((a) => a.url);
+    const attachmentUrls = safeParseBoardAttachments(post.attachments).map((a) => a.url);
     await prisma.boardPost.delete({ where: { id } });
-    await Promise.all(driveUrls.map((u) => tryDeleteGoogleDriveFileByUrl(u)));
+    await Promise.all(
+      attachmentUrls.map((u) => {
+        const fid = parseGoogleDriveFileIdFromUrl(u);
+        return fid ? deleteFile(fid) : Promise.resolve();
+      })
+    );
 
     return NextResponse.json({ ok: true });
   } catch (e) {

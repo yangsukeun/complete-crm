@@ -46,12 +46,12 @@ export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
 }
 
 /**
- * 게시판 등에서 첨부 URL이 구글 드라이브 파일이면 삭제 시도.
- * 실패해도 예외를 밖으로 던지지 않음(CRM 쪽 삭제·저장은 그대로 두기 위함).
+ * Drive 파일 ID로 삭제 (공유 드라이브 대응).
+ * 실패·자격 증명 없음·잘못된 ID여도 예외를 밖으로 던지지 않음.
  */
-export async function tryDeleteGoogleDriveFileByUrl(url: string): Promise<void> {
-  const fileId = parseGoogleDriveFileIdFromUrl(url);
-  if (!fileId) return;
+export async function deleteFile(fileId: string): Promise<void> {
+  const id = fileId?.trim();
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) return;
 
   const hasCreds = Boolean(
     process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() ||
@@ -59,7 +59,7 @@ export async function tryDeleteGoogleDriveFileByUrl(url: string): Promise<void> 
         process.env.GOOGLE_PRIVATE_KEY?.trim())
   );
   if (!hasCreds) {
-    console.warn("[storage] Drive 파일 삭제 스킵(서비스 계정 없음):", fileId);
+    console.warn("[storage] Drive deleteFile 스킵(서비스 계정 없음):", id);
     return;
   }
 
@@ -72,12 +72,18 @@ export async function tryDeleteGoogleDriveFileByUrl(url: string): Promise<void> 
     });
     const drive = google.drive({ version: "v3", auth });
     await drive.files.delete({
-      fileId,
+      fileId: id,
       supportsAllDrives: true,
     });
   } catch (e) {
-    console.error("[storage] Google Drive 파일 삭제 실패 (CRM 데이터는 유지):", fileId, e);
+    console.error("[storage] Google Drive deleteFile 실패 (CRM 흐름은 유지):", id, e);
   }
+}
+
+/** 첨부 URL에서 Drive 파일 ID를 뽑아 `deleteFile` 호출 */
+export async function tryDeleteGoogleDriveFileByUrl(url: string): Promise<void> {
+  const parsed = parseGoogleDriveFileIdFromUrl(url);
+  if (parsed) await deleteFile(parsed);
 }
 
 export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFileResult> {
