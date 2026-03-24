@@ -3,16 +3,46 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+/** Drive 업로드·DB 지연 대비 (Vercel Pro 등에서 상한 상향 시 반영) */
+export const maxDuration = 60;
+
 const categorySchema = z.enum(["COMPANY", "TRAINING"]);
+
+function safeParseAttachments(raw: string | null | undefined): { url: string; name: string }[] {
+  try {
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x): x is { url?: string; name?: string } => x != null && typeof x === "object")
+      .map((x) => ({
+        url: typeof x.url === "string" ? x.url : "",
+        name: typeof x.name === "string" ? x.name : "파일",
+      }))
+      .filter((x) => x.url.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 const createSchema = z.object({
   title: z.string().min(1).max(200),
-  description: z.string().max(50000).optional().default(""),
+  description: z.preprocess(
+    (v) => (typeof v === "string" ? v : ""),
+    z.string().max(50000)
+  ),
   category: categorySchema,
-  attachments: z
-    .array(z.object({ url: z.string().min(1), name: z.string().optional() }))
-    .max(20)
-    .optional()
-    .default([]),
+  attachments: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z
+      .array(
+        z.object({
+          url: z.string().min(1),
+          name: z.string().optional(),
+        })
+      )
+      .max(20)
+  ),
 });
 
 export async function GET(req: Request) {
@@ -45,12 +75,12 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(
-      list.map((p: any) => ({
+      list.map((p) => ({
         id: p.id,
         title: p.title,
         description: p.description ?? "",
         category: p.category,
-        attachments: JSON.parse(p.attachments || "[]") as { url: string; name: string }[],
+        attachments: safeParseAttachments(p.attachments),
         createdAt: p.createdAt.toISOString(),
         createdById: p.createdById,
         createdByName: p.createdBy?.name ?? "삭제된 사용자",
@@ -70,23 +100,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
+    }
+
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "제목과 구분(회사자료/교육자료)을 입력하세요." },
+        {
+          error: "제목과 구분(회사자료/교육자료)을 입력하세요.",
+          ...(process.env.NODE_ENV === "development" ? { details: parsed.error.flatten() } : {}),
+        },
         { status: 400 }
       );
     }
 
-    const attachments = (parsed.data.attachments ?? []).map((a: { url: string; name?: string }) => ({
+    const attachments = (parsed.data.attachments ?? []).map((a) => ({
       url: a.url,
       name: (a.name && a.name.trim()) || "링크",
     }));
+
     const created = await prisma.boardPost.create({
       data: {
         title: parsed.data.title.trim(),
-        description: (parsed.data.description ?? "").trim() || null,
+        description: parsed.data.description.trim() || null,
         category: parsed.data.category,
         attachments: JSON.stringify(attachments),
         createdById: session.user.id,
@@ -102,12 +142,19 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({
-      ...created,
+      id: created.id,
+      title: created.title,
+      description: created.description ?? "",
+      category: created.category,
       createdAt: created.createdAt.toISOString(),
-      attachments: JSON.parse(created.attachments || "[]"),
+      attachments: safeParseAttachments(created.attachments),
     });
   } catch (e) {
     console.error("Board POST:", e);
-    return NextResponse.json({ error: "자료 등록에 실패했습니다." }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { error: "자료 등록에 실패했습니다.", detail: process.env.NODE_ENV === "development" ? msg : undefined },
+      { status: 500 }
+    );
   }
 }

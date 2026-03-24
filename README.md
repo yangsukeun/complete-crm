@@ -84,7 +84,7 @@ GEMINI_API_KEY=여기에_키
 
 | 모드 | 설명 |
 |------|------|
-| **auto** (기본) | `BLOB_READ_WRITE_TOKEN` 있으면 Vercel Blob. Vercel에서 토큰 없으면 Drive/WebDAV가 모두 설정돼 있을 때만 그쪽 사용. 로컬에서는 주로 `public/uploads/content`. |
+| **auto** (기본) | **Vercel:** `GOOGLE_DRIVE_*` 서비스 계정이 있으면 **Google Drive 우선**(100MB 이하 권장). 다음 WebDAV, 다음 Blob 토큰. **로컬:** Blob 토큰 있으면 Blob, 없으면 `public/uploads/content`. |
 | **vercel-blob** | `BLOB_READ_WRITE_TOKEN` 필수 |
 | **google-drive** | 서비스 계정 + `GOOGLE_DRIVE_FOLDER_ID`. 폴더는 서비스 계정 이메일에 **편집자**로 공유 필요. 응답 `url`은 Drive 보기 링크. |
 | **webdav** | 시놀로지 **WebDAV** 등. `WEBDAV_URL`, 계정, **`WEBDAV_PUBLIC_BASE_URL`**(브라우저에서 열 수 있는 HTTPS 경로) 필요. |

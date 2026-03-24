@@ -5,7 +5,12 @@ import type { StoreFileInput, StoreFileResult } from "./types";
 function getServiceAccountCreds(): { client_email: string; private_key: string } {
   const jsonRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (jsonRaw) {
-    const parsed = JSON.parse(jsonRaw) as { client_email?: string; private_key?: string };
+    let parsed: { client_email?: string; private_key?: string };
+    try {
+      parsed = JSON.parse(jsonRaw) as { client_email?: string; private_key?: string };
+    } catch {
+      throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON이 올바른 JSON이 아닙니다.");
+    }
     if (!parsed.client_email || !parsed.private_key) {
       throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON에 client_email, private_key가 필요합니다.");
     }

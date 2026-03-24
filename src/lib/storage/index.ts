@@ -8,8 +8,8 @@ export type { StorageProviderId, StoreFileInput, StoreFileResult };
 
 /**
  * STORAGE_PROVIDER
- * - auto (기본): BLOB 토큰 있으면 vercel-blob, Vercel+토큰 없으면 drive/webdav/env 순 확인 후 없으면 blob(실패),
- *   로컬이면 local
+ * - auto (기본): 로컬은 BLOB 토큰 있으면 Blob, 없으면 local.
+ *   Vercel에서는 Drive(서비스 계정) 설정 시 **Drive 우선**, 다음 WebDAV, 다음 Blob 토큰.
  * - vercel-blob | blob | local | google-drive | drive | webdav | nas
  */
 export function resolveStorageProvider(): StorageProviderId {
@@ -21,12 +21,14 @@ export function resolveStorageProvider(): StorageProviderId {
     if (raw === "local") return "local";
   }
 
-  if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
-    return "vercel-blob";
-  }
+  /** Vercel: 100MB 이하 가벼운 파일은 Drive 우선(설정 시). Blob은 명시 토큰 있을 때만 auto에서 사용 */
   if (process.env.VERCEL) {
     if (canUseGoogleDrive()) return "google-drive";
     if (canUseWebdav()) return "webdav";
+    if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) return "vercel-blob";
+    return "vercel-blob";
+  }
+  if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
     return "vercel-blob";
   }
   return "local";

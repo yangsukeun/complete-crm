@@ -3,8 +3,10 @@ import { getAppSession } from "@/auth";
 import { storeUploadedFile, resolveStorageProvider } from "@/lib/storage";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+/** Google Drive 등 가벼운 저장 경로 기준 (초과 시 NAS 등 별도 연동 예정) */
+const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
@@ -93,7 +95,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "파일을 선택하세요." }, { status: 400 });
     }
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: "파일 크기는 50MB 이하여야 합니다." }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            "파일은 100MB 이하만 업로드할 수 있습니다. 대용량 파일은 추후 NAS 연동 예정입니다.",
+        },
+        { status: 400 }
+      );
     }
     const mime = (file.type || "").toLowerCase() || "application/octet-stream";
     const extFromName =
@@ -122,7 +130,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error:
-              "배포 환경에서 저장소가 설정되지 않았습니다. BLOB_READ_WRITE_TOKEN, 또는 Google Drive / NAS(WebDAV) 환경 변수를 설정하세요. README의 파일 저장소 절을 참고하세요.",
+              "배포 환경에서 파일 저장소가 설정되지 않았습니다. Google Drive(GOOGLE_DRIVE_FOLDER_ID + 서비스 계정) 또는 BLOB_READ_WRITE_TOKEN, 또는 NAS(WebDAV)를 설정하세요. README의 파일 저장소 절을 참고하세요.",
           },
           { status: 503 }
         );
