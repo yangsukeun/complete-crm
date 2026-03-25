@@ -22,14 +22,6 @@ async function resolveIdsForBackend(): Promise<{
   onesignalUserId: string | null;
   getUserIdLegacy: string | null;
 }> {
-  const rawSub = OneSignal.User?.PushSubscription?.id;
-  const subscriptionId =
-    typeof rawSub === "string" && rawSub.trim()
-      ? rawSub.trim()
-      : rawSub != null && String(rawSub).trim()
-        ? String(rawSub).trim()
-        : null;
-  const onesignalUserId = OneSignal.User?.onesignalId?.trim() || null;
   let getUserIdLegacy: string | null = null;
   try {
     const anyOs = OneSignal as unknown as { getUserId?: () => Promise<string | undefined> };
@@ -40,6 +32,14 @@ async function resolveIdsForBackend(): Promise<{
   } catch {
     /* */
   }
+  const rawSub = OneSignal.User?.PushSubscription?.id;
+  const subscriptionId =
+    typeof rawSub === "string" && rawSub.trim()
+      ? rawSub.trim()
+      : rawSub != null && String(rawSub).trim()
+        ? String(rawSub).trim()
+        : null;
+  const onesignalUserId = OneSignal.User?.onesignalId?.trim() || null;
   try {
     const u = OneSignal.User as unknown as { getOnesignalId?: () => Promise<string | undefined> };
     if (!getUserIdLegacy && typeof u.getOnesignalId === "function") {
@@ -126,17 +126,25 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         const { subscriptionId: subId, onesignalUserId: oneId, getUserIdLegacy } =
           await resolveIdsForBackend();
         const playerForDb =
-          (subId || getUserIdLegacy || oneId)?.trim() || null;
-        logClient(`⑧ 구독·Player ID (${reason})`, {
+          (getUserIdLegacy || subId || oneId)?.trim() || null;
+        const logPayload = {
           externalId: ext,
           onesignalUserId: oneId,
           subscriptionId: subId,
           getUserIdLegacy,
           optedIn,
           playerForDb,
-          patchField: "oneSignalPlayerId → PATCH /api/profile/me",
+          patchField: "playerId + oneSignalPlayerId → PATCH /api/profile/me",
           expectExternalIdMatchUserId: userId ?? null,
-        });
+        };
+        logClient(`⑧ 구독·Player ID (${reason})`, logPayload);
+        if (process.env.NODE_ENV === "production") {
+          console.log("[OneSignal CRM bridge]", reason, {
+            hasGetUserId: Boolean(getUserIdLegacy),
+            hasSubscriptionId: Boolean(subId),
+            willPatchProfile: Boolean(playerForDb && userId),
+          });
+        }
 
         if (subId || oneId || getUserIdLegacy) {
           await fetch("/api/user/onesignal-register", {
@@ -154,7 +162,7 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           const patchRes = await fetch("/api/profile/me", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ oneSignalPlayerId: playerForDb }),
+            body: JSON.stringify({ playerId: playerForDb, oneSignalPlayerId: playerForDb }),
           }).catch((e) => {
             console.error("[OneSignal] profile playerId PATCH 실패", e);
             return null;

@@ -217,6 +217,7 @@ export async function PATCH(req: Request) {
       badgePreset?: string | null;
       preferredAiProvider?: string | null;
       oneSignalPlayerId?: string | null;
+      playerId?: string | null;
     } = {};
     if (parsed.data.name != null && parsed.data.name.trim()) data.name = parsed.data.name.trim();
     if (parsed.data.email != null) data.email = parsed.data.email.trim() || undefined;
@@ -238,6 +239,7 @@ export async function PATCH(req: Request) {
         : undefined;
     if (patchPlayer !== undefined) {
       data.oneSignalPlayerId = patchPlayer;
+      data.playerId = patchPlayer;
     }
     if (isAdmin && (parsed.data as any).joinDate != null) data.joinDate = new Date((parsed.data as any).joinDate);
     if (isAdmin) {
@@ -267,6 +269,7 @@ export async function PATCH(req: Request) {
     delete dataCore.badgePreset;
     delete dataCore.preferredAiProvider;
     delete dataCore.oneSignalPlayerId;
+    delete dataCore.playerId;
 
     let user: {
       id: string;
@@ -323,10 +326,18 @@ export async function PATCH(req: Request) {
       try {
         await prisma.user.update({
           where: { id: session.user.id },
-          data: { oneSignalPlayerId: data.oneSignalPlayerId },
+          data: {
+            oneSignalPlayerId: data.oneSignalPlayerId,
+            playerId: data.playerId ?? data.oneSignalPlayerId,
+          },
+        });
+        console.log("[profile/me] OneSignal playerId 저장 완료", {
+          userId: session.user.id,
+          hasPlayerId: Boolean(data.oneSignalPlayerId && String(data.oneSignalPlayerId).trim()),
+          len: data.oneSignalPlayerId ? String(data.oneSignalPlayerId).length : 0,
         });
       } catch (osErr) {
-        console.warn("Profile PATCH oneSignalPlayerId:", osErr);
+        console.warn("[profile/me] oneSignalPlayerId/playerId 저장 실패", osErr);
       }
     }
 

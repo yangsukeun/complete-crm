@@ -44,18 +44,21 @@ function basicAuthForOneSignal(restKey: string): string {
 export async function sendPushToUsers(payload: PushPayload): Promise<void> {
   const dbg = isOneSignalServerDebug();
   try {
+    console.log("[OneSignal push] ① 진입 sendPushToUsers", {
+      recipientCount: payload.userIds.length,
+      titlePreview: payload.title.slice(0, 60),
+      priority: payload.priority ?? "(default)",
+      hasAppId: Boolean(ONESIGNAL_APP_ID),
+      hasRestKey: Boolean(ONESIGNAL_REST_API_KEY),
+    });
     if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
-      if (dbg) {
-        console.warn(
-          "[OneSignal push] ① 스킵: 환경변수 없음 (ONESIGNAL_APP_ID 또는 ONESIGNAL_REST_API_KEY)"
-        );
-      } else if (process.env.NODE_ENV === "development") {
-        console.warn("[OneSignal] env not configured, skip push");
-      }
+      console.warn(
+        "[OneSignal push] ① 스킵: 환경변수 없음 (ONESIGNAL_APP_ID 또는 NEXT_PUBLIC_ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY)"
+      );
       return;
     }
     if (!payload.userIds.length) {
-      if (dbg) console.warn("[OneSignal push] ① 스킵: userIds 비어 있음");
+      console.warn("[OneSignal push] ① 스킵: userIds 비어 있음");
       return;
     }
 
@@ -65,29 +68,35 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     try {
       const rows = await prisma.user.findMany({
         where: { id: { in: externalIds } },
-        select: { id: true, oneSignalPlayerId: true },
+        select: { id: true, oneSignalPlayerId: true, playerId: true },
+      });
+      console.log("[OneSignal push] ② DB User 푸시 ID 조회", {
+        rowCount: rows.length,
+        ids: rows.map((r) => ({
+          userId: r.id,
+          hasPlayerId: Boolean(r.playerId?.trim()),
+          hasLegacyField: Boolean(r.oneSignalPlayerId?.trim()),
+        })),
       });
       subscriptionIds = rows
-        .map((r) => r.oneSignalPlayerId?.trim())
+        .map((r) => (r.playerId?.trim() || r.oneSignalPlayerId?.trim()) ?? "")
         .filter((s): s is string => Boolean(s && s.length > 8));
     } catch (dbErr) {
-      if (dbg) console.warn("[OneSignal push] DB subscriptionId 조회 실패 (external_id만 사용)", dbErr);
+      console.warn("[OneSignal push] DB playerId 조회 실패 → external_id만 사용", dbErr);
     }
 
     const launchUrl = absoluteUrlForPush(payload.url);
 
-    if (dbg) {
-      console.log("[OneSignal push] ② 요청 준비", {
-        legacyUrl: ONESIGNAL_LEGACY_URL,
-        modernUrl: ONESIGNAL_MODERN_URL,
-        app_id: ONESIGNAL_APP_ID,
-        target_channel: "push",
-        include_aliases_external_id: externalIds,
-        include_subscription_ids_count: subscriptionIds.length,
-        launchUrl: launchUrl ?? payload.url,
-        titlePreview: payload.title.slice(0, 80),
-      });
-    }
+    console.log("[OneSignal push] ③ OneSignal REST 페이로드 준비", {
+      legacyUrl: ONESIGNAL_LEGACY_URL,
+      modernUrl: ONESIGNAL_MODERN_URL,
+      app_id_tail: String(ONESIGNAL_APP_ID).slice(-8),
+      externalIds,
+      subscriptionIdsCount: subscriptionIds.length,
+      launchUrl: launchUrl ?? payload.url,
+      titlePreview: payload.title.slice(0, 80),
+      debugVerbose: dbg,
+    });
 
     const headings = { en: payload.title, ko: payload.title };
     const contents = { en: payload.message, ko: payload.message };
@@ -167,7 +176,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     let parsed = first.parsed;
 
     if (!resOk) {
-      console.warn("[OneSignal push] 레거시 v1 실패 → 최신 API 재시도", first.status, first.text.slice(0, 400));
+      console.warn("[OneSignal push] ④ 레거시 v1 실패 → 최신 API 재시도", first.status, first.text.slice(0, 400));
       used = "modern";
       const second = await tryModern();
       resOk = second.ok;
@@ -176,13 +185,16 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     }
 
     if (!resOk) {
-      console.error("[OneSignal push] ③ HTTP 실패 (legacy+modern)", text.slice(0, 600));
+      console.error("[OneSignal push] ⑤ HTTP 실패 (legacy+modern)", text.slice(0, 600));
       return;
     }
 
-    if (dbg) {
-      console.log(`[OneSignal push] ④ 응답 OK (${used})`, parsed ?? text.slice(0, 300));
-    }
+    console.log(`[OneSignal push] ⑥ 응답 OK (${used})`, {
+      id: parsed?.id,
+      recipients: parsed?.recipients,
+      errors: parsed?.errors ?? null,
+      bodyPreview: dbg ? (parsed ?? text.slice(0, 300)) : undefined,
+    });
 
     const errors = parsed?.errors;
     const recipients = parsed?.recipients;
@@ -200,5 +212,11 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
 }
 
 export async function sendPushToUser(input: Omit<PushPayload, "userIds"> & { userId: string }): Promise<void> {
+  console.log("[OneSignal push] sendPushToUser → sendPushToUsers", {
+    userId: input.userId,
+    messageLen: input.message?.length ?? 0,
+    url: input.url ?? null,
+    priority: input.priority,
+  });
   return sendPushToUsers({ ...input, userIds: [input.userId] });
 }

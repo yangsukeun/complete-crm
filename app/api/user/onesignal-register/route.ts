@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
-
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
  * 발송 시 REST는 include_aliases.external_id 와 DB에 저장된 구독 ID(include_subscription_ids)를 함께 사용합니다.
@@ -28,19 +26,21 @@ export async function POST(req: Request) {
 
     const store = subscriptionId || onesignalUserId || null;
 
-    if (isOneSignalServerDebug()) {
-      console.log("[OneSignal register API] ⑥ DB 저장 요청", {
-        userId: session.user.id,
-        subscriptionId: subscriptionId || "(없음)",
-        onesignalUserId: onesignalUserId || "(없음)",
-        externalIdReport: externalIdReport || "(없음)",
-      });
-    }
+    console.log("[OneSignal register API] ⑥ DB 저장 요청", {
+      userId: session.user.id,
+      subscriptionId: subscriptionId || "(없음)",
+      onesignalUserId: onesignalUserId || "(없음)",
+      externalIdReport: externalIdReport || "(없음)",
+      storeLen: store?.length ?? 0,
+    });
 
     if (store) {
       await prisma.user.update({
         where: { id: session.user.id },
-        data: { oneSignalPlayerId: store },
+        data: { oneSignalPlayerId: store, playerId: store },
+      });
+      console.log("[OneSignal register API] ⑦ playerId+oneSignalPlayerId DB 반영됨", {
+        userId: session.user.id,
       });
     }
 

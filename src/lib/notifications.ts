@@ -1,6 +1,5 @@
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
-import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
 import { sendPushToUser } from "./notifications/push";
 
 export type NotificationTypeEnum =
@@ -61,35 +60,25 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
     console.error("[Notification] 생성 실패:", e);
   }
 
-  /** 푸시: 타인 행위(actor) 알림 + 시스템(DEADLINE/NOTICE 등 actor 없음) */
+  /** 푸시: high/medium 이고 본인이 행한 알림(actor === 수신자)이 아닐 때 (수동 발송과 동일하게 CRM 이벤트도 전송) */
   const shouldSendPush =
-    (priority === "high" || priority === "medium") &&
-    ((actorId != null && actorId !== userId) ||
-      (actorId == null && (type === "DEADLINE" || type === "NOTICE_POSTED")));
+    (priority === "high" || priority === "medium") && (actorId == null || actorId !== userId);
 
-  if (isOneSignalServerDebug()) {
-    if (!shouldSendPush) {
-      console.log("[Notification→push] ⑦ 스킵", {
-        userId,
-        type,
-        priority,
-        actorId: actorId ?? null,
-        reason:
-          priority !== "high" && priority !== "medium"
-            ? "priority가 low"
-            : actorId != null && actorId === userId
-              ? "actorId === 수신자(본인 알림)"
-              : actorId == null && type !== "DEADLINE" && type !== "NOTICE_POSTED"
-                ? "actorId 없음(시스템 타입만 푸시 허용: DEADLINE, NOTICE_POSTED)"
-                : "기타",
-      });
-    } else {
-      console.log("[Notification→push] ⑦ sendPushToUser 호출", {
-        userId,
-        type,
-        actorId: actorId ?? null,
-      });
-    }
+  if (!shouldSendPush) {
+    console.log("[Notification→push] 스킵 (푸시 미발송)", {
+      userId,
+      type,
+      priority,
+      actorId: actorId ?? null,
+      reason:
+        priority !== "high" && priority !== "medium"
+          ? "priority가 low"
+          : actorId != null && actorId === userId
+            ? "actorId === 수신자(본인 알림)"
+            : "기타",
+    });
+  } else {
+    console.log("[Notification→push] sendPushToUser 호출", { userId, type, actorId: actorId ?? null });
   }
 
   if (shouldSendPush) {
@@ -144,17 +133,15 @@ export async function createTaskBodyMentionNotification(input: {
     actorId != null &&
     actorId !== userId;
 
-  if (isOneSignalServerDebug()) {
-    if (!shouldSendPushMention) {
-      console.log("[Notification→push] ⑦(멘션) 스킵", {
-        userId,
-        inserted,
-        priority,
-        actorId: actorId ?? null,
-      });
-    } else {
-      console.log("[Notification→push] ⑦(멘션) sendPushToUser", { userId, actorId });
-    }
+  if (!shouldSendPushMention) {
+    console.log("[Notification→push] (멘션) 스킵", {
+      userId,
+      inserted,
+      priority,
+      actorId: actorId ?? null,
+    });
+  } else {
+    console.log("[Notification→push] (멘션) sendPushToUser", { userId, actorId });
   }
 
   if (shouldSendPushMention) {
@@ -251,17 +238,27 @@ export async function createNotificationsForManyUsers(input: {
     console.error("[Notification] createMany 실패:", e);
   }
 
-  // 2) 푸시 병렬 전송
+  // 2) 푸시 병렬 전송 (공지·다수 수신: 작성자 actorId에게는 발송하지 않음)
   const priority: NotificationPriority = DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
-  const shouldSendPush =
+  const shouldSendBatch =
     (priority === "high" || priority === "medium") &&
-    (actorId == null && (type === "DEADLINE" || type === "NOTICE_POSTED"));
+    userIds.some((uid) => actorId == null || uid !== actorId);
+  const pushTargets =
+    actorId == null ? userIds : userIds.filter((uid) => uid !== actorId);
 
-  if (shouldSendPush) {
+  console.log("[Notification→push] createNotificationsForManyUsers", {
+    type,
+    userCount: userIds.length,
+    pushTargetCount: pushTargets.length,
+    actorId: actorId ?? null,
+    shouldSendBatch,
+  });
+
+  if (shouldSendBatch && pushTargets.length > 0) {
     await Promise.all(
-      userIds.map((userId) =>
-        sendPushToUser({ userId, title: "새 알림", message, url: link || undefined, priority }).catch(
-          (e) => console.error("[Notification] push 실패:", userId, e)
+      pushTargets.map((userId) =>
+        sendPushToUser({ userId, title: "새 알림", message, url: link || undefined, priority }).catch((e) =>
+          console.error("[Notification] push 실패:", userId, e)
         )
       )
     );
