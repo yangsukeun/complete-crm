@@ -70,12 +70,39 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
     logClient("① init 시작", { appId: `${appId.slice(0, 8)}…` });
 
     if (!initPromiseRef.current) {
+      const safariWebId = process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID?.trim();
+
       initPromiseRef.current = OneSignal.init({
         appId,
+        ...(safariWebId ? { safari_web_id: safariWebId } : {}),
         serviceWorkerPath: "/OneSignalSDKWorker.js",
         serviceWorkerParam: { scope: "/" },
+        /** Chromium(Chrome·Edge·기타) 및 SW 지원 브라우저 공통. Safari(iOS/mac) 웹푸시는 대시보드 Safari Web ID + 사용자 OS 조건 필요 */
         allowLocalhostAsSecureOrigin: process.env.NODE_ENV === "development",
         welcomeNotification: { disable: true, message: "" },
+        notifyButton: {
+          enable: true,
+          prenotify: false,
+          showCredit: false,
+          position: "bottom-right",
+          size: "medium",
+          text: {
+            "dialog.blocked.message":
+              "브라우저 설정에서 이 사이트의 알림을 허용해 주세요.",
+            "dialog.blocked.title": "푸시 알림 차단됨",
+            "dialog.main.button.subscribe": "알림 받기",
+            "dialog.main.button.unsubscribe": "알림 끄기",
+            "dialog.main.title": "알림 구독",
+            "message.action.resubscribed": "다시 구독했습니다.",
+            "message.action.subscribed": "알림을 구독했습니다.",
+            "message.action.subscribing": "구독 처리 중…",
+            "message.action.unsubscribed": "알림 구독을 해제했습니다.",
+            "message.prenotify": "새 알림이 있습니다.",
+            "tip.state.blocked": "알림이 차단됨",
+            "tip.state.subscribed": "알림 수신 중",
+            "tip.state.unsubscribed": "알림 미수신",
+          },
+        },
         promptOptions: {
           slidedown: {
             prompts: [

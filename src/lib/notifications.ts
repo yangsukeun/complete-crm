@@ -69,17 +69,55 @@ export async function createNotification(
   await createNotificationWithOptions({ userId, type, message, link });
 }
 
+/** 채팅방 열람 등: 해당 대화의 미읽음 채팅 알림만 읽음 처리 */
+export async function markChatNotificationsRead(userId: string, chatId: string): Promise<number> {
+  const canonical = `/chat/${chatId}`;
+  const legacy = `/chats/${chatId}`;
+  const result = await prisma.notification.updateMany({
+    where: {
+      userId,
+      type: "CHAT_MESSAGE",
+      OR: [{ link: canonical }, { link: legacy }],
+      isRead: false,
+    },
+    data: { isRead: true },
+  });
+  return result.count;
+}
+
 export async function createNotificationWithOptions(input: CreateNotificationInput): Promise<void> {
   const { userId, type, message, link = "", actorId = null } = input;
   const priority: NotificationPriority = input.priority ?? DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
 
+  let persisted = false;
   try {
-    await prisma.notification.create({
-      data: { userId, type, message, link },
-    });
+    if (type === "CHAT_MESSAGE" && link) {
+      const existing = await prisma.notification.findFirst({
+        where: { userId, type: "CHAT_MESSAGE", link, isRead: false },
+      });
+      if (existing) {
+        await prisma.notification.update({
+          where: { id: existing.id },
+          data: { message, createdAt: new Date() },
+        });
+        persisted = true;
+      } else {
+        await prisma.notification.create({
+          data: { userId, type, message, link },
+        });
+        persisted = true;
+      }
+    } else {
+      await prisma.notification.create({
+        data: { userId, type, message, link },
+      });
+      persisted = true;
+    }
   } catch (e) {
     console.error("[Notification] 생성 실패:", e);
   }
+
+  if (!persisted) return;
 
   /** 푸시: high/medium 이고 본인이 행한 알림(actor === 수신자)이 아닐 때 (수동 발송과 동일하게 CRM 이벤트도 전송) */
   const shouldSendPush =

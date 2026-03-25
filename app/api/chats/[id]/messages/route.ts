@@ -1,10 +1,44 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { createNotificationWithOptions } from "@/lib/notifications";
+import { createNotificationWithOptions, markChatNotificationsRead } from "@/lib/notifications";
 import { z } from "zod";
 
 const postSchema = z.object({ body: z.string().min(1).max(2000) });
+
+/** 채팅을 읽음으로 처리할 때 해당 방의 CHAT_MESSAGE 알림을 서버에서도 읽음 처리 */
+export async function PATCH(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } });
+    if (!me) {
+      return NextResponse.json({ error: "계정이 존재하지 않습니다." }, { status: 401 });
+    }
+
+    const { id: chatId } = await params;
+
+    const participant = await prisma.chatParticipant.findFirst({
+      where: { chatId, userId: session.user.id },
+    });
+    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    if (!participant && !isAdmin) {
+      return NextResponse.json({ error: "채팅방에 접근할 수 없습니다." }, { status: 403 });
+    }
+
+    const updated = await markChatNotificationsRead(session.user.id, chatId);
+    return NextResponse.json({ ok: true, markedRead: updated });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: "읽음 처리에 실패했습니다." }, { status: 500 });
+  }
+}
 
 export async function GET(
   req: Request,

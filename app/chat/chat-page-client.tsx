@@ -166,6 +166,22 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           }
           return prevCounts;
         });
+
+        // localStorage 기준 이미 읽은 대화는 서버 알림도 읽음 처리 (로그인·새 기기 동기화, 중복 미읽음 방지)
+        const toSync: string[] = [];
+        for (const c of list) {
+          if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
+          const readAt =
+            typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
+          if (readAt && new Date(readAt) >= new Date(c.lastMessage.createdAt)) {
+            toSync.push(c.id);
+          }
+        }
+        if (toSync.length > 0) {
+          void Promise.all(
+            toSync.map((id) => fetch(`/api/chats/${id}/messages`, { method: "PATCH" }).catch(() => {}))
+          );
+        }
       } catch {
         // ignore
       }
@@ -241,6 +257,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         localStorage.setItem(CHAT_READ_KEY + selectedChatId, new Date().toISOString());
         window.dispatchEvent(new Event("chat-read"));
       }
+      void fetch(`/api/chats/${selectedChatId}/messages`, { method: "PATCH" }).catch(() => {});
     } else setMessages([]);
   }, [selectedChatId, fetchMessages]);
 
