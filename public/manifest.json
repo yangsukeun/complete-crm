@@ -1,27 +1,15 @@
 {
-  "id": "/",
-  "name": "Complete CRM",
+  "name": "COMPLETE CRM",
   "short_name": "CRM",
-  "lang": "ko",
-  "description": "COMPLETE CRM",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#0f172a",
-  "orientation": "portrait-primary",
+  "theme_color": "#7c3aed",
   "icons": [
     {
-      "src": "/file.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/file.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
     }
   ]
 }
