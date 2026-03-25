@@ -4,7 +4,8 @@ import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
-const ONESIGNAL_V1_URL = "https://onesignal.com/api/v1/notifications";
+/** 최신 REST: https://documentation.onesignal.com/reference/create-notification — `Authorization: Key …` */
+const ONESIGNAL_NOTIFICATIONS_URL = "https://api.onesignal.com/notifications";
 
 function missingOneSignalEnvVars(): string[] {
   const missing: string[] = [];
@@ -13,11 +14,6 @@ function missingOneSignalEnvVars(): string[] {
     process.env.ONESIGNAL_REST_API_KEY?.trim() || process.env.ONE_SIGNAL_REST_API_KEY?.trim();
   if (!rest) missing.push("ONESIGNAL_REST_API_KEY");
   return missing;
-}
-
-function basicAuthForOneSignal(restKey: string): string {
-  const token = Buffer.from(`${restKey.trim()}:`, "utf8").toString("base64");
-  return `Basic ${token}`;
 }
 
 async function resolveSubscriptionId(userId: string): Promise<string | null> {
@@ -47,7 +43,7 @@ async function resolveSubscriptionId(userId: string): Promise<string | null> {
 
 /**
  * GET/POST: 로그인 사용자 본인에게 테스트 웹 푸시.
- * OneSignal v1 엔드포인트에 `include_subscription_ids`로 직접 POST (대시보드 Delivered 검증용).
+ * OneSignal 최신 API(`api.onesignal.com/notifications`)에 `Key` 인증 + `include_subscription_ids`로 POST.
  */
 async function handleTestPush() {
   try {
@@ -89,23 +85,25 @@ async function handleTestPush() {
       );
     }
 
-    console.log("[test-push] 직접 POST", ONESIGNAL_V1_URL, {
+    console.log("[test-push] 직접 POST", ONESIGNAL_NOTIFICATIONS_URL, {
       userId: session.user.id,
+      auth: "Key <REST_API_KEY>",
     });
     console.log(`[Push] sending to subscriptionId: ${subscriptionId}`);
 
     const body = {
       app_id: appId,
+      target_channel: "push" as const,
       include_subscription_ids: [subscriptionId],
       contents: { en: "테스트 알림입니다", ko: "테스트 알림입니다" },
       headings: { en: "COMPLETE CRM", ko: "COMPLETE CRM" },
     };
 
-    const res = await fetch(ONESIGNAL_V1_URL, {
+    const res = await fetch(ONESIGNAL_NOTIFICATIONS_URL, {
       method: "POST",
       headers: {
-        Authorization: basicAuthForOneSignal(restKey),
-        "Content-Type": "application/json",
+        Authorization: `Key ${restKey}`,
+        "Content-Type": "application/json; charset=utf-8",
       },
       body: JSON.stringify(body),
     });
@@ -135,7 +133,7 @@ async function handleTestPush() {
         hasNextPublicAppId: true,
         hasRestApiKey: true,
       },
-      hint: "Delivered 0이면 구독 ID·앱 ID·REST Key( User Auth Key 아님 )·웹 푸시 설정을 확인하세요.",
+      hint: "403·Authorization 오류는 레거시 onesignal.com/v1 Basic 대신 api.onesignal.com + Authorization: Key 를 사용합니다. Delivered 0이면 구독 ID·REST API Key(앱 키)·웹 푸시 설정을 확인하세요.",
     });
   } catch (e) {
     console.error("[test-push]", e);
