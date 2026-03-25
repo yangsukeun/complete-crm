@@ -16,6 +16,42 @@ function logClient(step: string, payload?: Record<string, unknown>) {
   }
 }
 
+/** Web v16: Player/구독 ID는 주로 PushSubscription.id, 구(getUserId) 타입은 런타임에만 존재할 수 있음 */
+async function resolveIdsForBackend(): Promise<{
+  subscriptionId: string | null;
+  onesignalUserId: string | null;
+  getUserIdLegacy: string | null;
+}> {
+  const rawSub = OneSignal.User?.PushSubscription?.id;
+  const subscriptionId =
+    typeof rawSub === "string" && rawSub.trim()
+      ? rawSub.trim()
+      : rawSub != null && String(rawSub).trim()
+        ? String(rawSub).trim()
+        : null;
+  const onesignalUserId = OneSignal.User?.onesignalId?.trim() || null;
+  let getUserIdLegacy: string | null = null;
+  try {
+    const anyOs = OneSignal as unknown as { getUserId?: () => Promise<string | undefined> };
+    if (typeof anyOs.getUserId === "function") {
+      const v = await anyOs.getUserId().catch(() => undefined);
+      getUserIdLegacy = v?.trim() || null;
+    }
+  } catch {
+    /* */
+  }
+  try {
+    const u = OneSignal.User as unknown as { getOnesignalId?: () => Promise<string | undefined> };
+    if (!getUserIdLegacy && typeof u.getOnesignalId === "function") {
+      const v = await u.getOnesignalId().catch(() => undefined);
+      getUserIdLegacy = v?.trim() || null;
+    }
+  } catch {
+    /* */
+  }
+  return { subscriptionId, onesignalUserId, getUserIdLegacy };
+}
+
 /**
  * 브라우저에서 OneSignal을 한 번 초기화하고, 로그인 시 external_id(User.id)와 맞춥니다.
  * 서버 푸시(`include_aliases.external_id`)와 동일한 값이어야 합니다.
@@ -86,29 +122,23 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
       if (cancelled) return;
       try {
         const ext = OneSignal.User?.externalId ?? null;
-        const oneId = OneSignal.User?.onesignalId ?? null;
-        const subId = OneSignal.User?.PushSubscription?.id ?? null;
         const optedIn = OneSignal.User?.PushSubscription?.optedIn ?? null;
-        let legacyUserId: string | null = null;
-        try {
-          const os = OneSignal as unknown as { getUserId?: () => Promise<string | null | undefined> };
-          if (typeof os.getUserId === "function") {
-            legacyUserId = (await os.getUserId().catch(() => null)) ?? null;
-          }
-        } catch {
-          /* ignore */
-        }
-        const playerForDb = (subId || oneId || legacyUserId)?.trim() || null;
-        logClient(`⑧ 구독 상태 (${reason})`, {
+        const { subscriptionId: subId, onesignalUserId: oneId, getUserIdLegacy } =
+          await resolveIdsForBackend();
+        const playerForDb =
+          (subId || getUserIdLegacy || oneId)?.trim() || null;
+        logClient(`⑧ 구독·Player ID (${reason})`, {
           externalId: ext,
           onesignalUserId: oneId,
           subscriptionId: subId,
+          getUserIdLegacy,
           optedIn,
-          legacyUserId,
+          playerForDb,
+          patchField: "oneSignalPlayerId → PATCH /api/profile/me",
           expectExternalIdMatchUserId: userId ?? null,
         });
 
-        if (subId || oneId || legacyUserId) {
+        if (subId || oneId || getUserIdLegacy) {
           await fetch("/api/user/onesignal-register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -121,11 +151,17 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         }
 
         if (playerForDb && userId) {
-          await fetch("/api/profile/me", {
+          const patchRes = await fetch("/api/profile/me", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ oneSignalPlayerId: playerForDb }),
-          }).catch((e) => console.error("[OneSignal] profile playerId PATCH 실패", e));
+          }).catch((e) => {
+            console.error("[OneSignal] profile playerId PATCH 실패", e);
+            return null;
+          });
+          if (clientDebug() && patchRes && !patchRes.ok) {
+            console.warn("[OneSignal] PATCH /api/profile/me", patchRes.status, await patchRes.text().catch(() => ""));
+          }
         }
       } catch (e) {
         console.error("[OneSignal] reportState 실패", e);
@@ -151,9 +187,18 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           }
           reportedRef.current = false;
           setTimeout(() => void reportState("login+1.5s"), 1500);
+          setTimeout(() => void reportState("login+4s"), 4000);
+          setTimeout(() => void reportState("login+8s"), 8000);
           try {
             OneSignal.User?.PushSubscription?.addEventListener?.("change", () => {
               void reportState("PushSubscription.change");
+            });
+          } catch {
+            /* ignore */
+          }
+          try {
+            OneSignal.User?.addEventListener?.("change", () => {
+              void reportState("User.change");
             });
           } catch {
             /* ignore */
