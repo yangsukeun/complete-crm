@@ -103,7 +103,7 @@ async function handleTestPush() {
       method: "POST",
       headers: {
         Authorization: `Key ${restKey}`,
-        "Content-Type": "application/json; charset=utf-8",
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });

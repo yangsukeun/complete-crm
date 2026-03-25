@@ -3,11 +3,12 @@ import prisma from "@/lib/prisma";
 import { sendPushToUser as sendPushToUserImpl } from "./notifications/push";
 
 /**
- * OneSignal 웹 푸시 (실제 구현: `./notifications/push.ts`).
+ * OneSignal 웹 푸시 (실제 구현: `./notifications/push.ts`의 `sendPushToUser` / `sendPushToUsers`).
  *
- * - **REST Key**: `process.env.ONESIGNAL_REST_API_KEY` (서버 전용; `ONE_SIGNAL_REST_API_KEY` 폴백)
+ * - **URL**: `https://api.onesignal.com/notifications`
+ * - **Authorization**: `Key ${ONESIGNAL_REST_API_KEY}` (`ONE_SIGNAL_REST_API_KEY` 폴백)
+ * - **Content-Type**: `application/json`
  * - **App ID**: `ONESIGNAL_APP_ID` 또는 `NEXT_PUBLIC_ONESIGNAL_APP_ID`
- * - **URL**: 레거시 `https://onesignal.com/api/v1/notifications` (Basic) → 실패 시 `https://api.onesignal.com/notifications` (`Authorization: Key …`)
  */
 export async function sendPushToUser(
   input: Parameters<typeof sendPushToUserImpl>[0]
