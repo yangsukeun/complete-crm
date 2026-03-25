@@ -1,6 +1,26 @@
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
-import { sendPushToUser } from "./notifications/push";
+import { sendPushToUser as sendPushToUserImpl } from "./notifications/push";
+
+/**
+ * OneSignal 웹 푸시 (실제 구현: `./notifications/push.ts`).
+ *
+ * - **REST Key**: `process.env.ONESIGNAL_REST_API_KEY` (서버 전용; `ONE_SIGNAL_REST_API_KEY` 폴백)
+ * - **App ID**: `ONESIGNAL_APP_ID` 또는 `NEXT_PUBLIC_ONESIGNAL_APP_ID`
+ * - **URL**: 레거시 `https://onesignal.com/api/v1/notifications` (Basic) → 실패 시 `https://api.onesignal.com/notifications` (`Authorization: Key …`)
+ */
+export async function sendPushToUser(
+  input: Parameters<typeof sendPushToUserImpl>[0]
+): Promise<void> {
+  try {
+    await sendPushToUserImpl(input);
+  } catch (e) {
+    console.error("[notifications] sendPushToUser 실패", {
+      userId: input.userId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
 
 export type NotificationTypeEnum =
   | "DEADLINE"

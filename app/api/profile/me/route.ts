@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 
 export async function GET() {
   try {
@@ -324,13 +325,7 @@ export async function PATCH(req: Request) {
 
     if (data.oneSignalPlayerId !== undefined) {
       try {
-        await prisma.user.update({
-          where: { id: session.user.id },
-          data: {
-            oneSignalPlayerId: data.oneSignalPlayerId,
-            playerId: data.playerId ?? data.oneSignalPlayerId,
-          },
-        });
+        await saveOneSignalIdsToUser(session.user.id, data.oneSignalPlayerId);
         console.log("[profile/me] OneSignal playerId 저장 완료", {
           userId: session.user.id,
           hasPlayerId: Boolean(data.oneSignalPlayerId && String(data.oneSignalPlayerId).trim()),

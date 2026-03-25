@@ -1,6 +1,8 @@
 {
+  "id": "/",
   "name": "Complete CRM",
   "short_name": "CRM",
+  "lang": "ko",
   "description": "COMPLETE CRM",
   "start_url": "/",
   "scope": "/",

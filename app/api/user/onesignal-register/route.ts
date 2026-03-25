@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import prisma from "@/lib/prisma";
+import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
  * 발송 시 REST는 include_aliases.external_id 와 DB에 저장된 구독 ID(include_subscription_ids)를 함께 사용합니다.
@@ -35,18 +35,17 @@ export async function POST(req: Request) {
     });
 
     if (store) {
-      await prisma.user.update({
-        where: { id: session.user.id },
-        data: { oneSignalPlayerId: store, playerId: store },
-      });
-      console.log("[OneSignal register API] ⑦ playerId+oneSignalPlayerId DB 반영됨", {
-        userId: session.user.id,
-      });
+      await saveOneSignalIdsToUser(session.user.id, store);
+      console.log("[OneSignal register API] ⑦ DB 반영 완료", { userId: session.user.id });
     }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("[OneSignal register API]", e);
-    return NextResponse.json({ error: "저장 실패" }, { status: 500 });
+    console.error("[OneSignal register API] 예외 (500 원인 확인)", e);
+    const detail = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { error: "저장 실패", details: process.env.NODE_ENV === "development" ? detail : undefined },
+      { status: 500 }
+    );
   }
 }
