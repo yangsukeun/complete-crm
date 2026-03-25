@@ -18,7 +18,11 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  await deleteFile(decodeURIComponent(id));
+  const decoded = decodeURIComponent(id);
+  console.log("[upload] DELETE /api/upload/[id] → deleteFile", {
+    fileIdPrefix: decoded.slice(0, 12) + "…",
+  });
+  await deleteFile(decoded);
 
   return NextResponse.json({ ok: true });
 }

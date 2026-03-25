@@ -161,6 +161,10 @@ export async function PATCH(
     });
 
     if (removedAttachmentUrls.length > 0) {
+      console.log("[board] PATCH: 첨부 제거로 Drive 삭제", {
+        postId: id,
+        removedCount: removedAttachmentUrls.length,
+      });
       await Promise.all(
         removedAttachmentUrls.map((u) => {
           const fid = parseGoogleDriveFileIdFromUrl(u);
@@ -217,11 +221,25 @@ export async function DELETE(
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 
+    const attachList = safeParseBoardAttachments(post.attachments);
+    if (attachList.length > 0) {
+      console.log("[board] DELETE: 연결된 Drive 첨부 삭제 시도", {
+        postId: id,
+        attachmentCount: attachList.length,
+      });
+    }
     const now = new Date();
     await prisma.boardPost.update({
       where: { id },
       data: { deletedAt: now, deletedById: session.user.id },
     });
+
+    await Promise.all(
+      attachList.map((a) => {
+        const fid = parseGoogleDriveFileIdFromUrl(a.url);
+        return fid ? deleteFile(fid) : Promise.resolve();
+      })
+    );
 
     return NextResponse.json({ ok: true });
   } catch (e) {

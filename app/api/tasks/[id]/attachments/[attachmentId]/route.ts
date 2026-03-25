@@ -38,7 +38,14 @@ export async function DELETE(
 
     const fid = parseGoogleDriveFileIdFromUrl(att.url);
     await prisma.taskAttachment.delete({ where: { id: attachmentId } });
-    if (fid) await deleteFile(fid);
+    if (fid) {
+      console.log("[tasks] attachment DELETE → Drive deleteFile", {
+        taskId,
+        attachmentId,
+        fileIdPrefix: fid.slice(0, 12) + "…",
+      });
+      await deleteFile(fid);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -197,6 +197,196 @@ async function executeTool(
   }
 }
 
+// ─── Gemini: 네이티브 functionCall + 텍스트/JSON 의사 호출 복구 (Claude와 분리) ─
+
+const SECRETARY_TOOL_NAMES = new Set<string>(SECRETARY_TOOLS.map((t) => t.name));
+
+type GeminiExtractedCall = { name: string; args: Record<string, unknown> };
+
+function normalizeGeminiFunctionCallArgs(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s) return {};
+    try {
+      const j = JSON.parse(s) as unknown;
+      if (j && typeof j === "object" && !Array.isArray(j)) return j as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+    return {};
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) return { ...(raw as Record<string, unknown>) };
+  return {};
+}
+
+function partToGeminiFunctionCall(part: unknown): GeminiExtractedCall | null {
+  if (!part || typeof part !== "object") return null;
+  const p = part as Record<string, unknown>;
+  const fc = (p.functionCall ?? p.function_call) as Record<string, unknown> | undefined;
+  if (!fc || typeof fc !== "object") return null;
+  const name = fc.name;
+  if (typeof name !== "string" || !SECRETARY_TOOL_NAMES.has(name)) return null;
+  const args = normalizeGeminiFunctionCallArgs(fc.args);
+  return { name, args };
+}
+
+function collectGeminiFunctionCallsFromParts(parts: unknown[]): GeminiExtractedCall[] {
+  const out: GeminiExtractedCall[] = [];
+  for (const part of parts) {
+    const c = partToGeminiFunctionCall(part);
+    if (c) out.push(c);
+  }
+  return out;
+}
+
+function extractBalancedParenArgs(s: string, openParenIdx: number): string | null {
+  if (s[openParenIdx] !== "(") return null;
+  let depth = 0;
+  for (let i = openParenIdx; i < s.length; i++) {
+    if (s[i] === "(") depth++;
+    else if (s[i] === ")") {
+      depth--;
+      if (depth === 0) return s.slice(openParenIdx + 1, i);
+    }
+  }
+  return null;
+}
+
+/** Python 스타일 키=값 인자 (일부 Gemini가 텍스트로 출력) */
+function parsePythonKeywordArgs(argStr: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  let i = 0;
+  const skipWs = () => {
+    while (i < argStr.length && /\s/.test(argStr[i]!)) i++;
+  };
+  while (i < argStr.length) {
+    skipWs();
+    const slice = argStr.slice(i);
+    const km = /^(\w+)\s*=/.exec(slice);
+    if (!km) break;
+    const key = km[1]!;
+    i += km[0].length;
+    skipWs();
+    if (i >= argStr.length) break;
+    const c = argStr[i]!;
+    if (c === "'" || c === '"') {
+      const quote = c;
+      i++;
+      let val = "";
+      while (i < argStr.length) {
+        if (argStr[i] === "\\" && i + 1 < argStr.length) {
+          val += argStr[i + 1]!;
+          i += 2;
+          continue;
+        }
+        if (argStr[i] === quote) {
+          i++;
+          break;
+        }
+        val += argStr[i]!;
+        i++;
+      }
+      out[key] = val;
+    } else if (c === "[") {
+      let depth = 0;
+      const start = i;
+      for (; i < argStr.length; i++) {
+        if (argStr[i] === "[") depth++;
+        else if (argStr[i] === "]") {
+          depth--;
+          if (depth === 0) {
+            i++;
+            break;
+          }
+        }
+      }
+      const arrStr = argStr.slice(start, i);
+      try {
+        out[key] = JSON.parse(arrStr.replace(/'/g, '"')) as unknown;
+      } catch {
+        out[key] = arrStr;
+      }
+    } else {
+      const rest = argStr.slice(i);
+      const tm = /^([^,)]+)/.exec(rest);
+      const rawVal = (tm?.[1] ?? "").trim();
+      i += rawVal.length;
+      if (rawVal === "True") out[key] = true;
+      else if (rawVal === "False") out[key] = false;
+      else if (/^-?\d/.test(rawVal)) out[key] = Number(rawVal);
+      else out[key] = rawVal;
+    }
+    skipWs();
+    if (argStr[i] === ",") i++;
+  }
+  return out;
+}
+
+function unwrapOuterPrint(s: string): string {
+  let u = s.trim();
+  const pm = /^print\s*\(\s*([\s\S]*)\s*\)\s*$/i.exec(u);
+  if (pm) u = pm[1]!.trim();
+  return u;
+}
+
+function extractToolCallFromPythonish(code: string): GeminiExtractedCall | null {
+  const re = /(?:default_api\.)?(create_schedule|create_task)\s*\(/gi;
+  const m = re.exec(code);
+  if (!m) return null;
+  const name = m[1]!;
+  const openIdx = m.index + m[0].length - 1;
+  const inner = extractBalancedParenArgs(code, openIdx);
+  if (inner === null) return null;
+  const args = parsePythonKeywordArgs(inner);
+  return { name, args };
+}
+
+function looksLikeGeminiFakeToolText(s: string): boolean {
+  return /tool_code|default_api\.create_|create_schedule\s*\(|create_task\s*\(|"tool_code"\s*:/i.test(
+    s
+  );
+}
+
+/** 모델이 도구 대신 JSON/파이썬 형태 텍스트를 줄 때 복구 */
+function parseGeminiToolCallsFromAssistantText(text: string): GeminiExtractedCall[] {
+  const raw = text.trim();
+  if (!raw) return [];
+
+  let t = raw.replace(/^```(?:json|python)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+  if (t.startsWith("{")) {
+    try {
+      const j = JSON.parse(t) as Record<string, unknown>;
+      if (typeof j.tool_code === "string") {
+        const inner = unwrapOuterPrint(j.tool_code);
+        const c = extractToolCallFromPythonish(inner);
+        if (c) return [c];
+      }
+      if (typeof j.name === "string" && SECRETARY_TOOL_NAMES.has(j.name)) {
+        const args = normalizeGeminiFunctionCallArgs(j.arguments ?? j.args ?? j.parameters);
+        return [{ name: j.name, args }];
+      }
+      if (Array.isArray(j.functionCalls)) {
+        const out: GeminiExtractedCall[] = [];
+        for (const item of j.functionCalls) {
+          if (!item || typeof item !== "object") continue;
+          const it = item as { name?: string; args?: unknown };
+          if (typeof it.name === "string" && SECRETARY_TOOL_NAMES.has(it.name)) {
+            out.push({ name: it.name, args: normalizeGeminiFunctionCallArgs(it.args) });
+          }
+        }
+        if (out.length) return out;
+      }
+    } catch {
+      /* fall through: 전체를 파이썬 형태로 재시도 */
+    }
+  }
+
+  const c = extractToolCallFromPythonish(unwrapOuterPrint(t));
+  return c ? [c] : [];
+}
+
 // ─── Anthropic tool-use loop ─────────────────────────────────────────────────
 
 type AnthropicContent =
@@ -399,13 +589,30 @@ async function callGeminiWithToolLoop(
     }
 
     const cand = data.candidates?.[0];
-    const parts = cand?.content?.parts ?? [];
-    const functionCalls = parts
-      .map((p) => p.functionCall)
-      .filter((fc): fc is NonNullable<typeof fc> & { name: string } => Boolean(fc?.name));
-    const texts = parts
-      .map((p) => p.text)
-      .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+    const partsRaw = (cand?.content?.parts ?? []) as unknown[];
+
+    let functionCalls = collectGeminiFunctionCallsFromParts(partsRaw);
+
+    const texts = partsRaw
+      .map((p) => {
+        if (!p || typeof p !== "object") return "";
+        const t = (p as { text?: string }).text;
+        return typeof t === "string" ? t : "";
+      })
+      .filter((s) => s.trim().length > 0);
+
+    if (functionCalls.length === 0) {
+      const combined = texts.join("\n\n").trim();
+      if (combined && looksLikeGeminiFakeToolText(combined)) {
+        const recovered = parseGeminiToolCallsFromAssistantText(combined);
+        if (recovered.length > 0) {
+          console.log("[AI secretary] Gemini: 텍스트/JSON에서 도구 호출 복구", {
+            tools: recovered.map((c) => c.name),
+          });
+          functionCalls = recovered;
+        }
+      }
+    }
 
     if (functionCalls.length > 0) {
       contents.push({
@@ -413,10 +620,7 @@ async function callGeminiWithToolLoop(
         parts: functionCalls.map((fc) => ({
           functionCall: {
             name: fc.name,
-            args:
-              fc.args && typeof fc.args === "object" && !Array.isArray(fc.args)
-                ? fc.args
-                : {},
+            args: fc.args && typeof fc.args === "object" && !Array.isArray(fc.args) ? fc.args : {},
           },
         })),
       });

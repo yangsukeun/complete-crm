@@ -7,6 +7,8 @@ import { createNotificationWithOptions, createTaskBodyMentionNotification } from
 import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
 import { syncTaskMentionsForTask } from "@/lib/task-mention-sync";
 import { format } from "date-fns";
+import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
+import { deleteFile } from "@/lib/storage/google-drive-storage";
 
 export async function GET(
   req: Request,
@@ -284,6 +286,25 @@ export async function PATCH(
         },
       },
     });
+
+    /** 본문에서 빠진 이미지 블록의 Drive 파일은 저장 성공 후 삭제 (저장 실패 시 Drive 보존) */
+    if (data.description !== undefined) {
+      const oldDesc = existing.description ?? null;
+      const newDesc = data.description ?? null;
+      if (oldDesc !== newDesc) {
+        const prevIds = collectDriveImageFileIdsFromTaskDescription(oldDesc);
+        const nextIds = collectDriveImageFileIdsFromTaskDescription(newDesc);
+        const toDelete = [...prevIds].filter((fid) => !nextIds.has(fid));
+        if (toDelete.length > 0) {
+          console.log("[tasks] PATCH: 본문 이미지 제거 → Drive deleteFile", {
+            taskId: id,
+            count: toDelete.length,
+            fileIdPrefixes: toDelete.map((x) => x.slice(0, 12) + "…"),
+          });
+          for (const fileId of toDelete) void deleteFile(fileId);
+        }
+      }
+    }
 
     const nextStatus = (data.status ?? existing.status) as any;
     const becameDone = nextStatus === "DONE" && existing.status !== "DONE";

@@ -171,6 +171,10 @@ export async function POST(req: Request) {
         where: { OR: [{ parentId: id }, { childId: id }] },
       });
       await prisma.task.delete({ where: { id } });
+      console.log("[admin/trash] 업무 영구 삭제 → Drive 첨부 삭제 시도", {
+        taskId: id,
+        urlCount: urls.length,
+      });
       await Promise.all(
         urls.map((u) => {
           const fid = parseGoogleDriveFileIdFromUrl(u);
@@ -198,6 +202,10 @@ export async function POST(req: Request) {
 
     const urls = safeParseBoardAttachments(post.attachments).map((a) => a.url);
     await prisma.boardPost.delete({ where: { id } });
+    console.log("[admin/trash] 게시판 영구 삭제 → Drive 첨부 삭제 시도", {
+      postId: id,
+      urlCount: urls.length,
+    });
     await Promise.all(
       urls.map((u) => {
         const fid = parseGoogleDriveFileIdFromUrl(u);

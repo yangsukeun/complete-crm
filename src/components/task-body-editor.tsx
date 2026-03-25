@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { getYoutubeVideoId } from "@/lib/blocknote-youtube";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
+import { normalizeImageBlocksDriveDisplayUrls } from "@/lib/task-body-drive-images";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
@@ -271,7 +272,10 @@ export function TaskBodyEditor({
       try {
         const parsed = parseStoredTaskBody(raw);
         if (parsed?.format === "blocks" && parsed.blocks.length > 0) {
-          editor.replaceBlocks(editor.document, parsed.blocks as any);
+          const normalized = normalizeImageBlocksDriveDisplayUrls(
+            parsed.blocks as unknown[]
+          ) as typeof parsed.blocks;
+          editor.replaceBlocks(editor.document, normalized as any);
           loadedForTaskIdRef.current = taskId;
           return;
         }

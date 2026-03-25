@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { storeUploadedFile, resolveStorageProvider } from "@/lib/storage";
+import {
+  grantDriveAnyoneWithLinkRead,
+  parseGoogleDriveFileIdFromUrl,
+} from "@/lib/storage/google-drive-storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -143,6 +147,12 @@ export async function POST(req: Request) {
       mime,
       originalName: file.name,
     });
+
+    /** Drive 업로드 시 링크 공개 읽기(본문 이미지) — storeGoogleDrive와 동일 권한 재시도는 중복 시 무시 */
+    if (result.provider === "google-drive") {
+      const fid = parseGoogleDriveFileIdFromUrl(result.url);
+      if (fid) await grantDriveAnyoneWithLinkRead(fid);
+    }
 
     return NextResponse.json({
       url: result.url,
