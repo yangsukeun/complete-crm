@@ -170,6 +170,10 @@ const updateByUserSchema = z.object({
   department: z.string().optional().nullable(),
   position: z.string().optional().nullable(),
   badgePreset: badgePresetSchema,
+  /** OneSignal 구독/플레이어 ID (푸시 디버그·include_subscription_ids) */
+  oneSignalPlayerId: z.string().optional().nullable(),
+  /** oneSignalPlayerId 와 동일 (클라이언트 편의 별칭) */
+  playerId: z.string().optional().nullable(),
 });
 
 const updateByAdminSchema = updateByUserSchema.extend({
@@ -212,6 +216,7 @@ export async function PATCH(req: Request) {
       joinDate?: Date;
       badgePreset?: string | null;
       preferredAiProvider?: string | null;
+      oneSignalPlayerId?: string | null;
     } = {};
     if (parsed.data.name != null && parsed.data.name.trim()) data.name = parsed.data.name.trim();
     if (parsed.data.email != null) data.email = parsed.data.email.trim() || undefined;
@@ -227,6 +232,13 @@ export async function PATCH(req: Request) {
     if (parsed.data.address !== undefined) data.address = parsed.data.address?.trim() || null;
     if (parsed.data.department !== undefined) data.department = parsed.data.department?.trim() || null;
     if (parsed.data.position !== undefined) data.position = parsed.data.position?.trim() || null;
+    const patchPlayer =
+      parsed.data.oneSignalPlayerId !== undefined || parsed.data.playerId !== undefined
+        ? (parsed.data.oneSignalPlayerId ?? parsed.data.playerId)?.trim() || null
+        : undefined;
+    if (patchPlayer !== undefined) {
+      data.oneSignalPlayerId = patchPlayer;
+    }
     if (isAdmin && (parsed.data as any).joinDate != null) data.joinDate = new Date((parsed.data as any).joinDate);
     if (isAdmin) {
       const adminPatch = parsed.data as z.infer<typeof updateByAdminSchema>;
@@ -254,6 +266,7 @@ export async function PATCH(req: Request) {
     const dataCore = { ...data } as Record<string, unknown>;
     delete dataCore.badgePreset;
     delete dataCore.preferredAiProvider;
+    delete dataCore.oneSignalPlayerId;
 
     let user: {
       id: string;
@@ -303,6 +316,17 @@ export async function PATCH(req: Request) {
         };
       } else {
         throw updateErr;
+      }
+    }
+
+    if (data.oneSignalPlayerId !== undefined) {
+      try {
+        await prisma.user.update({
+          where: { id: session.user.id },
+          data: { oneSignalPlayerId: data.oneSignalPlayerId },
+        });
+      } catch (osErr) {
+        console.warn("Profile PATCH oneSignalPlayerId:", osErr);
       }
     }
 

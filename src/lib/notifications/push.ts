@@ -1,5 +1,6 @@
 import "server-only";
 
+import prisma from "@/lib/prisma";
 import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
 
 type PushPriority = "high" | "medium" | "low";
@@ -38,12 +39,27 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     }
 
     const externalIds = payload.userIds.map((id) => String(id));
+
+    let subscriptionIds: string[] = [];
+    try {
+      const rows = await prisma.user.findMany({
+        where: { id: { in: externalIds } },
+        select: { id: true, oneSignalPlayerId: true },
+      });
+      subscriptionIds = rows
+        .map((r) => r.oneSignalPlayerId?.trim())
+        .filter((s): s is string => Boolean(s && s.length > 8));
+    } catch (dbErr) {
+      if (dbg) console.warn("[OneSignal push] DB subscriptionId 조회 실패 (external_id만 사용)", dbErr);
+    }
+
     if (dbg) {
       console.log("[OneSignal push] ② 요청 준비", {
         url: ONESIGNAL_CREATE_URL,
         app_id: ONESIGNAL_APP_ID,
         target_channel: "push",
         include_aliases_external_id: externalIds,
+        include_subscription_ids_count: subscriptionIds.length,
         titlePreview: payload.title.slice(0, 80),
       });
     }
@@ -55,11 +71,14 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       include_aliases: {
         external_id: externalIds,
       },
-      headings: { en: payload.title },
-      contents: { en: payload.message },
+      headings: { en: payload.title, ko: payload.title },
+      contents: { en: payload.message, ko: payload.message },
       data: payload.data ?? {},
       priority: payload.priority === "high" ? 10 : 5,
     };
+    if (subscriptionIds.length > 0) {
+      body.include_subscription_ids = subscriptionIds;
+    }
     if (payload.url) body.web_url = payload.url;
 
     const res = await fetch(ONESIGNAL_CREATE_URL, {

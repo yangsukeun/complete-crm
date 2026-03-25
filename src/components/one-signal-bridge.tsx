@@ -89,15 +89,26 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         const oneId = OneSignal.User?.onesignalId ?? null;
         const subId = OneSignal.User?.PushSubscription?.id ?? null;
         const optedIn = OneSignal.User?.PushSubscription?.optedIn ?? null;
+        let legacyUserId: string | null = null;
+        try {
+          const os = OneSignal as unknown as { getUserId?: () => Promise<string | null | undefined> };
+          if (typeof os.getUserId === "function") {
+            legacyUserId = (await os.getUserId().catch(() => null)) ?? null;
+          }
+        } catch {
+          /* ignore */
+        }
+        const playerForDb = (subId || oneId || legacyUserId)?.trim() || null;
         logClient(`⑧ 구독 상태 (${reason})`, {
           externalId: ext,
           onesignalUserId: oneId,
           subscriptionId: subId,
           optedIn,
+          legacyUserId,
           expectExternalIdMatchUserId: userId ?? null,
         });
 
-        if (subId || oneId) {
+        if (subId || oneId || legacyUserId) {
           await fetch("/api/user/onesignal-register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -107,6 +118,14 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
               externalId: ext ?? "",
             }),
           }).catch((e) => console.error("[OneSignal] register API 실패", e));
+        }
+
+        if (playerForDb && userId) {
+          await fetch("/api/profile/me", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ oneSignalPlayerId: playerForDb }),
+          }).catch((e) => console.error("[OneSignal] profile playerId PATCH 실패", e));
         }
       } catch (e) {
         console.error("[OneSignal] reportState 실패", e);
@@ -120,6 +139,16 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           logClient("③ login 호출 전", { userId });
           await OneSignal.login(userId);
           logClient("④ login 완료 (external_id = User.id)", { userId });
+          try {
+            await OneSignal.Notifications?.requestPermission?.();
+          } catch (permErr) {
+            logClient("알림 권한 요청 실패/미지원", { err: String(permErr) });
+          }
+          try {
+            await OneSignal.User?.PushSubscription?.optIn?.();
+          } catch {
+            /* ignore */
+          }
           reportedRef.current = false;
           setTimeout(() => void reportState("login+1.5s"), 1500);
           try {

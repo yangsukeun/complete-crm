@@ -5,7 +5,7 @@ import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
 
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
- * 실제 발송은 REST의 include_aliases.external_id (= User.id)로 이루어짐.
+ * 발송 시 REST는 include_aliases.external_id 와 DB에 저장된 구독 ID(include_subscription_ids)를 함께 사용합니다.
  */
 export async function POST(req: Request) {
   try {
