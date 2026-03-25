@@ -209,9 +209,9 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
 
   const mime = (input.mime || "").toLowerCase();
   const isImage = mime.startsWith("image/");
-  /** 썸네일 엔드포인트가 <img src>에서 안정적으로 동작하는 경우가 많음 */
+  /** 에디터 <img> 붙여넣기: 링크 공개 후 uc?export=view 가 엑박이 적음 */
   const url = isImage
-    ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w2000`
+    ? `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`
     : `https://drive.google.com/file/d/${fileId}/view`;
 
   return { url, name: input.originalName, provider: "google-drive" };

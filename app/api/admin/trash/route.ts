@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
+import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -166,20 +167,24 @@ export async function POST(req: Request) {
       }
 
       const urls = deadTask.attachments.map((a) => a.url);
+      const bodyIds = collectDriveImageFileIdsFromTaskDescription(deadTask.description);
+      const driveIds = new Set<string>(bodyIds);
+      for (const u of urls) {
+        const fid = parseGoogleDriveFileIdFromUrl(u);
+        if (fid) driveIds.add(fid);
+      }
       await prisma.task.updateMany({ where: { parentId: id }, data: { parentId: null } });
       await prisma.taskLink.deleteMany({
         where: { OR: [{ parentId: id }, { childId: id }] },
       });
       await prisma.task.delete({ where: { id } });
-      console.log("[admin/trash] 업무 영구 삭제 → Drive 첨부 삭제 시도", {
+      console.log("[admin/trash] 업무 영구 삭제 → Drive 삭제 (첨부+본문 이미지)", {
         taskId: id,
-        urlCount: urls.length,
+        attachmentUrlCount: urls.length,
+        driveIdCount: driveIds.size,
       });
       await Promise.all(
-        urls.map((u) => {
-          const fid = parseGoogleDriveFileIdFromUrl(u);
-          return fid ? deleteFile(fid) : Promise.resolve();
-        })
+        [...driveIds].map((fid) => deleteFile(fid))
       );
       return NextResponse.json({ ok: true });
     }

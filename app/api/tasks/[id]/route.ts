@@ -8,7 +8,7 @@ import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-u
 import { syncTaskMentionsForTask } from "@/lib/task-mention-sync";
 import { format } from "date-fns";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
-import { deleteFile } from "@/lib/storage/google-drive-storage";
+import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 
 export async function GET(
   req: Request,
@@ -421,6 +421,7 @@ export async function DELETE(
     const scope = await getServerWorkspaceScopeFromRequest(req);
     const existing = await prisma.task.findFirst({
       where: { id, deletedAt: null },
+      include: { attachments: true },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -434,6 +435,14 @@ export async function DELETE(
     const isCreator = existing.createdById === session.user.id;
     if (!isAdmin && !isCreator) {
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
+    }
+
+    /** 소프트 삭제 전 본문/첨부의 Drive ID 수집 (복원 API에서는 Drive 삭제 안 함) */
+    const bodyImageIds = collectDriveImageFileIdsFromTaskDescription(existing.description);
+    const driveIds = new Set<string>(bodyImageIds);
+    for (const att of existing.attachments) {
+      const fid = parseGoogleDriveFileIdFromUrl(att.url);
+      if (fid) driveIds.add(fid);
     }
 
     const now = new Date();
@@ -451,6 +460,15 @@ export async function DELETE(
       where: { id },
       data: { deletedAt: now, deletedById: session.user.id },
     });
+
+    if (driveIds.size > 0) {
+      console.log("[tasks] DELETE soft: 게시판과 동일 — Drive 파일 삭제", {
+        taskId: id,
+        driveFileCount: driveIds.size,
+        supportsAllDrives: true,
+      });
+      await Promise.all([...driveIds].map((fid) => deleteFile(fid)));
+    }
 
     return NextResponse.json({ success: true });
   } catch (e) {

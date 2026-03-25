@@ -1,14 +1,18 @@
 import { TASK_BODY_DOC_PREFIX } from "@/lib/task-body-description";
 import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 
-/** Drive 이미지는 썸네일 URL이 <img> 호환성이 좋음 (공개 읽기 권한 전제) */
+/** Drive 이미지 표시 URL 통일 (공개 읽기 권한 전제) — 붙여넣기/로드 시 엑박 완화 */
 export function normalizeDriveImageDisplayUrl(url: string): string {
   const raw = String(url ?? "").trim();
   if (!raw || raw.startsWith("blob:") || raw.startsWith("data:")) return raw;
   const id = parseGoogleDriveFileIdFromUrl(raw);
   if (!id) return raw;
-  if (/drive\.google\.com\/thumbnail\?/i.test(raw) && raw.includes(`id=${id}`)) return raw;
-  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w2000`;
+  const view = `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
+  if (/drive\.google\.com\/uc\?/i.test(raw) && /export=view/i.test(raw)) {
+    const same = parseGoogleDriveFileIdFromUrl(raw);
+    if (same === id) return raw;
+  }
+  return view;
 }
 
 function walkBlocksForImageDriveIds(blocks: unknown[], out: Set<string>): void {
