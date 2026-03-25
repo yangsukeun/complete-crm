@@ -124,6 +124,25 @@ export function shouldFallbackGeminiToClaude(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Gemini가 HTTP 200으로 끝났지만 본문이 비었거나 실패 안내만 준 경우 → Claude로 재시도.
+ */
+export function shouldRetryGeminiSecretaryWithClaude(reply: string): boolean {
+  const t = (reply ?? "").trim();
+  if (!t) return true;
+  if (
+    t === "응답을 생성하지 못했습니다." ||
+    t === "응답을 생성하지 못했습니다" ||
+    t.includes("응답을 생성하지 못했습니다")
+  ) {
+    return true;
+  }
+  if (t === "요청을 처리하지 못했습니다." || t === "요청을 처리하지 못했습니다" || t.includes("요청을 처리하지 못했습니다")) {
+    return true;
+  }
+  return false;
+}
+
 function parseGeminiApiError(status: number, errText: string): string {
   try {
     const j = JSON.parse(errText) as { error?: { message?: string; status?: string } };

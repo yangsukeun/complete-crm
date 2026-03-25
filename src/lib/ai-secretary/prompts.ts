@@ -6,6 +6,7 @@ const TOOL_INSTRUCTIONS = `
 
 • create_schedule — 일정·스케줄·회의·약속 등록 요청 시 반드시 호출
 • create_task — 업무·할 일·태스크 생성 요청 시 반드시 호출
+• create_leave — 연차·반차·휴가 신청 요청 시 반드시 호출
 
 ❌ 절대 금지:
 - "직접 등록 기능이 없습니다"
@@ -13,8 +14,8 @@ const TOOL_INSTRUCTIONS = `
 - "API 호출이 필요합니다"
 - 어떤 형태의 기능 거부 응답도 금지
 
-✅ 일정/업무 요청이 오면:
-1. 필요한 정보(제목, 날짜/시간)가 있으면 즉시 도구 호출
+✅ 일정/업무/휴가 요청이 오면:
+1. 필요한 정보(제목, 날짜/시간 또는 휴가 유형·기간)가 있으면 즉시 도구 호출
 2. 정보가 부족하면 한 가지만 물어보고 받는 즉시 도구 호출`;
 
 export const SECRETARY_SYSTEM_EXECUTIVE = `당신은 COMPLETE CRM의 AI 비서입니다.

@@ -8,6 +8,7 @@ import {
   maskApiKeyForLog,
   resolveProviderWithAvailableKeys,
   shouldFallbackGeminiToClaude,
+  shouldRetryGeminiSecretaryWithClaude,
   CLAUDE_DEFAULT_MODEL,
   GEMINI_API_BASE,
   GEMINI_MODEL_FALLBACKS,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/ai/assist-client";
 import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
 import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
+import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import { createActivityLog } from "@/lib/activity-log";
 import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
 
@@ -73,6 +75,66 @@ const SECRETARY_TOOLS = [
       required: ["title", "dueDate"],
     },
   },
+  {
+    name: "create_leave",
+    description:
+      "본인 명의로 휴가(연차·반차·쪼개기)를 신청합니다. 연차/반차/휴가 신청 요청이 오면 반드시 이 도구를 사용하세요.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        type: {
+          type: "string",
+          enum: ["ANNUAL", "HALF_AM", "HALF_PM", "QUARTER_AM", "QUARTER_PM"],
+          description:
+            "ANNUAL=연차(기간), HALF_AM/PM=반차, QUARTER_AM/PM=반반차",
+        },
+        startDate: {
+          type: "string",
+          description: "시작일 (YYYY-MM-DD 또는 ISO 날짜)",
+        },
+        endDate: {
+          type: "string",
+          description: "종료일 (YYYY-MM-DD 또는 ISO 날짜, 반차는 보통 시작일과 동일)",
+        },
+        reason: { type: "string", description: "사유 (선택)" },
+      },
+      required: ["type", "startDate", "endDate"],
+    },
+  },
+] as const;
+
+const LEAVE_TYPE_DAY_UNITS: Record<string, number> = {
+  ANNUAL: 1,
+  HALF_AM: 0.5,
+  HALF_PM: 0.5,
+  QUARTER_AM: 0.25,
+  QUARTER_PM: 0.25,
+};
+
+/** 첫 사용자 메시지에 포함 시 도구 호출을 강제(ANY / tool_choice any) */
+const SECRETARY_ACTION_KEYWORDS = [
+  "일정",
+  "스케줄",
+  "회의",
+  "약속",
+  "캘린더",
+  "등록해",
+  "추가해",
+  "잡아줘",
+  "잡아 줘",
+  "업무",
+  "태스크",
+  "task",
+  "할 일",
+  "할일",
+  "생성해",
+  "만들어",
+  "연차",
+  "반차",
+  "휴가",
+  "근태",
+  "연차 신청",
+  "휴가 신청",
 ] as const;
 
 // ─── Tool executor ────────────────────────────────────────────────────────────
@@ -191,9 +253,109 @@ async function executeTool(
       return `✅ 업무가 생성되었습니다.\n- 제목: ${task.title}\n- 마감: ${dueDate}`;
     }
 
+    if (name === "create_leave") {
+      const { type, startDate: startRaw, endDate: endRaw, reason } = input as {
+        type: string;
+        startDate: string;
+        endDate: string;
+        reason?: string;
+      };
+      const allowed = new Set([
+        "ANNUAL",
+        "HALF_AM",
+        "HALF_PM",
+        "QUARTER_AM",
+        "QUARTER_PM",
+      ]);
+      if (!allowed.has(type)) {
+        throw new Error(`지원하지 않는 휴가 유형: ${type}`);
+      }
+
+      const start = new Date(startRaw);
+      const end = new Date(endRaw);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        throw new Error("날짜 형식이 올바르지 않습니다.");
+      }
+      if (end < start) {
+        throw new Error("종료일은 시작일 이후여야 합니다.");
+      }
+
+      const year = new Date().getFullYear();
+      const userRec = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { joinDate: true },
+      });
+      const joinDate = userRec?.joinDate ?? new Date();
+      const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
+
+      let balance = await prisma.leaveBalance.findUnique({
+        where: { userId_year: { userId, year } },
+      });
+      if (!balance) {
+        balance = await prisma.leaveBalance.create({
+          data: {
+            userId,
+            year,
+            annualTotal,
+            annualUsed: 0,
+            manualDeduction: 0,
+            annualCarryOver: 0,
+          },
+        });
+      }
+      const carryOver = balance.annualCarryOver ?? 0;
+      const manualDeduction = balance.manualDeduction ?? 0;
+      const totalAvailable = annualTotal + carryOver;
+      const remaining = totalAvailable - balance.annualUsed - manualDeduction;
+
+      let days = 0;
+      if (type === "ANNUAL") {
+        const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        days = Math.min(diff, 30);
+      } else {
+        days = LEAVE_TYPE_DAY_UNITS[type] ?? 0;
+      }
+
+      if (days > remaining) {
+        throw new Error(`연차 잔여일(${remaining.toFixed(1)}일)이 부족합니다.`);
+      }
+
+      const leave = await prisma.leaveRequest.create({
+        data: {
+          userId,
+          type: type as
+            | "ANNUAL"
+            | "HALF_AM"
+            | "HALF_PM"
+            | "QUARTER_AM"
+            | "QUARTER_PM",
+          startDate: start,
+          endDate: end,
+          reason: reason?.trim() ? reason.trim() : null,
+        },
+      });
+
+      const startStr =
+        leave.startDate instanceof Date
+          ? leave.startDate.toISOString().slice(0, 10)
+          : String(leave.startDate).slice(0, 10);
+      const endStr =
+        leave.endDate instanceof Date
+          ? leave.endDate.toISOString().slice(0, 10)
+          : String(leave.endDate).slice(0, 10);
+
+      return `✅ 휴가 신청이 등록되었습니다.\n- 유형: ${type}\n- 기간: ${startStr} ~ ${endStr}`;
+    }
+
     return `알 수 없는 도구: ${name}`;
   } catch (e) {
-    return `도구 실행 실패 (${name}): ${e instanceof Error ? e.message : String(e)}`;
+    const reason = e instanceof Error ? e.message : String(e);
+    console.error("[AI secretary] tool execution failed", {
+      tool: name,
+      reason,
+      stack: e instanceof Error ? e.stack : undefined,
+    });
+    return `도구 실행 실패 (${name}): ${reason}`;
   }
 }
 
@@ -331,7 +493,7 @@ function unwrapOuterPrint(s: string): string {
 }
 
 function extractToolCallFromPythonish(code: string): GeminiExtractedCall | null {
-  const re = /(?:default_api\.)?(create_schedule|create_task)\s*\(/gi;
+  const re = /(?:default_api\.)?(create_schedule|create_task|create_leave)\s*\(/gi;
   const m = re.exec(code);
   if (!m) return null;
   const name = m[1]!;
@@ -343,7 +505,7 @@ function extractToolCallFromPythonish(code: string): GeminiExtractedCall | null 
 }
 
 function looksLikeGeminiFakeToolText(s: string): boolean {
-  return /tool_code|default_api\.create_|create_schedule\s*\(|create_task\s*\(|"tool_code"\s*:/i.test(
+  return /tool_code|default_api\.create_|create_schedule\s*\(|create_task\s*\(|create_leave\s*\(|"tool_code"\s*:/i.test(
     s
   );
 }
@@ -419,11 +581,7 @@ async function callAnthropicWithToolLoop(
     if (loop === 0) {
       const lastMsg = [...currentMessages].reverse().find((m) => m.role === "user");
       const msgText = typeof lastMsg?.content === "string" ? lastMsg.content : "";
-      const ACTION_KEYWORDS = [
-        "일정", "스케줄", "회의", "약속", "캘린더", "등록해", "추가해", "잡아줘", "잡아 줘",
-        "업무", "태스크", "task", "할 일", "할일", "생성해", "만들어",
-      ];
-      if (ACTION_KEYWORDS.some((k) => msgText.includes(k))) {
+      if (SECRETARY_ACTION_KEYWORDS.some((k) => msgText.includes(k))) {
         toolChoice = { type: "any" };
       }
     }
@@ -518,18 +676,13 @@ async function callGeminiWithToolLoop(
     ? [envModel, ...GEMINI_MODEL_FALLBACKS.filter((mod) => mod !== envModel)]
     : [...GEMINI_MODEL_FALLBACKS];
 
-  const ACTION_KEYWORDS = [
-    "일정", "스케줄", "회의", "약속", "캘린더", "등록해", "추가해", "잡아줘", "잡아 줘",
-    "업무", "태스크", "task", "할 일", "할일", "생성해", "만들어",
-  ];
-
   const MAX_LOOPS = 5;
   for (let loop = 0; loop < MAX_LOOPS; loop++) {
     let toolChoiceMode = "AUTO";
     if (loop === 0) {
       const lastUser = [...history].reverse().find((m) => m.role === "user");
       const msgText = lastUser?.content ?? "";
-      if (ACTION_KEYWORDS.some((k) => msgText.includes(k))) {
+      if (SECRETARY_ACTION_KEYWORDS.some((k) => msgText.includes(k))) {
         toolChoiceMode = "ANY";
       }
     }
@@ -797,7 +950,7 @@ export async function sendSecretaryMessage(params: {
   const rolePrompt = getSecretaryRolePrompt(role);
   const instructionSuffix = isExecutiveLike(role)
     ? "답변은 한국어로 하세요. 위 참고 데이터에 포함된 직원·연락처·업무 정보는 사용자가 물으면 제공하세요. 허용된 범위의 정보 제공을 거부하지 마세요."
-    : "답변은 한국어로 하세요. 일정 등록·업무 생성 요청은 반드시 도구를 사용해 즉시 실행하세요. 권한이 없는 정보(연락처·재무 등)만 거부하세요.";
+    : "답변은 한국어로 하세요. 일정 등록·업무 생성·휴가(연차/반차) 신청 요청은 반드시 도구를 사용해 즉시 실행하세요. 권한이 없는 정보(연락처·재무 등)만 거부하세요.";
   const systemContent = `${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
 
   logAiSecretarySystemPrompt(systemContent, { userId, role, dateKey });
@@ -825,12 +978,16 @@ export async function sendSecretaryMessage(params: {
     const toolMessagesAnthropic: AnthropicMessage[] = history
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    let cameFromGeminiOnly = true;
     try {
       reply = await callGeminiWithToolLoop(gKey, systemContent, flatHistory, userId);
     } catch (e) {
+      cameFromGeminiOnly = false;
       if (!shouldFallbackGeminiToClaude(e)) throw e;
       if (!claudeKey) throw e;
-      console.warn("[AI secretary] Gemini failed; falling back to Claude (로그만)");
+      console.warn("[AI secretary] Gemini 요청 실패(503·429·네트워크 등); Claude 폴백", {
+        err: e instanceof Error ? e.message : String(e),
+      });
       try {
         reply = await callAnthropicWithToolLoop(
           getClaudeApiKey(),
@@ -839,7 +996,26 @@ export async function sendSecretaryMessage(params: {
           userId
         );
       } catch (e2) {
-        console.error("[AI secretary] Claude fallback failed", e2);
+        console.error("[AI secretary] Claude 폴백 실패", e2);
+        throw new Error(
+          "지금은 AI 응답을 생성할 수 없습니다. 잠시 후 다시 시도해 주세요."
+        );
+      }
+    }
+    if (cameFromGeminiOnly && shouldRetryGeminiSecretaryWithClaude(reply) && claudeKey) {
+      console.warn("[AI secretary] Gemini 무응답/실패 문구만 반환; Claude 자동 재시도", {
+        replyLength: reply.length,
+        replyPreview: reply.slice(0, 160),
+      });
+      try {
+        reply = await callAnthropicWithToolLoop(
+          getClaudeApiKey(),
+          systemContent,
+          toolMessagesAnthropic,
+          userId
+        );
+      } catch (e2) {
+        console.error("[AI secretary] Claude 재시도 실패 (Gemini 무응답 후)", e2);
         throw new Error(
           "지금은 AI 응답을 생성할 수 없습니다. 잠시 후 다시 시도해 주세요."
         );
