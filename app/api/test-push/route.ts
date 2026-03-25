@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import { sendPushToUser } from "@/lib/notifications/push";
+import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
+
+const ONESIGNAL_V1_URL = "https://onesignal.com/api/v1/notifications";
 
 function missingOneSignalEnvVars(): string[] {
   const missing: string[] = [];
@@ -13,9 +15,39 @@ function missingOneSignalEnvVars(): string[] {
   return missing;
 }
 
+function basicAuthForOneSignal(restKey: string): string {
+  const token = Buffer.from(`${restKey.trim()}:`, "utf8").toString("base64");
+  return `Basic ${token}`;
+}
+
+async function resolveSubscriptionId(userId: string): Promise<string | null> {
+  type Row = { oneSignalPlayerId: string | null; playerId?: string | null };
+  let row: Row | null;
+  try {
+    row = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { oneSignalPlayerId: true, playerId: true },
+    });
+  } catch (firstErr) {
+    const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+    if (/playerId|Unknown column|does not exist/i.test(msg)) {
+      row = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { oneSignalPlayerId: true },
+      });
+      row = row ? { ...row, playerId: null } : null;
+    } else {
+      throw firstErr;
+    }
+  }
+  if (!row) return null;
+  const sid = (row.playerId?.trim() || row.oneSignalPlayerId?.trim()) ?? "";
+  return sid.length > 8 ? sid : null;
+}
+
 /**
- * GET/POST: 로그인 사용자 본인에게 테스트 웹 푸시 (OneSignal).
- * GET은 브라우저 주소창·북마크로 빠르게 점검할 때 사용.
+ * GET/POST: 로그인 사용자 본인에게 테스트 웹 푸시.
+ * OneSignal v1 엔드포인트에 `include_subscription_ids`로 직접 POST (대시보드 Delivered 검증용).
  */
 async function handleTestPush() {
   try {
@@ -39,28 +71,71 @@ async function handleTestPush() {
       );
     }
 
-    console.log("[test-push] GET: 즉시 OneSignal REST 호출 (sendPushToUser → api.onesignal.com / 레거시 폴백)", {
+    const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID!.trim();
+    const restKey =
+      process.env.ONESIGNAL_REST_API_KEY?.trim() || process.env.ONE_SIGNAL_REST_API_KEY!.trim();
+
+    const subscriptionId = await resolveSubscriptionId(session.user.id);
+    if (!subscriptionId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          sent: false,
+          error:
+            "DB에 OneSignal 구독 ID가 없습니다. 브라우저에서 푸시 허용 후 앱이 playerId/oneSignalPlayerId를 저장했는지 확인하세요.",
+          userId: session.user.id,
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log("[test-push] 직접 POST", ONESIGNAL_V1_URL, {
       userId: session.user.id,
+    });
+    console.log(`[Push] sending to subscriptionId: ${subscriptionId}`);
+
+    const body = {
+      app_id: appId,
+      include_subscription_ids: [subscriptionId],
+      contents: { en: "테스트 알림입니다", ko: "테스트 알림입니다" },
+      headings: { en: "COMPLETE CRM", ko: "COMPLETE CRM" },
+    };
+
+    const res = await fetch(ONESIGNAL_V1_URL, {
+      method: "POST",
+      headers: {
+        Authorization: basicAuthForOneSignal(restKey),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     });
 
-    await sendPushToUser({
-      userId: session.user.id,
-      title: "테스트 알림",
-      message: "OneSignal 푸시가 정상이면 이 메시지가 보입니다.",
-      url: "/notifications",
-      priority: "high",
-      data: { type: "test_push", ts: Date.now() },
-    });
+    const text = await res.text();
+    console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
+
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      parsed = null;
+    }
+
+    const recipients = typeof parsed?.recipients === "number" ? parsed.recipients : null;
+    const httpOk = res.ok;
+    const sent = httpOk && (recipients === null ? true : recipients > 0);
 
     return NextResponse.json({
-      ok: true,
-      sent: true,
+      ok: httpOk,
+      sent,
+      status: res.status,
       userId: session.user.id,
+      subscriptionIdPreview: `${subscriptionId.slice(0, 6)}…`,
+      oneSignal: parsed ?? { raw: text.slice(0, 500) },
       env: {
         hasNextPublicAppId: true,
         hasRestApiKey: true,
       },
-      hint: "Vercel 로그에서 [Push] sending… / [Push] OneSignal response… 검색",
+      hint: "Delivered 0이면 구독 ID·앱 ID·REST Key( User Auth Key 아님 )·웹 푸시 설정을 확인하세요.",
     });
   } catch (e) {
     console.error("[test-push]", e);
