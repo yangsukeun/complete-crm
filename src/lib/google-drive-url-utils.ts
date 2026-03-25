@@ -12,7 +12,9 @@ export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
 
   let s = raw;
   if (s.startsWith("//")) s = `https:${s}`;
-  else if (!/^https?:\/\//i.test(s) && /drive\.google\.com/i.test(s)) s = `https://${s.replace(/^\/+/, "")}`;
+  else if (!/^https?:\/\//i.test(s) && /drive\.google\.com|googleusercontent\.com/i.test(s)) {
+    s = `https://${s.replace(/^\/+/, "")}`;
+  }
 
   const pathMatch = /drive\.google\.com\/file\/d\/([^/?#]+)/i.exec(s);
   if (pathMatch) {
@@ -26,23 +28,40 @@ export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
     return seg;
   }
 
+  /** 이미지 프록시: https://lh3.googleusercontent.com/d/FILE_ID */
+  const gucPath = /\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/i.exec(s);
+  if (gucPath) {
+    const seg = gucPath[1]!.trim();
+    if (seg.length >= 5) return seg;
+  }
+
   try {
     const u = new URL(s);
     const host = u.hostname.replace(/^www\./i, "").toLowerCase();
-    if (host !== "drive.google.com") return null;
-    const id = u.searchParams.get("id");
-    if (!id) return null;
-    let decoded = id.trim();
-    try {
-      decoded = decodeURIComponent(decoded);
-    } catch {
-      /* keep decoded */
+    if (host === "drive.google.com") {
+      const id = u.searchParams.get("id");
+      if (!id) return null;
+      let decoded = id.trim();
+      try {
+        decoded = decodeURIComponent(decoded);
+      } catch {
+        /* keep decoded */
+      }
+      if (decoded.length < 5) return null;
+      return decoded;
     }
-    if (decoded.length < 5) return null;
-    return decoded;
+    /** drive.usercontent.google.com/uc?export=download&id= */
+    if (host === "drive.usercontent.google.com" || host.endsWith(".googleusercontent.com")) {
+      const id = u.searchParams.get("id");
+      if (id) {
+        const decoded = id.trim();
+        if (decoded.length >= 5) return decoded;
+      }
+    }
   } catch {
     return null;
   }
+  return null;
 }
 
 /** 본문 문자열(마크다운/HTML) 안의 drive.google.com 링크에서 파일 ID 수집 */
@@ -53,7 +72,7 @@ export function collectGoogleDriveFileIdsFromText(text: string | null | undefine
   let m: RegExpExecArray | null;
   while ((m = re.exec(s)) !== null) {
     const u = m[0].replace(/[),.;>'"`]+$/g, "");
-    if (!/drive\.google\.com/i.test(u)) continue;
+    if (!/drive\.google\.com|googleusercontent\.com/i.test(u)) continue;
     const id = parseGoogleDriveFileIdFromUrl(u);
     if (id) ids.add(id);
   }

@@ -223,21 +223,37 @@ export async function DELETE(
     }
 
     const attachList = safeParseBoardAttachments(post.attachments);
+    const descPreview = (post.description ?? "").slice(0, 200);
     const bodyDriveIds = collectGoogleDriveFileIdsFromText(post.description ?? "");
     const driveIdsToDelete = new Set<string>();
+    /** Vercel: 어떤 첨부가 Drive ID로 안 잡혔는지 추적 */
+    const attachmentParseLog = attachList.map((a) => ({
+      name: a.name?.slice(0, 40),
+      urlPreview: a.url.length > 140 ? `${a.url.slice(0, 140)}…` : a.url,
+      parsedIdPrefix: parseGoogleDriveFileIdFromUrl(a.url)?.slice(0, 8) ?? null,
+    }));
+
     for (const a of attachList) {
       const fid = parseGoogleDriveFileIdFromUrl(a.url);
       if (fid) driveIdsToDelete.add(fid);
     }
     for (const fid of bodyDriveIds) driveIdsToDelete.add(fid);
 
-    if (driveIdsToDelete.size > 0) {
-      console.log("[board] DELETE(soft): Drive files.delete 호출 (첨부+본문 링크)", {
+    if (driveIdsToDelete.size === 0 && (attachList.length > 0 || /drive|googleusercontent|blob|vercel|webdav/i.test(post.description ?? ""))) {
+      console.warn("[board] DELETE(soft): Drive 삭제 대상 ID 없음 — URL 형식이 Drive/File ID 파싱 불가이거나 Blob/WebDAV일 수 있음", {
         postId: id,
         attachmentCount: attachList.length,
-        bodyLinkIdCount: bodyDriveIds.length,
+        attachmentParseLog,
+        bodyRawContainsDriveLike: /drive\.google|googleusercontent/i.test(post.description ?? ""),
+        descriptionPreview: descPreview,
+      });
+    } else if (driveIdsToDelete.size > 0) {
+      console.log("[board] DELETE(soft): 소프트삭제 저장 후 deleteFile 호출 예정", {
+        postId: id,
+        attachmentCount: attachList.length,
+        bodyParseIdCount: bodyDriveIds.length,
         uniqueDriveIds: driveIdsToDelete.size,
-        supportsAllDrives: true,
+        idPrefixes: [...driveIdsToDelete].map((x) => x.slice(0, 10) + "…"),
       });
     }
 
@@ -247,7 +263,19 @@ export async function DELETE(
       data: { deletedAt: now, deletedById: session.user.id },
     });
 
-    await Promise.all([...driveIdsToDelete].map((fid) => deleteFile(fid)));
+    console.log("[board] DELETE(soft): prisma update 완료 → deleteFile 시작 (각 결과는 [storage] 로그)", {
+      postId: id,
+      deleteCount: driveIdsToDelete.size,
+    });
+    for (const fid of driveIdsToDelete) {
+      console.log("[board] DELETE(soft): deleteFile 호출", {
+        postId: id,
+        fileIdPrefix: fid.slice(0, 12) + "…",
+        supportsAllDrives: true,
+      });
+      await deleteFile(fid);
+    }
+    console.log("[board] DELETE(soft): deleteFile 배치 종료", { postId: id, attempted: driveIdsToDelete.size });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
