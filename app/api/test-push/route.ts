@@ -7,7 +7,9 @@ export const runtime = "nodejs";
 function missingOneSignalEnvVars(): string[] {
   const missing: string[] = [];
   if (!process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID?.trim()) missing.push("NEXT_PUBLIC_ONESIGNAL_APP_ID");
-  if (!process.env.ONESIGNAL_REST_API_KEY?.trim()) missing.push("ONESIGNAL_REST_API_KEY");
+  const rest =
+    process.env.ONESIGNAL_REST_API_KEY?.trim() || process.env.ONE_SIGNAL_REST_API_KEY?.trim();
+  if (!rest) missing.push("ONESIGNAL_REST_API_KEY");
   return missing;
 }
 
@@ -37,6 +39,10 @@ async function handleTestPush() {
       );
     }
 
+    console.log("[test-push] GET: 즉시 OneSignal REST 호출 (sendPushToUser → api.onesignal.com / 레거시 폴백)", {
+      userId: session.user.id,
+    });
+
     await sendPushToUser({
       userId: session.user.id,
       title: "테스트 알림",
@@ -54,6 +60,7 @@ async function handleTestPush() {
         hasNextPublicAppId: true,
         hasRestApiKey: true,
       },
+      hint: "Vercel 로그에서 [Push] sending… / [Push] OneSignal response… 검색",
     });
   } catch (e) {
     console.error("[test-push]", e);

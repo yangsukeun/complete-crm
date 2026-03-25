@@ -110,6 +110,15 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
 
     const launchUrl = absoluteUrlForPush(payload.url);
 
+    for (const sid of subscriptionIds) {
+      console.log(`[Push] sending to subscriptionId: ${sid}`);
+    }
+    if (subscriptionIds.length === 0) {
+      console.log(
+        `[Push] sending to subscriptionId: (none in DB) external_id only: ${JSON.stringify(externalIds)}`
+      );
+    }
+
     console.log("[OneSignal push] ③ OneSignal REST 페이로드 준비", {
       legacyUrl: ONESIGNAL_LEGACY_URL,
       modernUrl: ONESIGNAL_MODERN_URL,
@@ -210,6 +219,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     }
 
     if (!resOk) {
+      console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
       console.error("[OneSignal push] ⑤ HTTP 실패 (legacy+modern)", {
         used,
         statusLegacy: first.status,
@@ -219,6 +229,8 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       });
       return;
     }
+
+    console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
 
     console.log(`[OneSignal push] ⑥ 응답 OK (${used})`, {
       id: parsed?.id,

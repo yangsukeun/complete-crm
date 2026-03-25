@@ -127,12 +127,17 @@ export async function POST(
       where: { chatId, userId: { not: session.user.id } },
       select: { userId: true },
     });
+    console.log("[chat/messages POST] 수신자에게 알림+푸시 트리거", {
+      chatId,
+      recipientCount: participants.length,
+      senderId: session.user.id,
+    });
     for (const p of participants) {
       await createNotificationWithOptions({
         userId: p.userId,
         type: "CHAT_MESSAGE",
         message: `${senderName}님이 채팅 메시지를 보냈습니다.`,
-        link: `/chats/${chatId}`,
+        link: `/chat/${chatId}`,
         actorId: session.user.id,
       });
     }
