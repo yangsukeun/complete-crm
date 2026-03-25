@@ -32,6 +32,13 @@ import { getYoutubeVideoId } from "@/lib/blocknote-youtube";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 import { normalizeImageBlocksDriveDisplayUrls } from "@/lib/task-body-drive-images";
+import {
+  createPastedImageBlock,
+  getClipboardImageFile,
+  getFirstImageFileFromDataTransfer,
+  isParagraphEffectivelyEmpty,
+  uploadImageViaApi,
+} from "@/lib/editor-image-upload";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
@@ -63,26 +70,6 @@ function stripTrailingJunkFromUrl(url: string): string {
   return url.replace(/[),.;>\]'"]+$/g, "");
 }
 
-/** 클립보드에서 이미지 파일만 추출 (Windows 캡처·스크린샷 붙여넣기 등) */
-function getClipboardImageFile(dt: DataTransfer): File | null {
-  if (dt.files?.length) {
-    for (let i = 0; i < dt.files.length; i++) {
-      const f = dt.files[i];
-      if (f.type.startsWith("image/")) return f;
-    }
-  }
-  if (dt.items?.length) {
-    for (let i = 0; i < dt.items.length; i++) {
-      const it = dt.items[i];
-      if (it.kind === "file" && it.type.startsWith("image/")) {
-        const f = it.getAsFile();
-        if (f) return f;
-      }
-    }
-  }
-  return null;
-}
-
 /** 클립보드 텍스트에서 단일 URL 추출 (줄바꿈 앞 첫 줄, 문장 속 URL도 시도) */
 function extractUrlFromPlainPaste(raw: string): string | null {
   const first = raw.trim().split(/\n/)[0]?.trim() ?? "";
@@ -95,19 +82,6 @@ function extractUrlFromPlainPaste(raw: string): string | null {
     if (isUrl(u)) return u;
   }
   return null;
-}
-
-/** URL만 붙일 때 현재 빈 문단을 임베드 블록으로 바꿀지 여부 */
-function isParagraphEffectivelyEmpty(block: { type?: string; content?: unknown } | null): boolean {
-  if (!block || block.type !== "paragraph") return false;
-  const c = block.content;
-  if (c == null || (Array.isArray(c) && c.length === 0)) return true;
-  if (!Array.isArray(c)) return false;
-  return c.every((item: unknown) => {
-    const it = item as { type?: string; text?: string };
-    if (it?.type === "text") return !(String(it.text ?? "").trim());
-    return false;
-  });
 }
 
 function NotionStyleSideMenu() {
@@ -224,12 +198,7 @@ export function TaskBodyEditor({
   className,
 }: TaskBodyEditorProps) {
   const uploadFile = useCallback(async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "업로드 실패");
-    return data.url;
+    return uploadImageViaApi(file);
   }, []);
 
   const dictionary = useMemo(
@@ -347,17 +316,9 @@ export function TaskBodyEditor({
           const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
           void toast.promise(
             (async () => {
-              const url = await uploadFile(imageFile);
+              const url = await uploadImageViaApi(imageFile);
               if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
-              const block = {
-                type: "image" as const,
-                props: {
-                  url,
-                  name: imageFile.name?.replace(/\s+/g, "-") || "pasted-image.png",
-                  caption: "",
-                  showPreview: true,
-                },
-              };
+              const block = createPastedImageBlock(url, imageFile.name || "pasted-image.png");
               if (isParagraphEffectivelyEmpty(refBlock)) {
                 editor.replaceBlocks([refBlock], [block as never]);
               } else {
@@ -398,7 +359,40 @@ export function TaskBodyEditor({
         // ignore
       }
     },
-    [editor, uploadFile]
+    [editor]
+  );
+
+  const handleDropCapture = useCallback(
+    (e: React.DragEvent) => {
+      try {
+        const file = getFirstImageFileFromDataTransfer(e.dataTransfer);
+        if (!file) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const cur = editor.getTextCursorPosition();
+        const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+        void toast.promise(
+          (async () => {
+            const url = await uploadImageViaApi(file);
+            if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
+            const block = createPastedImageBlock(url, file.name || "image.png");
+            if (isParagraphEffectivelyEmpty(refBlock)) {
+              editor.replaceBlocks([refBlock], [block as never]);
+            } else {
+              editor.insertBlocks([block as never], refBlock, "after");
+            }
+          })(),
+          {
+            loading: "이미지 업로드 중…",
+            success: "이미지를 넣었습니다.",
+            error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+          }
+        );
+      } catch {
+        /* ignore */
+      }
+    },
+    [editor]
   );
 
   return (
@@ -436,6 +430,7 @@ export function TaskBodyEditor({
         )}
         style={{ isolation: "isolate" }}
         onPasteCapture={handlePasteCapture}
+        onDropCapture={handleDropCapture}
       >
         <BlockNoteView
           editor={editor}

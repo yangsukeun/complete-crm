@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canUserViewBoardPost } from "@/lib/board-access";
-import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
+import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
+import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -222,24 +223,31 @@ export async function DELETE(
     }
 
     const attachList = safeParseBoardAttachments(post.attachments);
-    if (attachList.length > 0) {
-      console.log("[board] DELETE: 연결된 Drive 첨부 삭제 시도", {
+    const bodyDriveIds = collectGoogleDriveFileIdsFromText(post.description ?? "");
+    const driveIdsToDelete = new Set<string>();
+    for (const a of attachList) {
+      const fid = parseGoogleDriveFileIdFromUrl(a.url);
+      if (fid) driveIdsToDelete.add(fid);
+    }
+    for (const fid of bodyDriveIds) driveIdsToDelete.add(fid);
+
+    if (driveIdsToDelete.size > 0) {
+      console.log("[board] DELETE(soft): Drive files.delete 호출 (첨부+본문 링크)", {
         postId: id,
         attachmentCount: attachList.length,
+        bodyLinkIdCount: bodyDriveIds.length,
+        uniqueDriveIds: driveIdsToDelete.size,
+        supportsAllDrives: true,
       });
     }
+
     const now = new Date();
     await prisma.boardPost.update({
       where: { id },
       data: { deletedAt: now, deletedById: session.user.id },
     });
 
-    await Promise.all(
-      attachList.map((a) => {
-        const fid = parseGoogleDriveFileIdFromUrl(a.url);
-        return fid ? deleteFile(fid) : Promise.resolve();
-      })
-    );
+    await Promise.all([...driveIdsToDelete].map((fid) => deleteFile(fid)));
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
+import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
+import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
 import { z } from "zod";
 
@@ -191,7 +192,7 @@ export async function POST(req: Request) {
 
     const post = await prisma.boardPost.findUnique({
       where: { id },
-      select: { id: true, deletedAt: true, attachments: true },
+      select: { id: true, deletedAt: true, attachments: true, description: true },
     });
     if (!post || !post.deletedAt) {
       return NextResponse.json({ error: "삭제된 게시물만 처리할 수 있습니다." }, { status: 400 });
@@ -206,17 +207,19 @@ export async function POST(req: Request) {
     }
 
     const urls = safeParseBoardAttachments(post.attachments).map((a) => a.url);
+    const bodyIds = collectGoogleDriveFileIdsFromText(post.description ?? "");
+    const driveIds = new Set<string>(bodyIds);
+    for (const u of urls) {
+      const fid = parseGoogleDriveFileIdFromUrl(u);
+      if (fid) driveIds.add(fid);
+    }
     await prisma.boardPost.delete({ where: { id } });
-    console.log("[admin/trash] 게시판 영구 삭제 → Drive 첨부 삭제 시도", {
+    console.log("[admin/trash] 게시판 영구 삭제 → Drive 삭제 (첨부+본문 링크)", {
       postId: id,
       urlCount: urls.length,
+      driveIdCount: driveIds.size,
     });
-    await Promise.all(
-      urls.map((u) => {
-        const fid = parseGoogleDriveFileIdFromUrl(u);
-        return fid ? deleteFile(fid) : Promise.resolve();
-      })
-    );
+    await Promise.all([...driveIds].map((fid) => deleteFile(fid)));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("POST /api/admin/trash", e);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useMemo } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { ko } from "@blocknote/core/locales";
@@ -14,8 +14,16 @@ import {
 } from "@blocknote/react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { taskBodySchema } from "@/lib/task-body-schema";
+import {
+  createPastedImageBlock,
+  getClipboardImageFile,
+  getFirstImageFileFromDataTransfer,
+  isParagraphEffectivelyEmpty,
+  uploadImageViaApi,
+} from "@/lib/editor-image-upload";
 
 const DEBOUNCE_MS = 800;
 
@@ -56,13 +64,9 @@ export function ContentBodyEditor({
   minHeight = "280px",
   showHelp = true,
 }: ContentBodyEditorProps) {
+  /** 슬래시 이미지 블록·드래그 기본 경로도 동일: /api/upload → Drive면 thumbnail URL */
   const uploadFile = useCallback(async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "업로드 실패");
-    return data.url;
+    return uploadImageViaApi(file);
   }, []);
 
   const dictionary = useMemo(() => koreanDictionary, []);
@@ -114,6 +118,62 @@ export function ContentBodyEditor({
     }, DEBOUNCE_MS);
   }, [emitChange]);
 
+  const insertUploadedImageAtCursor = useCallback(
+    async (file: File) => {
+      const cur = editor.getTextCursorPosition();
+      const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+      if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
+      const url = await uploadImageViaApi(file);
+      const block = createPastedImageBlock(url, file.name || "image.png");
+      if (isParagraphEffectivelyEmpty(refBlock)) {
+        editor.replaceBlocks([refBlock], [block as never]);
+      } else {
+        editor.insertBlocks([block as never], refBlock, "after");
+      }
+    },
+    [editor]
+  );
+
+  const handlePasteCapture = useCallback(
+    (e: React.ClipboardEvent) => {
+      try {
+        const dt = e.clipboardData;
+        if (!dt) return;
+        const imageFile = getClipboardImageFile(dt);
+        if (!imageFile) return;
+        e.preventDefault();
+        e.stopPropagation();
+        void toast.promise(insertUploadedImageAtCursor(imageFile), {
+          loading: "이미지 업로드 중…",
+          success: "이미지를 넣었습니다.",
+          error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+        });
+      } catch {
+        /* ignore */
+      }
+    },
+    [insertUploadedImageAtCursor]
+  );
+
+  const handleDropCapture = useCallback(
+    (e: React.DragEvent) => {
+      try {
+        const file = getFirstImageFileFromDataTransfer(e.dataTransfer);
+        if (!file) return;
+        e.preventDefault();
+        e.stopPropagation();
+        void toast.promise(insertUploadedImageAtCursor(file), {
+          loading: "이미지 업로드 중…",
+          success: "이미지를 넣었습니다.",
+          error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+        });
+      } catch {
+        /* ignore */
+      }
+    },
+    [insertUploadedImageAtCursor]
+  );
+
   return (
     <div className={cn("flex flex-col", className)}>
       <div
@@ -131,6 +191,8 @@ export function ContentBodyEditor({
           "[&_.bn-checkbox]:accent-violet-500"
         )}
         style={{ isolation: "isolate" }}
+        onPasteCapture={handlePasteCapture}
+        onDropCapture={handleDropCapture}
       >
         <div style={{ minHeight: minHeight || "280px" }} className="[&_.bn-editor]:min-h-[inherit]">
           <BlockNoteView

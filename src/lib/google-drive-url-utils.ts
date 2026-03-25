@@ -44,3 +44,18 @@ export function parseGoogleDriveFileIdFromUrl(url: string): string | null {
     return null;
   }
 }
+
+/** 본문 문자열(마크다운/HTML) 안의 drive.google.com 링크에서 파일 ID 수집 */
+export function collectGoogleDriveFileIdsFromText(text: string | null | undefined): string[] {
+  const ids = new Set<string>();
+  const s = text ?? "";
+  const re = /https?:\/\/[^\s<>"')]+/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const u = m[0].replace(/[),.;>'"`]+$/g, "");
+    if (!/drive\.google\.com/i.test(u)) continue;
+    const id = parseGoogleDriveFileIdFromUrl(u);
+    if (id) ids.add(id);
+  }
+  return [...ids];
+}
