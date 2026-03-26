@@ -7,6 +7,7 @@ import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { postUploadFile } from "@/lib/upload-client-validate";
 
 type DocsEditorProps = {
   className?: string;
@@ -14,12 +15,8 @@ type DocsEditorProps = {
 
 export function DocsEditor({ className }: DocsEditorProps) {
   const uploadFile = useCallback(async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "업로드 실패");
-    return data.url;
+    const { url } = await postUploadFile(file);
+    return url;
   }, []);
 
   const [title, setTitle] = useState("");

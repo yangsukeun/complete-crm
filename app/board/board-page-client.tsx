@@ -29,6 +29,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import {
+  postUploadFile,
+  UPLOAD_ERROR_MESSAGE,
+  UPLOAD_TOAST_DURATION_MS,
+} from "@/lib/upload-client-validate";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -329,15 +334,13 @@ export function BoardPageClient({
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/upload", { method: "POST", body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "업로드 실패");
+        const data = await postUploadFile(file);
         setAttachments((prev: any) => [...prev, { url: data.url, name: data.name ?? file.name }]);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "파일 업로드에 실패했습니다.");
+      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
+        duration: UPLOAD_TOAST_DURATION_MS,
+      });
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -524,29 +527,35 @@ export function BoardPageClient({
                 return (
                   <li
                     key={`ann-${a.id}`}
-                    className="sm:col-span-2 lg:col-span-3 rounded-xl border bg-card p-5 shadow-sm transition-colors hover:bg-muted/50"
+                    className="sm:col-span-2 lg:col-span-3 rounded-xl border bg-card shadow-sm transition-colors hover:bg-muted/50"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-medium">{a.title}</span>
-                        <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                          <Megaphone className="size-3.5" />
-                          공지
+                    <Link
+                      href={`/announcements/${a.id}`}
+                      prefetch={true}
+                      className="block p-5 outline-none"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium">{a.title}</span>
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                            <Megaphone className="size-3.5" />
+                            공지
+                          </span>
+                        </div>
+                        <span className="text-muted-foreground text-sm shrink-0">
+                          {format(new Date(a.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}
                         </span>
                       </div>
-                      <span className="text-muted-foreground text-sm shrink-0">
-                        {format(new Date(a.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}
-                      </span>
-                    </div>
-                    {preview && (
-                      <p className="text-muted-foreground mt-1 line-clamp-2 break-words text-sm">
-                        {preview}
+                      {preview && (
+                        <p className="text-muted-foreground mt-1 line-clamp-2 break-words text-sm">
+                          {preview}
+                        </p>
+                      )}
+                      <p className="text-muted-foreground mt-2 text-xs">
+                        {a.createdByName}
+                        {a.createdByPosition ? ` · ${a.createdByPosition}` : ""}
                       </p>
-                    )}
-                    <p className="text-muted-foreground mt-2 text-xs">
-                      {a.createdByName}
-                      {a.createdByPosition ? ` · ${a.createdByPosition}` : ""}
-                    </p>
+                    </Link>
                   </li>
                 );
               }

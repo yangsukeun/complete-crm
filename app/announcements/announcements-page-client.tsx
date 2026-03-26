@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { Megaphone, Send, Loader2, Calendar, MapPin, Vote, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { AIAssistToolbar } from "@/components/ai-assist-toolbar";
 import { useAIAssistTarget } from "@/components/ai-assist-context";
 import { Button } from "@/components/ui/button";
@@ -308,46 +309,56 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                   key={a.id}
                   className={
                     newAnnouncement
-                      ? "announcement-new border-border rounded-xl border border-gray-200 bg-card p-5 shadow-sm transition-colors hover:bg-muted/50"
-                      : "border-border rounded-xl border border-gray-200 bg-card p-5 shadow-sm transition-colors hover:bg-muted/50"
+                      ? "announcement-new border-border rounded-xl border border-gray-200 bg-card shadow-sm transition-colors hover:bg-muted/50"
+                      : "border-border rounded-xl border border-gray-200 bg-card shadow-sm transition-colors hover:bg-muted/50"
                   }
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <span className="font-medium text-foreground">{a.title}</span>
-                      {newAnnouncement && (
-                        <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                          ✨ 새 공지
-                        </span>
-                      )}
+                  <Link
+                    href={`/announcements/${a.id}`}
+                    prefetch={true}
+                    className="block p-5 pb-3 text-left outline-none"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium text-foreground">{a.title}</span>
+                        {newAnnouncement && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                            ✨ 새 공지
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground shrink-0 text-sm">
+                        {format(new Date(a.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}
+                      </span>
                     </div>
-                    <span className="text-muted-foreground shrink-0 text-sm">
-                      {format(new Date(a.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground mt-2 whitespace-pre-wrap break-words text-sm">
-                    {a.content}
-                  </p>
-                  {(a.eventDate || a.location) && (
-                    <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                      {a.eventDate && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="size-4 shrink-0" />
-                          {format(new Date(a.eventDate), "M/d (EEE) HH:mm", { locale: ko })}
-                          {a.eventEndDate &&
-                            ` ~ ${format(new Date(a.eventEndDate), "M/d HH:mm", { locale: ko })}`}
-                        </span>
-                      )}
-                      {a.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="size-4 shrink-0" />
-                          {a.location}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                    <p className="text-muted-foreground mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm">
+                      {a.content}
+                    </p>
+                    {(a.eventDate || a.location) && (
+                      <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                        {a.eventDate && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="size-4 shrink-0" />
+                            {format(new Date(a.eventDate), "M/d (EEE) HH:mm", { locale: ko })}
+                            {a.eventEndDate &&
+                              ` ~ ${format(new Date(a.eventEndDate), "M/d HH:mm", { locale: ko })}`}
+                          </span>
+                        )}
+                        {a.location && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="size-4 shrink-0" />
+                            {a.location}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-muted-foreground mt-3 text-xs">
+                      {a.createdByName}
+                      {a.createdByPosition ? ` · ${a.createdByPosition}` : ""}
+                    </p>
+                  </Link>
                   {a.pollOptions && a.pollOptions.length > 0 && (
-                    <div className="mt-3 space-y-2">
+                    <div className="space-y-2 px-5 pb-5">
                       <p className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
                         <Vote className="size-3" />
                         투표
@@ -369,10 +380,6 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
                       </div>
                     </div>
                   )}
-                  <p className="text-muted-foreground mt-3 text-xs">
-                    {a.createdByName}
-                    {a.createdByPosition ? ` · ${a.createdByPosition}` : ""}
-                  </p>
                 </li>
               );
             })}

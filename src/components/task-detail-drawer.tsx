@@ -24,6 +24,11 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import {
+  postUploadFile,
+  UPLOAD_ERROR_MESSAGE,
+  UPLOAD_TOAST_DURATION_MS,
+} from "@/lib/upload-client-validate";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import {
@@ -217,18 +222,14 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
   const uploadAndAddAttachment = useCallback(
     async (file: File) => {
       if (!taskId) return;
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "업로드 실패");
+      const data = await postUploadFile(file);
       const attachRes = await fetch(`/api/tasks/${taskId}/attachments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "FILE",
-          url: (data as any)?.url ?? "",
-          name: ((data as any)?.name || file?.name) ?? "",
+          url: data.url ?? "",
+          name: (data.name || file?.name) ?? "",
         }),
       });
       if (!attachRes.ok) {
@@ -254,7 +255,9 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
         onUpdate();
         if (fileInputRef.current) fileInputRef.current.value = "";
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "첨부 추가에 실패했습니다.");
+        toast.error(e instanceof Error ? e.message : UPLOAD_ERROR_MESSAGE.server, {
+          duration: UPLOAD_TOAST_DURATION_MS,
+        });
       } finally {
         setUploadingFiles(false);
       }

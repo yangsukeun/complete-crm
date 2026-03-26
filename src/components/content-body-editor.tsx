@@ -24,6 +24,7 @@ import {
   isParagraphEffectivelyEmpty,
   uploadImageViaApi,
 } from "@/lib/editor-image-upload";
+import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
 
 const DEBOUNCE_MS = 800;
 
@@ -146,7 +147,10 @@ export function ContentBodyEditor({
         void toast.promise(insertUploadedImageAtCursor(imageFile), {
           loading: "이미지 업로드 중…",
           success: "이미지를 넣었습니다.",
-          error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+          error: (err) => ({
+            message: err instanceof Error ? err.message : "이미지 업로드 실패",
+            duration: UPLOAD_TOAST_DURATION_MS,
+          }),
         });
       } catch {
         /* ignore */
@@ -165,7 +169,10 @@ export function ContentBodyEditor({
         void toast.promise(insertUploadedImageAtCursor(file), {
           loading: "이미지 업로드 중…",
           success: "이미지를 넣었습니다.",
-          error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+          error: (err) => ({
+            message: err instanceof Error ? err.message : "이미지 업로드 실패",
+            duration: UPLOAD_TOAST_DURATION_MS,
+          }),
         });
       } catch {
         /* ignore */

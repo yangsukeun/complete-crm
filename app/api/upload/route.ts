@@ -28,7 +28,10 @@ const ALLOWED_FILE_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
+  "text/html",
   "application/x-hwp",
   "application/haansofthwp",
   "application/vnd.hancom.hwp",
@@ -42,7 +45,11 @@ const ALLOWED_EXTENSIONS = new Set([
   "docx",
   "xls",
   "xlsx",
+  "ppt",
+  "pptx",
   "txt",
+  "html",
+  "htm",
   "jpg",
   "jpeg",
   "png",
@@ -77,6 +84,10 @@ function getExt(mime: string, fileName?: string): string {
     "application/vnd.hancom.hwp": "hwp",
     "application/vnd.hancom.hwpx": "hwpx",
     "application/vnd.hancom.hwpml.document": "hwp",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/html": "html",
+    "text/plain": "txt",
   };
   if (map[mime]) return map[mime];
   if (fileName) {

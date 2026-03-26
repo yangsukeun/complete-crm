@@ -26,6 +26,12 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import {
+  getUploadClientRejectReason,
+  postUploadFile,
+  UPLOAD_ERROR_MESSAGE,
+  UPLOAD_TOAST_DURATION_MS,
+} from "@/lib/upload-client-validate";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Calendar, ClipboardList, ImagePlus, MessageCircle, Plus, Search, Send, Trash2 } from "lucide-react";
@@ -633,26 +639,16 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const uploadFileAndAppend = useCallback(async (file: File) => {
     if (!session?.user) return;
     const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/i.test(file.name);
-    const allowed =
-      isImage ||
-      ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain"].includes(file.type);
-    if (!allowed) {
-      toast.error("지원 형식: 이미지(JPEG/PNG/GIF/WebP), PDF, 문서, 텍스트");
-      return;
-    }
     setPasteUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "업로드 실패");
-      const url = data.url as string;
-      const name = (data.name as string) || file.name;
-      const append = isImage ? `\n![](${url})` : `\n[${name}](${url})`;
+      const { url, name } = await postUploadFile(file);
+      const displayName = name || file.name;
+      const append = isImage ? `\n![](${url})` : `\n[${displayName}](${url})`;
       setNewMessage((prev: any) => prev + append);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "업로드에 실패했습니다.");
+      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
+        duration: UPLOAD_TOAST_DURATION_MS,
+      });
     } finally {
       setPasteUploading(false);
     }
@@ -662,11 +658,12 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const files = e.clipboardData?.files;
     if (!files?.length || !session?.user) return;
     const file = files[0];
-    const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/i.test(file.name);
-    const allowed =
-      isImage ||
-      ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain"].includes(file.type);
-    if (!allowed) return;
+    const reject = getUploadClientRejectReason(file);
+    if (reject) {
+      e.preventDefault();
+      toast.error(UPLOAD_ERROR_MESSAGE[reject], { duration: UPLOAD_TOAST_DURATION_MS });
+      return;
+    }
     e.preventDefault();
     uploadFileAndAppend(file);
   }, [session?.user, uploadFileAndAppend]);

@@ -3,6 +3,7 @@
  * — uc?export=view 는 브라우저 img 요청 시 HTML 뷰어가 올 때가 많아 엑박 → thumbnail API 사용.
  */
 import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
+import { postUploadFile } from "@/lib/upload-client-validate";
 
 export function normalizeDriveImageUrlForImgTag(url: string): string {
   const raw = String(url ?? "").trim();
@@ -52,22 +53,7 @@ export function getFirstImageFileFromDataTransfer(dt: DataTransfer): File | null
 }
 
 export async function uploadImageViaApi(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch("/api/upload", {
-    method: "POST",
-    body: formData,
-    credentials: "include",
-  });
-  let data: { url?: string; error?: string };
-  try {
-    data = (await res.json()) as { url?: string; error?: string };
-  } catch {
-    throw new Error("업로드 응답을 읽을 수 없습니다.");
-  }
-  if (!res.ok) throw new Error(data.error ?? "업로드 실패");
-  const url = typeof data.url === "string" ? data.url.trim() : "";
-  if (!url) throw new Error("업로드 응답에 URL이 없습니다.");
+  const { url } = await postUploadFile(file);
   return normalizeDriveImageUrlForImgTag(url);
 }
 

@@ -79,7 +79,7 @@ export function DashboardAnnouncements({
             return (
               <li key={a.id}>
                 <Link
-                  href="/board"
+                  href={`/announcements/${a.id}`}
                   className={
                     newAnnouncement
                       ? "announcement-new block rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"

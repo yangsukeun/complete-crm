@@ -39,6 +39,7 @@ import {
   isParagraphEffectivelyEmpty,
   uploadImageViaApi,
 } from "@/lib/editor-image-upload";
+import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
@@ -328,7 +329,10 @@ export function TaskBodyEditor({
             {
               loading: "이미지 업로드 중…",
               success: "이미지를 넣었습니다.",
-              error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+              error: (err) => ({
+                message: err instanceof Error ? err.message : "이미지 업로드 실패",
+                duration: UPLOAD_TOAST_DURATION_MS,
+              }),
             }
           );
           return;
@@ -385,7 +389,10 @@ export function TaskBodyEditor({
           {
             loading: "이미지 업로드 중…",
             success: "이미지를 넣었습니다.",
-            error: (err) => (err instanceof Error ? err.message : "이미지 업로드 실패"),
+            error: (err) => ({
+              message: err instanceof Error ? err.message : "이미지 업로드 실패",
+              duration: UPLOAD_TOAST_DURATION_MS,
+            }),
           }
         );
       } catch {

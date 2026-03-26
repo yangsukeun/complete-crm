@@ -16,6 +16,11 @@ import { ContentBodyEditor } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { FileText, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  postUploadFile,
+  UPLOAD_ERROR_MESSAGE,
+  UPLOAD_TOAST_DURATION_MS,
+} from "@/lib/upload-client-validate";
 
 type AttachmentItem = { url: string; name: string };
 
@@ -82,15 +87,13 @@ export function BoardPostActions({
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/upload", { method: "POST", body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "업로드 실패");
+        const data = await postUploadFile(file);
         setAttachments((prev) => [...prev, { url: data.url, name: data.name ?? file.name }]);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "파일 업로드에 실패했습니다.");
+      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
+        duration: UPLOAD_TOAST_DURATION_MS,
+      });
     } finally {
       setUploading(false);
       e.target.value = "";
