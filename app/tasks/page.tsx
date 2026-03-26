@@ -9,14 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,8 +25,19 @@ import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
 import { Plus, Filter, GitBranch, FileText, List as ListIcon, Trash2 } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
-import { format } from "date-fns";
+import {
+  addDays,
+  differenceInCalendarDays,
+  endOfDay,
+  endOfWeek,
+  format,
+  isBefore,
+  isWithinInterval,
+  startOfDay,
+} from "date-fns";
 import { ko } from "date-fns/locale";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 
@@ -68,12 +71,46 @@ const CreateTaskModal = dynamic(
 );
 
 const STATUS_LIST = [
-  { value: "TODO", label: "준비" },
+  { value: "TODO", label: "준비중" },
   { value: "IN_PROGRESS", label: "진행중" },
   { value: "DONE", label: "완료" },
 ] as const;
 
 type TaskStatus = (typeof STATUS_LIST)[number]["value"];
+
+const COLUMN_STORAGE_KEY = "tasks-board-visible-columns";
+type ColumnVisibility = Record<TaskStatus, boolean>;
+const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
+  TODO: true,
+  IN_PROGRESS: true,
+  DONE: false,
+};
+
+function loadColumnVisibility(): ColumnVisibility {
+  if (typeof window === "undefined") return DEFAULT_COLUMN_VISIBILITY;
+  try {
+    const raw = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!raw) return DEFAULT_COLUMN_VISIBILITY;
+    const p = JSON.parse(raw) as Partial<ColumnVisibility>;
+    return {
+      TODO: typeof p.TODO === "boolean" ? p.TODO : DEFAULT_COLUMN_VISIBILITY.TODO,
+      IN_PROGRESS:
+        typeof p.IN_PROGRESS === "boolean" ? p.IN_PROGRESS : DEFAULT_COLUMN_VISIBILITY.IN_PROGRESS,
+      DONE: typeof p.DONE === "boolean" ? p.DONE : DEFAULT_COLUMN_VISIBILITY.DONE,
+    };
+  } catch {
+    return DEFAULT_COLUMN_VISIBILITY;
+  }
+}
+
+const DUE_FILTER_OPTIONS = [
+  { value: "all", label: "전체" },
+  { value: "overdue", label: "마감 지남 (미완료)" },
+  { value: "today", label: "오늘 마감" },
+  { value: "week", label: "이번 주 마감" },
+  { value: "soon7", label: "7일 이내 마감 (미완료)" },
+] as const;
+type DueFilterValue = (typeof DUE_FILTER_OPTIONS)[number]["value"];
 
 type Task = {
   id: string;
@@ -112,6 +149,74 @@ function priorityLabel(priority: string) {
 
 function statusLabel(status: TaskStatus) {
   return STATUS_LIST.find((s) => s.value === status)?.label ?? status;
+}
+
+function normPriority(p: string | undefined | null): "HIGH" | "MEDIUM" | "LOW" {
+  const u = String(p ?? "MEDIUM").toUpperCase();
+  if (u === "HIGH" || u === "LOW") return u;
+  return "MEDIUM";
+}
+
+function passesDueFilter(task: Task, filterDue: DueFilterValue): boolean {
+  if (filterDue === "all") return true;
+  const due = new Date(task.dueDate);
+  const now = new Date();
+  const startToday = startOfDay(now);
+  const endToday = endOfDay(now);
+
+  switch (filterDue) {
+    case "overdue":
+      return !task.isCompleted && isBefore(due, startToday);
+    case "today":
+      return isWithinInterval(due, { start: startToday, end: endToday });
+    case "week": {
+      const wEnd = endOfWeek(now, { weekStartsOn: 1 });
+      return isWithinInterval(due, { start: startToday, end: wEnd });
+    }
+    case "soon7": {
+      const end = endOfDay(addDays(startToday, 7));
+      return (
+        !task.isCompleted && isWithinInterval(due, { start: startToday, end: end })
+      );
+    }
+    default:
+      return true;
+  }
+}
+
+function columnHeaderClass(status: TaskStatus): string {
+  switch (status) {
+    case "TODO":
+      return "border-sky-700 bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-sm";
+    case "IN_PROGRESS":
+      return "border-amber-600 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm";
+    case "DONE":
+      return "border-emerald-700 bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-sm";
+    default:
+      return "";
+  }
+}
+
+function priorityLeftBarClass(priority: string): string {
+  switch (normPriority(priority)) {
+    case "HIGH":
+      return "border-l-[5px] border-l-red-500";
+    case "LOW":
+      return "border-l-[5px] border-l-slate-400";
+    default:
+      return "border-l-[5px] border-l-amber-500";
+  }
+}
+
+/** 마감 임박/지남 강조용 (미완료만) */
+function getDueUrgency(task: Task): { show: boolean; overdue: boolean; label: string } {
+  if (task.isCompleted) return { show: false, overdue: false, label: "" };
+  const due = startOfDay(new Date(task.dueDate));
+  const today = startOfDay(new Date());
+  const diff = differenceInCalendarDays(due, today);
+  if (diff < 0) return { show: true, overdue: true, label: "마감 지남" };
+  if (diff <= 3) return { show: true, overdue: false, label: diff === 0 ? "D-Day" : `D-${diff}` };
+  return { show: false, overdue: false, label: "" };
 }
 
 function tasksFetcher(url: string): Promise<Task[]> {
@@ -154,9 +259,27 @@ export default function TasksPage() {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "">("");
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>("");
+  const [filterPriority, setFilterPriority] = useState<"" | "HIGH" | "MEDIUM" | "LOW">("");
+  const [filterDue, setFilterDue] = useState<DueFilterValue>("all");
+  const [columnVisible, setColumnVisible] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
+  const [columnsReady, setColumnsReady] = useState(false);
   const [view, setView] = useState<"list" | "mindmap" | "log">("list");
   const [mindmapMounted, setMindmapMounted] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setColumnVisible(loadColumnVisibility());
+    setColumnsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!columnsReady || typeof window === "undefined") return;
+    try {
+      localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnVisible));
+    } catch {
+      /* ignore */
+    }
+  }, [columnVisible, columnsReady]);
 
   // 마인드맵 탭 진입 후 한 프레임 뒤에 마운트 → removeChild 등 DOM 충돌 완화
   useEffect(() => {
@@ -261,16 +384,30 @@ export default function TasksPage() {
     );
   }
 
-  const filteredTasks = tasks.filter((t: any) => {
-    if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
-    if (filterAssigneeId && t.assignedTo?.id !== filterAssigneeId) return false;
-    return true;
-  });
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t: Task) => {
+      if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
+      if (filterAssigneeId && t.assignedTo?.id !== filterAssigneeId) return false;
+      if (filterPriority && normPriority(t.priority) !== filterPriority) return false;
+      if (!passesDueFilter(t, filterDue)) return false;
+      return true;
+    });
+  }, [tasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
+
   const assigneePairs = tasks
-    .map((t: any) => [t.assignedTo?.id, t.assignedTo] as [string | undefined, unknown])
-    .filter((pair): pair is [string, unknown] => pair[0] != null && !!pair[1]);
+    .map((t: Task) => [t.assignedTo?.id, t.assignedTo] as [string | undefined, Task["assignedTo"]])
+    .filter((pair): pair is [string, Task["assignedTo"]] => pair[0] != null && !!pair[1]);
   const assigneeOptions = Array.from(new Map(assigneePairs).entries());
-  const hasActiveFilter = filterStatus !== "" || filterAssigneeId !== "";
+  const hasActiveFilter =
+    filterStatus !== "" ||
+    filterAssigneeId !== "" ||
+    filterPriority !== "" ||
+    filterDue !== "all";
+
+  const visibleStatusColumns = useMemo(
+    () => STATUS_LIST.filter((s) => columnVisible[s.value]),
+    [columnVisible]
+  );
 
   const mindmapTasks = useMemo(() => {
     return filteredTasks.map((t: any) => ({
@@ -329,7 +466,7 @@ export default function TasksPage() {
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64" align="start">
+            <PopoverContent className="w-72" align="start">
               <div className="space-y-3">
                 <p className="text-sm font-medium">상태</p>
                 <Select
@@ -365,6 +502,39 @@ export default function TasksPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-sm font-medium">우선순위</p>
+                <Select
+                  value={filterPriority || "all"}
+                  onValueChange={(v) =>
+                    setFilterPriority(v === "all" ? "" : (v as "HIGH" | "MEDIUM" | "LOW"))
+                  }
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="전체" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체</SelectItem>
+                    <SelectItem value="HIGH">높음</SelectItem>
+                    <SelectItem value="MEDIUM">보통</SelectItem>
+                    <SelectItem value="LOW">낮음</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm font-medium">마감일</p>
+                <Select
+                  value={filterDue}
+                  onValueChange={(v) => setFilterDue(v as DueFilterValue)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DUE_FILTER_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -372,6 +542,8 @@ export default function TasksPage() {
                   onClick={() => {
                     setFilterStatus("");
                     setFilterAssigneeId("");
+                    setFilterPriority("");
+                    setFilterDue("all");
                   }}
                 >
                   필터 초기화
@@ -393,6 +565,34 @@ export default function TasksPage() {
       </div>
 
       <ViewErrorBoundary key={view}>
+        {view === "list" && (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-muted/15 px-4 py-3">
+            <span className="text-muted-foreground w-full text-xs font-semibold tracking-wide sm:w-auto">
+              컬럼 표시
+            </span>
+            <div className="flex flex-wrap items-center gap-4">
+              {STATUS_LIST.map((s) => (
+                <div key={s.value} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`col-${s.value}`}
+                    checked={columnVisible[s.value]}
+                    onCheckedChange={(c) => {
+                      const on = c === true;
+                      setColumnVisible((prev) => {
+                        const next = { ...prev, [s.value]: on };
+                        if (!next.TODO && !next.IN_PROGRESS && !next.DONE) return prev;
+                        return next;
+                      });
+                    }}
+                  />
+                  <Label htmlFor={`col-${s.value}`} className="cursor-pointer text-sm font-normal">
+                    {s.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {view === "log" ? (
           <WorkLogTab />
         ) : view === "mindmap" ? (
@@ -421,9 +621,13 @@ export default function TasksPage() {
           )
         ) : tasksLoading && tasks.length === 0 ? (
           <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
+        ) : visibleStatusColumns.length === 0 ? (
+          <div className="border-border rounded-lg border border-dashed border-amber-300 bg-amber-50/50 py-12 text-center text-amber-900">
+            <p className="text-sm">보드에 표시할 컬럼을 하나 이상 선택해 주세요.</p>
+          </div>
         ) : filteredTasks.length === 0 ? (
           <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
-            <p className="mb-4 text-sm">업무가 없습니다.</p>
+            <p className="mb-4 text-sm">조건에 맞는 업무가 없습니다.</p>
             <Button
               onClick={() => {
                 setCreateParentId(null);
@@ -437,32 +641,53 @@ export default function TasksPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {STATUS_LIST.map((col) => {
-              const list = filteredTasks.filter((t: any) => getEffectiveStatus(t) === col.value);
+          <div
+            className={cn(
+              "grid gap-4",
+              visibleStatusColumns.length === 1 && "grid-cols-1",
+              visibleStatusColumns.length === 2 && "grid-cols-1 md:grid-cols-2",
+              visibleStatusColumns.length >= 3 && "grid-cols-1 md:grid-cols-3"
+            )}
+          >
+            {visibleStatusColumns.map((col) => {
+              const list = filteredTasks.filter((t: Task) => getEffectiveStatus(t) === col.value);
               return (
-                <div key={col.value} className="border-border flex flex-col rounded-lg border border-gray-200 bg-muted/20">
-                  <div className="border-border flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                    <span className="text-sm font-medium text-foreground">{col.label}</span>
-                    <span className="text-muted-foreground text-xs">{list.length}개</span>
+                <div
+                  key={col.value}
+                  className="border-border flex flex-col overflow-hidden rounded-xl border border-gray-200/90 bg-muted/10 shadow-sm"
+                >
+                  <div
+                    className={cn(
+                      "flex items-center justify-between border-b px-4 py-3",
+                      columnHeaderClass(col.value)
+                    )}
+                  >
+                    <span className="text-sm font-semibold">{col.label}</span>
+                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium tabular-nums">
+                      {list.length}개
+                    </span>
                   </div>
-                  <div className="flex-1 space-y-2 p-3">
+                  <div className="flex min-h-[120px] flex-1 flex-col gap-2.5 p-3">
                     {list.length === 0 ? (
-                      <p className="text-muted-foreground py-6 text-center text-xs">없음</p>
+                      <p className="text-muted-foreground py-8 text-center text-xs">없음</p>
                     ) : (
-                      list.map((task: any) => {
+                      list.map((task: Task) => {
                         const s = getEffectiveStatus(task);
                         const prev = s === "DONE" ? "IN_PROGRESS" : s === "IN_PROGRESS" ? "TODO" : null;
                         const next = s === "TODO" ? "IN_PROGRESS" : s === "IN_PROGRESS" ? "DONE" : null;
+                        const dueU = getDueUrgency(task);
                         return (
                           <div
                             key={task.id}
-                            className="border-border rounded-lg border border-gray-200 bg-card p-3 shadow-sm"
+                            className={cn(
+                              "border-border overflow-hidden rounded-lg border border-gray-200/90 bg-card shadow-sm transition-shadow hover:shadow-md",
+                              priorityLeftBarClass(task.priority)
+                            )}
                           >
                             <Link
                               href={`/tasks/${task.id}`}
                               prefetch={true}
-                              className="block w-full text-left outline-none"
+                              className="block w-full px-3 pt-3 text-left outline-none"
                             >
                               <p
                                 className={cn(
@@ -476,6 +701,19 @@ export default function TasksPage() {
                                 <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
                                   {priorityLabel(task.priority)}
                                 </Badge>
+                                {dueU.show && (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "border-2 text-[10px] font-semibold",
+                                      dueU.overdue
+                                        ? "border-red-600 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                                        : "border-red-500 bg-red-50/80 text-red-700 dark:bg-red-950/30 dark:text-red-200"
+                                    )}
+                                  >
+                                    {dueU.overdue ? "마감 지남" : `마감 임박 ${dueU.label}`}
+                                  </Badge>
+                                )}
                                 <span className="text-muted-foreground text-xs">
                                   {format(new Date(task.dueDate), "M월 d일", { locale: ko })}
                                 </span>
@@ -491,7 +729,7 @@ export default function TasksPage() {
                                 </span>
                               </div>
                             </Link>
-                            <div className="mt-3 flex items-center gap-2">
+                            <div className="mt-3 flex items-center gap-2 px-3 pb-3">
                               <Button
                                 type="button"
                                 size="sm"
