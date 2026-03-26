@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import OneSignal from "react-onesignal";
+import { clearProfileMeCache } from "@/lib/profile-me-client";
 
 function clientDebug(): boolean {
   return (
@@ -58,7 +59,8 @@ async function resolveIdsForBackend(): Promise<{
  */
 export function OneSignalBridge({ userId }: { userId?: string | null }) {
   const initPromiseRef = useRef<Promise<void> | null>(null);
-  const reportedRef = useRef(false);
+  /** 동일 사용자·구독 ID로 register/PATCH 중복 방지 */
+  const lastRegisteredKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
@@ -142,66 +144,80 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
     if (!appId || !initPromiseRef.current) return;
 
     let cancelled = false;
+    let debounceRegister: ReturnType<typeof setTimeout> | null = null;
 
-    const reportState = async (reason: string) => {
+    const reportStateOnce = async (reason: string, force: boolean) => {
       if (cancelled) return;
       try {
         const ext = OneSignal.User?.externalId ?? null;
         const optedIn = OneSignal.User?.PushSubscription?.optedIn ?? null;
         const { subscriptionId: subId, onesignalUserId: oneId } = await resolveIdsForBackend();
         const playerForDb = (subId || oneId)?.trim() || null;
-        const logPayload = {
-          externalId: ext,
-          onesignalUserId: oneId,
+        const registerKey = `${userId ?? ""}|${playerForDb ?? ""}`;
+        if (!playerForDb || !userId) {
+          logClient(`⑧ 구독 대기 (${reason})`, { optedIn, expectUserId: Boolean(userId) });
+          return;
+        }
+        if (!force && lastRegisteredKeyRef.current === registerKey) {
+          logClient("⑧ register 스킵 (이미 동일 키)", { reason });
+          return;
+        }
+
+        logClient(`⑧ 구독·Player ID (${reason})`, {
           subscriptionId: subId,
-          optedIn,
+          onesignalUserId: oneId,
           playerForDb,
-          patchField: "playerId + oneSignalPlayerId → PATCH /api/profile/me",
-          expectExternalIdMatchUserId: userId ?? null,
-        };
-        logClient(`⑧ 구독·Player ID (${reason})`, logPayload);
+        });
         if (process.env.NODE_ENV === "production") {
           console.log("[OneSignal CRM bridge]", reason, {
             hasSubscriptionId: Boolean(subId),
             hasOnesignalUserId: Boolean(oneId),
-            willPatchProfile: Boolean(playerForDb && userId),
           });
         }
 
-        if (subId || oneId) {
-          await fetch("/api/user/onesignal-register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subscriptionId: subId ?? "",
-              onesignalUserId: oneId ?? "",
-              externalId: ext ?? "",
-            }),
-          }).catch((e) => console.error("[OneSignal] register API 실패", e));
-        }
+        await fetch("/api/user/onesignal-register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subscriptionId: subId ?? "",
+            onesignalUserId: oneId ?? "",
+            externalId: ext ?? "",
+          }),
+        }).catch((e) => console.error("[OneSignal] register API 실패", e));
 
-        if (playerForDb && userId) {
-          const patchRes = await fetch("/api/profile/me", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ playerId: playerForDb, oneSignalPlayerId: playerForDb }),
-          }).catch((e) => {
-            console.error("[OneSignal] profile playerId PATCH 실패", e);
-            return null;
-          });
-          if (clientDebug() && patchRes && !patchRes.ok) {
-            console.warn("[OneSignal] PATCH /api/profile/me", patchRes.status, await patchRes.text().catch(() => ""));
-          }
+        const patchRes = await fetch("/api/profile/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ playerId: playerForDb, oneSignalPlayerId: playerForDb }),
+        }).catch((e) => {
+          console.error("[OneSignal] profile playerId PATCH 실패", e);
+          return null;
+        });
+        if (clientDebug() && patchRes && !patchRes.ok) {
+          console.warn("[OneSignal] PATCH /api/profile/me", patchRes.status, await patchRes.text().catch(() => ""));
+        }
+        if (patchRes?.ok) {
+          lastRegisteredKeyRef.current = registerKey;
+          clearProfileMeCache();
         }
       } catch (e) {
         console.error("[OneSignal] reportState 실패", e);
       }
     };
 
+    const scheduleRegister = (reason: string) => {
+      if (debounceRegister) clearTimeout(debounceRegister);
+      debounceRegister = setTimeout(() => {
+        debounceRegister = null;
+        void reportStateOnce(reason, false);
+      }, 2000);
+    };
+
     void initPromiseRef.current.then(async () => {
       if (cancelled) return;
       try {
         if (userId) {
+          lastRegisteredKeyRef.current = null;
           logClient("③ login 호출 전", { userId });
           await OneSignal.login(userId);
           logClient("④ login 완료 (external_id = User.id)", { userId });
@@ -215,25 +231,17 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           } catch {
             /* ignore */
           }
-          reportedRef.current = false;
-          setTimeout(() => void reportState("login+1.5s"), 1500);
-          setTimeout(() => void reportState("login+4s"), 4000);
-          setTimeout(() => void reportState("login+8s"), 8000);
+          void reportStateOnce("login-initial", true);
+          setTimeout(() => void reportStateOnce("login-deferred", false), 3500);
           try {
             OneSignal.User?.PushSubscription?.addEventListener?.("change", () => {
-              void reportState("PushSubscription.change");
-            });
-          } catch {
-            /* ignore */
-          }
-          try {
-            OneSignal.User?.addEventListener?.("change", () => {
-              void reportState("User.change");
+              scheduleRegister("PushSubscription.change");
             });
           } catch {
             /* ignore */
           }
         } else {
+          lastRegisteredKeyRef.current = null;
           logClient("③ logout (비로그인)");
           await OneSignal.logout();
         }
@@ -244,6 +252,7 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
 
     return () => {
       cancelled = true;
+      if (debounceRegister) clearTimeout(debounceRegister);
     };
   }, [userId]);
 

@@ -105,7 +105,6 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatsRef = useRef<ChatItem[]>([]);
-  const lastMsgTsRef = useRef<string | null>(null);
 
   const isExecutive =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
@@ -132,11 +131,6 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   useEffect(() => {
     chatsRef.current = chats;
   }, [chats]);
-
-  useEffect(() => {
-    const last = messages.length > 0 ? messages[messages.length - 1] : null;
-    lastMsgTsRef.current = last?.createdAt ?? null;
-  }, [messages]);
 
   const resolveUserFromChats = useCallback((list: ChatItem[], userId: string): Message["user"] => {
     for (const c of list) {
@@ -253,20 +247,21 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [fetchChats]);
 
   useEffect(() => {
-    const onInbox = () => void fetchChats();
+    let debounceT: ReturnType<typeof setTimeout> | null = null;
+    const onInbox = () => {
+      if (debounceT) clearTimeout(debounceT);
+      debounceT = setTimeout(() => {
+        debounceT = null;
+        if (typeof document !== "undefined" && document.visibilityState === "visible") {
+          void fetchChats();
+        }
+      }, 320);
+    };
     window.addEventListener("chat-inbox-refresh", onInbox);
-    return () => window.removeEventListener("chat-inbox-refresh", onInbox);
-  }, [fetchChats]);
-
-  /** Supabase Realtime 미설정 시에만 목록·메시지 저빈도 폴링 (30초) */
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-    const t = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchChats();
-      }
-    }, 30000);
-    return () => clearInterval(t);
+    return () => {
+      window.removeEventListener("chat-inbox-refresh", onInbox);
+      if (debounceT) clearTimeout(debounceT);
+    };
   }, [fetchChats]);
 
   useEffect(() => {
@@ -326,18 +321,6 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       }
       void fetch(`/api/chats/${selectedChatId}/messages`, { method: "PATCH" }).catch(() => {});
     } else setMessages([]);
-  }, [selectedChatId, fetchMessages]);
-
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-    if (!selectedChatId) return;
-    const t = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      const since = lastMsgTsRef.current;
-      if (since) void fetchMessages(selectedChatId, true, since);
-      else void fetchMessages(selectedChatId, true);
-    }, 30000);
-    return () => clearInterval(t);
   }, [selectedChatId, fetchMessages]);
 
   useEffect(() => {

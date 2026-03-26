@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { todayYmdKst } from "@/lib/date-kst";
 import { PageHeadline } from "@/components/page-headline";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+import { clearProfileMeCache, fetchProfileMeCached } from "@/lib/profile-me-client";
 
 type ConvRow = { id: string; dateKey: string; updatedAt: string; preview: string };
 type Msg = { id: string; role: string; content: string; createdAt: string };
@@ -68,17 +69,17 @@ export function AiSecretaryClient() {
     let cancelled = false;
     (async () => {
       try {
-        const [kRes, pRes] = await Promise.all([
+        const [kRes, pRaw] = await Promise.all([
           fetch("/api/ai/providers", { cache: "no-store" }),
-          fetch("/api/profile/me", { cache: "no-store" }),
+          fetchProfileMeCached(false),
         ]);
         if (cancelled) return;
         if (kRes.ok) {
           const k = (await kRes.json()) as { gemini?: boolean; claude?: boolean };
           setAiKeys({ gemini: !!k.gemini, claude: !!k.claude });
         }
-        if (pRes.ok) {
-          const p = (await pRes.json()) as { preferredAiProvider?: string | null };
+        if (pRaw && typeof pRaw === "object" && "preferredAiProvider" in pRaw) {
+          const p = pRaw as { preferredAiProvider?: string | null };
           const pref = p.preferredAiProvider;
           if (pref === "gemini" || pref === "claude") setSavedAiProvider(pref);
         }
@@ -109,6 +110,7 @@ export function AiSecretaryClient() {
         body: JSON.stringify({ preferredAiProvider: v }),
       });
       if (!res.ok) throw new Error("save");
+      clearProfileMeCache();
       setSavedAiProvider(v);
       toast.success(`${AI_EXEC_LABELS[v]}(으)로 저장했습니다. 다음 대화부터 적용됩니다.`);
     } catch {

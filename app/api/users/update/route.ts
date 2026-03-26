@@ -10,7 +10,8 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
-    const isAdmin = (session.user as { role?: string }).role === "admin";
+    const role = (session.user as { role?: string }).role ?? "";
+    const isAdmin = role === "ADMIN" || role === "EXECUTIVE";
 
     let body: { userId?: string; hireDate?: string | null };
     try {
@@ -31,18 +32,21 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "본인 정보만 수정할 수 있습니다." }, { status: 403 });
     }
 
-    const data: { hireDate?: Date | null } = {};
+    /** 스키마 필드명은 joinDate (hireDate 는 API 별칭). User.joinDate 는 non-null 이라 비우기 불가 */
+    const data: { joinDate?: Date } = {};
 
     if (hireDateValue !== undefined) {
       if (hireDateValue === null || hireDateValue === "") {
-        data.hireDate = null;
-      } else {
-        const d = new Date(hireDateValue);
-        if (Number.isNaN(d.getTime())) {
-          return NextResponse.json({ error: "입사일 형식이 올바르지 않습니다." }, { status: 400 });
-        }
-        data.hireDate = d;
+        return NextResponse.json(
+          { error: "입사일을 비울 수 없습니다. 유효한 날짜를 입력하세요." },
+          { status: 400 }
+        );
       }
+      const d = new Date(hireDateValue);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json({ error: "입사일 형식이 올바르지 않습니다." }, { status: 400 });
+      }
+      data.joinDate = d;
     }
 
     if (Object.keys(data).length === 0) {
@@ -51,26 +55,26 @@ export async function PATCH(req: NextRequest) {
 
     const updated = await prisma.user.update({
       where: { id: effectiveUserId },
-      data: data as any,
+      data,
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
-        totalLeaves: true,
-        usedLeaves: true,
+        joinDate: true,
         createdAt: true,
         updatedAt: true,
-      } as any,
+      },
     });
 
     revalidateTag("users-list", "max");
 
     return NextResponse.json({
-      ...(updated as any),
-      hireDate: (updated as any).hireDate?.toISOString?.() ?? null,
-      createdAt: (updated as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
-      updatedAt: (updated as any).updatedAt?.toISOString?.() ?? new Date().toISOString(),
+      ...updated,
+      hireDate: updated.joinDate.toISOString(),
+      joinDate: updated.joinDate.toISOString(),
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
     });
   } catch (err) {
     console.error("[PATCH /api/users/update]", err);

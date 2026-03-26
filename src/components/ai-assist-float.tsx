@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useAIAssistTarget } from "@/components/ai-assist-context";
 import { cn } from "@/lib/utils";
+import { clearProfileMeCache, fetchProfileMeCached } from "@/lib/profile-me-client";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type AIProvider = "gemini" | "openai" | "notebook" | "claude";
@@ -72,18 +73,11 @@ export function AIAssistFloat() {
     const timeout = setTimeout(() => ac.abort(), 8000);
     (async () => {
       try {
-        const [provRes, profileRes] = await Promise.all([
+        const [provRes, profileRaw] = await Promise.all([
           fetch("/api/ai/providers", { signal: ac.signal }),
-          fetch("/api/profile/me", { signal: ac.signal }),
+          fetchProfileMeCached(false, { signal: ac.signal }),
         ]);
-        let profile: { preferredAiProvider?: string | null } | null = null;
-        if (profileRes.ok) {
-          try {
-            profile = (await profileRes.json()) as { preferredAiProvider?: string | null };
-          } catch {
-            // ignore
-          }
-        }
+        const profile = profileRaw as { preferredAiProvider?: string | null } | null;
         if (provRes.ok) {
           const p = (await provRes.json()) as {
             gemini?: boolean;
@@ -210,8 +204,10 @@ export function AIAssistFloat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preferredAiProvider: v }),
       });
-      if (res.ok) toast.success(`${PROVIDER_LABELS[v]}으로 설정되었습니다.`);
-      else toast.error("설정 저장에 실패했습니다.");
+      if (res.ok) {
+        clearProfileMeCache();
+        toast.success(`${PROVIDER_LABELS[v]}으로 설정되었습니다.`);
+      } else toast.error("설정 저장에 실패했습니다.");
     } catch {
       toast.error("설정 저장에 실패했습니다.");
     }

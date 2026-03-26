@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { User, LogOut } from "lucide-react";
 import { PageHeadline } from "@/components/page-headline";
+import {
+  clearProfileMeCache,
+  fetchProfileMeResult,
+} from "@/lib/profile-me-client";
 
 type Profile = {
   id: string;
@@ -76,15 +80,16 @@ export function ProfilePageClient({
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const res = await fetch("/api/profile/me", { signal: controller.signal });
+      const result = await fetchProfileMeResult(true, { signal: controller.signal });
       clearTimeout(timeoutId);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      if (!result.ok) {
+        const data = result.data as { details?: string; error?: string };
         setFetchError(data.details || data.error || "내 정보를 불러올 수 없습니다.");
         setProfile(null);
         setLoading(false);
         return;
       }
+      const data = result.data as Profile;
       setProfile(data);
       setName(data.name ?? "");
       setEmail(data.email ?? "");
@@ -191,7 +196,7 @@ export function ProfilePageClient({
         badgePreset: data.badgePreset ?? undefined,
       });
       toast.success("저장되었습니다.");
-      fetchProfile();
+      clearProfileMeCache();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "저장에 실패했습니다.");
     } finally {
