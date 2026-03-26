@@ -350,13 +350,29 @@ export function ProfilePageClient({
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">부서</Label>
-                <Select value={department || "none"} onValueChange={(v: any) => setDepartment(v === "none" ? "" : v)}>
+                <Select
+                  value={
+                    !department?.trim()
+                      ? "none"
+                      : departments.some((d) => d.name === department)
+                        ? department
+                        : "__current_dept__"
+                  }
+                  onValueChange={(v: string) => {
+                    if (v === "none") setDepartment("");
+                    else if (v === "__current_dept__") return;
+                    else setDepartment(v);
+                  }}
+                >
                   <SelectTrigger className="h-10 border bg-background">
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {departments.map((d: any) => (
+                    {department?.trim() && !departments.some((d) => d.name === department) && (
+                      <SelectItem value="__current_dept__">{(department ?? "").trim()} (현재 저장값)</SelectItem>
+                    )}
+                    {departments.map((d) => (
                       <SelectItem key={d.id} value={d.name}>
                         {d.name}
                       </SelectItem>
@@ -366,13 +382,29 @@ export function ProfilePageClient({
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium">직책</Label>
-                <Select value={position || "none"} onValueChange={(v: any) => setPosition(v === "none" ? "" : v)}>
+                <Select
+                  value={
+                    !position?.trim()
+                      ? "none"
+                      : positions.some((p) => p.name === position)
+                        ? position
+                        : "__current_pos__"
+                  }
+                  onValueChange={(v: string) => {
+                    if (v === "none") setPosition("");
+                    else if (v === "__current_pos__") return;
+                    else setPosition(v);
+                  }}
+                >
                   <SelectTrigger className="h-10 border bg-background">
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">선택 안 함</SelectItem>
-                    {positions.map((p: any) => (
+                    {position?.trim() && !positions.some((p) => p.name === position) && (
+                      <SelectItem value="__current_pos__">{(position ?? "").trim()} (현재 저장값)</SelectItem>
+                    )}
+                    {positions.map((p) => (
                       <SelectItem key={p.id} value={p.name}>
                         {p.name}
                       </SelectItem>

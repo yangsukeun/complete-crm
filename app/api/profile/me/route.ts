@@ -158,6 +158,90 @@ const badgePresetSchema = z.enum(["default", "violet", "amber", "emerald", "blue
 /** AI 비서: 임원·관리자만 Claude/Gemini 전환 (일반 직원은 스키마에 없어 PATCH로 변경 불가) */
 const executiveAiProviderSchema = z.enum(["gemini", "claude"]).optional().nullable();
 
+/** Prisma update 입력에서 undefined 제거 (일부 런타임에서 빈 필드 오류 방지) */
+function omitUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Record<string, unknown>;
+}
+
+/**
+ * DB 마이그레이션 누락 등으로 특정 컬럼이 없을 때 해당 필드만 제거하며 재시도.
+ */
+async function userUpdateWithSchemaFallback(
+  userId: string,
+  dataIn: Record<string, unknown>,
+  selectBase: Record<string, unknown>
+) {
+  let attempt = omitUndefined({ ...dataIn });
+  let lastErr: unknown = null;
+  const sel = selectBase as Parameters<typeof prisma.user.update>[0]["select"];
+
+  for (let i = 0; i < 12; i++) {
+    const keys = Object.keys(attempt);
+    if (keys.length === 0) {
+      return prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: sel,
+      });
+    }
+    try {
+      return await prisma.user.update({
+        where: { id: userId },
+        data: attempt as Parameters<typeof prisma.user.update>[0]["data"],
+        select: sel,
+      });
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      const unknownish =
+        msg.includes("Unknown field") ||
+        msg.includes("Unknown column") ||
+        msg.includes("Unknown arg") ||
+        msg.includes("does not exist") ||
+        msg.includes("no such column");
+
+      let badField: string | null = null;
+      const m1 = /`User\.(\w+)`/.exec(msg);
+      const m2 = /Unknown column ['"]?(\w+)/i.exec(msg);
+      const m3 = /Unknown argument [`']?(\w+)/i.exec(msg);
+      if (m1) badField = m1[1];
+      else if (m2) badField = m2[1];
+      else if (m3) badField = m3[1];
+
+      if (unknownish && badField && badField in attempt) {
+        delete attempt[badField];
+        continue;
+      }
+      if (unknownish && keys.length > 1) {
+        const dropOrder = [
+          "playerId",
+          "oneSignalPlayerId",
+          "badgePreset",
+          "preferredAiProvider",
+          "address",
+          "residentId",
+          "bankAccount",
+          "workEmail",
+          "workPhone",
+          "phone",
+        ];
+        let dropped = false;
+        for (const k of dropOrder) {
+          if (k in attempt) {
+            delete attempt[k];
+            dropped = true;
+            break;
+          }
+        }
+        if (dropped) continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 const updateByUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.union([z.string().email(), z.literal("")]).optional(),
@@ -266,11 +350,12 @@ export async function PATCH(req: Request) {
       role: true,
     };
 
-    const dataCore = { ...data } as Record<string, unknown>;
+    let dataCore = { ...data } as Record<string, unknown>;
     delete dataCore.badgePreset;
     delete dataCore.preferredAiProvider;
     delete dataCore.oneSignalPlayerId;
     delete dataCore.playerId;
+    dataCore = omitUndefined(dataCore);
 
     let user: {
       id: string;
@@ -288,23 +373,35 @@ export async function PATCH(req: Request) {
     };
 
     try {
-      user = await prisma.user.update({
-        where: { id: session.user.id },
-        data: dataCore,
-        select: selectBase,
-      }) as typeof user;
+      user = (await userUpdateWithSchemaFallback(session.user.id, dataCore, selectBase)) as typeof user;
     } catch (updateErr) {
       const msg = updateErr instanceof Error ? updateErr.message : "";
-      const isUnknownField = msg.includes("Unknown field") || msg.includes("Unknown column");
+      const isUnknownField =
+        msg.includes("Unknown field") ||
+        msg.includes("Unknown column") ||
+        msg.includes("does not exist") ||
+        msg.includes("no such column");
       if (isUnknownField) {
-        const fallbackData: { name?: string; email?: string; joinDate?: Date } = {};
-        if (data.name != null) fallbackData.name = data.name;
-        if (data.email != null) fallbackData.email = data.email;
-        if (data.joinDate != null) fallbackData.joinDate = data.joinDate;
+        const fallbackData = omitUndefined({
+          name: data.name,
+          email: data.email,
+          password: data.password,
+          joinDate: data.joinDate,
+          department: data.department,
+          position: data.position,
+        }) as Record<string, unknown>;
         const u = await prisma.user.update({
           where: { id: session.user.id },
           data: fallbackData,
-          select: { id: true, name: true, email: true, department: true, joinDate: true, role: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            department: true,
+            position: true,
+            joinDate: true,
+            role: true,
+          },
         });
         user = {
           ...u,
@@ -314,7 +411,7 @@ export async function PATCH(req: Request) {
           bankAccount: null,
           residentId: null,
           department: u.department ?? null,
-          position: null,
+          position: u.position ?? null,
           joinDate: u.joinDate,
           role: u.role,
         };
@@ -338,11 +435,11 @@ export async function PATCH(req: Request) {
 
     (user as Record<string, unknown>).badgePreset = null;
     (user as Record<string, unknown>).preferredAiProvider = null;
-    if (data.badgePreset != null) {
+    if (parsed.data.badgePreset !== undefined) {
       try {
         const updated = await prisma.user.update({
           where: { id: session.user.id },
-          data: { badgePreset: data.badgePreset },
+          data: { badgePreset: parsed.data.badgePreset ?? null },
           select: { badgePreset: true },
         });
         (user as Record<string, unknown>).badgePreset = (updated as { badgePreset: string | null }).badgePreset ?? null;
@@ -468,7 +565,11 @@ export async function PATCH(req: Request) {
       manualDeduction,
     };
 
-    revalidateTag("users-list", "max");
+    try {
+      revalidateTag("users-list", "max");
+    } catch (revErr) {
+      console.warn("[profile/me] revalidateTag users-list:", revErr);
+    }
 
     return NextResponse.json(res);
   } catch (e) {

@@ -1,9 +1,1 @@
-{
-  "name": "COMPLETE CRM",
-  "short_name": "CRM",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#7c3aed",
-  "icons": [{"src": "/favicon.ico", "sizes": "64x64", "type": "image/x-icon"}]
-}
+{"name":"COMPLETE CRM","short_name":"CRM","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#7c3aed","icons":[{"src":"/favicon.ico","sizes":"64x64","type":"image/x-icon"}]}
