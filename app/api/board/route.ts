@@ -64,14 +64,14 @@ export async function GET(req: Request) {
     const where =
       category && isBoardCategory(category) ? { AND: [vis, { category }] } : vis;
 
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
+    const limit = Math.min(20, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
     const all = searchParams.get("all") === "1";
 
-    const select = {
+    /** 목록: 본문(description) 제외 — 상세에서만 로드 */
+    const selectList = {
       id: true,
       title: true,
-      description: true,
       category: true,
       isAnonymous: true,
       workspaceScope: true,
@@ -81,10 +81,13 @@ export async function GET(req: Request) {
       createdBy: { select: { name: true, position: true } },
     } as const;
 
-    const mapRow = (p: {
+    const listCacheHeaders = {
+      "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
+    };
+
+    const mapRowList = (p: {
       id: string;
       title: string;
-      description: string | null;
       category: string;
       isAnonymous: boolean;
       workspaceScope: string;
@@ -97,7 +100,6 @@ export async function GET(req: Request) {
       return {
         id: p.id,
         title: p.title,
-        description: p.description ?? "",
         category: p.category,
         isAnonymous: anon,
         attachments: safeParseAttachments(p.attachments),
@@ -114,10 +116,10 @@ export async function GET(req: Request) {
       const list = await prisma.boardPost.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        take: 500,
-        select,
+        take: 20,
+        select: selectList,
       });
-      return NextResponse.json(list.map(mapRow));
+      return NextResponse.json(list.map(mapRowList), { headers: listCacheHeaders });
     }
 
     const [total, list] = await Promise.all([
@@ -127,17 +129,20 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         skip: offset,
         take: limit,
-        select,
+        select: selectList,
       }),
     ]);
 
-    return NextResponse.json({
-      items: list.map(mapRow),
-      total,
-      hasMore: offset + list.length < total,
-      offset,
-      limit,
-    });
+    return NextResponse.json(
+      {
+        items: list.map(mapRowList),
+        total,
+        hasMore: offset + list.length < total,
+        offset,
+        limit,
+      },
+      { headers: listCacheHeaders }
+    );
   } catch (e) {
     console.error("Board GET:", e);
     return NextResponse.json({ error: "자료 목록을 불러올 수 없습니다." }, { status: 500 });

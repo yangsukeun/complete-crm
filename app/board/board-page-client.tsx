@@ -37,6 +37,7 @@ import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
 import { getDriveThumbnailUrl } from "@/lib/google-drive-url";
+import { isUnoptimizedRemoteImageSrc } from "@/lib/remote-image-unoptimized";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -59,7 +60,8 @@ type AnnouncementItem = {
 type BoardItem = {
   id: string;
   title: string;
-  description: string;
+  /** 목록 API에서는 생략됨 — 상세에서만 제공 */
+  description?: string;
   category: string;
   workspaceScope?: "TEAM" | "PERSONAL";
   attachments: AttachmentItem[];
@@ -79,7 +81,7 @@ const YOUTUBE_REGEX = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}
 
 function getYoutubeThumbnail(urlOrText: string): string | null {
   const m = urlOrText.match(YOUTUBE_REGEX);
-  return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null;
+  return m ? `https://img.youtube.com/vi/${m[1]}/mqdefault.jpg` : null;
 }
 
 function getPreviewMedia(
@@ -549,10 +551,13 @@ export function BoardPageClient({
                 );
               }
               const b = item.data;
-              const preview = stripMarkdownPreview(b.description, 120);
+              const preview =
+                b.description != null && b.description !== ""
+                  ? stripMarkdownPreview(b.description, 120)
+                  : "";
               const media = getPreviewMedia(b.attachments, b.description);
               const boardThumbRank = media?.type === "image" ? boardCardImageIndex++ : -1;
-              const thumbEager = boardThumbRank >= 0 && boardThumbRank < 6;
+              const thumbEager = boardThumbRank >= 0 && boardThumbRank < 3;
               const imageSrc =
                 media?.type === "image" ? getDriveThumbnailUrl(media.url, 400) : "";
               return (
@@ -568,10 +573,11 @@ export function BoardPageClient({
                           src={imageSrc}
                           alt={media.name || b.title}
                           fill
-                          sizes="(max-width: 768px) 100vw, 33vw"
+                          sizes="(max-width: 768px) 100vw, 350px"
+                          unoptimized={isUnoptimizedRemoteImageSrc(imageSrc)}
                           loading={thumbEager ? "eager" : "lazy"}
                           priority={thumbEager}
-                          fetchPriority={boardThumbRank >= 0 && boardThumbRank < 3 ? "high" : undefined}
+                          fetchPriority={thumbEager ? "high" : undefined}
                           className="object-cover"
                         />
                       ) : media?.type === "video" ? (

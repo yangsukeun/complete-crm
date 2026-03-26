@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { getDriveDownloadUrl, getDriveImageUrl } from "@/lib/google-drive-url";
+import { isUnoptimizedRemoteImageSrc } from "@/lib/remote-image-unoptimized";
 
 function getExt(urlOrName: string): string {
   const clean = (urlOrName ?? "").split("?")[0]?.split("#")[0] ?? "";
@@ -136,7 +137,9 @@ export function FilePreviewDialog({
               alt={title}
               width={1200}
               height={900}
-              unoptimized={embedUrl.startsWith("data:")}
+              unoptimized={
+                embedUrl.startsWith("data:") || isUnoptimizedRemoteImageSrc(embedUrl)
+              }
               sizes="(max-width: 768px) 100vw, 896px"
               className="max-h-[70vh] w-auto max-w-full mx-auto p-3 object-contain"
             />
