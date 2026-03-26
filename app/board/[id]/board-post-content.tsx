@@ -1,11 +1,13 @@
 "use client";
 
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
-import { FileText, GraduationCap, Building2 } from "lucide-react";
+import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
   TRAINING: "교육자료",
+  FREE: "자유게시판",
+  ANONYMOUS: "익명게시판",
 };
 
 export function BoardPostContent({
@@ -22,6 +24,10 @@ export function BoardPostContent({
       <div className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
         {category === "TRAINING" ? (
           <GraduationCap className="size-3.5" />
+        ) : category === "FREE" ? (
+          <MessageSquare className="size-3.5" />
+        ) : category === "ANONYMOUS" ? (
+          <Ghost className="size-3.5" />
         ) : (
           <Building2 className="size-3.5" />
         )}

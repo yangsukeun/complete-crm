@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canUserViewBoardPost } from "@/lib/board-access";
+import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
+
+function maskCommentUser(
+  postAnonymous: boolean,
+  viewerRole: string,
+  user: { id: string; name: string | null; position: string | null }
+) {
+  if (!postAnonymous || viewerRole === "EXECUTIVE") return user;
+  return { id: "anonymous", name: "익명", position: null as string | null };
+}
 
 const postSchema = z.object({
   body: z.string().min(1).max(2000),
@@ -40,6 +50,8 @@ export async function GET(
     ) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    const postAnonymous = post.isAnonymous || boardCategoryIsAnonymous(post.category);
 
     const comments = await prisma.boardPostComment.findMany({
       where: { boardPostId: postId },
@@ -82,7 +94,7 @@ export async function GET(
           id: c.id,
           body: c.body,
           createdAt: c.createdAt.toISOString(),
-          user: c.user,
+          user: maskCommentUser(postAnonymous, role, c.user),
           mentioned,
         };
       })
@@ -152,7 +164,8 @@ export async function POST(
       },
     });
 
-    const commenterName = session.user.name ?? "누군가";
+    const postAnonymous = post.isAnonymous || boardCategoryIsAnonymous(post.category);
+    const commenterLabel = postAnonymous ? "익명" : session.user.name ?? "누군가";
     const postTitle = post.title;
     const link = `/board/${postId}`;
 
@@ -160,7 +173,7 @@ export async function POST(
       await createNotificationWithOptions({
         userId,
         type: "BOARD_MENTION",
-        message: `게시글 '${postTitle}'에서 ${commenterName}님이 회원님을 태그했습니다.`,
+        message: `게시글 '${postTitle}'에서 ${commenterLabel}님이 회원님을 태그했습니다.`,
         link,
         actorId: session.user.id,
       });
@@ -182,7 +195,7 @@ export async function POST(
       id: comment.id,
       body: comment.body,
       createdAt: comment.createdAt.toISOString(),
-      user: comment.user,
+      user: maskCommentUser(postAnonymous, role, comment.user),
       mentioned,
     });
   } catch (e) {

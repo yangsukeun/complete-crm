@@ -4,6 +4,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import { canUserViewBoardPost } from "@/lib/board-access";
+import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardPostContent } from "./board-post-content";
 import { BoardPostComments } from "./board-post-comments";
@@ -55,6 +56,15 @@ export default async function BoardPostPage({
     }
   })();
 
+  const isAdmin = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
+  const postAnonymous = post.isAnonymous || boardCategoryIsAnonymous(post.category);
+  const authorForHeadline = postAnonymous
+    ? role === "EXECUTIVE"
+      ? `익명 (실제: ${post.createdBy?.name ?? "삭제된 사용자"})`
+      : "익명"
+    : `${post.createdBy?.name ?? "삭제된 사용자"}${post.createdBy?.position ? ` · ${post.createdBy.position}` : ""}`;
+  const canEditPost = session.user.id === post.createdById || isAdmin;
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="flex items-center gap-3">
@@ -70,16 +80,16 @@ export default async function BoardPostPage({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeadline
           title={post.title}
-          description={`${post.createdBy?.name ?? "삭제된 사용자"}${post.createdBy?.position ? ` · ${post.createdBy.position}` : ""} · ${new Date(post.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+          description={`${authorForHeadline} · ${new Date(post.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
         />
         <BoardPostActions
           postId={id}
-          createdById={post.createdById}
-          currentUserId={session.user.id}
-          isAdmin={session.user.role === "TEAM_LEAD" || session.user.role === "EXECUTIVE" || session.user.role === "ADMIN"}
+          canEdit={canEditPost}
           initialTitle={post.title}
           initialDescription={post.description ?? ""}
-          initialCategory={post.category as "COMPANY" | "TRAINING"}
+          initialCategory={
+            post.category as "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS"
+          }
           initialAttachments={attachments}
         />
       </div>

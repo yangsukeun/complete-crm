@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { boardVisibilityWhere } from "@/lib/board-access";
+import { boardCategoryIsAnonymous, isBoardCategory } from "@/lib/board-category";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 /** Drive 업로드·DB 지연 대비 (Vercel Pro 등에서 상한 상향 시 반영) */
 export const maxDuration = 60;
 
-const categorySchema = z.enum(["COMPANY", "TRAINING"]);
+const categorySchema = z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS"]);
 
 function safeParseAttachments(raw: string | null | undefined): { url: string; name: string }[] {
   try {
@@ -61,9 +62,7 @@ export async function GET(req: Request) {
     const role = (session.user as { role?: string }).role ?? "";
     const vis = boardVisibilityWhere(session.user.id, role);
     const where =
-      category && (category === "COMPANY" || category === "TRAINING")
-        ? { AND: [vis, { category: category as "COMPANY" | "TRAINING" }] }
-        : vis;
+      category && isBoardCategory(category) ? { AND: [vis, { category }] } : vis;
 
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
@@ -74,6 +73,7 @@ export async function GET(req: Request) {
       title: true,
       description: true,
       category: true,
+      isAnonymous: true,
       workspaceScope: true,
       attachments: true,
       createdAt: true,
@@ -86,23 +86,29 @@ export async function GET(req: Request) {
       title: string;
       description: string | null;
       category: string;
+      isAnonymous: boolean;
       workspaceScope: string;
       attachments: string | null;
       createdAt: Date;
       createdById: string;
       createdBy: { name: string; position: string | null } | null;
-    }) => ({
-      id: p.id,
-      title: p.title,
-      description: p.description ?? "",
-      category: p.category,
-      attachments: safeParseAttachments(p.attachments),
-      createdAt: p.createdAt.toISOString(),
-      createdById: p.createdById,
-      createdByName: p.createdBy?.name ?? "삭제된 사용자",
-      createdByPosition: p.createdBy?.position ?? null,
-      workspaceScope: p.workspaceScope,
-    });
+    }) => {
+      const anon = p.isAnonymous || boardCategoryIsAnonymous(p.category);
+      return {
+        id: p.id,
+        title: p.title,
+        description: p.description ?? "",
+        category: p.category,
+        isAnonymous: anon,
+        attachments: safeParseAttachments(p.attachments),
+        createdAt: p.createdAt.toISOString(),
+        createdById: anon ? undefined : p.createdById,
+        createdByName: anon ? "익명" : p.createdBy?.name ?? "삭제된 사용자",
+        createdByPosition: anon ? null : p.createdBy?.position ?? null,
+        workspaceScope: p.workspaceScope,
+        isAuthorSelf: p.createdById === session.user.id,
+      };
+    };
 
     if (all) {
       const list = await prisma.boardPost.findMany({
@@ -156,7 +162,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         {
-          error: "제목과 구분(회사자료/교육자료)을 입력하세요.",
+          error: "제목과 구분을 입력하세요.",
           ...(process.env.NODE_ENV === "development" ? { details: parsed.error.flatten() } : {}),
         },
         { status: 400 }
@@ -168,12 +174,19 @@ export async function POST(req: Request) {
       name: (a.name && a.name.trim()) || "링크",
     }));
 
+    const isAnonBoard = parsed.data.category === "ANONYMOUS";
+    const workspaceScope =
+      parsed.data.category === "FREE" || parsed.data.category === "ANONYMOUS"
+        ? "TEAM"
+        : parsed.data.workspaceScope;
+
     const created = await prisma.boardPost.create({
       data: {
         title: parsed.data.title.trim(),
         description: parsed.data.description.trim() || null,
         category: parsed.data.category,
-        workspaceScope: parsed.data.workspaceScope,
+        isAnonymous: isAnonBoard,
+        workspaceScope,
         attachments: JSON.stringify(attachments),
         createdById: session.user.id,
       },
@@ -182,6 +195,7 @@ export async function POST(req: Request) {
         title: true,
         description: true,
         category: true,
+        isAnonymous: true,
         workspaceScope: true,
         attachments: true,
         createdAt: true,
@@ -193,6 +207,7 @@ export async function POST(req: Request) {
       title: created.title,
       description: created.description ?? "",
       category: created.category,
+      isAnonymous: created.isAnonymous,
       workspaceScope: created.workspaceScope,
       createdAt: created.createdAt.toISOString(),
       attachments: safeParseAttachments(created.attachments),

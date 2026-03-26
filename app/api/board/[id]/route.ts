@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canUserViewBoardPost } from "@/lib/board-access";
+import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
@@ -27,7 +28,7 @@ function safeParseBoardAttachments(raw: string | null | undefined): { url: strin
 const updateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(50000).optional(),
-  category: z.enum(["COMPANY", "TRAINING"]).optional(),
+  category: z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS"]).optional(),
   attachments: z.array(z.object({ url: z.string().min(1), name: z.string().optional() })).max(20).optional(),
 });
 
@@ -65,17 +66,21 @@ export async function GET(
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
 
+    const anon = post.isAnonymous || boardCategoryIsAnonymous(post.category);
+    const isExec = role === "EXECUTIVE";
+
     return NextResponse.json({
       id: post.id,
       title: post.title,
       description: post.description ?? "",
       category: post.category,
+      isAnonymous: anon,
       workspaceScope: post.workspaceScope,
       attachments: JSON.parse(post.attachments || "[]") as { url: string; name: string }[],
       createdAt: post.createdAt.toISOString(),
-      createdById: post.createdById,
-      createdByName: post.createdBy?.name ?? "삭제된 사용자",
-      createdByPosition: post.createdBy?.position ?? null,
+      createdById: anon && !isExec ? null : post.createdById,
+      createdByName: anon ? "익명" : post.createdBy?.name ?? "삭제된 사용자",
+      createdByPosition: anon ? null : post.createdBy?.position ?? null,
     });
   } catch (e) {
     console.error("Board GET [id]:", e);
@@ -130,11 +135,24 @@ export async function PATCH(
       );
     }
 
-    const data: { title?: string; description?: string | null; category?: string; attachments?: string } = {};
+    const data: {
+      title?: string;
+      description?: string | null;
+      category?: string;
+      isAnonymous?: boolean;
+      workspaceScope?: "TEAM" | "PERSONAL";
+      attachments?: string;
+    } = {};
     let removedAttachmentUrls: string[] = [];
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
     if (parsed.data.description !== undefined) data.description = (parsed.data.description ?? "").trim() || null;
-    if (parsed.data.category !== undefined) data.category = parsed.data.category;
+    if (parsed.data.category !== undefined) {
+      data.category = parsed.data.category;
+      data.isAnonymous = parsed.data.category === "ANONYMOUS";
+      if (parsed.data.category === "FREE" || parsed.data.category === "ANONYMOUS") {
+        data.workspaceScope = "TEAM";
+      }
+    }
     if (parsed.data.attachments !== undefined) {
       const oldList = safeParseBoardAttachments(post.attachments);
       const newList = parsed.data.attachments ?? [];
@@ -156,6 +174,8 @@ export async function PATCH(
         title: true,
         description: true,
         category: true,
+        isAnonymous: true,
+        workspaceScope: true,
         attachments: true,
         createdAt: true,
       },
@@ -178,6 +198,7 @@ export async function PATCH(
       ...updated,
       createdAt: updated.createdAt.toISOString(),
       attachments: JSON.parse(updated.attachments || "[]"),
+      isAnonymous: updated.isAnonymous,
     });
   } catch (e) {
     console.error("Board PATCH:", e);

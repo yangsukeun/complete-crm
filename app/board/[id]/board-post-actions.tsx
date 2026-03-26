@@ -19,34 +19,31 @@ import { toast } from "sonner";
 
 type AttachmentItem = { url: string; name: string };
 
+type BoardEditCategory = "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS";
+
 type Props = {
   postId: string;
-  createdById: string;
-  currentUserId: string;
-  isAdmin: boolean;
+  canEdit: boolean;
   initialTitle: string;
   initialDescription: string;
-  initialCategory: "COMPANY" | "TRAINING";
+  initialCategory: BoardEditCategory;
   initialAttachments: AttachmentItem[];
 };
 
 export function BoardPostActions({
   postId,
-  createdById,
-  currentUserId,
-  isAdmin,
+  canEdit,
   initialTitle,
   initialDescription,
   initialCategory,
   initialAttachments,
 }: Props) {
   const router = useRouter();
-  const canEdit = currentUserId === createdById || isAdmin;
 
   const [editOpen, setEditOpen] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [bodyContent, setBodyContent] = useState(initialDescription);
-  const [category, setCategory] = useState<"COMPANY" | "TRAINING">(initialCategory);
+  const [category, setCategory] = useState<BoardEditCategory>(initialCategory);
   const [attachments, setAttachments] = useState<AttachmentItem[]>(initialAttachments);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -192,12 +189,19 @@ export function BoardPostActions({
               <select
                 id="edit-board-category"
                 value={category}
-                onChange={(e) => setCategory(e.target.value as "COMPANY" | "TRAINING")}
+                onChange={(e) => setCategory(e.target.value as BoardEditCategory)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="COMPANY">회사 자료</option>
                 <option value="TRAINING">교육자료</option>
+                <option value="FREE">자유게시판</option>
+                <option value="ANONYMOUS">익명게시판</option>
               </select>
+              {category === "ANONYMOUS" && (
+                <p className="text-muted-foreground text-xs">
+                  익명게시판으로 저장되면 목록·상세에 작성자는 &quot;익명&quot;으로만 보입니다. (대표 계정은 실명 확인 가능)
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>설명</Label>

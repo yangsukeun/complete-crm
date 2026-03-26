@@ -12,7 +12,10 @@ import {
   GraduationCap,
   Building2,
   Megaphone,
+  MessageSquare,
+  Ghost,
 } from "lucide-react";
+import type { BoardCategory } from "@/lib/board-category";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +38,8 @@ import Image from "next/image";
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
   TRAINING: "교육자료",
+  FREE: "자유게시판",
+  ANONYMOUS: "익명게시판",
 };
 
 type AttachmentItem = { url: string; name: string };
@@ -133,7 +138,7 @@ export function BoardPageClient({
   const [submitLoading, setSubmitLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [bodyContent, setBodyContent] = useState("");
-  const [category, setCategory] = useState<"COMPANY" | "TRAINING">("COMPANY");
+  const [category, setCategory] = useState<BoardCategory>("COMPANY");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [urlLink, setUrlLink] = useState("");
@@ -145,7 +150,7 @@ export function BoardPageClient({
   const BOARD_PAGE = 20;
 
   const boardCategoryQuery = (f: string) =>
-    f === "COMPANY" || f === "TRAINING" ? f : undefined;
+    f === "COMPANY" || f === "TRAINING" || f === "FREE" || f === "ANONYMOUS" ? f : undefined;
 
   const fetchBoardPage = async (offset: number, category?: string) => {
     const params = new URLSearchParams({
@@ -226,7 +231,13 @@ export function BoardPageClient({
       return new Date(tB).getTime() - new Date(tA).getTime();
     });
     if (filter === "ANNOUNCEMENT") return merged.filter((x: any) => x.type === "ANNOUNCEMENT");
-    if (filter === "COMPANY" || filter === "TRAINING") return merged.filter((x: any) => x.type === "BOARD" && x.data.category === filter);
+    if (
+      filter === "COMPANY" ||
+      filter === "TRAINING" ||
+      filter === "FREE" ||
+      filter === "ANONYMOUS"
+    )
+      return merged.filter((x: any) => x.type === "BOARD" && x.data.category === filter);
     return merged;
   })();
 
@@ -245,7 +256,12 @@ export function BoardPageClient({
           title: title.trim(),
           description: bodyContent.trim() || "",
           category,
-          workspaceScope: currentWorkspace === "MY" ? "PERSONAL" : "TEAM",
+          workspaceScope:
+            category === "FREE" || category === "ANONYMOUS"
+              ? "TEAM"
+              : currentWorkspace === "MY"
+                ? "PERSONAL"
+                : "TEAM",
           attachments,
         }),
       });
@@ -254,7 +270,7 @@ export function BoardPageClient({
       toast.success("자료가 등록되었습니다.");
       setTitle("");
       setBodyContent("");
-      setCategory("COMPANY");
+      setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
       setAttachments([]);
       setOpenBoard(false);
       refreshAll();
@@ -356,7 +372,7 @@ export function BoardPageClient({
   const resetBoardForm = () => {
     setTitle("");
     setBodyContent("");
-    setCategory("COMPANY");
+    setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
     setAttachments([]);
     setUrlLink("");
     setUrlName("");
@@ -407,6 +423,24 @@ export function BoardPageClient({
             <GraduationCap className="size-4" />
             교육자료
           </Button>
+          <Button
+            variant={filter === "FREE" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter("FREE")}
+            className="gap-1"
+          >
+            <MessageSquare className="size-4" />
+            자유게시판
+          </Button>
+          <Button
+            variant={filter === "ANONYMOUS" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter("ANONYMOUS")}
+            className="gap-1"
+          >
+            <Ghost className="size-4" />
+            익명게시판
+          </Button>
         </div>
         <div className="flex items-center gap-2">
           {canCreateAnnouncement && (
@@ -428,7 +462,9 @@ export function BoardPageClient({
               onClick={() => {
                 setTitle("");
                 setBodyContent("");
-                setCategory("COMPANY");
+                setCategory(
+                  filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY"
+                );
                 setAttachments([]);
                 setOpenBoard(true);
               }}
@@ -536,6 +572,10 @@ export function BoardPageClient({
                         <div className="flex h-full w-full items-center justify-center text-muted-foreground">
                           {b.category === "TRAINING" ? (
                             <GraduationCap className="size-12 opacity-50" />
+                          ) : b.category === "FREE" ? (
+                            <MessageSquare className="size-12 opacity-50" />
+                          ) : b.category === "ANONYMOUS" ? (
+                            <Ghost className="size-12 opacity-50" />
                           ) : (
                             <FolderOpen className="size-12 opacity-50" />
                           )}
@@ -559,7 +599,7 @@ export function BoardPageClient({
                           <span className="text-muted-foreground text-xs">
                             {format(new Date(b.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                           </span>
-                          {(canCreate && (!currentUserId || b.createdById === currentUserId)) && (
+                          {(canCreate && (!currentUserId || b.isAuthorSelf)) && (
                             <span onClick={(e) => e.preventDefault()} className="inline-flex">
                               <Button
                                 type="button"
@@ -696,12 +736,19 @@ export function BoardPageClient({
               <select
                 id="board-category"
                 value={category}
-                onChange={(e: any) => setCategory(e.target.value as "COMPANY" | "TRAINING")}
+                onChange={(e: any) => setCategory(e.target.value as BoardCategory)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="COMPANY">회사 자료</option>
                 <option value="TRAINING">교육자료</option>
+                <option value="FREE">자유게시판</option>
+                <option value="ANONYMOUS">익명게시판</option>
               </select>
+              {category === "ANONYMOUS" && (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                  이 글은 익명으로 게시됩니다. 목록과 상세에는 작성자가 &quot;익명&quot;으로만 표시되며, 대표 계정만 실명을 확인할 수 있습니다.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>설명 (업무 상세와 동일한 서식)</Label>

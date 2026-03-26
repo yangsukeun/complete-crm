@@ -507,7 +507,9 @@ model BoardPost {
   id          String            @id @default(cuid())
   title       String
   description String?           @default("")
-  category    String             // "COMPANY" | "TRAINING"
+  category    String             // "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS"
+  /// 익명 게시판(ANONYMOUS) 글 — DB에는 createdById 유지, 노출은 API/UI에서 마스킹 (대표만 상세에서 실명 확인)
+  isAnonymous Boolean           @default(false)
   attachments String            @default("[]") // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
   workspaceScope WorkspaceScope @default(TEAM) // PERSONAL: 임원·관리자 개인 자료(직원 목록에서 숨김)
   createdById String

@@ -21,7 +21,7 @@ export default async function BoardPage() {
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <PageHeadline
         title="게시판"
-        description="공지사항과 회사 자료·교육자료를 확인하고 올립니다."
+        description="공지사항, 회사·교육 자료, 자유게시판·익명게시판을 확인하고 올립니다."
       />
       <BoardPageClient
         canCreate={canCreate}
