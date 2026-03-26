@@ -17,6 +17,36 @@ const createSchema = z.object({
   orderIndex: z.number().optional(),
 });
 
+const listSelect = {
+  id: true,
+  title: true,
+  dueDate: true,
+  isCompleted: true,
+  status: true,
+  priority: true,
+  parentId: true,
+  categoryId: true,
+  orderIndex: true,
+  isCollapsed: true,
+  scope: true,
+  createdById: true,
+  assignedTo: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      position: true,
+    },
+  },
+  createdBy: {
+    select: {
+      id: true,
+      name: true,
+      position: true,
+    },
+  },
+} as const;
+
 export async function GET(req: Request) {
   try {
     const session = await getAppSession();
@@ -34,43 +64,41 @@ export async function GET(req: Request) {
 
     const baseWhere = { deletedAt: null, ...visibilityWhere };
 
-    // 목록용: 본문(description) 제외 — BlockNote JSON이 크면 페이로드·파싱 비용이 큼. 상세는 /api/tasks/[id]
-    const tasks = await prisma.task.findMany({
-      where: baseWhere,
-      select: {
-        id: true,
-        title: true,
-        dueDate: true,
-        isCompleted: true,
-        status: true,
-        priority: true,
-        parentId: true,
-        categoryId: true,
-        orderIndex: true,
-        isCollapsed: true,
-        scope: true,
-        createdById: true,
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            position: true,
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            position: true,
-          },
-        },
-        _count: { select: { comments: true, attachments: true } },
-      },
-      orderBy: [{ parentId: "asc" }, { orderIndex: "asc" }, { isCompleted: "asc" }, { dueDate: "asc" }],
-    });
+    const { searchParams } = new URL(req.url);
+    const all = searchParams.get("all") === "1";
 
-    return NextResponse.json(tasks);
+    const orderBy = [{ parentId: "asc" as const }, { orderIndex: "asc" as const }, { isCompleted: "asc" as const }, { dueDate: "asc" as const }];
+
+    if (all) {
+      const tasks = await prisma.task.findMany({
+        where: baseWhere,
+        select: listSelect,
+        orderBy,
+      });
+      return NextResponse.json(tasks);
+    }
+
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
+
+    const [total, tasks] = await Promise.all([
+      prisma.task.count({ where: baseWhere }),
+      prisma.task.findMany({
+        where: baseWhere,
+        select: listSelect,
+        orderBy,
+        skip: offset,
+        take: limit,
+      }),
+    ]);
+
+    return NextResponse.json({
+      items: tasks,
+      total,
+      hasMore: offset + tasks.length < total,
+      offset,
+      limit,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

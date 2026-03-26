@@ -4,6 +4,7 @@ import React, { Component, type ReactNode, useCallback, useEffect, useMemo, useS
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ import {
 import { ko } from "date-fns/locale";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 
@@ -219,8 +221,27 @@ function getDueUrgency(task: Task): { show: boolean; overdue: boolean; label: st
   return { show: false, overdue: false, label: "" };
 }
 
-function tasksFetcher(url: string): Promise<Task[]> {
-  return fetch(url).then((r: any) => (r.ok ? r.json() : []));
+type TasksPageResponse = { items: Task[]; total: number; hasMore: boolean };
+
+async function fetchTasksAllJson(url: string): Promise<Task[]> {
+  const r = await fetch(url);
+  if (!r.ok) return [];
+  const data = await r.json();
+  return Array.isArray(data) ? data : [];
+}
+
+async function fetchTasksPageJson(url: string): Promise<TasksPageResponse> {
+  const r = await fetch(url);
+  if (!r.ok) return { items: [], total: 0, hasMore: false };
+  const data = await r.json();
+  if (Array.isArray(data)) {
+    return { items: data, total: data.length, hasMore: false };
+  }
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    total: typeof data.total === "number" ? data.total : 0,
+    hasMore: Boolean(data.hasMore),
+  };
 }
 
 type TaskLink = { id: string; parentId: string; childId: string };
@@ -267,6 +288,14 @@ export default function TasksPage() {
   const [mindmapMounted, setMindmapMounted] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
+  /** 마인드맵·필터 적용 시 전체 목록 필요 (필터는 부분 페이지에만 적용되면 안 됨) */
+  const needsFullTaskList =
+    view === "mindmap" ||
+    filterStatus !== "" ||
+    filterAssigneeId !== "" ||
+    filterPriority !== "" ||
+    filterDue !== "all";
+
   useEffect(() => {
     setColumnVisible(loadColumnVisibility());
     setColumnsReady(true);
@@ -293,16 +322,40 @@ export default function TasksPage() {
     return () => cancelAnimationFrame(t);
   }, [view]);
 
-  const { data: tasksData = [], mutate: mutateTasks, isLoading: tasksLoading } = useSWR<Task[]>(
-    authStatus === "authenticated" ? "/api/tasks" : null,
-    tasksFetcher,
-    {
-      keepPreviousData: true,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      dedupingInterval: 12_000,
-    }
+  const tasksFullKey = authStatus === "authenticated" && needsFullTaskList ? "/api/tasks?all=1" : null;
+  const {
+    data: tasksFullData,
+    isLoading: tasksFullLoading,
+    mutate: mutateTasksFull,
+  } = useSWR<Task[]>(tasksFullKey, fetchTasksAllJson, {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 12_000,
+  });
+
+  const getTaskPageKey = useCallback(
+    (pageIndex: number, previousPageData: TasksPageResponse | null) => {
+      if (authStatus !== "authenticated") return null;
+      if (needsFullTaskList) return null;
+      if (previousPageData && !previousPageData.hasMore) return null;
+      return `/api/tasks?limit=20&offset=${pageIndex * 20}`;
+    },
+    [authStatus, needsFullTaskList]
   );
+
+  const {
+    data: taskPages,
+    size: taskPageSize,
+    setSize: setTaskPageSize,
+    isLoading: tasksPagesLoading,
+    mutate: mutateTaskPages,
+  } = useSWRInfinite<TasksPageResponse>(getTaskPageKey, fetchTasksPageJson, {
+    revalidateFirstPage: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 12_000,
+  });
 
   const { data: linksData = [], mutate: mutateLinks, isLoading: linksLoading } = useSWR<TaskLink[]>(
     authStatus === "authenticated" && view === "mindmap" ? "/api/tasks/links" : null,
@@ -315,13 +368,28 @@ export default function TasksPage() {
     }
   );
 
-  const tasks = Array.isArray(tasksData) ? tasksData : [];
+  const tasks = useMemo(() => {
+    if (needsFullTaskList) return Array.isArray(tasksFullData) ? tasksFullData : [];
+    if (!taskPages?.length) return [];
+    return taskPages.flatMap((p) => p.items);
+  }, [needsFullTaskList, tasksFullData, taskPages]);
+
+  const tasksTotalCount = useMemo(() => {
+    if (needsFullTaskList) return tasks.length;
+    return taskPages?.[0]?.total ?? tasks.length;
+  }, [needsFullTaskList, taskPages, tasks.length]);
+
+  const tasksLoading = needsFullTaskList ? tasksFullLoading : tasksPagesLoading && !taskPages;
+  const hasMoreTasksPaged =
+    !needsFullTaskList && Boolean(taskPages?.length && taskPages[taskPages.length - 1]?.hasMore);
+
   const taskLinks = Array.isArray(linksData) ? linksData : [];
 
   const refreshTasks = useCallback(() => {
-    mutateTasks();
-    mutateLinks();
-  }, [mutateTasks, mutateLinks]);
+    void mutateTasksFull();
+    void mutateTaskPages();
+    void mutateLinks();
+  }, [mutateTasksFull, mutateTaskPages, mutateLinks]);
 
   const isTaskDeleteAdmin =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
@@ -374,16 +442,6 @@ export default function TasksPage() {
     [refreshTasks]
   );
 
-  if (authStatus === "loading" || authStatus === "unauthenticated") {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-muted-foreground">
-          {authStatus === "unauthenticated" ? "로그인이 필요합니다." : "불러오는 중..."}
-        </p>
-      </div>
-    );
-  }
-
   const filteredTasks = useMemo(() => {
     return tasks.filter((t: Task) => {
       if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
@@ -425,6 +483,16 @@ export default function TasksPage() {
     }));
   }, [filteredTasks]);
 
+  if (authStatus === "loading" || authStatus === "unauthenticated") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-muted-foreground">
+          {authStatus === "unauthenticated" ? "로그인이 필요합니다." : "불러오는 중..."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="border-border flex flex-col gap-4 border-b border-gray-200 pb-6">
@@ -449,108 +517,110 @@ export default function TasksPage() {
             <TabsContent value="mindmap" className="mt-0" />
             <TabsContent value="log" className="mt-0" />
           </Tabs>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "border-gray-200 text-muted-foreground",
-                  hasActiveFilter && "border-amber-400 text-amber-700"
-                )}
-              >
-                <Filter className="mr-2 size-4" />
-                필터
-                {hasActiveFilter && (
-                  <span className="ml-1 rounded bg-amber-100 px-1 text-[10px]">적용중</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-72" align="start">
-              <div className="space-y-3">
-                <p className="text-sm font-medium">상태</p>
-                <Select
-                  value={filterStatus || "all"}
-                  onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="전체" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체</SelectItem>
-                    {STATUS_LIST.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm font-medium">담당자</p>
-                <Select
-                  value={filterAssigneeId || "all"}
-                  onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="전체" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체</SelectItem>
-                    {assigneeOptions.map(([id, u]: any) => (
-                      <SelectItem key={id} value={id}>
-                        {formatUserName(u)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm font-medium">우선순위</p>
-                <Select
-                  value={filterPriority || "all"}
-                  onValueChange={(v) =>
-                    setFilterPriority(v === "all" ? "" : (v as "HIGH" | "MEDIUM" | "LOW"))
-                  }
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="전체" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체</SelectItem>
-                    <SelectItem value="HIGH">높음</SelectItem>
-                    <SelectItem value="MEDIUM">보통</SelectItem>
-                    <SelectItem value="LOW">낮음</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-sm font-medium">마감일</p>
-                <Select
-                  value={filterDue}
-                  onValueChange={(v) => setFilterDue(v as DueFilterValue)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DUE_FILTER_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {view === "list" && (
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setFilterStatus("");
-                    setFilterAssigneeId("");
-                    setFilterPriority("");
-                    setFilterDue("all");
-                  }}
+                  className={cn(
+                    "border-gray-200 text-muted-foreground",
+                    hasActiveFilter && "border-amber-400 text-amber-700"
+                  )}
                 >
-                  필터 초기화
+                  <Filter className="mr-2 size-4" />
+                  필터
+                  {hasActiveFilter && (
+                    <span className="ml-1 rounded bg-amber-100 px-1 text-[10px]">적용중</span>
+                  )}
                 </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+              </PopoverTrigger>
+              <PopoverContent className="w-72" align="start">
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">상태</p>
+                  <Select
+                    value={filterStatus || "all"}
+                    onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="전체" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      {STATUS_LIST.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm font-medium">담당자</p>
+                  <Select
+                    value={filterAssigneeId || "all"}
+                    onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="전체" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      {assigneeOptions.map(([id, u]: any) => (
+                        <SelectItem key={id} value={id}>
+                          {formatUserName(u)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm font-medium">우선순위</p>
+                  <Select
+                    value={filterPriority || "all"}
+                    onValueChange={(v) =>
+                      setFilterPriority(v === "all" ? "" : (v as "HIGH" | "MEDIUM" | "LOW"))
+                    }
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="전체" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      <SelectItem value="HIGH">높음</SelectItem>
+                      <SelectItem value="MEDIUM">보통</SelectItem>
+                      <SelectItem value="LOW">낮음</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm font-medium">마감일</p>
+                  <Select
+                    value={filterDue}
+                    onValueChange={(v) => setFilterDue(v as DueFilterValue)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DUE_FILTER_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      setFilterStatus("");
+                      setFilterAssigneeId("");
+                      setFilterPriority("");
+                      setFilterDue("all");
+                    }}
+                  >
+                    필터 초기화
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
           <Button
             onClick={() => {
               setCreateParentId(null);
@@ -597,11 +667,20 @@ export default function TasksPage() {
           <WorkLogTab />
         ) : view === "mindmap" ? (
           !mindmapMounted ? (
-            <p className="text-muted-foreground py-12 text-center text-sm">마인드맵 준비 중...</p>
+            <div className="min-h-[480px] w-full space-y-3 rounded-xl border bg-muted/10 p-4">
+              <Skeleton className="h-8 w-48 rounded-md" />
+              <Skeleton className="h-[420px] w-full rounded-lg" />
+            </div>
           ) : tasksLoading && tasks.length === 0 ? (
-            <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
+            <div className="min-h-[480px] w-full space-y-3 rounded-xl border bg-muted/10 p-4">
+              <Skeleton className="h-8 w-64 rounded-md" />
+              <Skeleton className="h-[420px] w-full rounded-lg" />
+            </div>
           ) : linksLoading ? (
-            <p className="text-muted-foreground py-12 text-center text-sm">연결 정보를 불러오는 중...</p>
+            <div className="min-h-[480px] w-full space-y-3 rounded-xl border bg-muted/10 p-4">
+              <Skeleton className="h-8 w-56 rounded-md" />
+              <Skeleton className="h-[420px] w-full rounded-lg" />
+            </div>
           ) : (
             <div key="mindmap" className="min-h-[480px] w-full">
               <TaskTreeView
@@ -620,7 +699,16 @@ export default function TasksPage() {
             </div>
           )
         ) : tasksLoading && tasks.length === 0 ? (
-          <p className="text-muted-foreground py-12 text-center text-sm">업무 목록을 불러오는 중...</p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-3 rounded-xl border bg-muted/10 p-3">
+                <Skeleton className="h-9 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+              </div>
+            ))}
+          </div>
         ) : visibleStatusColumns.length === 0 ? (
           <div className="border-border rounded-lg border border-dashed border-amber-300 bg-amber-50/50 py-12 text-center text-amber-900">
             <p className="text-sm">보드에 표시할 컬럼을 하나 이상 선택해 주세요.</p>
@@ -641,6 +729,7 @@ export default function TasksPage() {
             </Button>
           </div>
         ) : (
+          <div className="flex flex-col gap-4">
           <div
             className={cn(
               "grid gap-4",
@@ -798,6 +887,20 @@ export default function TasksPage() {
               );
             })}
           </div>
+          {hasMoreTasksPaged && (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setTaskPageSize((n) => n + 1)}
+                disabled={tasksPagesLoading}
+              >
+                더 불러오기 ({tasks.length}/{tasksTotalCount})
+              </Button>
+            </div>
+          )}
+          </div>
         )}
       </ViewErrorBoundary>
 
@@ -811,7 +914,7 @@ export default function TasksPage() {
           setCreateOpen(false);
         }}
         parentId={createParentId}
-        orderIndex={tasks.length}
+        orderIndex={tasksTotalCount}
         defaultAssignedToId={(session?.user as any)?.id ?? null}
       />
     </div>

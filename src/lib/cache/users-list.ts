@@ -39,3 +39,24 @@ export const getCachedUsersMinimal = unstable_cache(
   ["crm-users-minimal"],
   { revalidate: 60, tags: ["users-list"] }
 );
+
+/** 업무 담당자·모달 선택 등 — 프로젝트 포함 직원 목록 */
+export const getCachedUsersWithProject = unstable_cache(
+  async () =>
+    prisma.user.findMany({
+      where: {},
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+        position: true,
+        currentProject: {
+          select: { id: true, name: true, brand: { select: { name: true } } },
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+  ["crm-users-with-project"],
+  { revalidate: 60, tags: ["users-list"] }
+);

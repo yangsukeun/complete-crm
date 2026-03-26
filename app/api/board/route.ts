@@ -65,37 +65,73 @@ export async function GET(req: Request) {
         ? { AND: [vis, { category: category as "COMPANY" | "TRAINING" }] }
         : vis;
 
-    const list = await prisma.boardPost.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        category: true,
-        workspaceScope: true,
-        attachments: true,
-        createdAt: true,
-        createdById: true,
-        createdBy: { select: { name: true, position: true } },
-      },
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
+    const all = searchParams.get("all") === "1";
+
+    const select = {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      workspaceScope: true,
+      attachments: true,
+      createdAt: true,
+      createdById: true,
+      createdBy: { select: { name: true, position: true } },
+    } as const;
+
+    const mapRow = (p: {
+      id: string;
+      title: string;
+      description: string | null;
+      category: string;
+      workspaceScope: string;
+      attachments: string | null;
+      createdAt: Date;
+      createdById: string;
+      createdBy: { name: string; position: string | null } | null;
+    }) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description ?? "",
+      category: p.category,
+      attachments: safeParseAttachments(p.attachments),
+      createdAt: p.createdAt.toISOString(),
+      createdById: p.createdById,
+      createdByName: p.createdBy?.name ?? "삭제된 사용자",
+      createdByPosition: p.createdBy?.position ?? null,
+      workspaceScope: p.workspaceScope,
     });
 
-    return NextResponse.json(
-      list.map((p) => ({
-        id: p.id,
-        title: p.title,
-        description: p.description ?? "",
-        category: p.category,
-        attachments: safeParseAttachments(p.attachments),
-        createdAt: p.createdAt.toISOString(),
-        createdById: p.createdById,
-        createdByName: p.createdBy?.name ?? "삭제된 사용자",
-        createdByPosition: p.createdBy?.position ?? null,
-        workspaceScope: p.workspaceScope,
-      }))
-    );
+    if (all) {
+      const list = await prisma.boardPost.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 500,
+        select,
+      });
+      return NextResponse.json(list.map(mapRow));
+    }
+
+    const [total, list] = await Promise.all([
+      prisma.boardPost.count({ where }),
+      prisma.boardPost.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: offset,
+        take: limit,
+        select,
+      }),
+    ]);
+
+    return NextResponse.json({
+      items: list.map(mapRow),
+      total,
+      hasMore: offset + list.length < total,
+      offset,
+      limit,
+    });
   } catch (e) {
     console.error("Board GET:", e);
     return NextResponse.json({ error: "자료 목록을 불러올 수 없습니다." }, { status: 500 });

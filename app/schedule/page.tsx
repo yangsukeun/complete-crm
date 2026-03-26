@@ -377,11 +377,12 @@ export default function SchedulePage() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch("/api/tasks?all=1");
       if (!res.ok) return;
-      const data = await res.json();
+      const raw = await res.json();
+      const list = Array.isArray(raw) ? raw : raw.items ?? [];
       setTasks(
-        data.map((t: { id: string; title: string; dueDate: string; isCompleted: boolean; priority: string; assignedTo: { name: string; position?: string | null } }) => ({
+        list.map((t: { id: string; title: string; dueDate: string; isCompleted: boolean; priority: string; assignedTo: { name: string; position?: string | null } }) => ({
           id: t.id,
           title: t.title,
           dueDate: t.dueDate,

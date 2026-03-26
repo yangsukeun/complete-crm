@@ -13,7 +13,11 @@ export async function GET() {
     const all = await getCachedUsersMinimal();
     const users = all.filter((u) => u.id !== session.user.id);
 
-    return NextResponse.json(users);
+    return NextResponse.json(users, {
+      headers: {
+        "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120",
+      },
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

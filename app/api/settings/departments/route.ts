@@ -14,7 +14,11 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const list = await getCachedDepartments();
-    return NextResponse.json(list);
+    return NextResponse.json(list, {
+      headers: {
+        "Cache-Control": "private, s-maxage=120, stale-while-revalidate=240",
+      },
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "부서 목록을 불러올 수 없습니다." }, { status: 500 });

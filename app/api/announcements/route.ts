@@ -38,8 +38,7 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json(
-      list.map((a: any) => {
+    const body = list.map((a: any) => {
         const poll = a.pollData ? (JSON.parse(a.pollData) as PollOption[]) : null;
         const myVote =
           poll && session?.user?.id
@@ -58,8 +57,13 @@ export async function GET() {
           createdByName: a.createdBy?.name ?? "삭제된 사용자",
           createdByPosition: a.createdBy?.position ?? null,
         };
-      })
-    );
+      });
+
+    return NextResponse.json(body, {
+      headers: {
+        "Cache-Control": "private, s-maxage=30, stale-while-revalidate=60",
+      },
+    });
   } catch (e) {
     console.error("Announcements GET:", e);
     return NextResponse.json({ error: "공지사항을 불러올 수 없습니다." }, { status: 500 });

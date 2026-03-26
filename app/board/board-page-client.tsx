@@ -29,6 +29,7 @@ import { ko } from "date-fns/locale";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { ContentBodyEditor } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -122,6 +123,9 @@ export function BoardPageClient({
 }) {
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [boardList, setBoardList] = useState<BoardItem[]>([]);
+  const [boardHasMore, setBoardHasMore] = useState(false);
+  const [boardNextOffset, setBoardNextOffset] = useState(0);
+  const [boardLoadingMore, setBoardLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
   const [openBoard, setOpenBoard] = useState(false);
@@ -138,36 +142,79 @@ export function BoardPageClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
 
-  const fetchAll = async () => {
+  const BOARD_PAGE = 20;
+
+  const boardCategoryQuery = (f: string) =>
+    f === "COMPANY" || f === "TRAINING" ? f : undefined;
+
+  const fetchBoardPage = async (offset: number, category?: string) => {
+    const params = new URLSearchParams({
+      limit: String(BOARD_PAGE),
+      offset: String(offset),
+    });
+    if (category) params.set("category", category);
+    const boardRes = await fetch(`/api/board?${params}`);
+    if (!boardRes.ok) return { items: [] as BoardItem[], hasMore: false, nextOffset: offset };
+    const raw = await boardRes.json();
+    const items = raw.items ?? [];
+    const hasMore = Boolean(raw.hasMore);
+    const nextOffset = (raw.offset ?? offset) + items.length;
+    return { items, hasMore, nextOffset };
+  };
+
+  const refreshAll = async () => {
     setLoading(true);
+    setBoardLoadingMore(false);
     try {
-      const [annRes, boardRes] = await Promise.all([
-        fetch("/api/announcements"),
-        fetch("/api/board"),
-      ]);
+      const annRes = await fetch("/api/announcements");
       if (annRes.ok) {
-        const data = await annRes.json();
-        setAnnouncements(data);
+        setAnnouncements(await annRes.json());
       } else {
         setAnnouncements([]);
       }
-      if (boardRes.ok) {
-        const data = await boardRes.json();
-        setBoardList(data);
-      } else {
+
+      if (filter === "ANNOUNCEMENT") {
         setBoardList([]);
+        setBoardHasMore(false);
+        setBoardNextOffset(0);
+        return;
       }
+
+      const cat = boardCategoryQuery(filter);
+      const { items, hasMore, nextOffset } = await fetchBoardPage(0, cat);
+      setBoardList(items);
+      setBoardHasMore(hasMore);
+      setBoardNextOffset(nextOffset);
     } catch {
       setAnnouncements([]);
       setBoardList([]);
+      setBoardHasMore(false);
+      setBoardNextOffset(0);
     } finally {
       setLoading(false);
     }
   };
 
+  const loadMoreBoard = async () => {
+    if (!boardHasMore || boardLoadingMore || filter === "ANNOUNCEMENT") return;
+    setBoardLoadingMore(true);
+    try {
+      const cat = boardCategoryQuery(filter);
+      const { items, hasMore, nextOffset } = await fetchBoardPage(boardNextOffset, cat);
+      setBoardList((prev) => [...prev, ...items]);
+      setBoardHasMore(hasMore);
+      setBoardNextOffset(nextOffset);
+    } catch {
+      toast.error("자료를 더 불러오지 못했습니다.");
+    } finally {
+      setBoardLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    fetchAll();
-  }, []);
+    void refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 필터 바뀔 때 목록·게시판 페이지 초기화
+  }, [filter]);
 
   const unifiedList: UnifiedItem[] = (() => {
     const ann: UnifiedItem[] = announcements.map((a: any) => ({ type: "ANNOUNCEMENT", data: a }));
@@ -210,7 +257,7 @@ export function BoardPageClient({
       setCategory("COMPANY");
       setAttachments([]);
       setOpenBoard(false);
-      fetchAll();
+      refreshAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "자료 등록에 실패했습니다.");
     } finally {
@@ -237,7 +284,7 @@ export function BoardPageClient({
       setTitle("");
       setBodyContent("");
       setOpenAnnouncement(false);
-      fetchAll();
+      refreshAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "공지 등록에 실패했습니다.");
     } finally {
@@ -298,7 +345,7 @@ export function BoardPageClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "삭제 실패");
       toast.success("삭제되었습니다.");
-      fetchAll();
+      refreshAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
     } finally {
@@ -400,10 +447,18 @@ export function BoardPageClient({
           공지·자료 목록
         </h2>
         {loading ? (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/30 py-12 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-            <span>불러오는 중...</span>
-          </div>
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <li key={i} className="overflow-hidden rounded-xl border bg-card shadow-sm">
+                <Skeleton className="aspect-video w-full rounded-none" />
+                <div className="space-y-2 p-4">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : unifiedList.length === 0 ? (
           <div className="rounded-xl border border-dashed bg-muted/30 py-12 text-center text-muted-foreground">
             {filter === "ANNOUNCEMENT"
@@ -463,8 +518,9 @@ export function BoardPageClient({
                           src={media.url}
                           alt={media.name || b.title}
                           fill
-                          sizes="(max-width: 768px) 100vw, 50vw"
-                          unoptimized
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          unoptimized={/drive\.google\.com/i.test(media.url)}
+                          loading="lazy"
                           className="object-cover"
                         />
                       ) : media?.type === "video" ? (
@@ -560,6 +616,21 @@ export function BoardPageClient({
               );
             })}
           </ul>
+        )}
+        {!loading && filter !== "ANNOUNCEMENT" && boardHasMore && (
+          <div className="mt-6 flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadMoreBoard()}
+              disabled={boardLoadingMore}
+              className="gap-2"
+            >
+              {boardLoadingMore && <Loader2 className="size-4 animate-spin" />}
+              자료 더 불러오기
+            </Button>
+          </div>
         )}
       </section>
 

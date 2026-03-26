@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { getCachedUsersWithProject } from "@/lib/cache/users-list";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -27,21 +28,13 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    // 대표/관리자: 직원 목록(이체 담당자 지정 등)용으로 모든 역할 포함. 그 외: 전체.
-    const users = await prisma.user.findMany({
-      where: {},
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        department: true,
-        position: true,
-        currentProject: { select: { id: true, name: true, brand: { select: { name: true } } } },
-      },
-      orderBy: { name: "asc" },
-    });
+    const users = await getCachedUsersWithProject();
 
-    return NextResponse.json(users);
+    return NextResponse.json(users, {
+      headers: {
+        "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120",
+      },
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
