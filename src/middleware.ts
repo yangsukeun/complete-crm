@@ -13,6 +13,10 @@ const NEXTAUTH_COOKIES = [
 
 function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/api/")) return true;
+  // PWA manifest / 푸시 SW — 인증 없이 원본(JSON·JS)이 나가야 함 (리다이렉트 시 콘솔 Manifest·worker 오류)
+  if (pathname === "/manifest.json") return true;
+  if (pathname === "/OneSignalSDKWorker.js" || pathname === "/OneSignalSDKUpdaterWorker.js") return true;
+  if (pathname.startsWith("/push/onesignal/")) return true;
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
