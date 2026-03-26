@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { getDriveDownloadUrl, getDriveImageUrl } from "@/lib/google-drive-url";
 
 function getExt(urlOrName: string): string {
   const clean = (urlOrName ?? "").split("?")[0]?.split("#")[0] ?? "";
@@ -77,7 +78,11 @@ export function FilePreviewDialog({
       return { kind: "youtube" as const, embedUrl: toYouTubeEmbed(abs), icon: <Film className="size-4" /> };
     }
     if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) {
-      return { kind: "image" as const, embedUrl: abs, icon: <ImageIcon className="size-4" /> };
+      return {
+        kind: "image" as const,
+        embedUrl: getDriveImageUrl(abs),
+        icon: <ImageIcon className="size-4" />,
+      };
     }
     if (["mp4", "webm", "ogg", "mov"].includes(ext)) {
       return { kind: "video" as const, embedUrl: abs, icon: <Film className="size-4" /> };
@@ -92,6 +97,8 @@ export function FilePreviewDialog({
     }
     return { kind: "other" as const, embedUrl: abs, icon: <FileText className="size-4" /> };
   }, [name, url]);
+
+  const openHref = useMemo(() => getDriveDownloadUrl(url), [url]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -111,7 +118,7 @@ export function FilePreviewDialog({
           <DialogTitle className="flex items-center justify-between gap-3">
             <span className="truncate">{title}</span>
             <a
-              href={url}
+              href={openHref}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -129,7 +136,8 @@ export function FilePreviewDialog({
               alt={title}
               width={1200}
               height={900}
-              unoptimized
+              unoptimized={embedUrl.startsWith("data:")}
+              sizes="(max-width: 768px) 100vw, 896px"
               className="max-h-[70vh] w-auto max-w-full mx-auto p-3 object-contain"
             />
           )}
@@ -155,7 +163,7 @@ export function FilePreviewDialog({
           {kind === "other" && (
             <div className="p-4 text-sm text-muted-foreground">
               이 파일 형식은 브라우저에서 미리보기가 제한될 수 있습니다.{" "}
-              <a href={url} target="_blank" rel="noopener noreferrer" className="underline">
+              <a href={openHref} target="_blank" rel="noopener noreferrer" className="underline">
                 새 탭에서 열기
               </a>
               로 확인해 주세요.

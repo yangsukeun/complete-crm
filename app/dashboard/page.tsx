@@ -10,7 +10,10 @@ import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { formatUserName } from "@/lib/utils";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
-import { getDashboardSalesStats } from "@/lib/dashboard-sales";
+import {
+  prefetchCompanyDashboardAdmin,
+  prefetchCompanyDashboardUser,
+} from "@/lib/dashboard-prefetch";
 import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
 
@@ -178,17 +181,14 @@ export default async function DashboardPage() {
 
   if (isAdmin) {
     const year = new Date().getFullYear();
-    const weekEnd = addDays(todayStart, 7);
 
     const [
       adminUser,
       employeeCount,
       todayAttendances,
-      tasksCreatedByMe,
       adminTodayAttendance,
-      adminUpcomingSchedules,
       adminLeaveBalance,
-      salesStats,
+      dashPrefetch,
     ] = await Promise.all([
       prisma.user.findUnique({
         where: { id: session.user.id },
@@ -199,30 +199,8 @@ export default async function DashboardPage() {
         where: { date: todayStart },
         include: { user: { select: { name: true, department: true, position: true } } },
       }),
-      prisma.task.findMany({
-        where: { deletedAt: null, createdById: session.user.id },
-        select: {
-          id: true,
-          title: true,
-          dueDate: true,
-          isCompleted: true,
-          status: true,
-          priority: true,
-          assignedTo: { select: { name: true, position: true } },
-        },
-        orderBy: { dueDate: "asc" },
-        take: 100,
-      }),
       prisma.attendance.findUnique({
         where: { userId_date: { userId: session.user.id, date: todayStart } },
-      }),
-      prisma.schedule.findMany({
-        where: {
-          userId: session.user.id,
-          startTime: { gte: new Date(), lte: weekEnd },
-        },
-        orderBy: { startTime: "asc" },
-        take: 5,
       }),
       (async () => {
         try {
@@ -234,8 +212,15 @@ export default async function DashboardPage() {
           return null;
         }
       })(),
-      getDashboardSalesStats(),
+      prefetchCompanyDashboardAdmin(session.user.id),
     ]);
+
+    const {
+      announcements: announcementsFallback,
+      salesStats,
+      upcomingSchedules: adminUpcomingSchedules,
+      adminTasks: tasksCreatedByMe,
+    } = dashPrefetch;
 
     const joinDate = adminUser?.joinDate ?? new Date();
     const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
@@ -274,7 +259,7 @@ export default async function DashboardPage() {
         </div>
 
         <section>
-          <DashboardAnnouncements canCreate={true} />
+          <DashboardAnnouncements canCreate={true} fallbackData={announcementsFallback} />
         </section>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -414,57 +399,41 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        <DashboardSalesSection data={salesStats} />
+        <DashboardSalesSection fallbackData={salesStats} />
       </div>
     );
   }
 
   // 회사 모드 · User: 일정·업무·남은 연차·목표 + 출퇴근
   const year = new Date().getFullYear();
-  const weekEnd = addDays(new Date(), 7);
 
-  const [userForLeave, myTasks, myTodayAttendance, upcomingSchedules, salesStats, leaveBalance] =
-    await Promise.all([
-      prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { joinDate: true },
-      }),
-      prisma.task.findMany({
-        where: { deletedAt: null, assignedToId: session.user.id, isCompleted: false },
-        orderBy: { dueDate: "asc" },
-        take: 10,
-        select: {
-          id: true,
-          title: true,
-          dueDate: true,
-          isCompleted: true,
-          status: true,
-          createdBy: { select: { name: true, position: true } },
-        },
-      }),
-      prisma.attendance.findUnique({
-        where: { userId_date: { userId: session.user.id, date: todayStart } },
-      }),
-      prisma.schedule.findMany({
-        where: {
-          userId: session.user.id,
-          startTime: { gte: new Date(), lte: weekEnd },
-        },
-        orderBy: { startTime: "asc" },
-        take: 5,
-      }),
-      getDashboardSalesStats(),
-      (async () => {
-        try {
-          return await prisma.leaveBalance.findUnique({
-            where: { userId_year: { userId: session.user.id, year } },
-          });
-        } catch (e) {
-          console.error("[dashboard] leaveBalance fetch:", e);
-          return null;
-        }
-      })(),
-    ]);
+  const [userForLeave, myTodayAttendance, leaveBalance, dashPrefetchUser] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { joinDate: true },
+    }),
+    prisma.attendance.findUnique({
+      where: { userId_date: { userId: session.user.id, date: todayStart } },
+    }),
+    (async () => {
+      try {
+        return await prisma.leaveBalance.findUnique({
+          where: { userId_year: { userId: session.user.id, year } },
+        });
+      } catch (e) {
+        console.error("[dashboard] leaveBalance fetch:", e);
+        return null;
+      }
+    })(),
+    prefetchCompanyDashboardUser(session.user.id),
+  ]);
+
+  const {
+    announcements: announcementsFallbackUser,
+    salesStats,
+    upcomingSchedules,
+    myTasks,
+  } = dashPrefetchUser;
 
   const joinDate = userForLeave?.joinDate ?? new Date();
   const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
@@ -503,7 +472,10 @@ export default async function DashboardPage() {
       </div>
 
       <section>
-        <DashboardAnnouncements canCreate={canCreateAnnouncement} />
+        <DashboardAnnouncements
+          canCreate={canCreateAnnouncement}
+          fallbackData={announcementsFallbackUser}
+        />
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -651,7 +623,7 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <DashboardSalesSection data={salesStats} />
+      <DashboardSalesSection fallbackData={salesStats} />
     </div>
   );
 }

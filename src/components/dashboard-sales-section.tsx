@@ -11,13 +11,24 @@ import {
   YAxis,
 } from "recharts";
 import type { DashboardSalesStats } from "@/lib/dashboard-sales";
+import useSWR from "swr";
 import { FileText, Wallet, AlertCircle } from "lucide-react";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 
 function formatAmount(n: number) {
   return new Intl.NumberFormat("ko-KR").format(n) + "원";
 }
 
-export function DashboardSalesSection({ data }: { data: DashboardSalesStats }) {
+export function DashboardSalesSection({
+  fallbackData,
+}: {
+  fallbackData: DashboardSalesStats;
+}) {
+  const { data } = useSWR<DashboardSalesStats>(SWR_KEYS.dashboardSales, jsonFetcher, {
+    fallbackData,
+    revalidateOnFocus: true,
+  });
+  if (!data) return null;
   const { currentMonth, monthly } = data;
 
   return (

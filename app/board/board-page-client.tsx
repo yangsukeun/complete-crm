@@ -36,6 +36,7 @@ import { ContentBodyEditor } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
+import { getDriveThumbnailUrl } from "@/lib/google-drive-url";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -512,7 +513,9 @@ export function BoardPageClient({
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {unifiedList.map((item: any, itemIdx: number) => {
+            {(() => {
+              let boardCardImageIndex = 0;
+              return unifiedList.map((item: any) => {
               if (item.type === "ANNOUNCEMENT") {
                 const a = item.data;
                 const preview = stripMarkdownPreview(a.content, 120);
@@ -548,6 +551,10 @@ export function BoardPageClient({
               const b = item.data;
               const preview = stripMarkdownPreview(b.description, 120);
               const media = getPreviewMedia(b.attachments, b.description);
+              const boardThumbRank = media?.type === "image" ? boardCardImageIndex++ : -1;
+              const thumbEager = boardThumbRank >= 0 && boardThumbRank < 6;
+              const imageSrc =
+                media?.type === "image" ? getDriveThumbnailUrl(media.url, 400) : "";
               return (
                 <li
                   key={`board-${b.id}`}
@@ -558,14 +565,13 @@ export function BoardPageClient({
                     <div className="relative aspect-video w-full bg-muted">
                       {media?.type === "image" ? (
                         <Image
-                          src={media.url}
+                          src={imageSrc}
                           alt={media.name || b.title}
                           fill
-                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                          unoptimized={/drive\.google\.com/i.test(media.url)}
-                          loading={itemIdx < 6 ? "eager" : "lazy"}
-                          priority={itemIdx < 6}
-                          fetchPriority={itemIdx < 3 ? "high" : undefined}
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          loading={thumbEager ? "eager" : "lazy"}
+                          priority={thumbEager}
+                          fetchPriority={boardThumbRank >= 0 && boardThumbRank < 3 ? "high" : undefined}
                           className="object-cover"
                         />
                       ) : media?.type === "video" ? (
@@ -663,7 +669,8 @@ export function BoardPageClient({
                   </Link>
                 </li>
               );
-            })}
+            });
+            })()}
           </ul>
         )}
         {!loading && filter !== "ANNOUNCEMENT" && boardHasMore && (

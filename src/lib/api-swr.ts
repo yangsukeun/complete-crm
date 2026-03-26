@@ -32,6 +32,8 @@ export const SWR_KEYS = {
   scheduleInvites: "/api/schedules/invites",
   leave: "/api/leave",
   googleCalendar: "/api/integrations/google-calendar",
+  /** 대시보드 매출·수금 (GET = getDashboardSalesStats) */
+  dashboardSales: "/api/dashboard/sales-stats",
 } as const;
 
 export const schedulePersonalKey = ["/api/schedules", "MY"] as const;

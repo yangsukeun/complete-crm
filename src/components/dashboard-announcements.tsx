@@ -19,14 +19,21 @@ type AnnouncementItem = {
 };
 
 export function DashboardAnnouncements({
-  canCreate,
+  canCreate: _canCreate,
+  fallbackData,
 }: {
   canCreate: boolean;
+  /** 서버에서 prefetch 한 공지 — 첫 페인트 시 로딩 스피너 없음 */
+  fallbackData: AnnouncementItem[];
 }) {
-  const { data: list = [], isLoading: loading } = useSWR<AnnouncementItem[]>(
+  const { data: list = fallbackData, isLoading: loading } = useSWR<AnnouncementItem[]>(
     SWR_KEYS.announcements,
     jsonFetcher,
-    { dedupingInterval: 15_000, revalidateOnFocus: true }
+    {
+      fallbackData,
+      dedupingInterval: 15_000,
+      revalidateOnFocus: true,
+    }
   );
 
   const isNew = (createdAt: string) => {
@@ -53,7 +60,7 @@ export function DashboardAnnouncements({
         </Link>
       </div>
 
-      {loading ? (
+      {loading && (list?.length ?? 0) === 0 ? (
         <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/30 py-8 text-muted-foreground">
           <Loader2 className="size-5 animate-spin" />
           <span>불러오는 중...</span>
