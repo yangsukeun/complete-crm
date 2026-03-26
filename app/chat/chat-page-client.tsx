@@ -104,7 +104,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const lastMessageIdRef = useRef<string | null>(null);
+  const chatsRef = useRef<ChatItem[]>([]);
+  const lastMsgTsRef = useRef<string | null>(null);
 
   const isExecutive =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
@@ -127,6 +128,23 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   useEffect(() => {
     if (messages.length > 0) scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+
+  useEffect(() => {
+    const last = messages.length > 0 ? messages[messages.length - 1] : null;
+    lastMsgTsRef.current = last?.createdAt ?? null;
+  }, [messages]);
+
+  const resolveUserFromChats = useCallback((list: ChatItem[], userId: string): Message["user"] => {
+    for (const c of list) {
+      const p = c.participants.find((x) => x.id === userId);
+      if (p) return { id: p.id, name: p.name, position: p.position ?? null };
+    }
+    return { id: userId, name: "사용자", position: null };
+  }, []);
 
   const fetchChats = useCallback(async () => {
     try {
@@ -193,25 +211,25 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [selectedChatId, session?.user?.id]);
 
   const fetchMessages = useCallback(
-    async (chatId: string, silent?: boolean, afterMessageId?: string | null) => {
+    async (chatId: string, silent?: boolean, sinceIso?: string | null) => {
       if (!silent) setMessageLoading(true);
       try {
-        const url = afterMessageId
-          ? `/api/chats/${chatId}/messages?after=${encodeURIComponent(afterMessageId)}`
+        const url = sinceIso
+          ? `/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`
           : `/api/chats/${chatId}/messages?limit=100`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("Failed");
         const data = (await res.json()) as Message[];
-        if (silent && afterMessageId) {
+        if (silent && sinceIso) {
           if (data.length === 0) return;
-          setMessages((prev: any) => {
-            const existingIds = new Set(prev.map((m: any) => m.id));
-            const toAdd = data.filter((m: any) => !existingIds.has(m.id));
+          setMessages((prev: Message[]) => {
+            const existingIds = new Set(prev.map((m: Message) => m.id));
+            const toAdd = data.filter((m: Message) => !existingIds.has(m.id));
             if (toAdd.length === 0) return prev;
             return [...prev, ...toAdd];
           });
         } else if (silent) {
-          setMessages((prev: any) => {
+          setMessages((prev: Message[]) => {
             if (prev.length !== data.length) return data;
             if (data.length === 0) return prev;
             if (prev[0]?.id !== data[0]?.id || prev[prev.length - 1]?.id !== data[data.length - 1]?.id)
@@ -234,19 +252,68 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     fetchChats();
   }, [fetchChats]);
 
-  // 채팅 목록 폴링 (새 메시지 알림) — 탭 보일 때만, 간격 완화로 서버 부하 감소
   useEffect(() => {
+    const onInbox = () => void fetchChats();
+    window.addEventListener("chat-inbox-refresh", onInbox);
+    return () => window.removeEventListener("chat-inbox-refresh", onInbox);
+  }, [fetchChats]);
+
+  /** Supabase Realtime 미설정 시에만 목록·메시지 저빈도 폴링 (30초) */
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) return;
     const t = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
         fetchChats();
       }
-    }, 10000);
+    }, 30000);
     return () => clearInterval(t);
   }, [fetchChats]);
 
   useEffect(() => {
+    const onRt = (ev: Event) => {
+      const ce = ev as CustomEvent<{
+        chatId: string;
+        payload: { eventType?: string; new?: Record<string, unknown>; old?: Record<string, unknown> };
+      }>;
+      const chatId = ce.detail?.chatId;
+      const payload = ce.detail?.payload;
+      if (!chatId || chatId !== selectedChatId || !payload) return;
+      if (payload.eventType === "INSERT" && payload.new) {
+        const row = payload.new as {
+          id: string;
+          body: string;
+          userId: string;
+          createdAt: string;
+          isDeleted?: boolean;
+        };
+        setMessages((prev: Message[]) => {
+          if (prev.some((m) => m.id === row.id)) return prev;
+          const user = resolveUserFromChats(chatsRef.current, row.userId);
+          const createdAt =
+            typeof row.createdAt === "string" ? row.createdAt : new Date(row.createdAt).toISOString();
+          return [
+            ...prev,
+            { id: row.id, body: row.body, createdAt, isDeleted: row.isDeleted, user },
+          ];
+        });
+      }
+      if (payload.eventType === "UPDATE" && payload.new) {
+        const row = payload.new as { id: string; body?: string; isDeleted?: boolean };
+        setMessages((prev: Message[]) =>
+          prev.map((m) =>
+            m.id === row.id
+              ? { ...m, body: row.body ?? m.body, isDeleted: row.isDeleted ?? m.isDeleted }
+              : m
+          )
+        );
+      }
+    };
+    window.addEventListener("chat-realtime", onRt as EventListener);
+    return () => window.removeEventListener("chat-realtime", onRt as EventListener);
+  }, [selectedChatId, resolveUserFromChats]);
+
+  useEffect(() => {
     if (selectedChatId) {
-      lastMessageIdRef.current = null;
       fetchMessages(selectedChatId);
       setUnreadCounts((counts: any) => {
         const next = { ...counts };
@@ -262,18 +329,14 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [selectedChatId, fetchMessages]);
 
   useEffect(() => {
-    lastMessageIdRef.current =
-      messages.length > 0 ? (messages[messages.length - 1] as Message)?.id ?? null : null;
-  }, [messages]);
-
-  // 선택된 채팅 메시지 폴링: 탭 보일 때만, 새 메시지만 after로 요청
-  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) return;
     if (!selectedChatId) return;
     const t = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      const afterId = lastMessageIdRef.current;
-      fetchMessages(selectedChatId, true, afterId);
-    }, 5000);
+      const since = lastMsgTsRef.current;
+      if (since) void fetchMessages(selectedChatId, true, since);
+      else void fetchMessages(selectedChatId, true);
+    }, 30000);
     return () => clearInterval(t);
   }, [selectedChatId, fetchMessages]);
 

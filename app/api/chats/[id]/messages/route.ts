@@ -68,9 +68,22 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Number(searchParams.get("limit")) || 100, 200);
     const afterId = searchParams.get("after");
+    const sinceIso = searchParams.get("since");
 
-    // 폴링: afterId 있으면 해당 id 이후 메시지만 조회 (새 메시지만 가져와서 빠름)
     const messageUserSelect = { id: true, name: true, position: true };
+    // createdAt 기준 증분 (cuid 정렬 after= 보다 안전)
+    if (sinceIso) {
+      const sinceDate = new Date(sinceIso);
+      if (!Number.isNaN(sinceDate.getTime())) {
+        const newMessages = await prisma.chatMessage.findMany({
+          where: { chatId, createdAt: { gt: sinceDate } },
+          include: { user: { select: messageUserSelect } },
+          orderBy: { createdAt: "asc" },
+          take: 50,
+        });
+        return NextResponse.json(newMessages);
+      }
+    }
     if (afterId) {
       const newMessages = await prisma.chatMessage.findMany({
         where: { chatId, id: { gt: afterId } },

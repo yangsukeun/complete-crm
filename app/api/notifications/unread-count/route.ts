@@ -16,7 +16,14 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ count });
+    return NextResponse.json(
+      { count },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+        },
+      }
+    );
   } catch (e) {
     console.error("Notifications unread-count:", e);
     return NextResponse.json(

@@ -71,9 +71,9 @@ const financeGroupLinks: { href: string; label: string; icon: typeof Wallet; fea
 ];
 
 const CHAT_READ_KEY = "chat_read_";
-/** 백그라운드 탭에서 API 부하 감소 (5초 → 12초, 숨김 시 아래에서 지연) */
-const NAV_POLL_MS = 12_000;
-const NAV_POLL_HIDDEN_MS = 45_000;
+/** 자금 알림 등: Realtime 없음 → 저빈도 폴링 (탭 숨김 시 더 길게) */
+const NAV_POLL_MS = 60_000;
+const NAV_POLL_HIDDEN_MS = 120_000;
 
 export function AppNav() {
   const pathname = usePathname();
@@ -121,7 +121,7 @@ export function AppNav() {
     return () => window.removeEventListener("logo-updated", load);
   }, [session?.user, pathname]);
 
-  // 직원만 채팅 미읽음 배지 표시
+  // 직원만 채팅 미읽음 배지 — Supabase Realtime(전역 이벤트) + 첫 로드; 구형 폴링 제거
   useEffect(() => {
     if (!session?.user?.id || pathname === "/choose-mode" || effectiveMode !== "company" || session?.user?.role !== "USER") {
       setChatUnreadCount(0);
@@ -141,24 +141,19 @@ export function AppNav() {
         })
         .catch(() => setChatUnreadCount(0));
     };
-    const schedule = () => {
-      const ms =
-        typeof document !== "undefined" && document.visibilityState === "hidden"
-          ? NAV_POLL_HIDDEN_MS
-          : NAV_POLL_MS;
-      return window.setInterval(run, ms);
-    };
     run();
-    let t = schedule();
-    const onVis = () => {
-      clearInterval(t);
-      if (typeof document !== "undefined" && document.visibilityState === "visible") run();
-      t = schedule();
+    let debounceT: ReturnType<typeof setTimeout> | null = null;
+    const onInbox = () => {
+      if (debounceT) clearTimeout(debounceT);
+      debounceT = setTimeout(() => {
+        debounceT = null;
+        if (typeof document !== "undefined" && document.visibilityState === "visible") run();
+      }, 400);
     };
-    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("chat-inbox-refresh", onInbox);
     return () => {
-      clearInterval(t);
-      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("chat-inbox-refresh", onInbox);
+      if (debounceT) clearTimeout(debounceT);
     };
   }, [session?.user?.id, session?.user?.role, effectiveMode, pathname]);
 

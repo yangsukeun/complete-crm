@@ -52,6 +52,17 @@ export function NotificationsPageClient() {
     fetchList();
   }, [fetchList]);
 
+  useEffect(() => {
+    const refreshQuiet = () => {
+      void fetch("/api/notifications?limit=50")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data) => setList(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    };
+    window.addEventListener("notification-realtime", refreshQuiet);
+    return () => window.removeEventListener("notification-realtime", refreshQuiet);
+  }, []);
+
   const handleReadAll = useCallback(async () => {
     setReadAllLoading(true);
     try {

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
 import { OneSignalBridge } from "@/components/one-signal-bridge";
+import { SupabaseRealtimeBridge } from "@/components/supabase-realtime-bridge";
 import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
 
@@ -27,6 +28,7 @@ export function Providers({
       refetchOnWindowFocus={false}
     >
       <OneSignalBridge userId={session?.user?.id} />
+      <SupabaseRealtimeBridge />
       <AIAssistProvider>
         <WorkspaceThemeSync />
         {children}

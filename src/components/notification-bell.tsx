@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { subscribeNotificationsForUser } from "@/lib/supabase/realtime-client";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +27,7 @@ type NotificationItem = {
 
 export function NotificationBell() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -59,12 +62,37 @@ export function NotificationBell() {
 
   useEffect(() => {
     fetchUnreadCount();
-    const t = setInterval(fetchUnreadCount, 30000);
+    const t = setInterval(fetchUnreadCount, 60000);
     return () => clearInterval(t);
   }, [fetchUnreadCount]);
 
   useEffect(() => {
-    if (open) fetchList();
+    if (!session?.user?.id || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+    let cancelled = false;
+    let rtCh: { unsubscribe: () => void } | null = null;
+    void (async () => {
+      const ch = await subscribeNotificationsForUser(session.user!.id, () => {
+        window.dispatchEvent(new Event("notification-realtime"));
+        void fetchUnreadCount();
+      });
+      if (!cancelled && ch) rtCh = ch;
+    })();
+    return () => {
+      cancelled = true;
+      try {
+        rtCh?.unsubscribe();
+      } catch {
+        /* */
+      }
+    };
+  }, [session?.user?.id, fetchUnreadCount]);
+
+  useEffect(() => {
+    if (!open) return;
+    void fetchList();
+    const onN = () => void fetchList();
+    window.addEventListener("notification-realtime", onN);
+    return () => window.removeEventListener("notification-realtime", onN);
   }, [open, fetchList]);
 
   const handleClickNotification = useCallback(
