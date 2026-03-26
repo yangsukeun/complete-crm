@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
+import useSWR from "swr";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { Megaphone, Send, Loader2, Calendar, MapPin, Vote, Plus, Trash2 } from "lucide-react";
 import { AIAssistToolbar } from "@/components/ai-assist-toolbar";
 import { useAIAssistTarget } from "@/components/ai-assist-context";
@@ -40,8 +42,11 @@ function toDatetimeLocal(d: Date): string {
 }
 
 export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
-  const [list, setList] = useState<AnnouncementItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: list = [], isLoading: loading, mutate: mutateAnnouncements } = useSWR<AnnouncementItem[]>(
+    SWR_KEYS.announcements,
+    jsonFetcher,
+    { dedupingInterval: 12_000, revalidateOnFocus: true }
+  );
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -56,23 +61,6 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
   contentRef.current = content;
   titleRef.current = title;
   const aiCtx = useAIAssistTarget();
-
-  const fetchList = async () => {
-    try {
-      const res = await fetch("/api/announcements");
-      if (!res.ok) throw new Error("공지 목록 조회 실패");
-      const data = await res.json();
-      setList(data);
-    } catch {
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchList();
-  }, []);
 
   const isNew = (createdAt: string) => {
     const created = new Date(createdAt).getTime();
@@ -125,7 +113,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
       setEventEndDate("");
       setLocation("");
       setPollOptions(["", ""]);
-      fetchList();
+      void mutateAnnouncements();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "공지 등록에 실패했습니다.");
     } finally {
@@ -144,7 +132,7 @@ export function AnnouncementsPageClient({ canCreate }: { canCreate: boolean }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "투표 실패");
       toast.success("투표가 반영되었습니다.");
-      fetchList();
+      void mutateAnnouncements();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "투표에 실패했습니다.");
     } finally {

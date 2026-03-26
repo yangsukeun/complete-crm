@@ -1,6 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
+import {
+  jsonFetcher,
+  SWR_KEYS,
+  schedulePersonalKey,
+  scheduleTeamKey,
+  schedulesWorkspaceFetcher,
+} from "@/lib/api-swr";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -329,13 +337,10 @@ const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   google: "Google 캘린더",
 };
 
+type LeaveApiResponse = { requests?: LeaveRequestItem[] };
+
 export default function SchedulePage() {
   const [tab, setTab] = useState<TabId>("schedule");
-  const [personalEvents, setPersonalEvents] = useState<ScheduleEvent[]>([]);
-  const [teamEvents, setTeamEvents] = useState<ScheduleEvent[]>([]);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [invites, setInvites] = useState<ScheduleInvite[]>([]);
-  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("month");
   const [date, setDate] = useState(new Date());
   const [diaryDate, setDiaryDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
@@ -348,119 +353,101 @@ export default function SchedulePage() {
   const [defaultInviteUserIdsForCreate, setDefaultInviteUserIdsForCreate] = useState<string[] | null>(null);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [googleConnected, setGoogleConnected] = useState(false);
   const [googleEvents, setGoogleEvents] = useState<ScheduleEvent[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequestItem[]>([]);
   const [visibleCalendars, setVisibleCalendars] = useState<Record<CalendarLayerId, boolean>>(
     () => (typeof window !== "undefined" ? loadVisibleCalendars() : DEFAULT_VISIBLE_CALENDARS)
   );
   const { data: session } = useSession();
 
-  const fetchSchedules = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [personalRes, teamRes] = await Promise.all([
-        fetch("/api/schedules", { headers: { "x-workspace": "MY" } }),
-        fetch("/api/schedules", { headers: { "x-workspace": "TEAM" } }),
-      ]);
-      const personalData = personalRes.ok ? await personalRes.json() : [];
-      const teamData = teamRes.ok ? await teamRes.json() : [];
-      setPersonalEvents(personalData.map((s: Parameters<typeof toEvent>[0]) => toEvent(s, "personal")));
-      setTeamEvents(teamData.map((s: Parameters<typeof toEvent>[0]) => toEvent(s, "team")));
-    } catch {
-      setPersonalEvents([]);
-      setTeamEvents([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: personalRaw = [], mutate: mutatePersonalSched, isLoading: personalSchedLoading } = useSWR(
+    session?.user ? schedulePersonalKey : null,
+    schedulesWorkspaceFetcher,
+    { dedupingInterval: 8000, revalidateOnFocus: true }
+  );
+  const { data: teamRaw = [], mutate: mutateTeamSched, isLoading: teamSchedLoading } = useSWR(
+    session?.user ? scheduleTeamKey : null,
+    schedulesWorkspaceFetcher,
+    { dedupingInterval: 8000, revalidateOnFocus: true }
+  );
 
-  const fetchTasks = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tasks?all=1");
-      if (!res.ok) return;
-      const raw = await res.json();
-      const list = Array.isArray(raw) ? raw : raw.items ?? [];
-      setTasks(
-        list.map((t: { id: string; title: string; dueDate: string; isCompleted: boolean; priority: string; assignedTo: { name: string; position?: string | null } }) => ({
-          id: t.id,
-          title: t.title,
-          dueDate: t.dueDate,
-          isCompleted: t.isCompleted,
-          priority: t.priority,
-          assignedTo: t.assignedTo,
-        }))
-      );
-    } catch {
-      setTasks([]);
-    }
-  }, []);
+  const personalEvents = useMemo(
+    () => (personalRaw as Parameters<typeof toEvent>[0][]).map((s) => toEvent(s, "personal")),
+    [personalRaw]
+  );
+  const teamEvents = useMemo(
+    () => (teamRaw as Parameters<typeof toEvent>[0][]).map((s) => toEvent(s, "team")),
+    [teamRaw]
+  );
 
-  const fetchInvites = useCallback(async () => {
-    try {
-      const res = await fetch("/api/schedules/invites");
-      if (!res.ok) return;
-      const data = await res.json();
-      setInvites(data);
-    } catch {
-      setInvites([]);
-    }
-  }, []);
+  const schedulesLoading = Boolean(session?.user) && (personalSchedLoading || teamSchedLoading);
 
-  const fetchLeave = useCallback(async () => {
-    try {
-      const res = await fetch("/api/leave");
-      if (!res.ok) return;
-      const data = await res.json();
-      setLeaveRequests(data.requests ?? []);
-    } catch {
-      setLeaveRequests([]);
-    }
-  }, []);
+  const { data: tasksRaw, mutate: mutateTasks } = useSWR(
+    session?.user ? SWR_KEYS.tasksAll : null,
+    jsonFetcher,
+    { dedupingInterval: 10_000, revalidateOnFocus: true }
+  );
+  const tasks = useMemo((): TaskItem[] => {
+    if (tasksRaw == null) return [];
+    const raw = tasksRaw as unknown[] | { items?: unknown[] };
+    const list = (Array.isArray(raw) ? raw : raw.items ?? []) as {
+      id: string;
+      title: string;
+      dueDate: string;
+      isCompleted: boolean;
+      priority: string;
+      assignedTo: TaskItem["assignedTo"];
+    }[];
+    return list.map((t) => ({
+      id: t.id,
+      title: t.title,
+      dueDate: t.dueDate,
+      isCompleted: t.isCompleted,
+      priority: t.priority,
+      assignedTo: t.assignedTo,
+    }));
+  }, [tasksRaw]);
 
-  const fetchMemo = useCallback(async (d: string) => {
-    try {
-      const res = await fetch(`/api/memo?date=${d}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setMemoContent(data.content ?? "");
-    } catch {
-      setMemoContent("");
-    }
-  }, []);
+  const { data: invites = [], mutate: mutateInvites } = useSWR<ScheduleInvite[]>(
+    session?.user ? SWR_KEYS.scheduleInvites : null,
+    jsonFetcher,
+    { dedupingInterval: 12_000, revalidateOnFocus: true }
+  );
+
+  const { data: leaveData, mutate: mutateLeave } = useSWR<LeaveApiResponse>(
+    session?.user ? SWR_KEYS.leave : null,
+    jsonFetcher,
+    { dedupingInterval: 20_000, revalidateOnFocus: true }
+  );
+  const leaveRequests = leaveData?.requests ?? [];
+
+  const memoSwrKey =
+    tab === "diary" && session?.user ? `/api/memo?date=${encodeURIComponent(diaryDate)}` : null;
+  const { data: memoData, mutate: mutateMemo } = useSWR<{ content?: string }>(memoSwrKey, jsonFetcher, {
+    dedupingInterval: 30_000,
+  });
 
   useEffect(() => {
-    fetchSchedules();
-  }, [fetchSchedules]);
+    if (tab !== "diary") return;
+    setMemoContent(memoData?.content ?? "");
+  }, [tab, memoData]);
+
+  const { data: gcalStatus, mutate: mutateGcal } = useSWR<{ connected: boolean }>(
+    session?.user ? SWR_KEYS.googleCalendar : null,
+    jsonFetcher,
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
+  const googleConnected = gcalStatus?.connected ?? false;
+
+  const revalidateSchedules = useCallback(() => {
+    void mutatePersonalSched();
+    void mutateTeamSched();
+  }, [mutatePersonalSched, mutateTeamSched]);
 
   useEffect(() => {
-    const onWorkspaceChange = () => fetchSchedules();
+    const onWorkspaceChange = () => revalidateSchedules();
     window.addEventListener("workspace-changed", onWorkspaceChange);
     return () => window.removeEventListener("workspace-changed", onWorkspaceChange);
-  }, [fetchSchedules]);
-
-  useEffect(() => {
-    if (tab === "tasks") fetchTasks();
-  }, [tab, fetchTasks]);
-
-  useEffect(() => {
-    fetchInvites();
-  }, [fetchInvites]);
-
-  useEffect(() => {
-    if (tab === "schedule") fetchLeave();
-  }, [tab, fetchLeave]);
-
-  useEffect(() => {
-    if (tab === "diary") fetchMemo(diaryDate);
-  }, [tab, diaryDate, fetchMemo]);
-
-  useEffect(() => {
-    fetch("/api/integrations/google-calendar")
-      .then((r: any) => (r.ok ? r.json() : { connected: false }))
-      .then((d: { connected: boolean }) => setGoogleConnected(d.connected))
-      .catch(() => setGoogleConnected(false));
-  }, []);
+  }, [revalidateSchedules]);
 
   useEffect(() => {
     if (!googleConnected || tab !== "schedule") {
@@ -501,6 +488,7 @@ export default function SchedulePage() {
     const err = searchParams.get("error");
     if (connected) {
       toast.success("Google 캘린더가 연동되었습니다.");
+      void mutateGcal();
       router.replace("/schedule", { scroll: false });
     } else if (err === "google_calendar_not_configured") {
       toast.error("Google 캘린더 연동이 설정되지 않았습니다. .env에 GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET을 추가하세요.");
@@ -515,7 +503,7 @@ export default function SchedulePage() {
       toast.error("Google 캘린더 연동에 실패했습니다.");
       router.replace("/schedule", { scroll: false });
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, mutateGcal]);
 
   useEffect(() => {
     const openCreate = searchParams.get("openCreate");
@@ -546,14 +534,14 @@ export default function SchedulePage() {
   }, []);
 
   const handleSaved = useCallback(() => {
-    fetchSchedules();
+    revalidateSchedules();
     handleCloseModal();
-  }, [fetchSchedules, handleCloseModal]);
+  }, [revalidateSchedules, handleCloseModal]);
 
   const handleDeleted = useCallback(() => {
-    fetchSchedules();
+    revalidateSchedules();
     handleCloseModal();
-  }, [fetchSchedules, handleCloseModal]);
+  }, [revalidateSchedules, handleCloseModal]);
 
   const handleInviteResponse = useCallback(
     async (inviteId: string, status: "ACCEPTED" | "REJECTED") => {
@@ -569,15 +557,15 @@ export default function SchedulePage() {
           throw new Error(data.error ?? "처리 실패");
         }
         toast.success(status === "ACCEPTED" ? "일정이 내 일정표에 추가되었습니다." : "초대를 거절했습니다.");
-        fetchInvites();
-        if (status === "ACCEPTED") fetchSchedules();
+        void mutateInvites();
+        if (status === "ACCEPTED") revalidateSchedules();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "처리에 실패했습니다.");
       } finally {
         setProcessingId(null);
       }
     },
-    [fetchInvites, fetchSchedules]
+    [mutateInvites, revalidateSchedules]
   );
 
   const saveMemo = useCallback(async () => {
@@ -590,12 +578,13 @@ export default function SchedulePage() {
       });
       if (!res.ok) throw new Error("저장 실패");
       toast.success("메모를 저장했습니다.");
+      void mutateMemo();
     } catch {
       toast.error("메모 저장에 실패했습니다.");
     } finally {
       setMemoSaving(false);
     }
-  }, [diaryDate, memoContent]);
+  }, [diaryDate, memoContent, mutateMemo]);
 
   const holidayEvents = useMemo(() => {
     const y = date.getFullYear();
@@ -655,7 +644,7 @@ export default function SchedulePage() {
     { id: "diary", label: "업무일지", icon: <FileText className="size-4" /> },
   ];
 
-  if (loading && tab === "schedule") {
+  if (schedulesLoading && tab === "schedule") {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-muted-foreground">일정을 불러오는 중...</p>
@@ -679,8 +668,8 @@ export default function SchedulePage() {
                 onClick={async () => {
                   const res = await fetch("/api/integrations/google-calendar", { method: "DELETE" });
                   if (res.ok) {
-                    setGoogleConnected(false);
                     setGoogleEvents([]);
+                    void mutateGcal({ connected: false }, { revalidate: false });
                     toast.success("Google 캘린더 연동을 해제했습니다.");
                   }
                 }}
@@ -1006,7 +995,9 @@ export default function SchedulePage() {
         open={createOpen}
         onOpenChange={handleCreateOpenChange}
         onCreated={() => {
-          fetchSchedules();
+          revalidateSchedules();
+          void mutateInvites();
+          void mutateLeave();
           setCreateOpen(false);
           setCreateSlot(null);
           setDefaultInviteUserIdsForCreate(null);
@@ -1019,7 +1010,7 @@ export default function SchedulePage() {
         open={createTaskOpen}
         onOpenChange={setCreateTaskOpen}
         onCreated={() => {
-          fetchTasks();
+          void mutateTasks();
           setCreateTaskOpen(false);
         }}
         defaultAssignedToId={session?.user?.id ?? null}

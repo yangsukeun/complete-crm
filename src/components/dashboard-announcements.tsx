@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import { Megaphone, Loader2 } from "lucide-react";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
@@ -22,25 +23,11 @@ export function DashboardAnnouncements({
 }: {
   canCreate: boolean;
 }) {
-  const [list, setList] = useState<AnnouncementItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchList = async () => {
-    try {
-      const res = await fetch("/api/announcements");
-      if (!res.ok) throw new Error("공지 목록 조회 실패");
-      const data = await res.json();
-      setList(data);
-    } catch {
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchList();
-  }, []);
+  const { data: list = [], isLoading: loading } = useSWR<AnnouncementItem[]>(
+    SWR_KEYS.announcements,
+    jsonFetcher,
+    { dedupingInterval: 15_000, revalidateOnFocus: true }
+  );
 
   const isNew = (createdAt: string) => {
     const created = new Date(createdAt).getTime();

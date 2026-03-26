@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import useSWR from "swr";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -126,7 +128,15 @@ export function BoardPageClient({
   canCreateAnnouncement: boolean;
   currentUserId?: string;
 }) {
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const {
+    data: swrAnnouncements = [],
+    mutate: mutateAnnouncements,
+    isLoading: annLoading,
+  } = useSWR<AnnouncementItem[]>(SWR_KEYS.announcements, jsonFetcher, {
+    dedupingInterval: 12_000,
+    revalidateOnFocus: true,
+  });
+  const announcements = swrAnnouncements;
   const [boardList, setBoardList] = useState<BoardItem[]>([]);
   const [boardHasMore, setBoardHasMore] = useState(false);
   const [boardNextOffset, setBoardNextOffset] = useState(0);
@@ -167,17 +177,10 @@ export function BoardPageClient({
     return { items, hasMore, nextOffset };
   };
 
-  const refreshAll = async () => {
+  const refreshBoard = async () => {
     setLoading(true);
     setBoardLoadingMore(false);
     try {
-      const annRes = await fetch("/api/announcements");
-      if (annRes.ok) {
-        setAnnouncements(await annRes.json());
-      } else {
-        setAnnouncements([]);
-      }
-
       if (filter === "ANNOUNCEMENT") {
         setBoardList([]);
         setBoardHasMore(false);
@@ -191,7 +194,6 @@ export function BoardPageClient({
       setBoardHasMore(hasMore);
       setBoardNextOffset(nextOffset);
     } catch {
-      setAnnouncements([]);
       setBoardList([]);
       setBoardHasMore(false);
       setBoardNextOffset(0);
@@ -199,6 +201,11 @@ export function BoardPageClient({
       setLoading(false);
     }
   };
+
+  const pageLoading = useMemo(
+    () => loading || (annLoading && announcements.length === 0),
+    [loading, annLoading, announcements.length]
+  );
 
   const loadMoreBoard = async () => {
     if (!boardHasMore || boardLoadingMore || filter === "ANNOUNCEMENT") return;
@@ -217,8 +224,8 @@ export function BoardPageClient({
   };
 
   useEffect(() => {
-    void refreshAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 필터 바뀔 때 목록·게시판 페이지 초기화
+    void refreshBoard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 필터 바뀔 때 게시판 페이지만 초기화 (공지는 SWR 공유)
   }, [filter]);
 
   const unifiedList: UnifiedItem[] = (() => {
@@ -273,7 +280,7 @@ export function BoardPageClient({
       setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
       setAttachments([]);
       setOpenBoard(false);
-      refreshAll();
+      void refreshBoard();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "자료 등록에 실패했습니다.");
     } finally {
@@ -300,7 +307,7 @@ export function BoardPageClient({
       setTitle("");
       setBodyContent("");
       setOpenAnnouncement(false);
-      refreshAll();
+      void mutateAnnouncements();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "공지 등록에 실패했습니다.");
     } finally {
@@ -361,7 +368,7 @@ export function BoardPageClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "삭제 실패");
       toast.success("삭제되었습니다.");
-      refreshAll();
+      void refreshBoard();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
     } finally {
@@ -482,7 +489,7 @@ export function BoardPageClient({
           <FolderOpen className="size-5" />
           공지·자료 목록
         </h2>
-        {loading ? (
+        {pageLoading ? (
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <li key={i} className="overflow-hidden rounded-xl border bg-card shadow-sm">
