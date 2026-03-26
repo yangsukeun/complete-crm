@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { PageHeadline } from "@/components/page-headline";
 import { AnnouncementsPageClient } from "./announcements-page-client";
+import { canPostAnnouncement } from "@/lib/role-access";
 
 export default async function AnnouncementsPage() {
   const session = await getAppSession();
@@ -13,8 +14,7 @@ export default async function AnnouncementsPage() {
   if (appMode !== "company") redirect("/choose-mode");
 
   const role = (session.user as { role?: string }).role ?? "USER";
-  const canCreate =
-    role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
+  const canCreate = canPostAnnouncement(role);
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">

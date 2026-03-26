@@ -6,6 +6,8 @@ import { ArrowLeft } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { PageHeadline } from "@/components/page-headline";
 import { AnnouncementPollClient } from "./announcement-poll-client";
+import { AnnouncementDetailActions } from "./announcement-detail-actions";
+import { isExecutiveOrAdmin } from "@/lib/role-access";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Calendar, MapPin } from "lucide-react";
@@ -49,6 +51,12 @@ export default async function AnnouncementDetailPage({
     announcement.createdBy?.position ? ` · ${announcement.createdBy.position}` : ""
   }`;
 
+  const sessionRole = (session.user as { role?: string }).role ?? "";
+  const canManageAnnouncement =
+    announcement.createdById === session.user.id || isExecutiveOrAdmin(sessionRole);
+
+  const pollOptionTexts = poll?.map((o) => o.text) ?? [];
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="flex items-center gap-3">
@@ -61,10 +69,22 @@ export default async function AnnouncementDetailPage({
           목록
         </Link>
       </div>
-      <PageHeadline
-        title={announcement.title}
-        description={`${authorLine} · ${format(new Date(announcement.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}`}
-      />
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <PageHeadline
+          title={announcement.title}
+          description={`${authorLine} · ${format(new Date(announcement.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}`}
+        />
+        <AnnouncementDetailActions
+          announcementId={announcement.id}
+          initialTitle={announcement.title}
+          initialContent={announcement.content}
+          initialEventDateIso={announcement.eventDate?.toISOString() ?? null}
+          initialEventEndDateIso={announcement.eventEndDate?.toISOString() ?? null}
+          initialLocation={announcement.location ?? null}
+          initialPollOptionTexts={pollOptionTexts}
+          canManage={canManageAnnouncement}
+        />
+      </div>
 
       <article className="rounded-xl border bg-card p-6 shadow-sm">
         <div className="prose prose-sm max-w-none dark:prose-invert">

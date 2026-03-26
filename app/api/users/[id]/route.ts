@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
-  role: z.enum(["USER", "TEAM_LEAD"]).optional(),
+  role: z.enum(["USER", "TEAM_LEAD", "EXECUTIVE", "ADMIN"]).optional(),
   department: z.string().nullable().optional(),
   position: z.string().nullable().optional(),
   bankAccount: z.string().nullable().optional(),
@@ -39,18 +39,31 @@ export async function PATCH(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const role = String(session.user.role ?? "").toUpperCase();
-    if (role !== "EXECUTIVE" && role !== "ADMIN") {
+    const sessionRole = String(session.user.role ?? "").toUpperCase();
+    if (sessionRole !== "EXECUTIVE" && sessionRole !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;
     const body = await req.json();
+    if (id === session.user.id && body && typeof body === "object" && "role" in body) {
+      const rawRole = (body as { role?: unknown }).role;
+      if (rawRole !== undefined) {
+        return NextResponse.json({ error: "본인의 역할은 변경할 수 없습니다." }, { status: 400 });
+      }
+    }
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "입력값이 올바르지 않습니다.", details: parsed.error.flatten() },
         { status: 400 }
+      );
+    }
+
+    if (parsed.data.role != null && sessionRole !== "ADMIN") {
+      return NextResponse.json(
+        { error: "역할 변경은 시스템 관리자(ADMIN)만 할 수 있습니다." },
+        { status: 403 }
       );
     }
 
@@ -105,7 +118,7 @@ export async function PATCH(
           where: { userId_year: { userId: id, year } },
         });
         // EXECUTIVE/ADMIN: 언제든 연차 차감(소진) 재입력 가능. 그 외: 최초 1회만.
-        const canAlwaysEditDeduction = role === "EXECUTIVE" || role === "ADMIN";
+        const canAlwaysEditDeduction = sessionRole === "EXECUTIVE" || sessionRole === "ADMIN";
         if (!balance) {
           await prisma.leaveBalance.create({
             data: {

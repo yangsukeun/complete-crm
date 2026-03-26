@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardPageClient } from "./board-page-client";
+import { canPostAnnouncement } from "@/lib/role-access";
 
 export default async function BoardPage() {
   const session = await getAppSession();
@@ -14,8 +15,7 @@ export default async function BoardPage() {
 
   const role = (session.user as { role?: string }).role;
   const canCreate = true;
-  const canCreateAnnouncement =
-    role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
+  const canCreateAnnouncement = canPostAnnouncement(role);
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">

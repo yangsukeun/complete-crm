@@ -29,6 +29,7 @@ type AnnouncementItem = {
   location: string | null;
   pollOptions: PollOptionItem[] | null;
   myVoteIndex: number | null;
+  createdById: string;
   createdByName: string;
   createdByPosition: string | null;
 };

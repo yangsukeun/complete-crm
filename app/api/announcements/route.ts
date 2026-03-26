@@ -35,6 +35,7 @@ export async function GET() {
         eventEndDate: true,
         location: true,
         pollData: true,
+        createdById: true,
         createdBy: { select: { name: true, position: true } },
       },
     });
@@ -55,6 +56,7 @@ export async function GET() {
           location: a.location ?? null,
           pollOptions: poll?.map((o: any) => ({ text: o.text, count: o.voterIds.length })) ?? null,
           myVoteIndex: myVote >= 0 ? myVote : null,
+          createdById: a.createdById,
           createdByName: a.createdBy?.name ?? "삭제된 사용자",
           createdByPosition: a.createdBy?.position ?? null,
         };
@@ -79,8 +81,8 @@ export async function POST(req: Request) {
     }
 
     const role = (session.user as { role?: string }).role;
-    if (role !== "TEAM_LEAD" && role !== "EXECUTIVE" && role !== "ADMIN") {
-      return NextResponse.json({ error: "팀장 이상만 공지사항을 등록할 수 있습니다." }, { status: 403 });
+    if (role !== "EXECUTIVE" && role !== "ADMIN") {
+      return NextResponse.json({ error: "대표/관리자만 공지사항을 등록할 수 있습니다." }, { status: 403 });
     }
 
     const body = await req.json();
@@ -118,15 +120,13 @@ export async function POST(req: Request) {
       },
     });
 
-    const recipients = await prisma.user.findMany({
-      where: { id: { not: session.user.id } },
-      select: { id: true },
-    });
-    const recipientIds = recipients.map((u) => u.id);
+    const allUsers = await prisma.user.findMany({ select: { id: true } });
+    const allUserIds = allUsers.map((u) => u.id);
+    const notifyUserIds = allUserIds.filter((uid) => uid !== session.user.id);
     const link = `/announcements/${created.id}`;
     const message = `새 공지: ${created.title}`;
     await createNotificationsForManyUsers({
-      userIds: recipientIds,
+      userIds: notifyUserIds,
       type: "NOTICE_POSTED",
       message,
       link,
@@ -136,7 +136,7 @@ export async function POST(req: Request) {
 
     const pushLine = `📢 ${created.title}`;
     void sendPushToUsers({
-      userIds: recipientIds,
+      userIds: allUserIds,
       title: "새 공지사항",
       message: pushLine,
       headings: { ko: "새 공지사항", en: "New Announcement" },

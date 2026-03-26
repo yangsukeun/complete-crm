@@ -22,9 +22,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, UserPlus } from "lucide-react";
+import { Pencil, Shield, ChevronDown } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 
@@ -44,6 +51,29 @@ export type Employee = {
   joinDate?: string;
   permissions?: string | null;
 };
+
+type AppRole = "USER" | "TEAM_LEAD" | "EXECUTIVE" | "ADMIN";
+
+const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
+  { value: "USER", label: "일반 직원" },
+  { value: "TEAM_LEAD", label: "팀장" },
+  { value: "EXECUTIVE", label: "대표/임원" },
+  { value: "ADMIN", label: "시스템 관리자" },
+];
+
+function normalizeEmployeeRole(r: string | undefined): AppRole {
+  const u = String(r ?? "USER").toUpperCase();
+  if (u === "TEAM_LEAD" || u === "EXECUTIVE" || u === "ADMIN") return u as AppRole;
+  return "USER";
+}
+
+function roleDisplayLabel(role: string): string {
+  const r = String(role ?? "").toUpperCase();
+  if (r === "EXECUTIVE") return "대표/임원";
+  if (r === "ADMIN") return "관리자";
+  if (r === "TEAM_LEAD") return "팀장";
+  return "직원";
+}
 
 export function AdminEmployeesClient({
   employees: initial,
@@ -65,7 +95,8 @@ export function AdminEmployeesClient({
   const [address, setAddress] = useState("");
   const [workPhone, setWorkPhone] = useState("");
   const [workEmail, setWorkEmail] = useState("");
-  const [role, setRole] = useState<"USER" | "TEAM_LEAD">("USER");
+  const [role, setRole] = useState<AppRole>("USER");
+  const [roleChangingId, setRoleChangingId] = useState<string | null>(null);
   const [joinDate, setJoinDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
@@ -116,7 +147,7 @@ export function AdminEmployeesClient({
     setAddress(e?.address ?? "");
     setWorkPhone(e?.workPhone ?? "");
     setWorkEmail(e?.workEmail ?? "");
-    setRole((e?.role === "TEAM_LEAD" ? "TEAM_LEAD" : "USER") as "USER" | "TEAM_LEAD");
+    setRole(normalizeEmployeeRole(e?.role));
     setJoinDate(e?.joinDate ?? "");
     setManualDeduction("");
     setAnnualCarryOver("");
@@ -153,13 +184,35 @@ export function AdminEmployeesClient({
     }
   };
 
+  const changeRoleQuick = async (emp: Employee, newRole: AppRole) => {
+    if (!myId || emp.id === myId || myRole !== "ADMIN" || newRole === emp.role) return;
+    setRoleChangingId(emp.id);
+    try {
+      const res = await fetch(`/api/users/${emp.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(typeof (data as { error?: string }).error === "string" ? (data as { error: string }).error : "역할 변경 실패");
+      setEmployees((prev: Employee[]) =>
+        prev.map((p) => (p.id === emp.id ? { ...p, role: newRole } : p))
+      );
+      toast.success("역할이 변경되었습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "역할 변경에 실패했습니다.");
+    } finally {
+      setRoleChangingId(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!editing || saving) return;
     setSaving(true);
     const ac = new AbortController();
     const timeoutId = setTimeout(() => ac.abort(), 18_000);
     try {
-      const isAdminOrExecutive = editing.role === "ADMIN" || editing.role === "EXECUTIVE";
       const body: Record<string, unknown> = {
         name: name.trim(),
         department: department.trim() || null,
@@ -174,7 +227,9 @@ export function AdminEmployeesClient({
             : undefined,
         permissions: useCustomPermissions ? selectedPermissions : null,
       };
-      if (!isAdminOrExecutive) (body as { role?: string }).role = role;
+      if (myRole === "ADMIN" && editing.id !== myId) {
+        (body as { role?: AppRole }).role = role;
+      }
       const manualNum = manualDeduction.trim() === "" ? undefined : parseFloat(manualDeduction);
       if (manualNum !== undefined && !Number.isNaN(manualNum) && manualNum >= 0) {
         (body as { manualDeduction?: number }).manualDeduction = manualNum;
@@ -260,7 +315,7 @@ export function AdminEmployeesClient({
               <TableHead>부서</TableHead>
               <TableHead>직책</TableHead>
               <TableHead>입사일</TableHead>
-              <TableHead className="w-[80px]" />
+              <TableHead className="w-[220px] text-right">작업</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -271,13 +326,21 @@ export function AdminEmployeesClient({
                 </TableCell>
               </TableRow>
             ) : (
-              employees.map((emp: any) => (
+              employees.map((emp: Employee) => (
                 <TableRow key={emp.id}>
-                  <TableCell className="font-medium">{formatUserName(emp)}</TableCell>
-                  <TableCell>{emp.email ?? ""}</TableCell>
-                  <TableCell>
-                    {emp.role === "EXECUTIVE" ? "대표/임원" : emp.role === "ADMIN" ? "관리자" : emp.role === "TEAM_LEAD" ? "팀장" : "직원"}
+                  <TableCell className="font-medium">
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {formatUserName(emp)}
+                      {(emp.role === "ADMIN" || emp.role === "EXECUTIVE") && (
+                        <Badge variant="default" className="shrink-0 gap-0.5 text-[10px] font-normal">
+                          <Shield className="size-3" />
+                          {emp.role === "ADMIN" ? "관리자" : "대표"}
+                        </Badge>
+                      )}
+                    </span>
                   </TableCell>
+                  <TableCell>{emp.email ?? ""}</TableCell>
+                  <TableCell>{roleDisplayLabel(emp.role)}</TableCell>
                   <TableCell>
                     {emp.department ? (
                       <Badge variant="secondary" className="font-normal">
@@ -298,7 +361,37 @@ export function AdminEmployeesClient({
                   </TableCell>
                   <TableCell>{emp.joinDate ?? "—"}</TableCell>
                   <TableCell>
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      {myRole === "ADMIN" && myId != null && emp.id !== myId && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1 px-2"
+                              disabled={roleChangingId === emp.id}
+                            >
+                              권한 변경
+                              <ChevronDown className="size-3.5 opacity-60" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                              역할 선택
+                            </DropdownMenuLabel>
+                            {ROLE_OPTIONS.map((opt) => (
+                              <DropdownMenuItem
+                                key={opt.value}
+                                disabled={opt.value === normalizeEmployeeRole(emp.role)}
+                                onClick={() => void changeRoleQuick(emp, opt.value)}
+                              >
+                                {opt.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -376,25 +469,33 @@ export function AdminEmployeesClient({
               </div>
               <div className="space-y-2">
                 <Label>역할 (직책에 따른 기능)</Label>
-                {(editing.role === "ADMIN" || editing.role === "EXECUTIVE") ? (
+                {editing.id === myId ? (
                   <p className="text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                    {editing.role === "EXECUTIVE" ? "대표/임원" : "관리자"} — 역할 변경 불가
+                    본인의 역할은 여기서 변경할 수 없습니다. ({roleDisplayLabel(editing.role)})
+                  </p>
+                ) : myRole !== "ADMIN" ? (
+                  <p className="text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                    역할 변경은 시스템 관리자(ADMIN)만 할 수 있습니다. ({roleDisplayLabel(editing.role)})
                   </p>
                 ) : (
                   <>
-                    <Select value={role} onValueChange={(v: any) => setRole(v as "USER" | "TEAM_LEAD")}>
+                    <Select value={role} onValueChange={(v: string) => setRole(v as AppRole)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차 신청·자금 요청)</SelectItem>
-                        <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
+                        <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차·자금 요청)</SelectItem>
+                        <SelectItem value="TEAM_LEAD">팀장 — 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
+                        <SelectItem value="EXECUTIVE">대표/임원 — 경영·전체 관리</SelectItem>
+                        <SelectItem value="ADMIN">시스템 관리자 — 직원 역할·설정</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-muted-foreground text-xs">
                       {role === "TEAM_LEAD"
                         ? "팀장: 휴가 1차 승인, 자금이체 등록 시 알람 수신 및 이체 확인 가능."
-                        : "직원: 본인 업무·연차 신청·결제 요청만 가능."}
+                        : role === "EXECUTIVE" || role === "ADMIN"
+                          ? "대표/관리자: 공지 작성·직원 관리 등 상위 권한이 적용됩니다."
+                          : "직원: 본인 업무·연차 신청·결제 요청만 가능."}
                     </p>
                   </>
                 )}
@@ -559,7 +660,7 @@ export function AdminEmployeesClient({
                 )}
                 {!useCustomPermissions && (
                   <p className="text-muted-foreground text-xs">
-                    현재 역할({role === "TEAM_LEAD" ? "팀장" : "직원"})에 따른 기본 기능이 적용됩니다. 위 체크 시 계정별로 사용할 기능만 골라 지정할 수 있습니다.
+                    현재 역할({roleDisplayLabel(role)})에 따른 기본 기능이 적용됩니다. 위 체크 시 계정별로 사용할 기능만 골라 지정할 수 있습니다.
                   </p>
                 )}
               </div>

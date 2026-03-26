@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import { sendPushToUsers } from "@/lib/notifications/push";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -160,6 +161,26 @@ export async function POST(req: Request) {
       },
       include: { user: { select: { name: true, position: true } } },
     });
+
+    const execRecipients = await prisma.user.findMany({
+      where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
+      select: { id: true },
+    });
+    const execIds = execRecipients.map((u) => u.id).filter(Boolean);
+    if (execIds.length > 0) {
+      const applicant = leave.user?.name ?? "직원";
+      const msg = `${applicant}님이 휴가를 신청했습니다.`;
+      void sendPushToUsers({
+        userIds: execIds,
+        title: "휴가 신청",
+        message: msg,
+        headings: { ko: "휴가 신청", en: "Leave request" },
+        contents: { ko: msg, en: msg },
+        url: "/leave",
+        data: { type: "leave_request", leaveId: leave.id },
+        priority: "high",
+      });
+    }
 
     return NextResponse.json(leave);
   } catch (e) {

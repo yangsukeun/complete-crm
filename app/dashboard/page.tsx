@@ -16,6 +16,7 @@ import {
 } from "@/lib/dashboard-prefetch";
 import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
+import { canPostAnnouncement } from "@/lib/role-access";
 
 const DashboardAttendance = dynamic(
   () => import("@/components/dashboard-attendance").then((m) => m.DashboardAttendance),
@@ -43,8 +44,7 @@ export default async function DashboardPage() {
 
   const role = session.user.role ?? "USER";
   const isAdmin = role === "EXECUTIVE" || role === "ADMIN";
-  const canCreateAnnouncement =
-    role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
+  const canCreateAnnouncement = canPostAnnouncement(role);
   const todayStart = startOfDayKst(new Date());
 
   // 개인 모드: 연차/출퇴근 없이 일정·업무·목표만
@@ -259,7 +259,7 @@ export default async function DashboardPage() {
         </div>
 
         <section>
-          <DashboardAnnouncements canCreate={true} fallbackData={announcementsFallback} />
+          <DashboardAnnouncements canCreate={canCreateAnnouncement} fallbackData={announcementsFallback} />
         </section>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
