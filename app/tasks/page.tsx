@@ -21,7 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
 import { Plus, Filter, GitBranch, FileText, List as ListIcon, Trash2 } from "lucide-react";
@@ -127,7 +127,8 @@ type Task = {
   categoryId: string | null;
   orderIndex: number;
   isCollapsed?: boolean;
-  assignedTo: { id: string; name: string; email: string; position?: string | null };
+  assignees?: { id: string; name: string; email: string; position?: string | null; image?: string | null }[];
+  assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
 };
@@ -445,16 +446,22 @@ export default function TasksPage() {
   const filteredTasks = useMemo(() => {
     return tasks.filter((t: Task) => {
       if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
-      if (filterAssigneeId && t.assignedTo?.id !== filterAssigneeId) return false;
+      if (
+        filterAssigneeId &&
+        t.assignedTo?.id !== filterAssigneeId &&
+        !(t.assignees?.some((a) => a.id === filterAssigneeId))
+      )
+        return false;
       if (filterPriority && normPriority(t.priority) !== filterPriority) return false;
       if (!passesDueFilter(t, filterDue)) return false;
       return true;
     });
   }, [tasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
 
-  const assigneePairs = tasks
-    .map((t: Task) => [t.assignedTo?.id, t.assignedTo] as [string | undefined, Task["assignedTo"]])
-    .filter((pair): pair is [string, Task["assignedTo"]] => pair[0] != null && !!pair[1]);
+  const assigneePairs = tasks.flatMap((t: Task) => {
+    const list = t.assignees?.length ? t.assignees : t.assignedTo ? [t.assignedTo] : [];
+    return list.map((a) => [a.id, a] as [string, NonNullable<Task["assignedTo"]>]);
+  });
   const assigneeOptions = Array.from(new Map(assigneePairs).entries());
   const hasActiveFilter =
     filterStatus !== "" ||
@@ -478,7 +485,8 @@ export default function TasksPage() {
       priority: t.priority,
       parentId: t.parentId ?? null,
       isCollapsed: !!t.isCollapsed,
-      assignedTo: t.assignedTo,
+      assignees: t.assignees,
+      assignedTo: t.assignees?.[0] ?? t.assignedTo,
       createdById: t.createdById ?? t.createdBy?.id ?? null,
     }));
   }, [filteredTasks]);
@@ -808,13 +816,13 @@ export default function TasksPage() {
                                 </span>
                               </div>
                               <div className="mt-2 flex items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarFallback className="text-[10px]">
-                                    {(task.assignedTo?.name ?? "?").slice(0, 1)}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={24} />
                                 <span className="text-muted-foreground text-xs">
-                                  {formatUserName(task.assignedTo)}
+                                  {task.assignees && task.assignees.length > 0
+                                    ? task.assignees.map((a) => formatUserName(a)).join(", ")
+                                    : task.assignedTo
+                                      ? formatUserName(task.assignedTo)
+                                      : "미지정"}
                                 </span>
                               </div>
                             </Link>

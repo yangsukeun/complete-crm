@@ -26,7 +26,11 @@ export async function buildSecretaryDataContext(params: {
   });
 
   const myTasks = await prisma.task.findMany({
-    where: { deletedAt: null, assignedToId: userId, isCompleted: false },
+    where: {
+      deletedAt: null,
+      isCompleted: false,
+      OR: [{ assignedToId: userId }, { assignees: { some: { userId } } }],
+    },
     orderBy: { dueDate: "asc" },
     take: 40,
     select: { title: true, status: true, dueDate: true },

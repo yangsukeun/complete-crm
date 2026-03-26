@@ -4,6 +4,11 @@ import type { Prisma, TaskPriority, TaskStatus } from "@prisma/client";
 import type { WorkspaceScope } from "@/lib/workspace";
 import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
 import { createNotificationWithOptions } from "@/lib/notifications";
+import {
+  normalizeAssigneeIds,
+  serializeAssigneesFromRows,
+  taskAssigneeUserSelect,
+} from "@/lib/task-assignees";
 
 export type CreateTaskInput = {
   title: string;
@@ -12,6 +17,8 @@ export type CreateTaskInput = {
   dueDate: string;
   priority?: TaskPriority;
   status?: TaskStatus;
+  /** 다중 담당 (우선). 없으면 assignedToId 단일·본인 폴백 */
+  assigneeIds?: string[];
   assignedToId?: string;
   parentId?: string | null;
   categoryId?: string | null;
@@ -19,8 +26,12 @@ export type CreateTaskInput = {
 };
 
 const taskInclude = {
-  assignedTo: { select: { name: true, position: true } },
+  assignedTo: { select: taskAssigneeUserSelect },
   createdBy: { select: { name: true, position: true } },
+  assignees: {
+    select: { user: { select: taskAssigneeUserSelect } },
+    orderBy: { createdAt: "asc" as const },
+  },
 } as const;
 
 export type CreatedTaskWithRelations = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
@@ -35,6 +46,9 @@ export async function createTaskWithNotifications(params: {
 }): Promise<CreatedTaskWithRelations> {
   const { createdById, scope, data } = params;
 
+  const ids = normalizeAssigneeIds(data.assigneeIds, data.assignedToId, createdById);
+  const primaryAssignee = ids[0] ?? createdById;
+
   const task = await prisma.task.create({
     data: {
       title: data.title,
@@ -42,12 +56,15 @@ export async function createTaskWithNotifications(params: {
       dueDate: new Date(data.dueDate),
       priority: data.priority ?? "MEDIUM",
       status: data.status ?? "TODO",
-      assignedToId: data.assignedToId || createdById,
+      assignedToId: primaryAssignee,
       createdById,
       parentId: data.parentId ?? null,
       categoryId: data.categoryId ?? null,
       orderIndex: data.orderIndex ?? 0,
       scope: scope === "PERSONAL" ? "PERSONAL" : "TEAM",
+      assignees: {
+        create: ids.map((userId) => ({ userId })),
+      },
     },
     include: taskInclude,
   });
@@ -70,15 +87,24 @@ export async function createTaskWithNotifications(params: {
     status: (task.status as "TODO" | "IN_PROGRESS" | "DONE") ?? "TODO",
   });
 
-  if (task.assignedToId && task.assignedToId !== createdById) {
-    await createNotificationWithOptions({
-      userId: task.assignedToId,
-      type: "ASSIGNED",
-      message: `'${task.title}' 업무가 배정되었습니다.`,
-      link: `/tasks/${task.id}`,
-      actorId: createdById,
-    });
+  for (const uid of ids) {
+    if (uid && uid !== createdById) {
+      await createNotificationWithOptions({
+        userId: uid,
+        type: "ASSIGNED",
+        message: `'${task.title}' 업무가 배정되었습니다.`,
+        link: `/tasks/${task.id}`,
+        actorId: createdById,
+      });
+    }
   }
 
   return task;
+}
+
+/** API JSON 직렬화: prisma assignees 행 → assignees + assignedTo */
+export function jsonSerializeCreatedTask(task: CreatedTaskWithRelations) {
+  const { assignees: rows, ...rest } = task;
+  const { assignees, assignedTo } = serializeAssigneesFromRows(rows, rest.assignedTo);
+  return { ...rest, assignees, assignedTo };
 }

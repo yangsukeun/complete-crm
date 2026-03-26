@@ -43,7 +43,7 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-export type CalendarLayerId = "personal" | "team" | "holiday" | "google";
+export type CalendarLayerId = "personal" | "team" | "holiday" | "google" | "taskDue";
 
 type ScheduleEvent = {
   id: string;
@@ -53,6 +53,10 @@ type ScheduleEvent = {
   allDay?: boolean;
   calendarId?: CalendarLayerId;
   resource?: { id: string; title: string; description: string | null; startTime: string; endTime: string; isAllDay: boolean; userId: string; userName?: string };
+  /** 업무 마감일 이벤트 전용 (react-big-calendar 커스텀) */
+  isTaskDue?: boolean;
+  taskDueOverdue?: boolean;
+  taskDueCompleted?: boolean;
 };
 
 function toEvent(
@@ -107,7 +111,31 @@ const DEFAULT_VISIBLE_CALENDARS: Record<CalendarLayerId, boolean> = {
   team: true,
   holiday: true,
   google: true,
+  taskDue: true,
 };
+
+function tasksToCalendarDueEvents(
+  tasks: { id: string; title: string; dueDate: string; isCompleted: boolean }[],
+  now: Date
+): ScheduleEvent[] {
+  const sod = startOfDay(now);
+  return tasks.map((t) => {
+    const d = startOfDay(new Date(t.dueDate));
+    const end = endOfDay(new Date(t.dueDate));
+    const overdue = !t.isCompleted && d < sod;
+    return {
+      id: `task-due-${t.id}`,
+      title: `[업무] ${t.title}`,
+      start: d,
+      end,
+      allDay: true,
+      calendarId: "taskDue",
+      isTaskDue: true,
+      taskDueOverdue: overdue,
+      taskDueCompleted: t.isCompleted,
+    };
+  });
+}
 
 function loadVisibleCalendars(): Record<CalendarLayerId, boolean> {
   if (typeof window === "undefined") return DEFAULT_VISIBLE_CALENDARS;
@@ -317,7 +345,8 @@ type TaskItem = {
   dueDate: string;
   isCompleted: boolean;
   priority: string;
-  assignedTo: { name: string; position?: string | null };
+  assignees?: { id: string; name: string; position?: string | null }[];
+  assignedTo: { name: string; position?: string | null } | null;
 };
 
 type LeaveRequestItem = {
@@ -335,6 +364,7 @@ const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   team: "팀/회사 일정",
   holiday: "공휴일",
   google: "Google 캘린더",
+  taskDue: "업무 마감",
 };
 
 type LeaveApiResponse = { requests?: LeaveRequestItem[] };
@@ -358,6 +388,7 @@ export default function SchedulePage() {
     () => (typeof window !== "undefined" ? loadVisibleCalendars() : DEFAULT_VISIBLE_CALENDARS)
   );
   const { data: session } = useSession();
+  const router = useRouter();
 
   const { data: personalRaw = [], mutate: mutatePersonalSched, isLoading: personalSchedLoading } = useSWR(
     session?.user ? schedulePersonalKey : null,
@@ -379,6 +410,30 @@ export default function SchedulePage() {
     [teamRaw]
   );
 
+  const calendarRange = useMemo(() => {
+    const rangeStart = view === "month" ? startOfMonth(date) : startOfWeek(date, { weekStartsOn: 1 });
+    const rangeEnd = view === "month" ? endOfMonth(date) : endOfWeek(date, { weekStartsOn: 1 });
+    return { rangeStart, rangeEnd };
+  }, [view, date]);
+
+  const calendarDueKey =
+    session?.user && tab === "schedule"
+      ? `/api/tasks?calendarDue=1&dueAfter=${encodeURIComponent(calendarRange.rangeStart.toISOString())}&dueBefore=${encodeURIComponent(calendarRange.rangeEnd.toISOString())}`
+      : null;
+  const { data: calendarDueRaw = [] } = useSWR(
+    calendarDueKey,
+    jsonFetcher,
+    { dedupingInterval: 12_000, revalidateOnFocus: true }
+  );
+  const taskDueEvents = useMemo(
+    () =>
+      tasksToCalendarDueEvents(
+        (calendarDueRaw as { id: string; title: string; dueDate: string; isCompleted: boolean }[]) ?? [],
+        new Date()
+      ),
+    [calendarDueRaw]
+  );
+
   const schedulesLoading = Boolean(session?.user) && (personalSchedLoading || teamSchedLoading);
 
   const { data: tasksRaw, mutate: mutateTasks } = useSWR(
@@ -395,6 +450,7 @@ export default function SchedulePage() {
       dueDate: string;
       isCompleted: boolean;
       priority: string;
+      assignees?: TaskItem["assignees"];
       assignedTo: TaskItem["assignedTo"];
     }[];
     return list.map((t) => ({
@@ -403,6 +459,7 @@ export default function SchedulePage() {
       dueDate: t.dueDate,
       isCompleted: t.isCompleted,
       priority: t.priority,
+      assignees: t.assignees,
       assignedTo: t.assignedTo,
     }));
   }, [tasksRaw]);
@@ -475,13 +532,19 @@ export default function SchedulePage() {
       .catch(() => setGoogleEvents([]));
   }, [googleConnected, tab, view, date]);
 
-  const handleSelectEvent = useCallback((event: ScheduleEvent) => {
-    if (typeof event.id === "string" && (event.id.startsWith("hol-") || event.id.startsWith("google-"))) return;
-    setSelectedEvent(event);
-    setModalOpen(true);
-  }, []);
+  const handleSelectEvent = useCallback(
+    (event: ScheduleEvent) => {
+      if (typeof event.id === "string" && event.id.startsWith("task-due-")) {
+        router.push(`/tasks/${event.id.slice("task-due-".length)}`);
+        return;
+      }
+      if (typeof event.id === "string" && (event.id.startsWith("hol-") || event.id.startsWith("google-"))) return;
+      setSelectedEvent(event);
+      setModalOpen(true);
+    },
+    [router]
+  );
 
-  const router = useRouter();
   const searchParams = useSearchParams();
   useEffect(() => {
     const connected = searchParams.get("google_calendar") === "connected";
@@ -624,9 +687,9 @@ export default function SchedulePage() {
   }, []);
 
   const displayEvents = useMemo(() => {
-    const all = [...personalEvents, ...teamEvents, ...holidayEvents, ...googleEvents];
+    const all = [...personalEvents, ...teamEvents, ...holidayEvents, ...googleEvents, ...taskDueEvents];
     return all.filter((e: any) => (e.calendarId ? (visibleCalendars as any)[e.calendarId] !== false : true));
-  }, [personalEvents, teamEvents, holidayEvents, googleEvents, visibleCalendars]);
+  }, [personalEvents, teamEvents, holidayEvents, googleEvents, taskDueEvents, visibleCalendars]);
 
   const diaryDayStart = startOfDay(new Date(diaryDate));
   const diaryDayEnd = endOfDay(new Date(diaryDate));
@@ -725,14 +788,14 @@ export default function SchedulePage() {
               </p>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-x-6 gap-y-2 pt-0">
-              {(["personal", "team", "holiday", "google"] as CalendarLayerId[]).map((layer: any) => (
+              {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer: CalendarLayerId) => (
                 <label
                   key={layer}
                   className="flex cursor-pointer items-center gap-2 text-sm"
                 >
                   <Checkbox
-                    checked={(visibleCalendars as any)[layer] !== false}
-                    onCheckedChange={(checked: any) => setVisibleCalendar(layer, checked === true)}
+                    checked={(visibleCalendars as Record<CalendarLayerId, boolean>)[layer] !== false}
+                    onCheckedChange={(checked: unknown) => setVisibleCalendar(layer, checked === true)}
                   />
                   <span
                     className="rbc-calendar-layer-dot"
@@ -744,10 +807,12 @@ export default function SchedulePage() {
                             ? "var(--rbc-team, #22c55e)"
                             : layer === "holiday"
                               ? "var(--rbc-holiday, #eab308)"
-                              : "var(--rbc-google, #ec4899)",
+                              : layer === "taskDue"
+                                ? "var(--rbc-task-due, #ea580c)"
+                                : "var(--rbc-google, #ec4899)",
                     }}
                   />
-                  {(CALENDAR_LAYER_LABELS as any)[layer]}
+                  {CALENDAR_LAYER_LABELS[layer]}
                 </label>
               ))}
             </CardContent>
@@ -827,8 +892,16 @@ export default function SchedulePage() {
                 const cls = legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : "";
                 return cls ? { className: cls } : {};
               }}
-              eventPropGetter={(event: any) => {
+              eventPropGetter={(event: unknown) => {
                 const e = event as ScheduleEvent;
+                if (e.isTaskDue || (typeof e.id === "string" && e.id.startsWith("task-due-"))) {
+                  return {
+                    className:
+                      e.taskDueOverdue && !e.taskDueCompleted
+                        ? "rbc-event--task-due rbc-event--task-due-overdue"
+                        : "rbc-event--task-due",
+                  };
+                }
                 if (e.calendarId === "holiday" || (typeof e.id === "string" && e.id.startsWith("hol-"))) {
                   return { className: "rbc-event--holiday" };
                 }
@@ -876,7 +949,7 @@ export default function SchedulePage() {
               <p className="text-muted-foreground py-6 text-center text-sm">할일이 없습니다. 위 &#39;내 할일 추가&#39;로 등록하세요.</p>
             ) : (
               <ul className="space-y-2">
-                {tasks.map((t: any) => (
+                {tasks.map((t: TaskItem) => (
                   <li key={t.id} className="flex items-center gap-2 rounded border px-3 py-2">
                     <input
                       type="checkbox"
@@ -888,9 +961,14 @@ export default function SchedulePage() {
                       {t.title}
                     </span>
                     <span className="text-muted-foreground text-xs">
-                      {format(new Date(t.dueDate), "MM/dd", { locale: ko })} · {formatUserName(t.assignedTo)}
+                      {format(new Date(t.dueDate), "MM/dd", { locale: ko })} ·{" "}
+                      {t.assignees && t.assignees.length > 0
+                        ? t.assignees.map((a) => formatUserName(a)).join(", ")
+                        : t.assignedTo
+                          ? formatUserName(t.assignedTo)
+                          : "—"}
                     </span>
-                    <Link href="/tasks" className="ml-auto text-primary text-sm hover:underline">
+                    <Link href={`/tasks/${t.id}`} className="ml-auto text-primary text-sm hover:underline">
                       보기
                     </Link>
                   </li>
@@ -952,7 +1030,7 @@ export default function SchedulePage() {
                       <li key={t.id} className="flex items-center gap-2 rounded border px-3 py-2 text-sm">
                         <input type="checkbox" checked={t.isCompleted} readOnly className="size-4 rounded" />
                         <span className={t.isCompleted ? "text-muted-foreground line-through" : ""}>{t.title}</span>
-                        <Link href="/tasks" className="ml-auto text-primary text-xs hover:underline">
+                        <Link href={`/tasks/${t.id}`} className="ml-auto text-primary text-xs hover:underline">
                           보기
                         </Link>
                       </li>

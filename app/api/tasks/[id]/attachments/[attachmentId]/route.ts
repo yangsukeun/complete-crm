@@ -23,7 +23,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const task = await prisma.task.findFirst({ where: { id: taskId, deletedAt: null } });
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: {
+        assignedToId: true,
+        createdById: true,
+        assignees: { where: { userId: session.user.id }, select: { userId: true }, take: 1 },
+      },
+    });
     if (!task) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -31,7 +38,8 @@ export async function DELETE(
       session.user.role === "EXECUTIVE" ||
       session.user.role === "ADMIN" ||
       task.assignedToId === session.user.id ||
-      task.createdById === session.user.id;
+      task.createdById === session.user.id ||
+      task.assignees.length > 0;
     if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

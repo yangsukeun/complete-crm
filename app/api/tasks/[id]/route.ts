@@ -9,6 +9,29 @@ import { syncTaskMentionsForTask } from "@/lib/task-mention-sync";
 import { format } from "date-fns";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
+import { serializeAssigneesFromRows, taskAssigneeUserSelect } from "@/lib/task-assignees";
+
+function serializeTaskDetail(task: {
+  assignees: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
+  assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
+  children?: {
+    assignees?: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
+    assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
+    [key: string]: unknown;
+  }[];
+  [key: string]: unknown;
+}) {
+  const { assignees: rows, children: rawChildren, ...rest } = task;
+  const { assignees, assignedTo } = serializeAssigneesFromRows(rows, task.assignedTo);
+  const children = rawChildren?.map((c) => {
+    const { assignees: crows, ...crest } = c as typeof c & {
+      assignees?: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
+    };
+    const ca = serializeAssigneesFromRows(crows ?? [], c.assignedTo);
+    return { ...crest, assignees: ca.assignees, assignedTo: ca.assignedTo };
+  });
+  return { ...rest, assignees, assignedTo, ...(children != null ? { children } : {}) };
+}
 
 export async function GET(
   req: Request,
@@ -43,18 +66,21 @@ export async function GET(
               orderIndex: true,
               isCollapsed: true,
               assignedTo: {
-                select: { id: true, name: true, email: true, position: true },
+                select: taskAssigneeUserSelect,
+              },
+              assignees: {
+                select: { user: { select: taskAssigneeUserSelect } },
+                orderBy: { createdAt: "asc" },
               },
             },
             orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
           },
+          assignees: {
+            select: { user: { select: taskAssigneeUserSelect } },
+            orderBy: { createdAt: "asc" },
+          },
           assignedTo: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              position: true,
-            },
+            select: taskAssigneeUserSelect,
           },
           createdBy: {
             select: {
@@ -102,13 +128,15 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    const isAssignee = task.assignedToId === session.user.id;
+    const isAssignee =
+      task.assignedToId === session.user.id ||
+      task.assignees.some((a) => a.user.id === session.user.id);
     const isCreator = task.createdById === session.user.id;
     if (!isAdmin && !isAssignee && !isCreator) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json({
-      ...task,
+      ...serializeTaskDetail(task as Parameters<typeof serializeTaskDetail>[0]),
       revisions,
     });
   } catch (e) {
@@ -134,7 +162,10 @@ export async function PATCH(
     const body = await req.json();
     const existing = await prisma.task.findFirst({
       where: { id, deletedAt: null },
-      include: { assignedTo: { select: { name: true } } },
+      include: {
+        assignedTo: { select: { name: true } },
+        assignees: { select: { userId: true } },
+      },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -146,10 +177,25 @@ export async function PATCH(
     }
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    const isAssignee = existing.assignedToId === session.user.id;
+    const isAssignee =
+      existing.assignedToId === session.user.id ||
+      existing.assignees.some((a) => a.userId === session.user.id);
     const isCreator = existing.createdById === session.user.id;
     if (!isAdmin && !isAssignee && !isCreator) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    let assigneeIdsUpdate: string[] | undefined;
+    if (Array.isArray(body.assigneeIds)) {
+      const arr = body.assigneeIds as unknown[];
+      const raw = arr.filter((x): x is string => typeof x === "string" && x.length > 0);
+      assigneeIdsUpdate = [...new Set(raw)];
+    } else if ("assignedToId" in body && !Array.isArray(body.assigneeIds)) {
+      if (typeof body.assignedToId === "string" && body.assignedToId.trim()) {
+        assigneeIdsUpdate = [body.assignedToId.trim()];
+      } else if (body.assignedToId === null || body.assignedToId === "") {
+        assigneeIdsUpdate = [];
+      }
     }
 
     const data: {
@@ -159,7 +205,7 @@ export async function PATCH(
       orderIndex?: number;
       title?: string;
       description?: string | null;
-      assignedToId?: string;
+      assignedToId?: string | null;
       categoryId?: string | null;
       parentId?: string | null;
       dueDate?: Date;
@@ -174,7 +220,9 @@ export async function PATCH(
     if (typeof body.orderIndex === "number") data.orderIndex = body.orderIndex;
     if (typeof body.title === "string" && body.title.trim()) data.title = body.title.trim();
     if ("description" in body) data.description = body.description ?? null;
-    if (typeof body.assignedToId === "string") data.assignedToId = body.assignedToId;
+    if (assigneeIdsUpdate !== undefined) {
+      data.assignedToId = assigneeIdsUpdate[0] ?? null;
+    }
     if ("categoryId" in body) data.categoryId = body.categoryId === null || body.categoryId === "" ? null : body.categoryId;
     if ("parentId" in body) data.parentId = body.parentId === null || body.parentId === "" ? null : body.parentId;
     if (typeof body.dueDate === "string") data.dueDate = new Date(body.dueDate);
@@ -208,15 +256,32 @@ export async function PATCH(
         newValue: data.dueDate.toISOString().slice(0, 10),
       });
     }
-    if (data.assignedToId !== undefined && data.assignedToId !== existing.assignedToId) {
-      const newUser = data.assignedToId
-        ? await prisma.user.findUnique({ where: { id: data.assignedToId }, select: { name: true } })
-        : null;
-      revisions.push({
-        field: "assignedToId",
-        oldValue: (existing.assignedTo as { name?: string })?.name ?? existing.assignedToId,
-        newValue: newUser?.name ?? data.assignedToId,
-      });
+    if (assigneeIdsUpdate !== undefined) {
+      const oldIds = existing.assignees.map((a) => a.userId);
+      const newIds = assigneeIdsUpdate;
+      const oldSet = new Set(oldIds);
+      const newSet = new Set(newIds);
+      const assigneesUnchanged =
+        oldSet.size === newSet.size && [...oldSet].every((uid) => newSet.has(uid));
+      if (!assigneesUnchanged) {
+        const [oldUsers, newUsers] = await Promise.all([
+          oldIds.length
+            ? prisma.user.findMany({ where: { id: { in: oldIds } }, select: { id: true, name: true } })
+            : Promise.resolve([]),
+          newIds.length
+            ? prisma.user.findMany({ where: { id: { in: newIds } }, select: { id: true, name: true } })
+            : Promise.resolve([]),
+        ]);
+        const namesInOrder = (ids: string[], users: { id: string; name: string }[]) => {
+          const m = new Map(users.map((u) => [u.id, u.name]));
+          return ids.map((uid) => m.get(uid) ?? uid).join(", ");
+        };
+        revisions.push({
+          field: "assignees",
+          oldValue: namesInOrder(oldIds, oldUsers) || "(없음)",
+          newValue: namesInOrder(newIds, newUsers) || "(없음)",
+        });
+      }
     }
     if (data.priority !== undefined && data.priority !== existing.priority) {
       revisions.push({
@@ -253,38 +318,48 @@ export async function PATCH(
       }
     }
 
-    const task = await prisma.task.update({
-      where: { id },
-      data,
-      include: {
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            position: true,
+    const task = await prisma.$transaction(async (tx) => {
+      if (assigneeIdsUpdate !== undefined) {
+        await tx.taskAssignee.deleteMany({ where: { taskId: id } });
+        if (assigneeIdsUpdate.length > 0) {
+          await tx.taskAssignee.createMany({
+            data: assigneeIdsUpdate.map((userId) => ({ taskId: id, userId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+      return tx.task.update({
+        where: { id },
+        data,
+        include: {
+          assignedTo: {
+            select: taskAssigneeUserSelect,
           },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            position: true,
+          assignees: {
+            select: { user: { select: taskAssigneeUserSelect } },
+            orderBy: { createdAt: "asc" },
           },
-        },
-        attachments: true,
-        comments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                position: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              position: true,
+            },
+          },
+          attachments: true,
+          comments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: true,
+                },
               },
             },
           },
         },
-      },
+      });
     });
 
     /** 본문에서 빠진 이미지 블록의 Drive 파일은 저장 성공 후 삭제 (저장 실패 시 Drive 보존) */
@@ -323,14 +398,19 @@ export async function PATCH(
       });
     }
 
-    if (data.assignedToId && data.assignedToId !== existing.assignedToId && data.assignedToId !== session.user.id) {
-      await createNotificationWithOptions({
-        userId: data.assignedToId,
-        type: "ASSIGNED",
-        message: `'${existing.title}' 업무가 배정되었습니다.`,
-        link: `/tasks/${id}`,
-        actorId: session.user.id,
-      });
+    if (assigneeIdsUpdate !== undefined) {
+      const prevAssigneeIds = new Set(existing.assignees.map((a) => a.userId));
+      for (const uid of assigneeIdsUpdate) {
+        if (!prevAssigneeIds.has(uid) && uid !== session.user.id) {
+          await createNotificationWithOptions({
+            userId: uid,
+            type: "ASSIGNED",
+            message: `'${existing.title}' 업무가 배정되었습니다.`,
+            link: `/tasks/${id}`,
+            actorId: session.user.id,
+          });
+        }
+      }
     }
 
     // 본문 @멘션: 본문이 실제로 바뀐 저장마다 현재 멘션된 전원에게 알림(본인 제외).
@@ -393,7 +473,9 @@ export async function PATCH(
       await syncTaskMentionsForTask(id, nextUnique);
     }
 
-    const res = NextResponse.json(task);
+    const res = NextResponse.json(
+      serializeTaskDetail(task as Parameters<typeof serializeTaskDetail>[0])
+    );
     if (mentionNotifyCountForDebug !== undefined && process.env.DEBUG_TASK_MENTION === "1") {
       res.headers.set("X-Debug-Mention-Notify-Count", String(mentionNotifyCountForDebug));
     }

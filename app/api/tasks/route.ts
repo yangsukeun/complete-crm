@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import { createTaskWithNotifications } from "@/lib/tasks/create-task";
+import { createTaskWithNotifications, jsonSerializeCreatedTask } from "@/lib/tasks/create-task";
+import {
+  serializeAssigneesFromRows,
+  taskListAssigneesInclude,
+  taskVisibilityMemberOr,
+  type TaskAssigneeUser,
+} from "@/lib/task-assignees";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -11,6 +17,7 @@ const createSchema = z.object({
   dueDate: z.string(),
   priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional(),
   status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
+  assigneeIds: z.array(z.string()).optional(),
   assignedToId: z.string().optional(),
   parentId: z.string().optional(),
   categoryId: z.string().nullable().optional(),
@@ -36,6 +43,7 @@ const listSelect = {
       name: true,
       email: true,
       position: true,
+      image: true,
     },
   },
   createdBy: {
@@ -45,7 +53,16 @@ const listSelect = {
       position: true,
     },
   },
+  ...taskListAssigneesInclude,
 } as const;
+
+function mapListItem(task: Record<string, unknown>) {
+  const assigneesRows = (task as { assignees?: { user: TaskAssigneeUser }[] }).assignees ?? [];
+  const legacy = (task as { assignedTo?: TaskAssigneeUser | null }).assignedTo;
+  const { assignees, assignedTo } = serializeAssigneesFromRows(assigneesRows, legacy);
+  const { assignees: _a, ...rest } = task as { assignees?: unknown };
+  return { ...rest, assignees, assignedTo };
+}
 
 export async function GET(req: Request) {
   try {
@@ -59,12 +76,46 @@ export async function GET(req: Request) {
 
     const visibilityWhere =
       scope === "PERSONAL"
-        ? { scope: "PERSONAL" as const, OR: [{ assignedToId: session.user.id }, { createdById: session.user.id }] }
-        : { scope: "TEAM" as const, ...(isAdmin ? {} : { OR: [{ assignedToId: session.user.id }, { createdById: session.user.id }] }) };
+        ? { scope: "PERSONAL" as const, OR: taskVisibilityMemberOr(session.user.id) }
+        : { scope: "TEAM" as const, ...(isAdmin ? {} : { OR: taskVisibilityMemberOr(session.user.id) }) };
 
     const baseWhere = { deletedAt: null, ...visibilityWhere };
 
     const { searchParams } = new URL(req.url);
+    const calendarDue = searchParams.get("calendarDue") === "1";
+    const dueAfter = searchParams.get("dueAfter");
+    const dueBefore = searchParams.get("dueBefore");
+
+    if (calendarDue && dueAfter && dueBefore) {
+      const scopeFilter = scope === "PERSONAL" ? { scope: "PERSONAL" as const } : { scope: "TEAM" as const };
+      const where = {
+        deletedAt: null,
+        ...scopeFilter,
+        dueDate: {
+          gte: new Date(dueAfter),
+          lte: new Date(dueBefore),
+        },
+        OR: [{ assignedToId: session.user.id }, { assignees: { some: { userId: session.user.id } } }],
+      };
+      const tasks = await prisma.task.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          dueDate: true,
+          isCompleted: true,
+          status: true,
+          assignedTo: {
+            select: { id: true, name: true, email: true, position: true, image: true },
+          },
+          ...taskListAssigneesInclude,
+        },
+        orderBy: { dueDate: "asc" },
+      });
+      const body = tasks.map((t) => mapListItem(t as unknown as Record<string, unknown>));
+      return NextResponse.json(body);
+    }
+
     const all = searchParams.get("all") === "1";
 
     const orderBy = [{ parentId: "asc" as const }, { orderIndex: "asc" as const }, { isCompleted: "asc" as const }, { dueDate: "asc" as const }];
@@ -75,7 +126,7 @@ export async function GET(req: Request) {
         select: listSelect,
         orderBy,
       });
-      return NextResponse.json(tasks);
+      return NextResponse.json(tasks.map((t) => mapListItem(t as unknown as Record<string, unknown>)));
     }
 
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
@@ -93,7 +144,7 @@ export async function GET(req: Request) {
     ]);
 
     return NextResponse.json({
-      items: tasks,
+      items: tasks.map((t) => mapListItem(t as unknown as Record<string, unknown>)),
       total,
       hasMore: offset + tasks.length < total,
       offset,
@@ -133,14 +184,15 @@ export async function POST(req: Request) {
         dueDate: parsed.data.dueDate,
         priority: parsed.data.priority ?? "MEDIUM",
         status: parsed.data.status ?? "TODO",
-        assignedToId: parsed.data.assignedToId || session.user.id,
+        assigneeIds: parsed.data.assigneeIds,
+        assignedToId: parsed.data.assignedToId,
         parentId: parsed.data.parentId ?? null,
         categoryId: parsed.data.categoryId ?? null,
         orderIndex: parsed.data.orderIndex ?? 0,
       },
     });
 
-    return NextResponse.json(task);
+    return NextResponse.json(jsonSerializeCreatedTask(task));
   } catch (e) {
     console.error(e);
     return NextResponse.json(

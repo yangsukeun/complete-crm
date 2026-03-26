@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -40,7 +40,8 @@ export type TaskInCategory = {
   status?: string | null;
   priority: string;
   categoryId: string | null;
-  assignedTo: { id: string; name: string; position?: string | null };
+  assignees?: { id: string; name: string; position?: string | null; image?: string | null }[];
+  assignedTo: { id: string; name: string; position?: string | null; image?: string | null } | null;
 };
 
 function buildTree(categories: TaskCategory[]): (TaskCategory & { children: (TaskCategory & { children: TaskCategory[] })[] })[] {
@@ -395,11 +396,7 @@ export function TaskCategoryTree({
                           <span className="text-muted-foreground text-xs">
                             {format(new Date(t.dueDate), "M/d", { locale: ko })}
                           </span>
-                          <Avatar className="size-5">
-                            <AvatarFallback className="text-[10px]">
-                              {(t.assignedTo?.name ?? "?").slice(0, 1)}
-                            </AvatarFallback>
-                          </Avatar>
+                          <TaskAssigneeAvatars assignees={t.assignees} assignedTo={t.assignedTo} size={20} />
                           <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button
                               type="button"
@@ -541,11 +538,7 @@ export function TaskCategoryTree({
                         <span className="text-muted-foreground text-xs">
                           {format(new Date(t.dueDate), "M/d", { locale: ko })}
                         </span>
-                        <Avatar className="size-5">
-                          <AvatarFallback className="text-[10px]">
-                            {(t.assignedTo?.name ?? "?").slice(0, 1)}
-                          </AvatarFallback>
-                        </Avatar>
+                        <TaskAssigneeAvatars assignees={t.assignees} assignedTo={t.assignedTo} size={20} />
                         <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <Button
                             type="button"

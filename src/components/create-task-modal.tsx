@@ -19,10 +19,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatUserName } from "@/lib/utils";
+import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 
-type User = { id: string; name: string; email: string; department: string | null; position?: string | null };
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  department: string | null;
+  position?: string | null;
+  image?: string | null;
+};
 
 type Props = {
   open: boolean;
@@ -30,19 +40,30 @@ type Props = {
   onCreated: () => void;
   parentId?: string | null;
   orderIndex?: number;
-  /** 담당자를 미리 선택 (예: 본인 할일 추가 시) */
+  /** 담당자를 미리 선택 (단일, 하위 호환) */
   defaultAssignedToId?: string | null;
+  /** 여러 담당자 미선택 */
+  defaultAssigneeIds?: string[] | null;
   /** 이 카테고리 아래에 업무 추가 */
   categoryId?: string | null;
 };
 
-export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null, orderIndex = 0, defaultAssignedToId = null, categoryId = null }: Props) {
+export function CreateTaskModal({
+  open,
+  onOpenChange,
+  onCreated,
+  parentId = null,
+  orderIndex = 0,
+  defaultAssignedToId = null,
+  defaultAssigneeIds = null,
+  categoryId = null,
+}: Props) {
   const [users, setUsers] = useState<User[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<"HIGH" | "MEDIUM" | "LOW">("MEDIUM");
-  const [assignedToId, setAssignedToId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
@@ -50,7 +71,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
     if (!open) return;
     setLoadingUsers(true);
     fetch("/api/users")
-      .then((res: any) => res.ok ? res.json() : [])
+      .then((res: Response) => (res.ok ? res.json() : []))
       .then(setUsers)
       .catch(() => setUsers([]))
       .finally(() => setLoadingUsers(false));
@@ -59,14 +80,26 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
   useEffect(() => {
     if (open) {
       const d = new Date();
-      d.setHours(23, 59, 59, 999);
+      d.setHours(23,59,59,999);
       setDueDate(d.toISOString().slice(0, 16));
       setTitle("");
       setDescription("");
       setPriority("MEDIUM");
-      setAssignedToId(defaultAssignedToId ?? "");
+      const initial =
+        defaultAssigneeIds != null && defaultAssigneeIds.length > 0
+          ? [...new Set(defaultAssigneeIds)]
+          : defaultAssignedToId
+            ? [defaultAssignedToId]
+            : [];
+      setAssigneeIds(initial);
     }
-  }, [open, defaultAssignedToId]);
+  }, [open, defaultAssignedToId, defaultAssigneeIds]);
+
+  const toggleAssignee = (userId: string) => {
+    setAssigneeIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +107,6 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
       toast.error("제목을 입력하세요.");
       return;
     }
-    // 담당자는 선택 사항 (나중에 지정 가능)
     setLoading(true);
     try {
       const res = await fetch("/api/tasks", {
@@ -85,7 +117,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
           description: description.trim() || undefined,
           dueDate: new Date(dueDate).toISOString(),
           priority,
-          assignedToId: assignedToId || undefined, // 담당자 선택 사항
+          assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
           parentId: parentId ?? undefined,
           categoryId: categoryId ?? undefined,
           orderIndex,
@@ -93,7 +125,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "업무 생성에 실패했습니다.");
+        throw new Error((data as { error?: string }).error ?? "업무 생성에 실패했습니다.");
       }
       toast.success("업무가 할당되었습니다.");
       onCreated();
@@ -105,39 +137,55 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
     }
   };
 
+  const selectedUsers = users.filter((u) => assigneeIds.includes(u.id));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>새 업무 만들기</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="task-assignee">담당 직원 (선택)</Label>
-            <Select
-              value={assignedToId || "__none__"}
-              onValueChange={(v: any) => setAssignedToId(v === "__none__" ? "" : v)}
-              disabled={loadingUsers}
-            >
-              <SelectTrigger id="task-assignee">
-                <SelectValue placeholder="나중에 지정" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">미지정 (나중에 선택)</SelectItem>
-                {users.map((u: any) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {formatUserName(u)}{u.department ? ` · ${u.department}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>담당 직원 (복수 선택 가능)</Label>
+            <p className="text-muted-foreground text-xs">비워 두면 본인에게 배정됩니다.</p>
+            {selectedUsers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <TaskAssigneeAvatars assignees={selectedUsers} size={26} />
+                <div className="flex flex-wrap gap-1">
+                  {selectedUsers.map((u) => (
+                    <Badge key={u.id} variant="secondary" className="font-normal">
+                      {formatUserName(u)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/20 p-2 space-y-2">
+              {loadingUsers ? (
+                <p className="text-muted-foreground text-sm px-1 py-2">불러오는 중...</p>
+              ) : (
+                users.map((u) => (
+                  <label
+                    key={u.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/60"
+                  >
+                    <Checkbox checked={assigneeIds.includes(u.id)} onCheckedChange={() => toggleAssignee(u.id)} />
+                    <span className="flex-1">
+                      {formatUserName(u)}
+                      {u.department ? ` · ${u.department}` : ""}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="task-title">제목</Label>
             <Input
               id="task-title"
               value={title}
-              onChange={(e: any) => setTitle(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
               placeholder="업무 제목"
               required
             />
@@ -147,7 +195,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
             <Textarea
               id="task-desc"
               value={description}
-              onChange={(e: any) => setDescription(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
               placeholder="설명 (선택)"
               rows={3}
             />
@@ -158,16 +206,13 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
               id="task-due"
               type="datetime-local"
               value={dueDate}
-              onChange={(e: any) => setDueDate(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
             <Label>우선순위</Label>
-            <Select
-              value={priority}
-              onValueChange={(v: any) => setPriority(v as "HIGH" | "MEDIUM" | "LOW")}
-            >
+            <Select value={priority} onValueChange={(v: string) => setPriority(v as "HIGH" | "MEDIUM" | "LOW")}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -179,11 +224,7 @@ export function CreateTaskModal({ open, onOpenChange, onCreated, parentId = null
             </Select>
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               취소
             </Button>
             <Button type="submit" disabled={loading}>

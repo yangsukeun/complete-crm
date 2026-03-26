@@ -16,6 +16,7 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
     where: { id: taskId },
     include: {
       attachments: true,
+      assignees: { select: { userId: true } },
     },
   });
 
@@ -32,7 +33,9 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
   }
 
   const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-  const isAssignee = original.assignedToId === session.user.id;
+  const isAssignee =
+    original.assignedToId === session.user.id ||
+    original.assignees.some((a) => a.userId === session.user.id);
   const isCreator = original.createdById === session.user.id;
   if (!isAdmin && !isAssignee && !isCreator) {
     return { error: "이 업무를 가져올 권한이 없습니다." };
@@ -56,6 +59,9 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
       scope: "PERSONAL",
       assignedToId: session.user.id,
       createdById: session.user.id,
+      assignees: {
+        create: { userId: session.user.id },
+      },
     },
   });
 

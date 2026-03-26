@@ -3,7 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import { createTaskWithNotifications } from "@/lib/tasks/create-task";
+import { createTaskWithNotifications, jsonSerializeCreatedTask } from "@/lib/tasks/create-task";
 import {
   type AIProvider,
   type ChatMessage,
@@ -99,7 +99,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         created: true,
-        task,
+        task: jsonSerializeCreatedTask(task),
         assigneeName: assignee.name,
       });
     }
@@ -293,7 +293,7 @@ ${userText}
 
     return NextResponse.json({
       created: true,
-      task,
+      task: jsonSerializeCreatedTask(task),
       assigneeName: assigneeName ?? task.assignedTo?.name ?? "",
     });
   } catch (e) {

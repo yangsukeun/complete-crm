@@ -229,14 +229,19 @@ export async function checkDeadlines(): Promise<void> {
         deletedAt: null,
         isCompleted: false,
         dueDate: { gte: todayStart, lte: tomorrowEnd },
-        assignedToId: { not: null },
+        OR: [{ assignedToId: { not: null } }, { assignees: { some: { userId: { not: "" } } } }],
       },
-      select: { id: true, title: true, dueDate: true, assignedToId: true },
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        assignedToId: true,
+        assignees: { select: { userId: true } },
+      },
     });
 
     if (tasks.length === 0) return;
 
-    // 한 번에 기존 알림 조회 (N+1 → 1)
     const taskLinks = tasks.map((t) => `/tasks/${t.id}`);
     const existingNotifications = await prisma.notification.findMany({
       where: {
@@ -244,13 +249,17 @@ export async function checkDeadlines(): Promise<void> {
         link: { in: taskLinks },
         createdAt: { gte: todayStart, lte: tomorrowEnd },
       },
-      select: { link: true },
+      select: { link: true, userId: true },
     });
-    const existingLinkSet = new Set(existingNotifications.map((n) => n.link));
+    const existingUserLinkSet = new Set(existingNotifications.map((n) => `${n.userId}|${n.link}`));
 
     for (const task of tasks) {
-      if (!task.assignedToId) continue;
-      if (existingLinkSet.has(`/tasks/${task.id}`)) continue;
+      const recipientIds = [
+        ...(task.assignedToId ? [task.assignedToId] : []),
+        ...task.assignees.map((a) => a.userId),
+      ];
+      const userIds = [...new Set(recipientIds)].filter(Boolean);
+      if (userIds.length === 0) continue;
 
       const dueDateStr = task.dueDate.toLocaleDateString("ko-KR", {
         month: "long",
@@ -261,12 +270,12 @@ export async function checkDeadlines(): Promise<void> {
         ? `'${task.title}' 마감이 오늘입니다.`
         : `'${task.title}' 마감이 1일 남았습니다. (${dueDateStr})`;
 
-      await createNotification(
-        task.assignedToId,
-        "DEADLINE",
-        message,
-        `/tasks/${task.id}`
-      );
+      const link = `/tasks/${task.id}`;
+      for (const uid of userIds) {
+        const key = `${uid}|${link}`;
+        if (existingUserLinkSet.has(key)) continue;
+        await createNotification(uid, "DEADLINE", message, link);
+      }
     }
   } catch (e) {
     console.error("[Notification] checkDeadlines 실패:", e);

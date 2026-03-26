@@ -107,9 +107,13 @@ export async function getUserTasksForDashboard(userId: string, previewTake = 10)
   const sod = startOfDayKst(new Date());
   const endTodayKst = new Date(sod.getTime() + 24 * 60 * 60 * 1000 - 1);
 
+  const assigneeVisible = {
+    OR: [{ assignedToId: userId }, { assignees: { some: { userId } } }],
+  };
+
   const [list, dueSoonCount] = await Promise.all([
     prisma.task.findMany({
-      where: { deletedAt: null, assignedToId: userId, isCompleted: false },
+      where: { deletedAt: null, isCompleted: false, ...assigneeVisible },
       orderBy: { dueDate: "asc" },
       take: previewTake,
       select: userTaskSelect,
@@ -117,9 +121,9 @@ export async function getUserTasksForDashboard(userId: string, previewTake = 10)
     prisma.task.count({
       where: {
         deletedAt: null,
-        assignedToId: userId,
         isCompleted: false,
         dueDate: { lte: endTodayKst },
+        ...assigneeVisible,
       },
     }),
   ]);

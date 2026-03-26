@@ -52,6 +52,7 @@ import { formatUserName } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
+import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 
 type User = { id: string; name: string; email?: string; department?: string | null; position?: string | null };
 
@@ -63,7 +64,8 @@ type TaskDetail = {
   isCompleted: boolean;
   priority: string;
   scope?: "TEAM" | "PERSONAL";
-  assignedTo: { id: string; name: string; email: string; position?: string | null } | null;
+  assignees?: { id: string; name: string; email: string; position?: string | null; image?: string | null }[];
+  assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null } | null;
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
@@ -97,6 +99,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
   const [editTitle, setEditTitle] = useState("");
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [assigneePickerIds, setAssigneePickerIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
 
@@ -160,6 +163,20 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
     if (taskId) fetchTask();
     else setTask(null);
   }, [taskId, fetchTask]);
+
+  useEffect(() => {
+    if (!task) {
+      setAssigneePickerIds([]);
+      return;
+    }
+    const ids =
+      task.assignees && task.assignees.length > 0
+        ? task.assignees.map((a) => a.id)
+        : task.assignedTo?.id
+          ? [task.assignedTo.id]
+          : [];
+    setAssigneePickerIds(ids);
+  }, [task?.id, task?.assignees, task?.assignedTo?.id]);
 
   const handleToggleComplete = async () => {
     if (!task) return;
@@ -431,30 +448,54 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                   </span>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <button className="rounded-md bg-muted px-2 py-0.5 font-medium hover:bg-violet-100 hover:text-violet-700 transition-colors flex items-center gap-1">
-                        {task.assignedTo ? formatUserName(task.assignedTo) : "미지정"}
-                        <Pencil className="size-3 text-muted-foreground" />
+                      <button
+                        type="button"
+                        className="rounded-md bg-muted px-2 py-0.5 font-medium hover:bg-violet-100 hover:text-violet-700 transition-colors flex items-center gap-2 max-w-[min(100%,280px)]"
+                      >
+                        <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={22} />
+                        <span className="truncate">
+                          {task.assignees && task.assignees.length > 0
+                            ? task.assignees.map((a) => formatUserName(a)).join(", ")
+                            : task.assignedTo
+                              ? formatUserName(task.assignedTo)
+                              : "미지정"}
+                        </span>
+                        <Pencil className="size-3 shrink-0 text-muted-foreground" />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-56 p-2" align="start">
-                      <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                    <PopoverContent className="w-64 p-3" align="start">
+                      <p className="text-muted-foreground mb-2 text-xs">복수 선택 후 적용</p>
+                      <div className="max-h-[220px] space-y-1 overflow-y-auto">
                         {loadingUsers ? (
-                          <p className="text-xs text-muted-foreground p-2">불러오는 중...</p>
+                          <p className="text-muted-foreground p-2 text-xs">불러오는 중...</p>
                         ) : (
-                          users.map((u: any) => (
-                            <button
+                          users.map((u: User) => (
+                            <label
                               key={u.id}
-                              onClick={() => updateTask({ assignedToId: u.id })}
-                              className={cn(
-                                "w-full text-left px-2 py-1.5 rounded text-sm hover:bg-muted transition-colors",
-                                task.assignedTo?.id === u.id && "bg-violet-100 text-violet-700"
-                              )}
+                              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted"
                             >
+                              <Checkbox
+                                checked={assigneePickerIds.includes(u.id)}
+                                onCheckedChange={() =>
+                                  setAssigneePickerIds((prev) =>
+                                    prev.includes(u.id) ? prev.filter((x) => x !== u.id) : [...prev, u.id]
+                                  )
+                                }
+                              />
                               {formatUserName(u)}
-                            </button>
+                            </label>
                           ))
                         )}
                       </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-3 w-full"
+                        disabled={saving}
+                        onClick={() => updateTask({ assigneeIds: assigneePickerIds })}
+                      >
+                        적용
+                      </Button>
                     </PopoverContent>
                   </Popover>
                 </div>

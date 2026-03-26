@@ -248,6 +248,9 @@ async function executeTool(
           status: "TODO",
           isCompleted: false,
           scope: "PERSONAL",
+          assignees: {
+            create: { userId },
+          },
         },
       });
       return `✅ 업무가 생성되었습니다.\n- 제목: ${task.title}\n- 마감: ${dueDate}`;

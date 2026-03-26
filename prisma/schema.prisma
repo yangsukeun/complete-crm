@@ -151,6 +151,7 @@ model User {
   attendances      Attendance[]
   schedules        Schedule[]         @relation("ScheduleOwner")
   assignedTasks    Task[]             @relation("TaskAssignee")
+  taskAssigneeRows TaskAssignee[]
   createdTasks     Task[]             @relation("TaskCreator")
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]
@@ -346,6 +347,7 @@ model Task {
   // 추가 부모 연결 (다대다: 하나의 업무가 여러 대분류에 연결 가능)
   additionalParents TaskLink[] @relation("TaskLinkChild")
   additionalChildren TaskLink[] @relation("TaskLinkParent")
+  assignees         TaskAssignee[]
   revisions        TaskRevision[]
   mentions         TaskMention[]
   @@index([assignedToId])
@@ -356,6 +358,19 @@ model Task {
   @@index([dueDate])
   @@index([scope])
   @@index([deletedAt])
+}
+
+// 업무 다중 담당자 (assignedToId 는 호환용으로 첫 담당자와 동기화)
+model TaskAssignee {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@index([taskId])
 }
 
 // 업무 본문 @멘션으로 호출된 사용자 (동기화·알림용)

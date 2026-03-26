@@ -39,9 +39,19 @@ import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
+import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
+import { Badge } from "@/components/ui/badge";
 
 /** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
 const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
+
+type AssigneeUser = {
+  id: string;
+  name: string;
+  email: string;
+  position?: string | null;
+  image?: string | null;
+};
 
 type TaskDetail = {
   id: string;
@@ -54,7 +64,8 @@ type TaskDetail = {
   scope?: "TEAM" | "PERSONAL";
   parentId?: string | null;
   parent?: { id: string; title: string } | null;
-  assignedTo: { id: string; name: string; email: string; position?: string | null };
+  assignees?: AssigneeUser[];
+  assignedTo: AssigneeUser | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
   attachments: { id: string; type: string; url: string; name: string | null }[];
@@ -68,7 +79,8 @@ type TaskDetail = {
     priority: string;
     orderIndex: number;
     isCollapsed?: boolean;
-    assignedTo: { id: string; name: string; email: string; position?: string | null };
+    assignees?: AssigneeUser[];
+    assignedTo: AssigneeUser | null;
   }[];
   revisions?: {
     id: string;
@@ -133,6 +145,11 @@ export default function TaskDetailPage() {
   const [createChildOpen, setCreateChildOpen] = useState(false);
   const [mountEditor, setMountEditor] = useState(false);
   const [deletingTask, setDeletingTask] = useState(false);
+  const [workspaceUsers, setWorkspaceUsers] = useState<
+    { id: string; name: string; email: string; department: string | null; position?: string | null; image?: string | null }[]
+  >([]);
+  const [assigneeDraft, setAssigneeDraft] = useState<string[]>([]);
+  const [savingAssignees, setSavingAssignees] = useState(false);
   const [pageFullWidth, setPageFullWidth] = useState(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -162,6 +179,13 @@ export default function TaskDetailPage() {
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
       setTask(data);
+      const ids =
+        Array.isArray(data.assignees) && data.assignees.length > 0
+          ? data.assignees.map((a: AssigneeUser) => a.id)
+          : data.assignedTo?.id
+            ? [data.assignedTo.id]
+            : [];
+      setAssigneeDraft(ids);
     } catch {
       setTask(null);
     } finally {
@@ -173,6 +197,21 @@ export default function TaskDetailPage() {
     if (taskId) fetchTask();
     else setTask(null);
   }, [taskId, fetchTask]);
+
+  useEffect(() => {
+    if (!task?.id || !session?.user?.id) return;
+    const can =
+      session.user.role === "EXECUTIVE" ||
+      session.user.role === "ADMIN" ||
+      task.createdById === session.user.id ||
+      task.assignedTo?.id === session.user.id ||
+      (task.assignees?.some((a) => a.id === session.user.id) ?? false);
+    if (!can) return;
+    fetch("/api/users")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setWorkspaceUsers)
+      .catch(() => setWorkspaceUsers([]));
+  }, [task?.id, task?.createdById, task?.assignedTo?.id, task?.assignees, session?.user?.id, session?.user?.role]);
 
   // 본문 에디터: 다음 페인트 직후 마운트(레이아웃 안정) — 예전 800ms 대기 제거로 체감 속도 개선
   useEffect(() => {
@@ -326,6 +365,42 @@ export default function TaskDetailPage() {
     session?.user?.role === "ADMIN" ||
     (!!creatorId && creatorId === session?.user?.id);
 
+  const canEditAssignees =
+    session?.user?.role === "EXECUTIVE" ||
+    session?.user?.role === "ADMIN" ||
+    (!!session?.user?.id && creatorId === session.user.id) ||
+    (!!session?.user?.id && task.assignedTo?.id === session.user.id) ||
+    (!!session?.user?.id && (task.assignees?.some((a) => a.id === session.user.id) ?? false));
+
+  const saveAssignees = async () => {
+    if (!taskId || savingAssignees) return;
+    setSavingAssignees(true);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIds: assigneeDraft }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "저장 실패");
+      }
+      const data = await res.json();
+      setTask(data);
+      toast.success("담당자를 저장했습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "담당자 저장에 실패했습니다.");
+    } finally {
+      setSavingAssignees(false);
+    }
+  };
+
+  const toggleAssigneeDraft = (userId: string) => {
+    setAssigneeDraft((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div
@@ -440,7 +515,14 @@ export default function TaskDetailPage() {
 
           <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">담당</span>
-            <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.assignedTo ? formatUserName(task.assignedTo) : "미지정"}</span>
+            <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={26} />
+            <span className="rounded-md bg-muted px-2 py-0.5 font-medium">
+              {task.assignees && task.assignees.length > 0
+                ? task.assignees.map((a) => formatUserName(a)).join(", ")
+                : task.assignedTo
+                  ? formatUserName(task.assignedTo)
+                  : "미지정"}
+            </span>
             <span className="text-muted-foreground mx-1">·</span>
             <span className="text-muted-foreground">마감</span>
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">
@@ -453,6 +535,39 @@ export default function TaskDetailPage() {
             <span className="text-muted-foreground">지시</span>
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.createdBy ? formatUserName(task.createdBy) : "삭제된 사용자"}</span>
           </div>
+
+          {canEditAssignees && workspaceUsers.length > 0 && (
+            <div className="mt-4 rounded-lg border bg-muted/15 p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">담당자 변경 (복수 선택)</p>
+              <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                {workspaceUsers.map((u) => (
+                  <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50">
+                    <Checkbox
+                      checked={assigneeDraft.includes(u.id)}
+                      onCheckedChange={() => toggleAssigneeDraft(u.id)}
+                    />
+                    {formatUserName(u)}
+                  </label>
+                ))}
+              </div>
+              {assigneeDraft.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {assigneeDraft.map((id) => {
+                    const u = workspaceUsers.find((x) => x.id === id);
+                    if (!u) return null;
+                    return (
+                      <Badge key={id} variant="secondary" className="font-normal">
+                        {formatUserName(u)}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
+              <Button type="button" size="sm" onClick={() => void saveAssignees()} disabled={savingAssignees}>
+                {savingAssignees ? "저장 중..." : "담당자 저장"}
+              </Button>
+            </div>
+          )}
 
           {/* 본문 — 노션처럼 제목 아래로 이어지는 페이지 본문 */}
           <div className="border-t border-border/40 px-0 py-8">
@@ -597,7 +712,13 @@ export default function TaskDetailPage() {
             onOpenChange={setCreateChildOpen}
             parentId={task.id}
             orderIndex={(task.children ?? []).length}
-            defaultAssignedToId={task.assignedTo?.id ?? null}
+            defaultAssigneeIds={
+              task.assignees && task.assignees.length > 0
+                ? task.assignees.map((a) => a.id)
+                : task.assignedTo?.id
+                  ? [task.assignedTo.id]
+                  : null
+            }
             onCreated={() => {
               fetchTask();
               setCreateChildOpen(false);
@@ -618,6 +739,7 @@ export default function TaskDetailPage() {
                     status: "상태",
                     dueDate: "마감일",
                     assignedToId: "담당자",
+                    assignees: "담당자",
                     priority: "우선순위",
                     isCompleted: "완료 여부",
                     categoryId: "카테고리",

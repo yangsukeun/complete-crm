@@ -18,14 +18,23 @@ export async function POST(
     }
 
     const { id: taskId } = await params;
-    const task = await prisma.task.findFirst({ where: { id: taskId, deletedAt: null } });
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: {
+        title: true,
+        assignedToId: true,
+        createdById: true,
+        assignees: { select: { userId: true } },
+      },
+    });
     if (!task) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const allowed =
       (session.user.role === "EXECUTIVE" || session.user.role === "ADMIN") ||
       task.assignedToId === session.user.id ||
-      task.createdById === session.user.id;
+      task.createdById === session.user.id ||
+      task.assignees.some((a) => a.userId === session.user.id);
     if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -50,7 +59,11 @@ export async function POST(
     await createActivityLog(session.user.id, "COMMENT_ADDED", task.title);
 
     const commentAuthorId = session.user.id;
-    const toNotify = [task.assignedToId, task.createdById].filter(
+    const assigneeNotifyIds = [
+      ...(task.assignedToId ? [task.assignedToId] : []),
+      ...task.assignees.map((a) => a.userId),
+    ];
+    const toNotify = [...new Set(assigneeNotifyIds), task.createdById].filter(
       (id): id is string => !!id && id !== commentAuthorId
     );
     const uniqueIds = [...new Set(toNotify)];

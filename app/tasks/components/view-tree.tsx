@@ -20,7 +20,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +52,8 @@ type TaskData = {
   priority: string;
   parentId: string | null;
   isCollapsed: boolean;
-  assignedTo: { id: string; name: string; position?: string | null };
+  assignees?: { id: string; name: string; position?: string | null; image?: string | null }[];
+  assignedTo: { id: string; name: string; position?: string | null; image?: string | null } | null;
   /** 삭제 권한: 임원/관리자 또는 본인이 생성한 업무만 */
   createdById?: string | null;
 };
@@ -451,11 +452,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
           <Badge variant={priority.variant} className="text-[10px] px-1.5 py-0">
             {priority.label}
           </Badge>
-          <Avatar className="size-5">
-            <AvatarFallback className="text-[10px]">
-              {(task.assignedTo?.name ?? "?").slice(0, 1)}
-            </AvatarFallback>
-          </Avatar>
+          <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={20} />
         </div>
 
         {/* Actions */}
@@ -537,11 +534,7 @@ function UncategorizedTaskItem({
           </Badge>
         </div>
       </div>
-      <Avatar className="size-6 shrink-0">
-        <AvatarFallback className="text-[10px]">
-          {(task.assignedTo?.name ?? "?").slice(0, 1)}
-        </AvatarFallback>
-      </Avatar>
+      <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={24} className="shrink-0" />
     </div>
   );
 }
