@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -33,6 +35,16 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  const { data: unreadSwr, mutate: mutateUnread } = useSWR<{ count: number }>(
+    session?.user?.id ? SWR_KEYS.notificationUnread : null,
+    jsonFetcher,
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
+
+  useEffect(() => {
+    if (typeof unreadSwr?.count === "number") setUnreadCount(unreadSwr.count);
+  }, [unreadSwr]);
+
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
@@ -49,23 +61,6 @@ export function NotificationBell() {
     }
   }, []);
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications/unread-count");
-      if (!res.ok) return;
-      const data = await res.json();
-      setUnreadCount(typeof data?.count === "number" ? data.count : 0);
-    } catch {
-      setUnreadCount(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUnreadCount();
-    const t = setInterval(fetchUnreadCount, 60000);
-    return () => clearInterval(t);
-  }, [fetchUnreadCount]);
-
   useEffect(() => {
     if (!session?.user?.id || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
     let cancelled = false;
@@ -73,7 +68,7 @@ export function NotificationBell() {
     void (async () => {
       const ch = await subscribeNotificationsForUser(session.user!.id, () => {
         window.dispatchEvent(new Event("notification-realtime"));
-        void fetchUnreadCount();
+        void mutateUnread();
       });
       if (!cancelled && ch) rtCh = ch;
     })();
@@ -85,7 +80,7 @@ export function NotificationBell() {
         /* */
       }
     };
-  }, [session?.user?.id, fetchUnreadCount]);
+  }, [session?.user?.id, mutateUnread]);
 
   useEffect(() => {
     if (!open) return;
@@ -105,13 +100,14 @@ export function NotificationBell() {
             prev.map((x: any) => (x.id === n.id ? { ...x, isRead: true } : x))
           );
           setUnreadCount((c: any) => Math.max(0, c - 1));
+          void mutateUnread();
         } catch {
           // ignore
         }
       }
       setOpen(false);
     },
-    [router]
+    [router, mutateUnread]
   );
 
   const handleReadAll = useCallback(async () => {
@@ -120,10 +116,11 @@ export function NotificationBell() {
       if (!res.ok) return;
       setList((prev: NotificationItem[]) => prev.map((x) => ({ ...x, isRead: true })));
       setUnreadCount(0);
+      void mutateUnread();
     } catch {
       // ignore
     }
-  }, []);
+  }, [mutateUnread]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

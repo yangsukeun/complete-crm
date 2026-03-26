@@ -20,7 +20,8 @@ export async function GET() {
       { count },
       {
         headers: {
-          "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+          "Cache-Control":
+            "private, max-age=15, stale-while-revalidate=120, stale-if-error=60",
         },
       }
     );

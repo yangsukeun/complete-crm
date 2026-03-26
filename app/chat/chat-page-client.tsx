@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import useSWR from "swr";
+import { SWR_KEYS } from "@/lib/api-swr";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -140,69 +142,79 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     return { id: userId, name: "사용자", position: null };
   }, []);
 
-  const fetchChats = useCallback(async () => {
-    try {
-      const res = await fetch("/api/chats");
+  const {
+    data: swrChatList,
+    mutate: mutateChats,
+    isLoading: swrChatsLoading,
+  } = useSWR<ChatItem[]>(
+    session?.user?.id ? SWR_KEYS.chatsList : null,
+    async (url) => {
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed");
-      const data = await res.json();
-      const list = data as ChatItem[];
-      setChats((prev: any) => {
-        if (prev.length !== list.length) return list;
-        const same = list.every(
-          (c, i) =>
-            prev[i]?.id === c.id &&
-            prev[i]?.lastMessage?.createdAt === c.lastMessage?.createdAt
-        );
-        return same ? prev : list;
+      return res.json() as Promise<ChatItem[]>;
+    },
+    { dedupingInterval: 8000, keepPreviousData: true }
+  );
+
+  useEffect(() => {
+    if (swrChatsLoading && swrChatList === undefined) return;
+    if (!swrChatList) {
+      setChats([]);
+      setLoading(false);
+      return;
+    }
+    const list = swrChatList;
+    setChats((prev: ChatItem[]) => {
+      if (prev.length !== list.length) return list;
+      const same = list.every(
+        (c, i) =>
+          prev[i]?.id === c.id &&
+          prev[i]?.lastMessage?.createdAt === c.lastMessage?.createdAt
+      );
+      return same ? prev : list;
+    });
+
+    try {
+      const myId = session?.user?.id;
+      const next: Record<string, number> = {};
+      for (const c of list) {
+        if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
+        const readAt =
+          typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
+        const isUnread = !readAt || new Date(c.lastMessage.createdAt) > new Date(readAt);
+        if (isUnread && c.id !== selectedChatId) {
+          next[c.id] = 1;
+        }
+      }
+      setUnreadCounts((prevCounts: Record<string, number>) => {
+        const prevKeys = Object.keys(prevCounts).sort().join();
+        const nextKeys = Object.keys(next).sort().join();
+        if (prevKeys !== nextKeys) return next;
+        for (const k of Object.keys(next)) {
+          if (prevCounts[k] !== next[k]) return next;
+        }
+        return prevCounts;
       });
 
-      // localStorage 읽음 시각 기준으로 미읽음만 배지 표시 (읽은 대화는 숫자 제거)
-      try {
-        const myId = session?.user?.id;
-        const next: Record<string, number> = {};
-        for (const c of list) {
-          if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
-          const readAt =
-            typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
-          const isUnread = !readAt || new Date(c.lastMessage.createdAt) > new Date(readAt);
-          if (isUnread && c.id !== selectedChatId) {
-            next[c.id] = 1;
-          }
+      const toSync: string[] = [];
+      for (const c of list) {
+        if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
+        const readAt =
+          typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
+        if (readAt && new Date(readAt) >= new Date(c.lastMessage.createdAt)) {
+          toSync.push(c.id);
         }
-        setUnreadCounts((prevCounts: any) => {
-          const prevKeys = Object.keys(prevCounts).sort().join();
-          const nextKeys = Object.keys(next).sort().join();
-          if (prevKeys !== nextKeys) return next;
-          for (const k of Object.keys(next)) {
-            if (prevCounts[k] !== next[k]) return next;
-          }
-          return prevCounts;
-        });
-
-        // localStorage 기준 이미 읽은 대화는 서버 알림도 읽음 처리 (로그인·새 기기 동기화, 중복 미읽음 방지)
-        const toSync: string[] = [];
-        for (const c of list) {
-          if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
-          const readAt =
-            typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
-          if (readAt && new Date(readAt) >= new Date(c.lastMessage.createdAt)) {
-            toSync.push(c.id);
-          }
-        }
-        if (toSync.length > 0) {
-          void Promise.all(
-            toSync.map((id) => fetch(`/api/chats/${id}/messages`, { method: "PATCH" }).catch(() => {}))
-          );
-        }
-      } catch {
-        // ignore
+      }
+      if (toSync.length > 0) {
+        void Promise.all(
+          toSync.map((id) => fetch(`/api/chats/${id}/messages`, { method: "PATCH" }).catch(() => {}))
+        );
       }
     } catch {
-      setChats([]);
-    } finally {
-      setLoading(false);
+      // ignore
     }
-  }, [selectedChatId, session?.user?.id]);
+    setLoading(false);
+  }, [swrChatList, swrChatsLoading, selectedChatId, session?.user?.id]);
 
   const fetchMessages = useCallback(
     async (chatId: string, silent?: boolean, sinceIso?: string | null) => {
@@ -243,17 +255,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   );
 
   useEffect(() => {
-    fetchChats();
-  }, [fetchChats]);
-
-  useEffect(() => {
     let debounceT: ReturnType<typeof setTimeout> | null = null;
     const onInbox = () => {
       if (debounceT) clearTimeout(debounceT);
       debounceT = setTimeout(() => {
         debounceT = null;
         if (typeof document !== "undefined" && document.visibilityState === "visible") {
-          void fetchChats();
+          void mutateChats();
         }
       }, 320);
     };
@@ -262,7 +270,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       window.removeEventListener("chat-inbox-refresh", onInbox);
       if (debounceT) clearTimeout(debounceT);
     };
-  }, [fetchChats]);
+  }, [mutateChats]);
 
   useEffect(() => {
     const onRt = (ev: Event) => {
@@ -384,7 +392,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "생성 실패");
       setModalOpen(false);
-      fetchChats();
+      void mutateChats();
       toast.success("대화가 시작되었습니다.");
       router.push(`/chat/${data.id}`);
     } catch (e) {
@@ -432,13 +440,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           user: { id: "__system__", name: "시스템", position: null },
         };
         setMessages((prev: Message[]) => [...prev, sys]);
-        fetchChats();
+        void mutateChats();
       } catch (e) {
         setMessages((prev: Message[]) => prev.filter((m: Message) => m.id !== optimisticId));
         throw e;
       }
     },
-    [selectedChatId, session?.user, fetchChats, scrollToBottom]
+    [selectedChatId, session?.user, mutateChats, scrollToBottom]
   );
 
   const handleDelegateConfirm = async () => {
@@ -561,7 +569,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       setMessages((prev: any) =>
         prev.map((m: any) => (m.id === optimisticId ? data : m))
       );
-      fetchChats();
+      void mutateChats();
     } catch (e) {
       setMessages((prev: any) => prev.filter((m: any) => m.id !== optimisticId));
       toast.error(e instanceof Error ? e.message : "전송에 실패했습니다.");
@@ -579,12 +587,12 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         setMessages((prev: any) =>
           prev.map((m: any) => (m.id === messageId ? { ...m, isDeleted: true } : m))
         );
-        fetchChats();
+        void mutateChats();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
       }
     },
-    [fetchChats]
+    [mutateChats]
   );
 
   const insertAtCursor = useCallback((text: string) => {

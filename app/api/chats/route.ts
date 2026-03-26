@@ -56,7 +56,11 @@ export async function GET() {
         participants: chat.participants.map((x: any) => x.user),
         lastMessage: chat.messages[0] ?? null,
       }));
-      return NextResponse.json(chats);
+      return NextResponse.json(chats, {
+        headers: {
+          "Cache-Control": "private, no-cache, max-age=0, must-revalidate",
+        },
+      });
     }
 
     const participants = await prisma.chatParticipant.findMany({
@@ -92,7 +96,11 @@ export async function GET() {
       lastMessage: p.chat.messages[0] ?? null,
     }));
 
-    return NextResponse.json(chats);
+    return NextResponse.json(chats, {
+      headers: {
+        "Cache-Control": "private, no-cache, max-age=0, must-revalidate",
+      },
+    });
   } catch (e) {
     console.error("[GET /api/chats]", e);
     return NextResponse.json(

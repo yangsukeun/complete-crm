@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/api-swr";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -124,12 +126,19 @@ export default function HrPage() {
     setMonthRecords(Array.isArray(data) ? data : []);
   };
 
-  const loadTodayAll = async () => {
-    const res = await fetch("/api/attendance?scope=today");
-    if (!res.ok) return;
-    const data = await res.json();
-    setTodayAll(Array.isArray(data) ? data : []);
-  };
+  const { data: todayAllSwr, mutate: mutateTodayAll } = useSWR<AttendanceRecord[]>(
+    sessionStatus === "authenticated" && isAdmin ? "/api/attendance?scope=today" : null,
+    jsonFetcher,
+    { dedupingInterval: 90_000, revalidateOnFocus: true }
+  );
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setTodayAll([]);
+      return;
+    }
+    if (Array.isArray(todayAllSwr)) setTodayAll(todayAllSwr);
+  }, [isAdmin, todayAllSwr]);
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
@@ -137,22 +146,16 @@ export default function HrPage() {
       setLoading(true);
       await loadToday();
       await loadMonth();
-      if (isAdmin) await loadTodayAll();
+      if (isAdmin) await mutateTodayAll();
       setLoading(false);
     })();
-  }, [sessionStatus, isAdmin]);
+  }, [sessionStatus, isAdmin, mutateTodayAll]);
 
   useEffect(() => {
     if (!isAdmin || !session?.user?.id || todayAll.length === 0) return;
     const my = todayAll.find((r: any) => r.userId === session.user?.id);
     setTodayRecord(my ?? null);
   }, [isAdmin, session?.user?.id, todayAll]);
-
-  useEffect(() => {
-    if (sessionStatus !== "authenticated" || !isAdmin) return;
-    const t = setInterval(loadTodayAll, 60000);
-    return () => clearInterval(t);
-  }, [sessionStatus, isAdmin]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -180,7 +183,7 @@ export default function HrPage() {
       }
       if (data.record) setTodayRecord(data.record);
       await loadMonth();
-      if (isAdmin) await loadTodayAll();
+      if (isAdmin) await mutateTodayAll();
     } catch (err) {
       alert("네트워크 오류가 발생했습니다.");
     } finally {

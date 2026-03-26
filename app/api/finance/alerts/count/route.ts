@@ -36,7 +36,11 @@ export async function GET() {
       });
       return NextResponse.json(
         { count, label: "승인대기" },
-        { headers: { "Cache-Control": "no-store, max-age=0" } }
+        {
+          headers: {
+            "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",
+          },
+        }
       );
     }
 
@@ -61,13 +65,21 @@ export async function GET() {
 
     return NextResponse.json(
       { count, label },
-      { headers: { "Cache-Control": "no-store, max-age=0" } }
+      {
+        headers: {
+          "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",
+        },
+      }
     );
   } catch (e) {
     console.error("[GET /api/finance/alerts/count]", e);
     return NextResponse.json(
       { count: 0, label: "알림" },
-      { headers: { "Cache-Control": "no-store, max-age=0" } }
+      {
+        headers: {
+          "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=15",
+        },
+      }
     );
   }
 }

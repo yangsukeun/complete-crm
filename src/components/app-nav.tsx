@@ -5,6 +5,8 @@ import NextImage from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import useSWR, { useSWRConfig } from "swr";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import {
   Calendar,
@@ -71,14 +73,17 @@ const financeGroupLinks: { href: string; label: string; icon: typeof Wallet; fea
 ];
 
 const CHAT_READ_KEY = "chat_read_";
-/** 자금 알림 등: Realtime 없음 → 저빈도 폴링 (탭 숨김 시 더 길게) */
-const NAV_POLL_MS = 60_000;
-const NAV_POLL_HIDDEN_MS = 120_000;
+
+type ChatRowForBadge = {
+  id: string;
+  lastMessage: { createdAt: string; user: { id: string } } | null;
+};
 
 export function AppNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const { mutate: swrMutate } = useSWRConfig();
   const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
   const [mode, setMode] = useState<"company" | "personal" | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -121,103 +126,83 @@ export function AppNav() {
     return () => window.removeEventListener("logo-updated", load);
   }, [session?.user, pathname]);
 
-  // 직원만 채팅 미읽음 배지 — Supabase Realtime(전역 이벤트) + 첫 로드; 구형 폴링 제거
+  const chatsBadgeEnabled =
+    Boolean(session?.user?.id) &&
+    pathname !== "/choose-mode" &&
+    effectiveMode === "company" &&
+    session?.user?.role === "USER";
+
+  const { data: chatsForBadge } = useSWR<ChatRowForBadge[]>(
+    chatsBadgeEnabled ? SWR_KEYS.chatsList : null,
+    jsonFetcher,
+    { dedupingInterval: 10_000, keepPreviousData: true }
+  );
+
   useEffect(() => {
-    if (!session?.user?.id || pathname === "/choose-mode" || effectiveMode !== "company" || session?.user?.role !== "USER") {
+    if (!chatsBadgeEnabled || !session?.user?.id) {
       setChatUnreadCount(0);
       return;
     }
-    const run = () => {
-      fetch("/api/chats")
-        .then((r: any) => (r.ok ? r.json() : []))
-        .then((list: any) => {
-          let count = 0;
-          for (const c of list) {
-            if (!c.lastMessage || c.lastMessage.user?.id === session?.user?.id) continue;
-            const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
-            if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
-          }
-          setChatUnreadCount(count);
-        })
-        .catch(() => setChatUnreadCount(0));
-    };
-    run();
+    const list = chatsForBadge;
+    if (!list) return;
+    let count = 0;
+    for (const c of list) {
+      if (!c.lastMessage || c.lastMessage.user?.id === session.user.id) continue;
+      const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
+      if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
+    }
+    setChatUnreadCount(count);
+  }, [chatsBadgeEnabled, chatsForBadge, session?.user?.id]);
+
+  useEffect(() => {
+    if (!chatsBadgeEnabled) return;
     let debounceT: ReturnType<typeof setTimeout> | null = null;
     const onInbox = () => {
       if (debounceT) clearTimeout(debounceT);
       debounceT = setTimeout(() => {
         debounceT = null;
-        if (typeof document !== "undefined" && document.visibilityState === "visible") run();
+        if (typeof document !== "undefined" && document.visibilityState === "visible") {
+          void swrMutate(SWR_KEYS.chatsList);
+        }
       }, 400);
     };
+    const onRead = () => void swrMutate(SWR_KEYS.chatsList);
     window.addEventListener("chat-inbox-refresh", onInbox);
+    window.addEventListener("chat-read", onRead);
     return () => {
       window.removeEventListener("chat-inbox-refresh", onInbox);
+      window.removeEventListener("chat-read", onRead);
       if (debounceT) clearTimeout(debounceT);
     };
-  }, [session?.user?.id, session?.user?.role, effectiveMode, pathname]);
+  }, [chatsBadgeEnabled, swrMutate]);
+
+  const financeBadgeEnabled =
+    pathname !== "/choose-mode" && effectiveMode === "company" && Boolean(session?.user?.id);
+
+  const { data: financeBadge, mutate: mutateFinance } = useSWR<{ count: number; label: string }>(
+    financeBadgeEnabled ? SWR_KEYS.financeAlertsCount : null,
+    jsonFetcher,
+    { dedupingInterval: 120_000, revalidateOnFocus: true }
+  );
 
   useEffect(() => {
-    if (session?.user?.role !== "USER" || pathname === "/choose-mode") return;
-    const onRead = () => {
-      if (session?.user?.id && effectiveMode === "company") {
-        fetch("/api/chats")
-          .then((r: any) => (r.ok ? r.json() : []))
-          .then((list: any) => {
-            let count = 0;
-            for (const c of list) {
-              if (!c.lastMessage || c.lastMessage.user?.id === session?.user?.id) continue;
-              const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
-              if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
-            }
-            setChatUnreadCount(count);
-          })
-          .catch(() => {});
-      }
-    };
-    window.addEventListener("chat-read", onRead);
-    return () => window.removeEventListener("chat-read", onRead);
-  }, [session?.user?.id, session?.user?.role, effectiveMode, pathname]);
-
-  // 팀장·이체 담당자·요청자: 자금관리 뱃지 (승인대기/이체대기/이체완료 알람)
-  useEffect(() => {
-    if (pathname === "/choose-mode" || effectiveMode !== "company") {
+    if (!financeBadgeEnabled) {
       setPaymentAlertCount(0);
       setPaymentAlertLabel("알림");
       return;
     }
-    const run = () => {
-      fetch("/api/finance/alerts/count", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
-        .then((r: any) => (r.ok ? r.json() : { count: 0, label: "알림" }))
-        .then((d: any) => {
-          setPaymentAlertCount(d?.count ?? 0);
-          setPaymentAlertLabel(d?.label ?? "알림");
-        })
-        .catch(() => {
-          setPaymentAlertCount(0);
-          setPaymentAlertLabel("알림");
-        });
-    };
-    const schedule = () => {
-      const ms =
-        typeof document !== "undefined" && document.visibilityState === "hidden"
-          ? NAV_POLL_HIDDEN_MS
-          : NAV_POLL_MS;
-      return window.setInterval(run, ms);
-    };
-    run();
-    let t = schedule();
-    const onVisibility = () => {
-      clearInterval(t);
-      if (typeof document !== "undefined" && document.visibilityState === "visible") run();
-      t = schedule();
-    };
-    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      clearInterval(t);
-      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [effectiveMode, pathname]);
+    if (financeBadge) {
+      setPaymentAlertCount(financeBadge.count ?? 0);
+      setPaymentAlertLabel(financeBadge.label ?? "알림");
+    }
+  }, [financeBadge, financeBadgeEnabled]);
+
+  useEffect(() => {
+    if (!financeBadgeEnabled) return;
+    const onFin = () => void mutateFinance();
+    window.addEventListener("finance-alerts-refresh", onFin);
+    return () => window.removeEventListener("finance-alerts-refresh", onFin);
+  }, [financeBadgeEnabled, mutateFinance]);
 
   if (pathname === "/login" || pathname === "/choose-mode") return null;
 

@@ -505,7 +505,7 @@ export function BoardPageClient({
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {unifiedList.map((item: any) => {
+            {unifiedList.map((item: any, itemIdx: number) => {
               if (item.type === "ANNOUNCEMENT") {
                 const a = item.data;
                 const preview = stripMarkdownPreview(a.content, 120);
@@ -554,9 +554,11 @@ export function BoardPageClient({
                           src={media.url}
                           alt={media.name || b.title}
                           fill
-                          sizes="(max-width: 768px) 100vw, 33vw"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                           unoptimized={/drive\.google\.com/i.test(media.url)}
-                          loading="lazy"
+                          loading={itemIdx < 6 ? "eager" : "lazy"}
+                          priority={itemIdx < 6}
+                          fetchPriority={itemIdx < 3 ? "high" : undefined}
                           className="object-cover"
                         />
                       ) : media?.type === "video" ? (
