@@ -211,7 +211,7 @@ export default function TaskDetailPage() {
       .then((r) => (r.ok ? r.json() : []))
       .then(setWorkspaceUsers)
       .catch(() => setWorkspaceUsers([]));
-  }, [task?.id, task?.createdById, task?.assignedTo?.id, task?.assignees, session?.user?.id, session?.user?.role]);
+  }, [task?.id, task?.createdById, task?.assignedTo?.id, session?.user?.id, session?.user?.role]);
 
   // 본문 에디터: 다음 페인트 직후 마운트(레이아웃 안정) — 예전 800ms 대기 제거로 체감 속도 개선
   useEffect(() => {
