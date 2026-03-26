@@ -8,6 +8,10 @@ const withBundleAnalyzer = bundleAnalyzer({
 // Supabase: 앱 쿼리는 DATABASE_URL에 Pooler(6543) 권장, prisma migrate는 DIRECT_URL(5432).
 // 아이콘/UI 라이브러리 트리쉐이킹으로 번들 축소 → 페이지 전환 시 로드 감소
 const nextConfig: NextConfig = {
+  /** 배포마다 고유 빌드 ID → 이전 배포의 정적 청크 URL과 충돌(404) 완화 */
+  generateBuildId: async () => {
+    return Date.now().toString();
+  },
   experimental: {
     optimizeCss: true,
     optimizePackageImports: [

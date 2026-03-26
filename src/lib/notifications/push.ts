@@ -9,6 +9,10 @@ export type PushPayload = {
   userIds: string[];
   title: string;
   message: string;
+  /** 지정 시 OneSignal headings (미지정이면 title로 ko/en 동일) */
+  headings?: Record<string, string>;
+  /** 지정 시 OneSignal contents (미지정이면 message로 ko/en 동일) */
+  contents?: Record<string, string>;
   url?: string;
   data?: Record<string, unknown>;
   priority?: PushPriority;
@@ -30,6 +34,7 @@ function absoluteUrlForPush(href: string | undefined): string | undefined {
   const h = href.trim();
   if (/^https?:\/\//i.test(h)) return h;
   const base =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//i, "")}` : "") ||
     process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
@@ -121,8 +126,12 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       debugVerbose: dbg,
     });
 
-    const headings = { en: payload.title, ko: payload.title };
-    const contents = { en: payload.message, ko: payload.message };
+    const headings =
+      payload.headings ??
+      ({ en: payload.title, ko: payload.title } satisfies Record<string, string>);
+    const contents =
+      payload.contents ??
+      ({ en: payload.message, ko: payload.message } satisfies Record<string, string>);
     const data = payload.data ?? {};
     const pri = payload.priority === "high" ? 10 : 5;
 

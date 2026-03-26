@@ -283,8 +283,10 @@ export async function createNotificationsForManyUsers(input: {
   message: string;
   link?: string;
   actorId?: string | null;
+  /** true면 DB 알림만 저장하고 OneSignal은 호출하지 않음(호출부에서 배치 발송 등) */
+  skipPush?: boolean;
 }): Promise<void> {
-  const { userIds, type, message, link = "", actorId = null } = input;
+  const { userIds, type, message, link = "", actorId = null, skipPush = false } = input;
   if (userIds.length === 0) return;
 
   // 1) DB 배치 INSERT
@@ -313,7 +315,9 @@ export async function createNotificationsForManyUsers(input: {
     shouldSendBatch,
   });
 
-  if (shouldSendBatch && pushTargets.length > 0) {
+  if (skipPush) {
+    console.log("[Notification→push] createNotificationsForManyUsers skipPush=true (외부에서 발송)");
+  } else if (shouldSendBatch && pushTargets.length > 0) {
     await Promise.all(
       pushTargets.map((userId) =>
         sendPushToUser({ userId, title: "새 알림", message, url: link || undefined, priority }).catch((e) =>

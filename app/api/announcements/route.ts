@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createNotificationsForManyUsers } from "@/lib/notifications";
+import { sendPushToUsers } from "@/lib/notifications/push";
 import { z } from "zod";
 
 export type PollOption = { text: string; voterIds: string[] };
@@ -121,14 +122,28 @@ export async function POST(req: Request) {
       where: { id: { not: session.user.id } },
       select: { id: true },
     });
+    const recipientIds = recipients.map((u) => u.id);
     const link = `/announcements/${created.id}`;
     const message = `새 공지: ${created.title}`;
     await createNotificationsForManyUsers({
-      userIds: recipients.map((u) => u.id),
+      userIds: recipientIds,
       type: "NOTICE_POSTED",
       message,
       link,
       actorId: session.user.id,
+      skipPush: true,
+    });
+
+    const pushLine = `📢 ${created.title}`;
+    void sendPushToUsers({
+      userIds: recipientIds,
+      title: "새 공지사항",
+      message: pushLine,
+      headings: { ko: "새 공지사항", en: "New Announcement" },
+      contents: { ko: pushLine, en: pushLine },
+      url: "/board",
+      data: { type: "announcement" },
+      priority: "high",
     });
 
     return NextResponse.json({
