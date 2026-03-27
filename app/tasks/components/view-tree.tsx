@@ -52,9 +52,10 @@ type TaskData = {
   priority: string;
   parentId: string | null;
   isCollapsed: boolean;
+  projectId?: string | null;
   assignees?: { id: string; name: string; position?: string | null; image?: string | null }[];
   assignedTo: { id: string; name: string; position?: string | null; image?: string | null } | null;
-  /** 삭제 권한: 임원/관리자 또는 본인이 생성한 업무만 */
+  /** 삭제 권한: 임원/관리자 또는 본인이 생성한 프로젝트만 */
   createdById?: string | null;
 };
 
@@ -68,12 +69,12 @@ type TreeViewProps = {
   tasks: TaskData[];
   taskLinks: TaskLink[];
   onRefresh: () => void;
-  onTaskClick: (taskId: string) => void;
+  onTaskClick: (taskId: string, projectId?: string | null) => void;
   /** 호버 시 상세 라우트 prefetch (next/router) */
   onTaskHover?: (taskId: string) => void;
   onCreateTask: (parentId: string | null) => void;
   currentUserId: string;
-  /** EXECUTIVE/ADMIN: 타인이 만든 업무 포함 전체 삭제(소프트) 가능 */
+  /** EXECUTIVE/ADMIN: 타인이 만든 프로젝트 포함 전체 삭제(소프트) 가능 */
   isTaskDeleteAdmin: boolean;
 };
 
@@ -295,7 +296,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
     onToggleCollapse: (id: string) => void;
     onTitleChange: (id: string, title: string) => void;
     onAddChild: (parentId: string) => void;
-    onTaskClick: (taskId: string) => void;
+    onTaskClick: (taskId: string, projectId?: string | null) => void;
     onTaskHover?: (taskId: string) => void;
     nodeStyle: NodeStyle;
   };
@@ -431,7 +432,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
                   task.isCompleted && "line-through text-muted-foreground"
                 )}
                 onDoubleClick={handleDoubleClick}
-                onClick={() => onTaskClick(task.id)}
+                onClick={() => onTaskClick(task.id, task.projectId ?? null)}
               >
                 {task.title}
               </p>
@@ -493,7 +494,7 @@ function UncategorizedTaskItem({
   onTaskHover,
 }: {
   task: TaskData;
-  onTaskClick: (id: string) => void;
+  onTaskClick: (id: string, projectId?: string | null) => void;
   onTaskHover?: (id: string) => void;
 }) {
   const priority = getPriorityBadge(task.priority);
@@ -508,7 +509,7 @@ function UncategorizedTaskItem({
     <div
       draggable
       onDragStart={handleDragStart}
-      onClick={() => onTaskClick(task.id)}
+      onClick={() => onTaskClick(task.id, task.projectId ?? null)}
       onMouseEnter={() => onTaskHover?.(task.id)}
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg border bg-card cursor-grab active:cursor-grabbing",
@@ -637,13 +638,13 @@ function TreeViewInner({
       if (!res.ok) throw new Error("업데이트 실패");
       
       if (parentId) {
-        toast.success("업무가 하위 노드로 추가되었습니다!");
+        toast.success("프로젝트가 하위 노드로 추가되었습니다!");
       } else {
-        toast.success("업무가 마인드맵에 추가되었습니다!");
+        toast.success("프로젝트가 마인드맵에 추가되었습니다!");
       }
       onRefresh();
     } catch {
-      toast.error("업무 이동에 실패했습니다.");
+      toast.error("프로젝트 이동에 실패했습니다.");
     }
   }, [onRefresh]);
 
@@ -682,7 +683,7 @@ function TreeViewInner({
   const deleteSelectedTasks = useCallback(async () => {
     if (deletableSelectedIds.length === 0) {
       if (selectedNodeIds.length > 0) {
-        toast.error("선택한 업무 중 삭제할 수 있는 항목이 없습니다. 본인이 만든 업무만 삭제할 수 있습니다.");
+        toast.error("선택한 프로젝트 중 삭제할 수 있는 항목이 없습니다. 본인이 만든 프로젝트만 삭제할 수 있습니다.");
       }
       return;
     }
@@ -690,8 +691,8 @@ function TreeViewInner({
     const skipped = selectedNodeIds.length - deletableSelectedIds.length;
     const confirmDelete = window.confirm(
       skipped > 0
-        ? `삭제 권한이 없는 ${skipped}건을 제외하고, ${deletableSelectedIds.length}개의 업무를 삭제(휴지통 이동)할까요?`
-        : `선택한 ${deletableSelectedIds.length}개의 업무를 삭제(휴지통 이동)할까요?`
+        ? `삭제 권한이 없는 ${skipped}건을 제외하고, ${deletableSelectedIds.length}개의 프로젝트를 삭제(휴지통 이동)할까요?`
+        : `선택한 ${deletableSelectedIds.length}개의 프로젝트를 삭제(휴지통 이동)할까요?`
     );
     if (!confirmDelete) return;
 
@@ -703,11 +704,11 @@ function TreeViewInner({
           throw new Error((err as { error?: string }).error ?? "삭제 실패");
         }
       }
-      toast.success(`${deletableSelectedIds.length}개의 업무가 삭제되었습니다.`);
+      toast.success(`${deletableSelectedIds.length}개의 프로젝트가 삭제되었습니다.`);
       setSelectedNodeIds([]);
       onRefresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "업무 삭제에 실패했습니다.");
+      toast.error(e instanceof Error ? e.message : "프로젝트 삭제에 실패했습니다.");
     }
   }, [deletableSelectedIds, selectedNodeIds.length, onRefresh]);
 
@@ -729,7 +730,7 @@ function TreeViewInner({
         }),
       });
       if (!res.ok) throw new Error("생성 실패");
-      toast.success(parentId ? "하위 업무가 생성되었습니다!" : "새 업무가 생성되었습니다!");
+      toast.success(parentId ? "하위 프로젝트가 생성되었습니다!" : "새 프로젝트가 생성되었습니다!");
       setQuickTitle("");
       
       // Add new task to staged roots if no parent
@@ -740,7 +741,7 @@ function TreeViewInner({
       
       onRefresh();
     } catch {
-      toast.error("업무 생성에 실패했습니다.");
+      toast.error("프로젝트 생성에 실패했습니다.");
     } finally {
       setIsCreating(false);
     }
@@ -927,8 +928,8 @@ function TreeViewInner({
       }
 
       setStagedRootIds((prev: any) => new Set([...prev, taskId]));
-      toast.success("업무가 루트 노드로 추가되었습니다! 🌱", {
-        description: "다른 업무를 이 노드 위에 드롭하면 하위 노드가 됩니다.",
+      toast.success("프로젝트가 루트 노드로 추가되었습니다! 🌱", {
+        description: "다른 프로젝트를 이 노드 위에 드롭하면 하위 노드가 됩니다.",
       });
     },
     []
@@ -948,7 +949,7 @@ function TreeViewInner({
           throw new Error(data.error ?? "연결 실패");
         }
         toast.success("추가 연결이 생성되었습니다! 🔗", {
-          description: "하나의 업무가 여러 대분류에 연결되었습니다.",
+          description: "하나의 프로젝트가 여러 대분류에 연결되었습니다.",
         });
         onRefresh();
       } catch (e) {
@@ -988,7 +989,7 @@ function TreeViewInner({
 
       // Check if child already has this as primary parent
       if (childTask.parentId === connection.source) {
-        toast.info("이미 기본 상위 업무로 연결되어 있습니다.");
+        toast.info("이미 기본 상위 프로젝트로 연결되어 있습니다.");
         return;
       }
 
@@ -1029,7 +1030,7 @@ function TreeViewInner({
               body: JSON.stringify({ parentId: null }),
             });
             if (!res.ok) throw new Error("관계 해제 실패");
-            toast.success("상위 업무 연결이 해제되었습니다.");
+            toast.success("상위 프로젝트 연결이 해제되었습니다.");
             onRefresh();
           } catch {
             toast.error("관계 해제에 실패했습니다.");
@@ -1048,7 +1049,7 @@ function TreeViewInner({
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
           <Input
             ref={quickInputRef}
-            placeholder={selectedNodeIds.length === 1 ? "하위 업무 빠르게 추가..." : "새 업무 빠르게 추가..."}
+            placeholder={selectedNodeIds.length === 1 ? "하위 프로젝트 빠르게 추가..." : "새 프로젝트 빠르게 추가..."}
             value={quickTitle}
             onChange={(e: any) => setQuickTitle(e.target.value)}
             onKeyDown={(e: any) => {
@@ -1070,7 +1071,7 @@ function TreeViewInner({
           </Button>
         </div>
 
-        {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 업무만 */}
+        {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 프로젝트만 */}
         {selectedNodeIds.length > 0 && deletableSelectedIds.length > 0 && (
           <Button variant="destructive" size="sm" onClick={deleteSelectedTasks}>
             <Trash2 className="mr-1 size-4" />
@@ -1185,7 +1186,7 @@ function TreeViewInner({
         </Popover>
 
         <p className="text-xs text-muted-foreground hidden sm:block">
-          💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 업무 또는 관리자)
+          💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)
         </p>
       </div>
 
@@ -1209,7 +1210,7 @@ function TreeViewInner({
               <TreePine className="size-16 mx-auto text-muted-foreground/50 mb-4" />
               <p className="text-muted-foreground mb-2 font-medium">마인드맵이 비어있습니다</p>
               <p className="text-sm text-muted-foreground">
-                아래 미분류 업무를 여기로 드래그하여 마인드맵을 시작하세요 🌱
+                아래 미분류 프로젝트를 여기로 드래그하여 마인드맵을 시작하세요 🌱
               </p>
             </div>
           </div>
@@ -1252,7 +1253,7 @@ function TreeViewInner({
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm">🌿 야생의 업무 (미분류)</h3>
+            <h3 className="font-semibold text-sm">🌿 야생의 프로젝트 (미분류)</h3>
             <Badge variant="secondary" className="text-xs">
               {uncategorizedTasks.length}개
             </Badge>
@@ -1264,7 +1265,7 @@ function TreeViewInner({
 
         {uncategorizedTasks.length === 0 ? (
           <div className="py-8 text-center text-muted-foreground text-sm">
-            <p>모든 업무가 마인드맵에 배치되었습니다! 🎉</p>
+            <p>모든 프로젝트가 마인드맵에 배치되었습니다! 🎉</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto">

@@ -723,7 +723,7 @@ export function BoardPageClient({
               />
             </div>
             <div className="space-y-2">
-              <Label>내용 (업무 상세와 동일한 서식)</Label>
+              <Label>내용 (프로젝트 상세와 동일한 서식)</Label>
               <ContentBodyEditor
                 key={openAnnouncement ? "ann-open" : "ann-closed"}
                 initialContent={bodyContent}
@@ -782,7 +782,7 @@ export function BoardPageClient({
               )}
             </div>
             <div className="space-y-2">
-              <Label>설명 (업무 상세와 동일한 서식)</Label>
+              <Label>설명 (프로젝트 상세와 동일한 서식)</Label>
               <ContentBodyEditor
                 key={openBoard ? "board-open" : "board-closed"}
                 initialContent={bodyContent}

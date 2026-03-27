@@ -27,6 +27,7 @@ import {
   FileText,
   ArrowLeft,
   Download,
+  FolderKanban,
   History,
   StretchHorizontal,
   AlignLeft,
@@ -90,6 +91,8 @@ type TaskDetail = {
     createdAt: string;
     user: { id: string; name: string; position?: string | null };
   }[];
+  project?: { id: string; name: string; brand: { name: string } } | null;
+  projectId?: string | null;
 };
 
 class ClientErrorBoundary extends Component<
@@ -283,7 +286,7 @@ export default function TaskDetailPage() {
 
   const handleDeleteTask = async () => {
     if (!task) return;
-    if (!confirm("이 업무를 삭제(휴지통 이동)할까요?")) return;
+    if (!confirm("이 프로젝트를 삭제(휴지통 이동)할까요?")) return;
     setDeletingTask(true);
     try {
       const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
@@ -340,7 +343,7 @@ export default function TaskDetailPage() {
   if (!task) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">업무를 불러올 수 없습니다.</p>
+        <p className="text-muted-foreground">프로젝트를 불러올 수 없습니다.</p>
         <Button variant="outline" asChild>
           <Link href="/tasks" prefetch={true}>
             <ArrowLeft className="mr-2 size-4" />
@@ -415,7 +418,7 @@ export default function TaskDetailPage() {
           <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
             <Link href="/tasks" prefetch={true}>
               <ArrowLeft className="mr-2 size-4" />
-              목록으로
+              Projects 목록
             </Link>
           </Button>
           <div className="flex items-center gap-1">
@@ -450,9 +453,9 @@ export default function TaskDetailPage() {
                   try {
                     const result = (await copyTaskToPersonal(task.id)) as any;
                     if (result?.ok) {
-                      toast.success("개인 업무로 저장되었습니다.");
+                      toast.success("개인 프로젝트로 저장되었습니다.");
                     } else {
-                      toast.error(result?.error ?? "개인 업무로 저장에 실패했습니다.");
+                      toast.error(result?.error ?? "개인 프로젝트로 저장에 실패했습니다.");
                     }
                   } finally {
                     setCopyingToPersonal(false);
@@ -479,10 +482,23 @@ export default function TaskDetailPage() {
           </div>
         </div>
         <p className="text-muted-foreground mb-6 text-sm">
-          업무 상세를 보고, 담당·마감일·본문을 수정하거나 업무일지에 기록할 수 있습니다.
+          프로젝트 상세를 보고, 담당·마감일·본문을 수정하거나 Daily Report에 기록할 수 있습니다.
         </p>
 
         <div className="px-2 pb-10">
+          {task.project ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
+              <FolderKanban className="size-4 text-emerald-700 dark:text-emerald-400" />
+              <span className="text-muted-foreground">연결 CRM 프로젝트</span>
+              <Link
+                href={`/projects/${task.project.id}`}
+                prefetch={true}
+                className="font-medium text-emerald-800 underline-offset-4 hover:underline dark:text-emerald-300"
+              >
+                {task.project.brand?.name} / {task.project.name}
+              </Link>
+            </div>
+          ) : null}
           {task.parent ? (
             <div className="mb-4 text-sm text-muted-foreground">
               상위 페이지:{" "}
@@ -743,7 +759,7 @@ export default function TaskDetailPage() {
                     priority: "우선순위",
                     isCompleted: "완료 여부",
                     categoryId: "카테고리",
-                    parentId: "상위 업무",
+                    parentId: "상위 프로젝트",
                   };
                   const label = fieldLabels[r.field] ?? r.field;
                   const oldVal = r.oldValue ?? "(비어 있음)";

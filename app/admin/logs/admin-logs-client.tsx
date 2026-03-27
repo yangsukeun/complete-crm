@@ -16,8 +16,8 @@ type ActivityItem = {
 
 function activityLabel(actionType: string): string {
   switch (actionType) {
-    case "TASK_CREATED": return "업무 생성";
-    case "TASK_COMPLETED": return "업무 완료";
+    case "TASK_CREATED": return "프로젝트 생성";
+    case "TASK_COMPLETED": return "프로젝트 완료";
     case "COMMENT_ADDED": return "댓글 작성";
     case "LOGIN": return "로그인";
     case "CHECK_IN": return "출근";

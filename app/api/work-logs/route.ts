@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     const userId = targetUserId && isAdmin ? targetUserId : session.user.id;
 
     if (targetUserId && !isAdmin) {
-      return NextResponse.json({ error: "다른 직원의 업무일지는 조회할 수 없습니다." }, { status: 403 });
+      return NextResponse.json({ error: "다른 직원의 Daily Report는 조회할 수 없습니다." }, { status: 403 });
     }
 
     const log = await getOrCreateDailyWorkLog(userId, dateStr);
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("Work logs GET:", e);
     return NextResponse.json(
-      { error: "업무일지를 불러올 수 없습니다." },
+      { error: "Daily Report를 불러올 수 없습니다." },
       { status: 500 }
     );
   }
@@ -105,7 +105,7 @@ export async function PATCH(req: Request) {
           createNotificationWithOptions({
             userId: a.id,
             type: "WORK_LOG_SUBMITTED",
-            message: `${name}님이 업무일지를 제출했습니다`,
+            message: `${name}님이 Daily Report를 제출했습니다`,
             link,
             actorId: session.user.id,
             priority: "high",
@@ -123,7 +123,7 @@ export async function PATCH(req: Request) {
   } catch (e) {
     console.error("Work logs PATCH:", e);
     return NextResponse.json(
-      { error: "업무일지 수정에 실패했습니다." },
+      { error: "Daily Report 수정에 실패했습니다." },
       { status: 500 }
     );
   }

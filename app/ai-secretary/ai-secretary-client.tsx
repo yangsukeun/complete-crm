@@ -200,7 +200,7 @@ export function AiSecretaryClient() {
         <div className="min-w-0 flex-1">
           <PageHeadline
             title="AI 비서"
-            description={`${session?.user?.name ?? "로그인"} · 역할에 맞는 업무·일정 맥락으로 답변합니다.`}
+            description={`${session?.user?.name ?? "로그인"} · 역할에 맞는 프로젝트·일정 맥락으로 답변합니다.`}
           />
         </div>
       </div>

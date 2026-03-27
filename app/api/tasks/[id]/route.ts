@@ -89,6 +89,13 @@ export async function GET(
               position: true,
             },
           },
+          project: {
+            select: {
+              id: true,
+              name: true,
+              brand: { select: { name: true } },
+            },
+          },
           attachments: {
             select: {
               id: true,
@@ -142,7 +149,7 @@ export async function GET(
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: "업무를 불러올 수 없습니다." },
+      { error: "프로젝트를 불러올 수 없습니다." },
       { status: 500 }
     );
   }
@@ -405,7 +412,7 @@ export async function PATCH(
           await createNotificationWithOptions({
             userId: uid,
             type: "ASSIGNED",
-            message: `'${existing.title}' 업무가 배정되었습니다.`,
+            message: `'${existing.title}' 프로젝트가 배정되었습니다.`,
             link: `/tasks/${id}`,
             actorId: session.user.id,
           });
@@ -461,7 +468,7 @@ export async function PATCH(
         try {
           await createTaskBodyMentionNotification({
             userId: uid,
-            message: `${actorName}님이 '${existing.title}' 업무 페이지에서 회원님을 호출했습니다.`,
+            message: `${actorName}님이 '${existing.title}' 프로젝트 페이지에서 회원님을 호출했습니다.`,
             link: `/tasks/${id}`,
             actorId: session.user.id,
           });
@@ -483,7 +490,7 @@ export async function PATCH(
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: "업무를 수정할 수 없습니다." },
+      { error: "프로젝트를 수정할 수 없습니다." },
       { status: 500 }
     );
   }
@@ -556,7 +563,7 @@ export async function DELETE(
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: "업무를 삭제할 수 없습니다." },
+      { error: "프로젝트를 삭제할 수 없습니다." },
       { status: 500 }
     );
   }

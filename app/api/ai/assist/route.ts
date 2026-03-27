@@ -20,7 +20,7 @@ const ACTION_PROMPTS: Record<
     user: (_, topic) =>
       topic?.trim()
         ? `다음 주제로 글 초안을 작성해 주세요. 제목/키워드만 있어도 됩니다.\n\n주제: ${topic}`
-        : "회사 공지나 업무 요약에 쓸 수 있는 짧은 초안을 작성해 주세요. (주제를 입력하면 더 정확합니다)",
+        : "회사 공지나 프로젝트 요약에 쓸 수 있는 짧은 초안을 작성해 주세요. (주제를 입력하면 더 정확합니다)",
   },
   expand: {
     system:
@@ -180,7 +180,7 @@ export async function POST(req: Request) {
 
     if (action === "chat") {
       const systemContent =
-        "당신은 COMPLETE CRM의 AI 비서입니다. 업무 질문, 일정 안내, 문서 작성, 요약, 번역 등 모든 업무 관련 요청에 적극적으로 답변합니다. 한국어로 답하세요.";
+        "당신은 COMPLETE CRM의 AI 비서입니다. 프로젝트·일정·문서 작성·요약·번역 등 업무 전반 질문에 적극적으로 답변합니다. 한국어로 답하세요.";
       let historySlice = chatHistory
         .slice(-20)
         .map((m: { role: "user" | "assistant"; content: string }) => ({

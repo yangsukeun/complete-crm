@@ -125,7 +125,7 @@ function tasksToCalendarDueEvents(
     const overdue = !t.isCompleted && d < sod;
     return {
       id: `task-due-${t.id}`,
-      title: `[업무] ${t.title}`,
+      title: `[프로젝트] ${t.title}`,
       start: d,
       end,
       allDay: true,
@@ -364,7 +364,7 @@ const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   team: "팀/회사 일정",
   holiday: "공휴일",
   google: "Google 캘린더",
-  taskDue: "업무 마감",
+  taskDue: "프로젝트 마감",
 };
 
 type LeaveApiResponse = { requests?: LeaveRequestItem[] };
@@ -704,7 +704,7 @@ export default function SchedulePage() {
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: "schedule", label: "일정", icon: <CalendarDays className="size-4" /> },
     { id: "tasks", label: "할일", icon: <ListTodo className="size-4" /> },
-    { id: "diary", label: "업무일지", icon: <FileText className="size-4" /> },
+    { id: "diary", label: "Daily Report", icon: <FileText className="size-4" /> },
   ];
 
   if (schedulesLoading && tab === "schedule") {
@@ -720,7 +720,7 @@ export default function SchedulePage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageHeadline
           title="스케줄"
-          description="일정과 할일을 구분해 보고, 업무일지로 자동 정리할 수 있습니다."
+          description="일정과 할일을 구분해 보고, Daily Report로 자동 정리할 수 있습니다."
         />
         {tab === "schedule" && (
           <div className="flex flex-wrap items-center gap-2">
@@ -936,7 +936,7 @@ export default function SchedulePage() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">할일 목록</CardTitle>
               <p className="text-muted-foreground text-sm font-normal">
-                담당·지시한 업무입니다. 본인 할일을 추가하거나 업무 페이지에서 상세·완료 처리할 수 있습니다.
+                담당·지시한 프로젝트입니다. 본인 할일을 추가하거나 Projects 페이지에서 상세·완료 처리할 수 있습니다.
               </p>
             </div>
             <Button size="sm" onClick={() => setCreateTaskOpen(true)}>
@@ -976,7 +976,7 @@ export default function SchedulePage() {
               </ul>
             )}
             <Link href="/tasks" className="text-primary mt-3 inline-block text-sm font-medium hover:underline">
-              업무 페이지에서 전체 관리 →
+              Projects에서 전체 관리 →
             </Link>
           </CardContent>
         </Card>
@@ -1042,7 +1042,7 @@ export default function SchedulePage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">메모</CardTitle>
-                <p className="text-muted-foreground text-sm font-normal">해당 날짜에 대한 메모를 적어두면 업무일지로 활용할 수 있습니다.</p>
+                <p className="text-muted-foreground text-sm font-normal">해당 날짜에 대한 메모를 적어두면 Daily Report로 활용할 수 있습니다.</p>
               </CardHeader>
               <CardContent className="space-y-2">
                 <Textarea

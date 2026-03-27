@@ -49,7 +49,7 @@ const TaskTreeView = dynamic(
     ssr: false,
     loading: () => (
       <p className="text-muted-foreground py-12 text-center text-sm">
-        마인드맵 불러오는 중...
+        Mindmap 불러오는 중...
       </p>
     ),
   }
@@ -61,7 +61,7 @@ const WorkLogTab = dynamic(
     ssr: false,
     loading: () => (
       <p className="text-muted-foreground py-12 text-center text-sm">
-        업무일지 불러오는 중...
+        Daily Report 불러오는 중...
       </p>
     ),
   }
@@ -131,6 +131,7 @@ type Task = {
   assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
+  projectId?: string | null;
 };
 
 function getEffectiveStatus(task: Task): TaskStatus {
@@ -406,7 +407,7 @@ export default function TasksPage() {
 
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
-      if (!confirm("이 업무를 삭제(휴지통 이동)할까요?")) return;
+      if (!confirm("이 프로젝트를 삭제(휴지통 이동)할까요?")) return;
       setDeletingTaskId(taskId);
       try {
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
@@ -485,6 +486,7 @@ export default function TasksPage() {
       priority: t.priority,
       parentId: t.parentId ?? null,
       isCollapsed: !!t.isCollapsed,
+      projectId: t.projectId ?? null,
       assignees: t.assignees,
       assignedTo: t.assignees?.[0] ?? t.assignedTo,
       createdById: t.createdById ?? t.createdBy?.id ?? null,
@@ -504,21 +506,28 @@ export default function TasksPage() {
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="border-border flex flex-col gap-4 border-b border-gray-200 pb-6">
-        <PageHeadline title="업무" description="업무를 목록·마인드맵·업무일지로 관리합니다." />
+        <PageHeadline
+          title={view === "log" ? "Daily Report" : "프로젝트"}
+          description={
+            view === "log"
+              ? "Record your daily work"
+              : "프로젝트를 목록·Mindmap·Daily Report로 관리합니다."
+          }
+        />
         <div className="flex flex-wrap items-center gap-3">
           <Tabs value={view} onValueChange={(v: any) => setView(v as any)} className="w-auto">
             <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5">
               <TabsTrigger value="list" className="gap-2 rounded-md px-3">
                 <ListIcon className="size-4" />
-                todoo
+                Projects
               </TabsTrigger>
               <TabsTrigger value="mindmap" className="gap-2 rounded-md px-3">
                 <GitBranch className="size-4" />
-                마인드맵
+                Mindmap
               </TabsTrigger>
               <TabsTrigger value="log" className="gap-2 rounded-md px-3">
                 <FileText className="size-4" />
-                업무일지
+                Daily Report
               </TabsTrigger>
             </TabsList>
             <TabsContent value="list" className="mt-0" />
@@ -637,7 +646,7 @@ export default function TasksPage() {
             className="ml-auto bg-foreground text-background hover:bg-foreground/90"
           >
             <Plus className="mr-2 size-4" />
-            새로 만들기
+            새 프로젝트
           </Button>
         </div>
       </div>
@@ -695,8 +704,19 @@ export default function TasksPage() {
                 tasks={mindmapTasks as any}
                 taskLinks={taskLinks as any}
                 onRefresh={refreshTasks}
-                onTaskClick={(taskId: string) => router.push(`/tasks/${taskId}`)}
-                onTaskHover={(taskId: string) => router.prefetch(`/tasks/${taskId}`)}
+                onTaskClick={(taskId: string, projectId?: string | null) => {
+                  if (projectId) {
+                    router.push(`/projects/${projectId}`);
+                  } else {
+                    router.push(`/tasks/${taskId}`);
+                  }
+                }}
+                onTaskHover={(taskId: string) => {
+                  const row = mindmapTasks.find((t: { id: string }) => t.id === taskId);
+                  const pid = row && "projectId" in row ? (row as { projectId?: string | null }).projectId : null;
+                  if (pid) router.prefetch(`/projects/${pid}`);
+                  else router.prefetch(`/tasks/${taskId}`);
+                }}
                 onCreateTask={(parentId: any) => {
                   setCreateParentId(parentId);
                   setCreateOpen(true);
@@ -723,7 +743,7 @@ export default function TasksPage() {
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
-            <p className="mb-4 text-sm">조건에 맞는 업무가 없습니다.</p>
+            <p className="mb-4 text-sm">조건에 맞는 프로젝트가 없습니다.</p>
             <Button
               onClick={() => {
                 setCreateParentId(null);
@@ -733,7 +753,7 @@ export default function TasksPage() {
               size="sm"
             >
               <Plus className="mr-2 size-4" />
-              새로 만들기
+              새 프로젝트
             </Button>
           </div>
         ) : (

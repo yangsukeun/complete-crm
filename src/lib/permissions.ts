@@ -23,7 +23,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   announcements: "공지사항",
   board: "게시판",
   admin_employees: "직원 관리",
-  admin_logs: "업무일지 조회",
+  admin_logs: "Daily Report 조회",
   admin_departments: "부서·직책",
   admin_projects: "브랜드/프로젝트",
   admin_company: "회사 정보",

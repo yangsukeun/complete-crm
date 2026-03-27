@@ -343,7 +343,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
       <SheetContent
         side="right"
         showCloseButton={true}
-        ariaTitle="업무 상세"
+        ariaTitle="프로젝트 상세"
         className="max-h-[100vh] w-full overflow-hidden p-0 gap-0 border-0 bg-background sm:max-w-[min(96vw,1680px)]"
       >
         {loading ? (
@@ -365,7 +365,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                     try {
                       const result = await copyTaskToPersonal(task.id) as { ok?: boolean; error?: string };
                       if (result.ok) {
-                        toast.success("개인 업무로 저장되었습니다.");
+                        toast.success("개인 프로젝트로 저장되었습니다.");
                         onUpdate();
                       } else {
                         toast.error(result.error ?? "실패");
@@ -752,7 +752,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
           </div>
         ) : taskId ? (
           <div className="flex min-h-[320px] items-center justify-center px-8">
-            <p className="text-muted-foreground text-sm">업무를 불러올 수 없습니다.</p>
+            <p className="text-muted-foreground text-sm">프로젝트를 불러올 수 없습니다.</p>
           </div>
         ) : null}
       </SheetContent>

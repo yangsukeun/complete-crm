@@ -484,7 +484,7 @@ export function AdminEmployeesClient({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차·자금 요청)</SelectItem>
+                        <SelectItem value="USER">직원 — 기본 권한(일정·프로젝트·연차·자금 요청)</SelectItem>
                         <SelectItem value="TEAM_LEAD">팀장 — 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
                         <SelectItem value="EXECUTIVE">대표/임원 — 경영·전체 관리</SelectItem>
                         <SelectItem value="ADMIN">시스템 관리자 — 직원 역할·설정</SelectItem>
@@ -495,7 +495,7 @@ export function AdminEmployeesClient({
                         ? "팀장: 휴가 1차 승인, 자금이체 등록 시 알람 수신 및 이체 확인 가능."
                         : role === "EXECUTIVE" || role === "ADMIN"
                           ? "대표/관리자: 공지 작성·직원 관리 등 상위 권한이 적용됩니다."
-                          : "직원: 본인 업무·연차 신청·결제 요청만 가능."}
+                          : "직원: 본인 프로젝트·연차 신청·결제 요청만 가능."}
                     </p>
                   </>
                 )}

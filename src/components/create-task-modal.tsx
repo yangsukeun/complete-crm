@@ -44,7 +44,7 @@ type Props = {
   defaultAssignedToId?: string | null;
   /** 여러 담당자 미선택 */
   defaultAssigneeIds?: string[] | null;
-  /** 이 카테고리 아래에 업무 추가 */
+  /** 이 카테고리 아래에 프로젝트 추가 */
   categoryId?: string | null;
 };
 
@@ -125,13 +125,13 @@ export function CreateTaskModal({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "업무 생성에 실패했습니다.");
+        throw new Error((data as { error?: string }).error ?? "프로젝트 생성에 실패했습니다.");
       }
-      toast.success("업무가 할당되었습니다.");
+      toast.success("프로젝트가 할당되었습니다.");
       onCreated();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "업무 생성에 실패했습니다.");
+      toast.error(e instanceof Error ? e.message : "프로젝트 생성에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -143,7 +143,7 @@ export function CreateTaskModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>새 업무 만들기</DialogTitle>
+          <DialogTitle>새 프로젝트 만들기</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div className="space-y-2">
@@ -186,7 +186,7 @@ export function CreateTaskModal({
               id="task-title"
               value={title}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-              placeholder="업무 제목"
+              placeholder="프로젝트 제목"
               required
             />
           </div>
@@ -201,7 +201,7 @@ export function CreateTaskModal({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="task-due">마감일</Label>
+            <Label htmlFor="task-due">프로젝트 마감일</Label>
             <Input
               id="task-due"
               type="datetime-local"

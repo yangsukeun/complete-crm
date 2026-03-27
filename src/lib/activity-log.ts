@@ -158,7 +158,7 @@ function formatActivitiesAsMarkdown(
         : "";
     return ` - [${time}] '${(a.targetTitle || "").replace(/'/g, "''")}' ${label}${ipSuffix}`;
   });
-  return lines.length ? `# 업무일지\n\n${lines.join("\n")}` : "# 업무일지\n\n(기록된 활동이 없습니다.)";
+  return lines.length ? `# Daily Report\n\n${lines.join("\n")}` : "# Daily Report\n\n(기록된 활동이 없습니다.)";
 }
 
 /**

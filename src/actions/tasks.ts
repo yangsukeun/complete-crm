@@ -21,15 +21,15 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
   });
 
   if (!original) {
-    return { error: "업무를 찾을 수 없습니다." };
+    return { error: "프로젝트를 찾을 수 없습니다." };
   }
 
   if (original.deletedAt) {
-    return { error: "삭제된 업무는 가져올 수 없습니다." };
+    return { error: "삭제된 프로젝트는 가져올 수 없습니다." };
   }
 
   if (original.scope !== "TEAM") {
-    return { error: "공용 업무만 개인으로 가져올 수 있습니다." };
+    return { error: "공용 프로젝트만 개인으로 가져올 수 있습니다." };
   }
 
   const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
@@ -38,7 +38,7 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
     original.assignees.some((a) => a.userId === session.user.id);
   const isCreator = original.createdById === session.user.id;
   if (!isAdmin && !isAssignee && !isCreator) {
-    return { error: "이 업무를 가져올 권한이 없습니다." };
+    return { error: "이 프로젝트를 가져올 권한이 없습니다." };
   }
 
   const title = original.title.startsWith("[스크랩]")

@@ -38,6 +38,7 @@ const listSelect = {
   isCollapsed: true,
   scope: true,
   createdById: true,
+  projectId: true,
   assignedTo: {
     select: {
       id: true,
@@ -154,7 +155,7 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: "업무 목록을 불러올 수 없습니다." },
+      { error: "프로젝트 목록을 불러올 수 없습니다." },
       { status: 500 }
     );
   }
@@ -198,7 +199,7 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: "업무를 저장할 수 없습니다." },
+      { error: "프로젝트를 저장할 수 없습니다." },
       { status: 500 }
     );
   }

@@ -94,7 +94,7 @@ export async function createTaskWithNotifications(params: {
       await createNotificationWithOptions({
         userId: uid,
         type: "ASSIGNED",
-        message: `'${task.title}' 업무가 배정되었습니다.`,
+        message: `'${task.title}' 프로젝트가 배정되었습니다.`,
         link: `/tasks/${task.id}`,
         actorId: createdById,
       });

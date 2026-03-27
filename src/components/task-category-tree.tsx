@@ -121,7 +121,7 @@ export function TaskCategoryTree({
 
   const deleteCategory = useCallback(
     async (id: string) => {
-      if (!confirm("이 카테고리를 삭제할까요? 하위 카테고리도 삭제되며, 포함된 업무는 미분류로 이동합니다.")) return;
+      if (!confirm("이 카테고리를 삭제할까요? 하위 카테고리도 삭제되며, 포함된 프로젝트는 미분류로 이동합니다.")) return;
       try {
         const res = await fetch(`/api/tasks/categories/${id}`, { method: "DELETE" });
         if (!res.ok) {
@@ -170,7 +170,7 @@ export function TaskCategoryTree({
           },
           body: JSON.stringify({ categoryId }),
         });
-        if (!res.ok) throw new Error("업무 이동 실패");
+        if (!res.ok) throw new Error("프로젝트 이동 실패");
         toast.success("카테고리로 이동했습니다.");
         onRefresh();
       } catch (e) {
@@ -331,7 +331,7 @@ export function TaskCategoryTree({
                 setCreateCategoryId(cat?.id ?? "");
                 setCreateOpen(true);
               }}
-              title="업무 추가"
+              title="프로젝트 추가"
             >
               <ListTodo className="size-3.5" />
             </Button>
@@ -443,7 +443,7 @@ export function TaskCategoryTree({
 
   const deleteTask = useCallback(
     async (taskId: string) => {
-      if (!confirm("이 업무를 삭제할까요?")) return;
+      if (!confirm("이 프로젝트를 삭제할까요?")) return;
       try {
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
         const errData = await res.json().catch(() => ({}));
@@ -516,7 +516,7 @@ export function TaskCategoryTree({
               )}
             >
               {uncategorizedTasks.length === 0 && (
-                <span className="py-1">업무를 여기로 끌어다 놓으면 미분류로 이동합니다.</span>
+                <span className="py-1">프로젝트를 여기로 끌어다 놓으면 미분류로 이동합니다.</span>
               )}
               {uncategorizedTasks.map((t: any, index: number) => (
                   <Draggable key={t.id} draggableId={`task-${t.id}`} index={index}>

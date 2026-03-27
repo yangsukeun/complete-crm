@@ -457,7 +457,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
   const handleDelegateConfirm = async () => {
     if (!delegateForm.assigneeUserId || !delegateForm.title.trim() || !delegateForm.dueDate) {
-      toast.error("담당자·업무 제목·마감일을 확인하세요.");
+      toast.error("담당자·프로젝트 제목·마감일을 확인하세요.");
       return;
     }
     setDelegateConfirmLoading(true);
@@ -482,11 +482,11 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       const taskTitle = data.task?.title as string;
       setDelegateModalOpen(false);
       setDelegateParsed(null);
-      const line = `✅ ${assigneeName}님께 ${taskTitle} 업무가 등록되었습니다`;
+      const line = `✅ ${assigneeName}님께 ${taskTitle} 프로젝트가 등록되었습니다`;
       await postChatAndAppendSystem(delegatePendingText, line);
-      toast.success("업무가 등록되었습니다.");
+      toast.success("프로젝트가 등록되었습니다.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "업무 등록에 실패했습니다.");
+      toast.error(e instanceof Error ? e.message : "프로젝트 등록에 실패했습니다.");
     } finally {
       setDelegateConfirmLoading(false);
     }
@@ -508,7 +508,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           body: JSON.stringify({ text: body }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "업무 지시 처리 실패");
+        if (!res.ok) throw new Error(data.error ?? "프로젝트 지시 처리 실패");
 
         if (data.needsConfirmation && data.parsed) {
           const p = data.parsed as DelegateParsed;
@@ -533,15 +533,15 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           setNewMessage("");
           await postChatAndAppendSystem(
             body,
-            `✅ ${assigneeName}님께 ${title} 업무가 등록되었습니다`
+            `✅ ${assigneeName}님께 ${title} 프로젝트가 등록되었습니다`
           );
-          toast.success("업무가 등록되었습니다.");
+          toast.success("프로젝트가 등록되었습니다.");
           return;
         }
 
         throw new Error("응답 형식이 올바르지 않습니다.");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "업무 지시에 실패했습니다.");
+        toast.error(e instanceof Error ? e.message : "프로젝트 지시에 실패했습니다.");
       } finally {
         setSending(false);
       }
@@ -934,11 +934,11 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                         variant={delegateTaskMode ? "default" : "outline"}
                         size="sm"
                         className="shrink-0 gap-1"
-                        title="켜면 전송 시 AI가 업무를 등록합니다 (대표·관리자)"
+                        title="켜면 전송 시 AI가 프로젝트를 등록합니다 (대표·관리자)"
                         onClick={() => setDelegateTaskMode((v: boolean) => !v)}
                       >
                         <ClipboardList className="size-4" />
-                        업무지시
+                        프로젝트 지시
                       </Button>
                     )}
                     <div className="relative min-w-0 flex-1 basis-[200px]">
@@ -1095,7 +1095,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       <Dialog open={delegateModalOpen} onOpenChange={setDelegateModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>업무 지시 확인</DialogTitle>
+            <DialogTitle>프로젝트 지시 확인</DialogTitle>
           </DialogHeader>
           <p className="text-muted-foreground text-sm">
             AI 판단 신뢰도가 낮아 내용을 확인한 뒤 등록합니다. 담당자·제목·마감일을 수정할 수 있습니다.
@@ -1128,7 +1128,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="delegate-title">업무 제목</Label>
+              <Label htmlFor="delegate-title">프로젝트 제목</Label>
               <Input
                 id="delegate-title"
                 value={delegateForm.title}
@@ -1159,7 +1159,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
               취소
             </Button>
             <Button onClick={handleDelegateConfirm} disabled={delegateConfirmLoading}>
-              {delegateConfirmLoading ? "등록 중..." : "업무 등록"}
+              {delegateConfirmLoading ? "등록 중..." : "프로젝트 등록"}
             </Button>
           </DialogFooter>
         </DialogContent>

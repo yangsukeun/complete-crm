@@ -91,14 +91,14 @@ export function TrashClient() {
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-4 md:p-6">
       <PageHeadline
         title="삭제된 항목"
-        description="삭제(숨김)된 프로젝트·업무·게시판 자료입니다. 복원하거나 영구 삭제할 수 있습니다."
+        description="삭제(숨김)된 브랜드 프로젝트·할 일(Tasks)·게시판 자료입니다. 복원하거나 영구 삭제할 수 있습니다."
       />
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ListTodo className="size-5" />
-            삭제된 업무 (Tasks)
+            삭제된 Projects (Tasks)
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -128,7 +128,7 @@ export function TrashClient() {
                       className="gap-1"
                       disabled={busyId !== null}
                       onClick={() => {
-                        if (!confirm("이 업무를 복원할까요?")) return;
+                        if (!confirm("이 프로젝트를 복원할까요?")) return;
                         void mutate("restore", "task", t.id);
                       }}
                     >
@@ -143,7 +143,7 @@ export function TrashClient() {
                       onClick={() => {
                         if (
                           !confirm(
-                            "영구 삭제하면 업무·댓글·이력이 DB에서 제거되고, 구글 드라이브 첨부도 삭제됩니다. 계속할까요?"
+                            "영구 삭제하면 프로젝트(할 일)·댓글·이력이 DB에서 제거되고, 구글 드라이브 첨부도 삭제됩니다. 계속할까요?"
                           )
                         )
                           return;

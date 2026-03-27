@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       prisma.task.findFirst({ where: { id: childId, deletedAt: null }, select: { id: true, parentId: true } }),
     ]);
     if (!parentTask || !childTaskCheck) {
-      return NextResponse.json({ error: "업무를 찾을 수 없습니다." }, { status: 404 });
+      return NextResponse.json({ error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
     }
 
     // 자기 자신에게 연결 방지
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
     const childTask = childTaskCheck;
     if (childTask?.parentId === parentId) {
       return NextResponse.json(
-        { error: "이미 기본 상위 업무로 연결되어 있습니다." },
+        { error: "이미 기본 상위 프로젝트로 연결되어 있습니다." },
         { status: 400 }
       );
     }

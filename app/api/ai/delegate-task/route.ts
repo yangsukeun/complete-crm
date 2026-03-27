@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const scope = await getServerWorkspaceScopeFromRequest(req);
     if (scope !== "TEAM") {
       return NextResponse.json(
-        { error: "회사 모드(팀 워크스페이스)에서만 업무 지시를 등록할 수 있습니다." },
+        { error: "회사 모드(팀 워크스페이스)에서만 프로젝트 지시를 등록할 수 있습니다." },
         { status: 400 }
       );
     }
@@ -194,13 +194,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = `당신은 회사 내부 업무 배정 도우미입니다. 사용자의 한국어 지시문을 분석하여 JSON만 출력합니다.
+    const systemPrompt = `당신은 회사 내부 프로젝트 배정 도우미입니다. 사용자의 한국어 지시문을 분석하여 JSON만 출력합니다.
 규칙:
 - 오늘 날짜(KST, YYYY-MM-DD): ${todayKst}
 - 마감일(dueDate)은 반드시 YYYY-MM-DD 형식이어야 하며, "내일"이면 KST 기준 오늘 다음 날, "금요일" 등은 그에 맞는 날짜로 계산합니다.
 - assigneeUserId는 아래 직원 목록의 id 중 정확히 하나여야 합니다. 호칭(김대리 등)으로 이름을 추론하면 됩니다. 확실하지 않으면 null로 두고 confidence를 낮춥니다.
-- title은 업무 제목 한 줄로 간결하게 작성합니다.
-- confidence는 0~1 사이 실수로, 담당자·업무 내용·마감일이 모두 명확하면 0.9 이상, 하나라도 애매하면 0.9 미만입니다.
+- title은 프로젝트 제목 한 줄로 간결하게 작성합니다.
+- confidence는 0~1 사이 실수로, 담당자·프로젝트 내용·마감일이 모두 명확하면 0.9 이상, 하나라도 애매하면 0.9 미만입니다.
 - JSON 이외의 설명·마크다운·코드펜스는 출력하지 마세요.`;
 
     const userPrompt = `직원 목록(JSON 배열, id는 반드시 이 중에서만 선택):
@@ -298,6 +298,6 @@ ${userText}
     });
   } catch (e) {
     console.error("[delegate-task]", e);
-    return NextResponse.json({ error: "업무 지시 처리에 실패했습니다." }, { status: 500 });
+    return NextResponse.json({ error: "프로젝트 지시 처리에 실패했습니다." }, { status: 500 });
   }
 }

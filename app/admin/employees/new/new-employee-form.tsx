@@ -147,7 +147,7 @@ export function NewEmployeeForm() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="USER">직원 — 기본 업무(일정·업무·연차 신청·자금 요청)</SelectItem>
+                <SelectItem value="USER">직원 — 기본 권한(일정·프로젝트·연차 신청·자금 요청)</SelectItem>
                 <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
                 {canCreateAdmin && (
                   <SelectItem value="ADMIN">관리자 — 관리 메뉴 접근 및 설정/직원 관리</SelectItem>

@@ -5,7 +5,7 @@ import { AiSecretaryClient } from "./ai-secretary-client";
 
 export const metadata: Metadata = {
   title: "AI 비서",
-  description: "역할별 맥락으로 업무·일정을 도와드립니다.",
+  description: "역할별 맥락으로 프로젝트·일정을 도와드립니다.",
 };
 
 export default async function AiSecretaryPage() {

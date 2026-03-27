@@ -26,8 +26,8 @@ export default async function AdminLogsPage() {
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <PageHeadline
-        title="업무일지 조회"
-        description="직원을 선택하고 날짜를 지정하면 해당 날짜의 자동 생성된 업무일지를 볼 수 있습니다."
+        title="Daily Report 조회"
+        description="직원을 선택하고 날짜를 지정하면 해당 날짜의 자동 생성된 Daily Report를 볼 수 있습니다."
       />
       <Suspense fallback={<p className="text-muted-foreground text-sm">불러오는 중...</p>}>
         <AdminLogsClient

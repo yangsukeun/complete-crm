@@ -170,7 +170,7 @@ export function QuoteProjectSuggestModal({ open, onOpenChange, quote, onSkip }: 
               checked={createLeadTask}
               onCheckedChange={(v) => setCreateLeadTask(v === true)}
             />
-            <span>대표 업무 자동 생성 ({quote.title.trim() || "프로젝트"} 완료 · 마감 동일 · 본인 담당)</span>
+            <span>대표 프로젝트 자동 생성 ({quote.title.trim() || "프로젝트"} 완료 · 마감 동일 · 본인 담당)</span>
           </label>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">

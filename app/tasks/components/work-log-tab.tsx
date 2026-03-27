@@ -29,8 +29,8 @@ type ActivityItem = {
 
 function activityLabel(actionType: string): string {
   switch (actionType) {
-    case "TASK_CREATED": return "업무 생성";
-    case "TASK_COMPLETED": return "업무 완료";
+    case "TASK_CREATED": return "프로젝트 생성";
+    case "TASK_COMPLETED": return "프로젝트 완료";
     case "COMMENT_ADDED": return "댓글 작성";
     case "SCHEDULE_CREATED": return "일정 등록";
     case "LOGIN": return "로그인";
@@ -64,7 +64,7 @@ export function WorkLogTab() {
       setStatus((data.status as "DRAFT" | "SUBMITTED") ?? "DRAFT");
       setMonthDeadlines(Array.isArray(data.monthDeadlines) ? data.monthDeadlines : []);
     } catch {
-      toast.error("업무일지를 불러올 수 없습니다.");
+      toast.error("Daily Report를 불러올 수 없습니다.");
       setActivities([]);
       setContent("");
       setStatus("DRAFT");
@@ -122,13 +122,17 @@ export function WorkLogTab() {
     return (
       <div className="flex min-h-[320px] items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
-        <span>업무일지 불러오는 중...</span>
+        <span>Daily Report 불러오는 중...</span>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold tracking-tight">Daily Report</h2>
+        <p className="text-muted-foreground text-sm">Record your daily work</p>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" className="h-9 w-9" onClick={goPrevDay} aria-label="이전 날짜">
@@ -225,8 +229,25 @@ export function WorkLogTab() {
       )}
 
       <div>
-        <p className="text-muted-foreground mb-1.5 text-xs font-medium">추가 작성 (수정 가능)</p>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-xs font-medium">Daily Report · 추가 작성 (수정 가능)</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => {
+              goToday();
+              requestAnimationFrame(() => {
+                document.getElementById("daily-report-body")?.focus();
+              });
+            }}
+          >
+            New Daily Report
+          </Button>
+        </div>
         <Textarea
+          id="daily-report-body"
           value={content}
           onChange={(e: any) => setContent(e.target.value)}
           onFocus={() =>

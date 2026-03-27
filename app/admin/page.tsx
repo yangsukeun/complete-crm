@@ -16,7 +16,7 @@ import {
 
 const menuItems = [
   { href: "/admin/employees", label: "직원 관리", description: "직원 계정 추가·수정·역할 관리", icon: Users },
-  { href: "/admin/logs", label: "업무일지 조회", description: "직원별 업무일지 조회", icon: FileText },
+  { href: "/admin/logs", label: "Daily Report 조회", description: "직원별 Daily Report 조회", icon: FileText },
   { href: "/admin/departments-positions", label: "부서·직책", description: "부서·직책 마스터 관리", icon: Layers },
   { href: "/admin/projects", label: "브랜드/프로젝트", description: "브랜드·프로젝트 관리", icon: FolderKanban },
   { href: "/admin/trash", label: "삭제된 항목", description: "휴지통: 프로젝트·게시물 복원·영구 삭제", icon: Trash2 },

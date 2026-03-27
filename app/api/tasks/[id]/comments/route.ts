@@ -72,7 +72,7 @@ export async function POST(
       await createNotificationWithOptions({
         userId: uid,
         type: "COMMENT",
-        message: `'${task.title}' 업무에 ${commenterName}님이 댓글을 달았습니다.`,
+        message: `'${task.title}' 프로젝트에 ${commenterName}님이 댓글을 달았습니다.`,
         link: `/tasks/${taskId}`,
         actorId: session.user.id,
       });

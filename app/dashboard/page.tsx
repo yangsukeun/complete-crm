@@ -107,12 +107,12 @@ export default async function DashboardPage() {
           >
             <div className="flex items-center gap-2 text-muted-foreground">
               <ListTodo className="size-5" />
-              <span className="text-sm">업무</span>
+              <span className="text-sm">프로젝트</span>
             </div>
             <p className="mt-2 text-2xl font-semibold">{myTasks.length}건</p>
             <p className="text-muted-foreground text-sm">미완료 할 일</p>
             <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-              업무 목록 →
+              프로젝트 목록 →
             </span>
           </Link>
           <div className="rounded-lg border bg-card p-4 opacity-90">
@@ -130,7 +130,7 @@ export default async function DashboardPage() {
             </div>
             <p className="mt-2 font-semibold">이번 달 목표</p>
             <p className="text-muted-foreground text-sm">
-              미완료 업무 {myTasks.length}건 완료하기
+              미완료 프로젝트 {myTasks.length}건 완료하기
             </p>
           </div>
         </div>
@@ -249,7 +249,7 @@ export default async function DashboardPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <PageHeadline
             title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
-            description="관리자 대시보드 — 공지·업무·직원 현황을 한눈에 볼 수 있습니다."
+            description="관리자 대시보드 — 공지·프로젝트·직원 현황을 한눈에 볼 수 있습니다."
           />
           <DashboardAttendance
             initial={
@@ -287,14 +287,14 @@ export default async function DashboardPage() {
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2 text-muted-foreground">
               <ListTodo className="size-5" />
-              <span className="text-sm">업무</span>
+              <span className="text-sm">프로젝트</span>
             </div>
             <p className="mt-2 text-2xl font-semibold">{progressPercent}%</p>
             <p className="text-muted-foreground text-sm">
               완료 {completedTasks.length} / 전체 {tasksCreatedByMe.length}건
             </p>
             <Link href="/tasks" className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-              업무 목록 →
+              프로젝트 목록 →
             </Link>
           </div>
           <Link
@@ -320,7 +320,7 @@ export default async function DashboardPage() {
             </div>
             <p className="mt-2 font-semibold">이번 달 목표</p>
             <p className="text-muted-foreground text-sm">
-              미완료 업무 {incompleteCount}건 완료하기
+              미완료 프로젝트 {incompleteCount}건 완료하기
             </p>
           </div>
         </div>
@@ -398,9 +398,9 @@ export default async function DashboardPage() {
           >
             <ListTodo className="size-10 text-muted-foreground" />
             <div>
-              <h2 className="font-semibold">업무 리마인드</h2>
+              <h2 className="font-semibold">프로젝트 리마인드</h2>
               <p className="text-muted-foreground text-sm">
-                직원에게 업무를 지시하고 진행 상황을 확인하세요.
+                직원에게 프로젝트를 지시하고 진행 상황을 확인하세요.
               </p>
             </div>
           </Link>
@@ -506,12 +506,12 @@ export default async function DashboardPage() {
         >
           <div className="flex items-center gap-2 text-muted-foreground">
             <ListTodo className="size-5" />
-            <span className="text-sm">업무</span>
+            <span className="text-sm">프로젝트</span>
           </div>
           <p className="mt-2 text-2xl font-semibold">{myTasks.length}건</p>
           <p className="text-muted-foreground text-sm">미완료 할 일</p>
           <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-            업무 목록 →
+            프로젝트 목록 →
           </span>
         </Link>
         <Link
@@ -537,7 +537,7 @@ export default async function DashboardPage() {
           </div>
           <p className="mt-2 font-semibold">이번 달 목표</p>
           <p className="text-muted-foreground text-sm">
-            미완료 업무 {myTasks.length}건 완료하기
+            미완료 프로젝트 {myTasks.length}건 완료하기
           </p>
         </div>
       </div>
@@ -576,7 +576,7 @@ export default async function DashboardPage() {
         </h2>
         {myTasks.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-muted/30 py-8 text-center text-muted-foreground">
-            할당된 미완료 업무가 없습니다.
+            할당된 미완료 프로젝트가 없습니다.
           </div>
         ) : (
           <ul className="space-y-2">
@@ -601,7 +601,7 @@ export default async function DashboardPage() {
           </ul>
         )}
         <Link href="/tasks" className="text-primary mt-2 inline-block text-sm font-medium hover:underline">
-          전체 업무 보기 →
+          전체 프로젝트 보기 →
         </Link>
       </section>
 
@@ -622,9 +622,9 @@ export default async function DashboardPage() {
         >
           <ListTodo className="size-10 text-muted-foreground" />
           <div>
-            <h2 className="font-semibold">업무 리마인드</h2>
+            <h2 className="font-semibold">프로젝트 리마인드</h2>
             <p className="text-muted-foreground text-sm">
-              할당된 업무를 확인하고 완료 처리하세요.
+              할당된 프로젝트를 확인하고 완료 처리하세요.
             </p>
           </div>
         </Link>

@@ -55,9 +55,8 @@ const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboar
   { href: "/ai-secretary", label: "AI 비서", icon: Sparkles },
 ];
 
-// [업무]
 const workGroupLinks: { href: string; label: string; icon: typeof ListTodo; featureKey?: string }[] = [
-  { href: "/tasks", label: "업무", icon: ListTodo, featureKey: "tasks" },
+  { href: "/tasks", label: "Projects", icon: ListTodo, featureKey: "tasks" },
 ];
 
 // [인사/일정 관리]: 인디고/블루 계열
@@ -232,7 +231,7 @@ export function AppNav() {
     ? [
         { href: "/admin", label: "관리 홈", icon: Settings },
         { href: "/admin/employees", label: "직원 관리", icon: Users },
-        { href: "/admin/logs", label: "업무일지 조회", icon: FileText },
+        { href: "/admin/logs", label: "Daily Report 조회", icon: FileText },
         { href: "/admin/departments-positions", label: "부서·직책", icon: Layers },
         { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban },
         { href: "/admin/trash", label: "삭제된 항목", icon: Trash2 },
@@ -318,12 +317,11 @@ export function AppNav() {
             </Link>
           </Button>
 
-          {/* 업무 단일 버튼 */}
           {can("tasks") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/tasks" || pathname.startsWith("/tasks/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
               <Link href="/tasks" prefetch={true} className="flex items-center gap-1.5">
                 <ListTodo className="size-4" />
-                <span>업무</span>
+                <span>Projects</span>
               </Link>
             </Button>
           )}
