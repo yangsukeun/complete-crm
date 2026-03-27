@@ -63,6 +63,21 @@ function sanitizePayload(raw: unknown): MindmapPayload {
   return out;
 }
 
+/** POST 시 sanitize 결과에서 키가 빠지면 “미전달”으로 보고, DB 기존값과 병합한다 */
+function mergeMindmapPayloads(prev: MindmapPayload, inc: MindmapPayload): Record<string, unknown> {
+  const positions =
+    inc.positions !== undefined && Object.keys(inc.positions).length > 0
+      ? inc.positions
+      : prev.positions ?? {};
+  return {
+    positions: positions && Object.keys(positions).length > 0 ? positions : {},
+    stagedRootIds: inc.stagedRootIds !== undefined ? inc.stagedRootIds : prev.stagedRootIds ?? [],
+    collapsedIds: inc.collapsedIds !== undefined ? inc.collapsedIds : prev.collapsedIds ?? [],
+    nodeStylesMap: inc.nodeStylesMap !== undefined ? inc.nodeStylesMap : prev.nodeStylesMap ?? {},
+    canvasBgColor: inc.canvasBgColor !== undefined ? inc.canvasBgColor : prev.canvasBgColor ?? "#f9fafb",
+  };
+}
+
 /** GET: 현재 세션 · 워크스페이스 스코프 기준 마인드맵 UI 상태 */
 export async function GET(req: Request) {
   try {
@@ -111,7 +126,15 @@ export async function POST(req: Request) {
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
-    const payload = sanitizePayload(body);
+    const incoming = sanitizePayload(body);
+
+    const existing = await prisma.userTaskMindmapState.findUnique({
+      where: {
+        userId_scope: { userId: session.user.id, scope },
+      },
+    });
+    const prev = sanitizePayload(existing?.data ?? {});
+    const merged = mergeMindmapPayloads(prev, incoming);
 
     await prisma.userTaskMindmapState.upsert({
       where: {
@@ -120,10 +143,10 @@ export async function POST(req: Request) {
       create: {
         userId: session.user.id,
         scope: scope as WorkspaceScope,
-        data: payload as object,
+        data: merged as object,
       },
       update: {
-        data: payload as object,
+        data: merged as object,
       },
     });
 

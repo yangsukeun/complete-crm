@@ -567,6 +567,8 @@ function TreeViewInner({
   const quickInputRef = useRef<HTMLInputElement>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** state보다 앞서 갱신 — 언마운트·디바운스에서 저장 누락 방지 */
+  const mindmapRemoteLoadedRef = useRef(false);
 
   /** 디바운스 저장 시 최신 Set/Object 참조 */
   const mindmapPersistRef = useRef({
@@ -590,14 +592,14 @@ function TreeViewInner({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/mindmap");
+        const res = await fetch("/api/mindmap", { credentials: "include" });
         if (cancelled) return;
         if (res.ok) {
           const data = (await res.json()) as Record<string, unknown>;
           if (Array.isArray(data.stagedRootIds)) {
-            setStagedRootIds(
-              new Set(data.stagedRootIds.filter((x): x is string => typeof x === "string"))
-            );
+            const fromServer = data.stagedRootIds.filter((x): x is string => typeof x === "string");
+            /* 느린 GET이 사용자가 이미 스테이징한 id를 덮어쓰지 않도록 합집합 */
+            setStagedRootIds((prev) => new Set([...fromServer, ...prev]));
           }
           if (Array.isArray(data.collapsedIds)) {
             setCollapsedIds(
@@ -632,6 +634,7 @@ function TreeViewInner({
         // 오프라인 등: 로컬만 사용
       } finally {
         if (!cancelled) {
+          mindmapRemoteLoadedRef.current = true;
           setMindmapRemoteLoaded(true);
           setHydrationVersion((v) => v + 1);
         }
@@ -642,16 +645,18 @@ function TreeViewInner({
     };
   }, []);
 
-  const schedulePersistMindmap = useCallback(() => {
-    if (!mindmapRemoteLoaded) return;
-    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    setSaveUi("saving");
-    persistTimerRef.current = setTimeout(async () => {
-      persistTimerRef.current = null;
+  const runMindmapPersist = useCallback(
+    async (options?: { keepalive?: boolean; silent?: boolean }) => {
+      if (!mindmapRemoteLoadedRef.current) return;
       const { stagedRootIds: sr, collapsedIds: ci, nodeStylesMap: nsm, canvasBgColor: cbg } =
         mindmapPersistRef.current;
       try {
-        const flowNodes = getNodes();
+        let flowNodes: Node[] = [];
+        try {
+          flowNodes = getNodes();
+        } catch {
+          flowNodes = [];
+        }
         const positions: Record<string, { x: number; y: number }> = {};
         for (const n of flowNodes) {
           positions[n.id] = { x: n.position.x, y: n.position.y };
@@ -666,19 +671,34 @@ function TreeViewInner({
             nodeStylesMap: nsm,
             canvasBgColor: cbg,
           }),
+          credentials: "include",
+          keepalive: options?.keepalive === true,
         });
         if (!res.ok) throw new Error("save failed");
-        if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
-        setSaveUi("saved");
-        savedClearTimerRef.current = setTimeout(() => {
-          savedClearTimerRef.current = null;
-          setSaveUi((s) => (s === "saved" ? "idle" : s));
-        }, 2000);
+        if (!options?.silent) {
+          if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+          setSaveUi("saved");
+          savedClearTimerRef.current = setTimeout(() => {
+            savedClearTimerRef.current = null;
+            setSaveUi((s) => (s === "saved" ? "idle" : s));
+          }, 2000);
+        }
       } catch {
-        setSaveUi("error");
+        if (!options?.silent) setSaveUi("error");
       }
-    }, 1000);
-  }, [mindmapRemoteLoaded, getNodes]);
+    },
+    [getNodes]
+  );
+
+  const schedulePersistMindmap = useCallback(() => {
+    if (!mindmapRemoteLoadedRef.current) return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    setSaveUi("saving");
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      void runMindmapPersist({ silent: false });
+    }, 600);
+  }, [runMindmapPersist]);
 
   useEffect(() => {
     if (!mindmapRemoteLoaded) return;
@@ -687,10 +707,17 @@ function TreeViewInner({
 
   useEffect(() => {
     return () => {
-      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
       if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+      /* 페이지 이동 직후에도 저장되도록 디바운스 취소분을 즉시 전송 */
+      if (mindmapRemoteLoadedRef.current) {
+        void runMindmapPersist({ keepalive: true, silent: true });
+      }
     };
-  }, []);
+  }, [runMindmapPersist]);
 
   /** 삭제·동기화 후 존재하지 않는 task id는 스테이징·접힘에서 제거 */
   useEffect(() => {
