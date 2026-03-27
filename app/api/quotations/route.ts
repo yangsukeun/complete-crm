@@ -40,6 +40,7 @@ export async function GET(req: Request) {
       orderBy: { issuedAt: "desc" },
       include: {
         issuedBy: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
       },
     });
     return NextResponse.json(list);

@@ -128,7 +128,8 @@ model User {
   department    String?
   position      String?   // 직책
   currentProjectId String?
-  currentProject   Project? @relation(fields: [currentProjectId], references: [id], onDelete: SetNull)
+  currentProject   Project? @relation("UserCurrentProject", fields: [currentProjectId], references: [id], onDelete: SetNull)
+  projects         Project[] @relation("ProjectTeamMembers")
   joinDate      DateTime  @default(now())
   birthDate     DateTime? // 생년월일
   emailVerified DateTime?
@@ -206,7 +207,15 @@ model Project {
   name      String
   brandId   String
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  users     User[]
+  users     User[] @relation("ProjectTeamMembers")
+  usersWithCurrentProject User[] @relation("UserCurrentProject")
+  // 대표 견적서(1:1)
+  quoteId     String?   @unique
+  quote       Quotation? @relation("ProjectPrimaryQuote", fields: [quoteId], references: [id], onDelete: SetNull)
+  quoteAmount Int       @default(0)
+  dueDate     DateTime?
+  tasks       Task[]
+  quotationsLinked Quotation[] @relation("QuotationLinkedProject")
   deletedAt DateTime?
   deletedById String?
   deletedBy User? @relation("ProjectDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
@@ -325,6 +334,8 @@ model Task {
   isCompleted  Boolean        @default(false)
   status       TaskStatus     @default(TODO)
   priority     TaskPriority   @default(MEDIUM)
+  projectId    String?
+  project      Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parentId     String?
   parent       Task?          @relation("TaskTree", fields: [parentId], references: [id], onDelete: Cascade)
   children     Task[]         @relation("TaskTree")
@@ -358,6 +369,7 @@ model Task {
   @@index([dueDate])
   @@index([scope])
   @@index([deletedAt])
+  @@index([projectId])
 }
 
 // 업무 다중 담당자 (assignedToId 는 호환용으로 첫 담당자와 동기화)
@@ -673,13 +685,17 @@ model Quotation {
   issuedBy         User?             @relation(fields: [issuedById], references: [id], onDelete: SetNull)
   issuedAt         DateTime          @default(now()) // 발행일시
   remarks          String?           // 특이사항/비고
+  projectId        String?
+  project          Project?          @relation("QuotationLinkedProject", fields: [projectId], references: [id], onDelete: SetNull)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   items            QuotationItem[]
   paymentRequests  PaymentRequest[]
+  linkedAsPrimaryFor Project?      @relation("ProjectPrimaryQuote")
   @@index([issuedById])
   @@index([quotationNumber])
   @@index([status])
+  @@index([projectId])
 }
 
 model QuotationItem {

@@ -1,14 +1,143 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { userCanAccessProject } from "@/lib/project-access";
+import { syncQuotationProjectLink } from "@/lib/quote-project-link";
+import { revalidatePath } from "next/cache";
 
-function isExecutive(role: string | undefined) {
-  return role === "EXECUTIVE" || role === "ADMIN";
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id } = await params;
+
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, email: true, currentProjectId: true },
+    });
+    const role = (me?.role ?? session.user.role) as string | undefined;
+    const allowed = await userCanAccessProject(session.user.id, id, {
+      role,
+      email: me?.email ?? (session.user as { email?: string }).email,
+      currentProjectId: me?.currentProjectId,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        brand: { select: { id: true, name: true } },
+        quote: {
+          select: {
+            id: true,
+            title: true,
+            finalAmount: true,
+            validUntil: true,
+            status: true,
+            issuedAt: true,
+            quotationNumber: true,
+          },
+        },
+      },
+    });
+    if (!project) {
+      return NextResponse.json({ error: "Not Found" }, { status: 404 });
+    }
+
+    const quoteId = project.quoteId ?? project.quote?.id ?? null;
+    const paymentRequests = quoteId
+      ? await prisma.paymentRequest.findMany({
+          where: { quotationId: quoteId },
+          orderBy: { requestedAt: "desc" },
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            requestedAt: true,
+            completedAt: true,
+            description: true,
+          },
+        })
+      : [];
+
+    const quoted = project.quote?.finalAmount ?? project.quoteAmount ?? 0;
+    const paid = paymentRequests
+      .filter((p) => p.status === "COMPLETED")
+      .reduce((s, p) => s + p.amount, 0);
+    const outstanding = Math.max(0, quoted - paid);
+
+    return NextResponse.json({
+      ...project,
+      paymentRequests,
+      paymentSummary: { quoted, paid, outstanding },
+    });
+  } catch (e) {
+    console.error("GET /api/projects/[id]", e);
+    return NextResponse.json({ error: "프로젝트를 불러올 수 없습니다." }, { status: 500 });
+  }
 }
 
-function isMasterEmail(email: unknown) {
-  const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
-  return String(email ?? "").trim().toLowerCase() === masterEmail;
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id: projectId } = await params;
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, email: true, currentProjectId: true },
+    });
+    const role = (me?.role ?? session.user.role) as string | undefined;
+    const allowed = await userCanAccessProject(session.user.id, projectId, {
+      role,
+      email: me?.email ?? (session.user as { email?: string }).email,
+      currentProjectId: me?.currentProjectId,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const quoteIdRaw = body?.quoteId;
+    if (quoteIdRaw === undefined) {
+      return NextResponse.json({ error: "quoteId가 필요합니다." }, { status: 400 });
+    }
+    if (quoteIdRaw !== null && typeof quoteIdRaw !== "string") {
+      return NextResponse.json({ error: "quoteId가 올바르지 않습니다." }, { status: 400 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (quoteIdRaw === null || quoteIdRaw === "") {
+        const p = await tx.project.findUnique({
+          where: { id: projectId },
+          select: { quoteId: true },
+        });
+        if (p?.quoteId) {
+          await syncQuotationProjectLink(tx, { quotationId: p.quoteId, projectId: null });
+        }
+        return;
+      }
+      if (typeof quoteIdRaw === "string" && quoteIdRaw.length > 0) {
+        await syncQuotationProjectLink(tx, { quotationId: quoteIdRaw, projectId });
+      }
+    });
+
+    revalidatePath("/quotations");
+    revalidatePath(`/projects/${projectId}`);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("PATCH /api/projects/[id]", e);
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "QUOTATION_NOT_FOUND") {
+      return NextResponse.json({ error: "견적서를 찾을 수 없습니다." }, { status: 404 });
+    }
+    return NextResponse.json({ error: "저장할 수 없습니다." }, { status: 500 });
+  }
 }
 
 /** 프로젝트 소프트삭제: deletedAt/deletedById만 기록, 실제 row는 유지 */
@@ -33,16 +162,11 @@ export async function DELETE(
       },
     });
     const role = (me?.role ?? session.user.role) as string | undefined;
-    const memberRow = await prisma.project.findFirst({
-      where: { id, users: { some: { id: session.user.id } } },
-      select: { id: true },
+    const canDelete = await userCanAccessProject(session.user.id, id, {
+      role,
+      email: me?.email ?? (session.user as { email?: string }).email,
+      currentProjectId: me?.currentProjectId,
     });
-    const isProjectMember = !!memberRow;
-    const canDelete =
-      isExecutive(role) ||
-      isMasterEmail(me?.email ?? (session.user as any)?.email) ||
-      me?.currentProjectId === id ||
-      isProjectMember;
 
     if (!canDelete) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

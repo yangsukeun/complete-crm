@@ -19,6 +19,10 @@ import { toast } from "sonner";
 import { PageHeadline } from "@/components/page-headline";
 import { ArrowLeft, Plus, Trash2, Save, Eye } from "lucide-react";
 import { type QuotationItemInput } from "../../actions";
+import {
+  QuoteProjectSuggestModal,
+  type QuoteProjectSuggestPayload,
+} from "@/components/quote-project-suggest-modal";
 
 type QuotationEditFormProps = {
   quotationId: string;
@@ -28,6 +32,7 @@ type QuotationEditFormProps = {
     clientName: string;
     validUntil: string;
     remarks: string | null;
+    projectId: string | null;
     items: { description: string; quantity: number; unitPrice: number; amount: number }[];
   };
 };
@@ -59,6 +64,9 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
       : [{ description: "", quantity: 1, unitPrice: 0, amount: 0 }]
   );
   const [saving, setSaving] = useState(false);
+  const [projectSuggestOpen, setProjectSuggestOpen] = useState(false);
+  const [projectSuggestQuote, setProjectSuggestQuote] = useState<QuoteProjectSuggestPayload | null>(null);
+  const [afterSkipToPreview, setAfterSkipToPreview] = useState(false);
 
   const updateItem = (index: number, patch: Partial<QuotationItemInput>) => {
     setItems((prev: any) => {
@@ -142,11 +150,23 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
         return;
       }
       toast.success("견적서가 수정되었습니다.");
-      if (openPreview) {
-        router.push(`/quotations/${quotationId}`);
-      } else {
-        router.push("/quotations");
+      if (initial.projectId) {
+        if (openPreview) {
+          router.push(`/quotations/${quotationId}`);
+        } else {
+          router.push("/quotations");
+        }
+        return;
       }
+      const validIso = new Date(`${validUntil}T12:00:00`).toISOString();
+      setAfterSkipToPreview(openPreview);
+      setProjectSuggestQuote({
+        quoteId: quotationId,
+        title: title.trim(),
+        finalAmount: displayFinal,
+        validUntil: validIso,
+      });
+      setProjectSuggestOpen(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "수정에 실패했습니다.");
     } finally {
@@ -156,6 +176,19 @@ export function QuotationEditForm({ quotationId, initial }: QuotationEditFormPro
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 max-w-4xl mx-auto">
+      <QuoteProjectSuggestModal
+        open={projectSuggestOpen}
+        onOpenChange={setProjectSuggestOpen}
+        quote={projectSuggestQuote}
+        onSkip={() => {
+          setProjectSuggestQuote(null);
+          if (afterSkipToPreview) {
+            router.push(`/quotations/${quotationId}`);
+          } else {
+            router.push("/quotations");
+          }
+        }}
+      />
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href={`/quotations/${quotationId}`}>

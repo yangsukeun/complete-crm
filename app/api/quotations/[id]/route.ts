@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { syncQuotationProjectLink } from "@/lib/quote-project-link";
 
 const VALID_STATUSES = [
   "DRAFT",
@@ -155,18 +156,72 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
-    const body = await req.json();
-    const status = body?.status;
-    if (!status || !VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
+    const body = await req.json().catch(() => ({}));
+    const status = body?.status as string | undefined;
+    const projectId = body?.projectId as string | null | undefined;
+
+    if (status === undefined && projectId === undefined) {
+      return NextResponse.json({ error: "변경할 항목이 없습니다." }, { status: 400 });
+    }
+    if (status !== undefined && !VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
       return NextResponse.json({ error: "유효한 상태값이 아닙니다." }, { status: 400 });
     }
-    const quotation = await prisma.quotation.update({
+    if (
+      projectId !== undefined &&
+      projectId !== null &&
+      (typeof projectId !== "string" || projectId.length === 0)
+    ) {
+      return NextResponse.json({ error: "projectId가 올바르지 않습니다." }, { status: 400 });
+    }
+
+    const existing = await prisma.quotation.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "견적서를 찾을 수 없습니다." }, { status: 404 });
+    }
+    const isAdmin =
+      (session.user as { role?: string }).role === "EXECUTIVE" ||
+      (session.user as { role?: string }).role === "ADMIN";
+    const canPatch =
+      existing.issuedById == null || existing.issuedById === session.user.id || isAdmin;
+    if (!canPatch) {
+      return NextResponse.json({ error: "견적서 발행자만 수정할 수 있습니다." }, { status: 403 });
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        if (projectId !== undefined) {
+          await syncQuotationProjectLink(tx, {
+            quotationId: id,
+            projectId: projectId === null ? null : projectId,
+          });
+        }
+        if (status !== undefined) {
+          await tx.quotation.update({
+            where: { id },
+            data: { status: status as (typeof VALID_STATUSES)[number] },
+          });
+        }
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "PROJECT_NOT_FOUND") {
+        return NextResponse.json({ error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+      throw err;
+    }
+
+    const quotation = await prisma.quotation.findUnique({
       where: { id },
-      data: { status: status as (typeof VALID_STATUSES)[number] },
       include: {
         issuedBy: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
       },
     });
+    revalidatePath("/quotations");
+    revalidatePath(`/quotations/${id}`);
+    if (quotation?.projectId) {
+      revalidatePath(`/projects/${quotation.projectId}`);
+    }
     return NextResponse.json(quotation);
   } catch (e) {
     console.error("[PATCH /api/quotations/[id]]", e);

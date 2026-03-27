@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { syncQuotationProjectLink } from "@/lib/quote-project-link";
+import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
+import { createTaskWithNotifications } from "@/lib/tasks/create-task";
+import { revalidatePath } from "next/cache";
 
 const createSchema = z.object({
   brandId: z.string().min(1),
   name: z.string().min(1).max(80),
+  quoteId: z.string().min(1).optional(),
+  createLeadTask: z.boolean().optional(),
 });
 
 export async function GET(req: Request) {
@@ -56,28 +62,97 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAppSession();
-    if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "브랜드와 프로젝트명을 입력하세요." }, { status: 400 });
     }
-    const project = await prisma.project.create({
-      data: {
-        brandId: parsed.data.brandId,
-        name: parsed.data.name.trim(),
-      },
+    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const quoteId = parsed.data.quoteId;
+
+    if (!quoteId) {
+      if (!isAdmin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const project = await prisma.project.create({
+        data: {
+          brandId: parsed.data.brandId,
+          name: parsed.data.name.trim(),
+        },
+        select: {
+          id: true,
+          name: true,
+          brand: { select: { id: true, name: true } },
+        },
+      });
+      return NextResponse.json(project);
+    }
+
+    const q = await prisma.quotation.findUnique({ where: { id: quoteId } });
+    if (!q) {
+      return NextResponse.json({ error: "견적서를 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (q.projectId) {
+      return NextResponse.json({ error: "이미 프로젝트에 연결된 견적서입니다." }, { status: 409 });
+    }
+    const canFromQuote = isAdmin || q.issuedById === session.user.id;
+    if (!canFromQuote) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const nameTrim = parsed.data.name.trim();
+    const scope = await getServerWorkspaceScopeFromRequest(req);
+
+    const project = await prisma.$transaction(async (tx) => {
+      const created = await tx.project.create({
+        data: {
+          brandId: parsed.data.brandId,
+          name: nameTrim,
+          quoteAmount: 0,
+          users: { connect: { id: session.user.id } },
+        },
+        select: { id: true, name: true },
+      });
+      await syncQuotationProjectLink(tx, { quotationId: q.id, projectId: created.id });
+      return created;
+    });
+
+    if (parsed.data.createLeadTask) {
+      const dueIso = q.validUntil.toISOString();
+      await createTaskWithNotifications({
+        createdById: session.user.id,
+        scope,
+        data: {
+          title: `${nameTrim} 완료`,
+          dueDate: dueIso,
+          assigneeIds: [session.user.id],
+          projectId: project.id,
+        },
+      });
+    }
+
+    const full = await prisma.project.findUnique({
+      where: { id: project.id },
       select: {
         id: true,
         name: true,
         brand: { select: { id: true, name: true } },
       },
     });
-    return NextResponse.json(project);
+    revalidatePath("/quotations");
+    revalidatePath(`/projects/${project.id}`);
+    return NextResponse.json(full ?? project);
   } catch (e) {
     console.error(e);
+    if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
+      return NextResponse.json(
+        { error: "같은 브랜드에 동일한 프로젝트명이 이미 있습니다. 이름을 바꿔 주세요." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: "프로젝트를 생성할 수 없습니다." }, { status: 500 });
   }
 }

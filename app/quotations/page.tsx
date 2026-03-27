@@ -37,6 +37,8 @@ type Quotation = {
   status: string;
   issuedAt: string;
   issuedBy: { name: string };
+  projectId: string | null;
+  project?: { id: string; name: string } | null;
 };
 
 const STATUS_OPTIONS = [
@@ -224,6 +226,7 @@ export default function QuotationsPage() {
                 <TableHead className="font-medium text-right">총합계</TableHead>
                 <TableHead className="font-medium">상태</TableHead>
                 <TableHead className="font-medium">발행일</TableHead>
+                <TableHead className="font-medium">프로젝트</TableHead>
                 <TableHead className="w-[80px] font-medium" />
               </TableRow>
             </TableHeader>
@@ -260,6 +263,15 @@ export default function QuotationsPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(q.issuedAt), "yyyy.MM.dd", { locale: ko })}
+                  </TableCell>
+                  <TableCell>
+                    {q.projectId || q.project ? (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-600 font-normal">프로젝트 연결됨</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="font-normal text-muted-foreground">
+                        프로젝트 없음
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" asChild>

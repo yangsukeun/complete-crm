@@ -28,6 +28,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createQuotation, type QuotationItemInput } from "../actions";
+import {
+  QuoteProjectSuggestModal,
+  type QuoteProjectSuggestPayload,
+} from "@/components/quote-project-suggest-modal";
 
 const defaultItem = (): QuotationItemInput => ({
   description: "",
@@ -57,6 +61,10 @@ export default function NewQuotationPage() {
   const [items, setItems] = useState<QuotationItemInput[]>([defaultItem()]);
   const [finalAmountOverride, setFinalAmountOverride] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [projectSuggestOpen, setProjectSuggestOpen] = useState(false);
+  const [projectSuggestQuote, setProjectSuggestQuote] = useState<QuoteProjectSuggestPayload | null>(null);
+  const [afterSkipToPreview, setAfterSkipToPreview] = useState(false);
+  const [savedQuotationId, setSavedQuotationId] = useState<string | null>(null);
   const [forms, setForms] = useState<FormOption[]>([]);
   const remarksRef = useRef(remarks);
   remarksRef.current = remarks;
@@ -162,11 +170,16 @@ export default function NewQuotationPage() {
         return;
       }
       toast.success("견적서가 저장되었습니다.");
-      if (openPreview) {
-        router.push(`/quotations/${result.id}`);
-      } else {
-        router.push("/quotations");
-      }
+      const validIso = new Date(`${validUntil}T12:00:00`).toISOString();
+      setSavedQuotationId(result.id);
+      setAfterSkipToPreview(openPreview);
+      setProjectSuggestQuote({
+        quoteId: result.id,
+        title: title.trim(),
+        finalAmount: displayFinal,
+        validUntil: validIso,
+      });
+      setProjectSuggestOpen(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "저장에 실패했습니다.");
     } finally {
@@ -176,6 +189,20 @@ export default function NewQuotationPage() {
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 max-w-4xl mx-auto">
+      <QuoteProjectSuggestModal
+        open={projectSuggestOpen}
+        onOpenChange={setProjectSuggestOpen}
+        quote={projectSuggestQuote}
+        onSkip={() => {
+          const qid = savedQuotationId;
+          setProjectSuggestQuote(null);
+          if (qid && afterSkipToPreview) {
+            router.push(`/quotations/${qid}`);
+          } else {
+            router.push("/quotations");
+          }
+        }}
+      />
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/quotations">

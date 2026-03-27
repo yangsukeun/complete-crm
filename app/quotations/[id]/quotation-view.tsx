@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { useReactToPrint } from "react-to-print";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +15,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeadline } from "@/components/page-headline";
-import { ArrowLeft, FileDown, Mail, Pencil } from "lucide-react";
+import { ArrowLeft, FileDown, Mail, Pencil, FolderKanban, Send } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Image from "next/image";
+import { Badge } from "@/components/ui/badge";
+import {
+  QuoteProjectSuggestModal,
+  type QuoteProjectSuggestPayload,
+} from "@/components/quote-project-suggest-modal";
 
 export type CompanyViewData = {
   name: string;
@@ -51,14 +57,19 @@ export function QuotationView({
   quotation,
   company,
   canEdit = false,
+  linkedProject = null,
 }: {
   quotation: QuotationViewData;
   company: CompanyViewData | null;
   canEdit?: boolean;
+  linkedProject?: { id: string; name: string } | null;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [mailOpen, setMailOpen] = useState(false);
   const [toEmail, setToEmail] = useState("");
+  const [projectSuggestOpen, setProjectSuggestOpen] = useState(false);
+  const [projectSuggestQuote, setProjectSuggestQuote] = useState<QuoteProjectSuggestPayload | null>(null);
+  const [markingSent, setMarkingSent] = useState(false);
 
   const handlePrint = useReactToPrint({
     contentRef,
@@ -68,6 +79,47 @@ export function QuotationView({
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     `,
   });
+
+  const openProjectSuggestFromQuotation = () => {
+    setProjectSuggestQuote({
+      quoteId: quotation.id,
+      title: quotation.title,
+      finalAmount: quotation.finalAmount,
+      validUntil: quotation.validUntil,
+    });
+    setProjectSuggestOpen(true);
+  };
+
+  const handleMarkSentOrSuggest = async () => {
+    if (!linkedProject && quotation.status === "SENT") {
+      openProjectSuggestFromQuotation();
+      return;
+    }
+    if (quotation.status === "SENT") {
+      toast.message("이미 발송 상태입니다.");
+      return;
+    }
+    setMarkingSent(true);
+    try {
+      const res = await fetch(`/api/quotations/${quotation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "SENT" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "상태를 바꿀 수 없습니다.");
+      }
+      toast.success("발송 완료로 표시했습니다.");
+      if (!linkedProject) {
+        openProjectSuggestFromQuotation();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "처리에 실패했습니다.");
+    } finally {
+      setMarkingSent(false);
+    }
+  };
 
   const handleSendMail = () => {
     const subject = encodeURIComponent(`[견적서] ${quotation.quotationNumber} - ${quotation.title}`);
@@ -90,6 +142,7 @@ export function QuotationView({
     window.location.href = mailto;
     setMailOpen(false);
     setToEmail("");
+    toast.message("메일을 보낸 뒤에는 아래 '발송 완료 처리'를 눌러 주세요.", { duration: 6000 });
   };
 
   const issuedAtFormatted = format(new Date(quotation.issuedAt), "yyyy-MM-dd HH:mm:ss", { locale: ko });
@@ -99,6 +152,14 @@ export function QuotationView({
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
+      <QuoteProjectSuggestModal
+        open={projectSuggestOpen}
+        onOpenChange={setProjectSuggestOpen}
+        quote={projectSuggestQuote}
+        onSkip={() => {
+          setProjectSuggestQuote(null);
+        }}
+      />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" asChild>
@@ -112,13 +173,36 @@ export function QuotationView({
             description="내용을 확인하고 PDF로 저장·인쇄하거나 메일로 보낼 수 있습니다."
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {linkedProject ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/projects/${linkedProject.id}`} prefetch={true}>
+                <FolderKanban className="mr-2 size-4" />
+                프로젝트 보기 ({linkedProject.name})
+              </Link>
+            </Button>
+          ) : null}
           {canEdit && (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/quotations/${quotation.id}/edit`} prefetch={true}>
                 <Pencil className="mr-2 size-4" />
                 수정
               </Link>
+            </Button>
+          )}
+          {(quotation.status !== "SENT" || !linkedProject) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleMarkSentOrSuggest}
+              disabled={markingSent}
+            >
+              <Send className="mr-2 size-4" />
+              {quotation.status !== "SENT"
+                ? markingSent
+                  ? "처리 중…"
+                  : "발송 완료 처리"
+                : "프로젝트 생성 제안"}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => setMailOpen(true)}>
@@ -130,6 +214,13 @@ export function QuotationView({
             PDF로 저장 / 인쇄
           </Button>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {linkedProject ? (
+          <Badge className="bg-emerald-600 hover:bg-emerald-600">프로젝트 연결됨</Badge>
+        ) : (
+          <Badge variant="secondary">프로젝트 없음</Badge>
+        )}
       </div>
       {updatedAtFormatted && (
         <p className="text-muted-foreground text-right text-xs">

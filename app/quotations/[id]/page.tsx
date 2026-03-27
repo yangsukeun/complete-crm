@@ -26,6 +26,7 @@ export default async function QuotationPage({
       where: { id },
       include: {
         issuedBy: { select: { name: true } },
+        project: { select: { id: true, name: true } },
         items: {
           orderBy: { sortOrder: "asc" },
           select: {
@@ -81,5 +82,12 @@ export default async function QuotationPage({
 
   const companyData = company;
 
-  return <QuotationView quotation={data} company={companyData} canEdit={canEdit} />;
+  return (
+    <QuotationView
+      quotation={data}
+      company={companyData}
+      canEdit={canEdit}
+      linkedProject={quotation.project}
+    />
+  );
 }

@@ -22,6 +22,7 @@ const createSchema = z.object({
   parentId: z.string().optional(),
   categoryId: z.string().nullable().optional(),
   orderIndex: z.number().optional(),
+  projectId: z.string().nullable().optional(),
 });
 
 const listSelect = {
@@ -189,6 +190,7 @@ export async function POST(req: Request) {
         parentId: parsed.data.parentId ?? null,
         categoryId: parsed.data.categoryId ?? null,
         orderIndex: parsed.data.orderIndex ?? 0,
+        projectId: parsed.data.projectId ?? null,
       },
     });
 

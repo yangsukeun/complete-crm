@@ -23,6 +23,7 @@ export type CreateTaskInput = {
   parentId?: string | null;
   categoryId?: string | null;
   orderIndex?: number;
+  projectId?: string | null;
 };
 
 const taskInclude = {
@@ -58,6 +59,7 @@ export async function createTaskWithNotifications(params: {
       status: data.status ?? "TODO",
       assignedToId: primaryAssignee,
       createdById,
+      projectId: data.projectId ?? null,
       parentId: data.parentId ?? null,
       categoryId: data.categoryId ?? null,
       orderIndex: data.orderIndex ?? 0,
