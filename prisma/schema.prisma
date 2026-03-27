@@ -179,7 +179,20 @@ model User {
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
   tasksDeletedByMe      Task[]          @relation("TaskDeletedBy")
   aiSecretaryConversations AiConversation[]
+  taskMindmapStates      UserTaskMindmapState[]
   @@index([currentProjectId])
+}
+
+// Tasks 마인드맵: 노드 좌표·루트 스테이징·접힘·노드 스타일 등 (클라이언트 state 영속화)
+model UserTaskMindmapState {
+  userId    String
+  scope     WorkspaceScope
+  data      Json           @default("{}")
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, scope])
+  @@index([userId])
 }
 
 model GoogleCalendarIntegration {

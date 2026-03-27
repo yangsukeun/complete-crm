@@ -551,7 +551,7 @@ function TreeViewInner({
   currentUserId,
   isTaskDeleteAdmin,
 }: TreeViewProps) {
-  const { fitView } = useReactFlow();
+  const { fitView, getNodes } = useReactFlow();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [stagedRootIds, setStagedRootIds] = useState<Set<string>>(new Set());
@@ -560,8 +560,151 @@ function TreeViewInner({
   const [isCreating, setIsCreating] = useState(false);
   const [canvasBgColor, setCanvasBgColor] = useState("#f9fafb");
   const [nodeStylesMap, setNodeStylesMap] = useState<Record<string, NodeStyle>>({});
+  const [hydrationVersion, setHydrationVersion] = useState(0);
+  const [mindmapRemoteLoaded, setMindmapRemoteLoaded] = useState(false);
+  const [saveUi, setSaveUi] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const quickInputRef = useRef<HTMLInputElement>(null);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 디바운스 저장 시 최신 Set/Object 참조 */
+  const mindmapPersistRef = useRef({
+    stagedRootIds: new Set<string>(),
+    collapsedIds: new Set<string>(),
+    nodeStylesMap: {} as Record<string, NodeStyle>,
+    canvasBgColor: "#f9fafb",
+  });
+
+  useEffect(() => {
+    mindmapPersistRef.current = {
+      stagedRootIds,
+      collapsedIds,
+      nodeStylesMap,
+      canvasBgColor,
+    };
+  }, [stagedRootIds, collapsedIds, nodeStylesMap, canvasBgColor]);
+
+  /** 마운트 시 DB에서 마인드맵 UI 상태 복원 (서버 좌표가 localStorage를 덮어씀) */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/mindmap");
+        if (cancelled) return;
+        if (res.ok) {
+          const data = (await res.json()) as Record<string, unknown>;
+          if (Array.isArray(data.stagedRootIds)) {
+            setStagedRootIds(
+              new Set(data.stagedRootIds.filter((x): x is string => typeof x === "string"))
+            );
+          }
+          if (Array.isArray(data.collapsedIds)) {
+            setCollapsedIds(
+              new Set(data.collapsedIds.filter((x): x is string => typeof x === "string"))
+            );
+          }
+          if (data.nodeStylesMap && typeof data.nodeStylesMap === "object" && !Array.isArray(data.nodeStylesMap)) {
+            setNodeStylesMap(data.nodeStylesMap as Record<string, NodeStyle>);
+          }
+          if (typeof data.canvasBgColor === "string" && data.canvasBgColor.length <= 64) {
+            setCanvasBgColor(data.canvasBgColor);
+          }
+          if (data.positions && typeof data.positions === "object" && !Array.isArray(data.positions)) {
+            const local = loadSavedPositions();
+            const merged: Record<string, { x: number; y: number }> = { ...local };
+            for (const [id, pos] of Object.entries(data.positions)) {
+              if (!pos || typeof pos !== "object" || Array.isArray(pos)) continue;
+              const x = (pos as { x?: unknown }).x;
+              const y = (pos as { y?: unknown }).y;
+              if (typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y)) {
+                merged[id] = { x, y };
+              }
+            }
+            try {
+              localStorage.setItem(STORAGE_KEY_MINDMAP_POSITIONS, JSON.stringify(merged));
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch {
+        // 오프라인 등: 로컬만 사용
+      } finally {
+        if (!cancelled) {
+          setMindmapRemoteLoaded(true);
+          setHydrationVersion((v) => v + 1);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const schedulePersistMindmap = useCallback(() => {
+    if (!mindmapRemoteLoaded) return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    setSaveUi("saving");
+    persistTimerRef.current = setTimeout(async () => {
+      persistTimerRef.current = null;
+      const { stagedRootIds: sr, collapsedIds: ci, nodeStylesMap: nsm, canvasBgColor: cbg } =
+        mindmapPersistRef.current;
+      try {
+        const flowNodes = getNodes();
+        const positions: Record<string, { x: number; y: number }> = {};
+        for (const n of flowNodes) {
+          positions[n.id] = { x: n.position.x, y: n.position.y };
+        }
+        const res = await fetch("/api/mindmap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            positions,
+            stagedRootIds: [...sr],
+            collapsedIds: [...ci],
+            nodeStylesMap: nsm,
+            canvasBgColor: cbg,
+          }),
+        });
+        if (!res.ok) throw new Error("save failed");
+        if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+        setSaveUi("saved");
+        savedClearTimerRef.current = setTimeout(() => {
+          savedClearTimerRef.current = null;
+          setSaveUi((s) => (s === "saved" ? "idle" : s));
+        }, 2000);
+      } catch {
+        setSaveUi("error");
+      }
+    }, 1000);
+  }, [mindmapRemoteLoaded, getNodes]);
+
+  useEffect(() => {
+    if (!mindmapRemoteLoaded) return;
+    schedulePersistMindmap();
+  }, [stagedRootIds, collapsedIds, nodeStylesMap, canvasBgColor, mindmapRemoteLoaded, schedulePersistMindmap]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+    };
+  }, []);
+
+  /** 삭제·동기화 후 존재하지 않는 task id는 스테이징·접힘에서 제거 */
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    const ids = new Set(tasks.map((t) => t.id));
+    setStagedRootIds((prev) => {
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
+    });
+    setCollapsedIds((prev) => {
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
+    });
+  }, [tasks]);
 
   // Get style for a specific node
   const getNodeStyle = useCallback((nodeId: string): NodeStyle => {
@@ -867,14 +1010,18 @@ function TreeViewInner({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView]);
+  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView, hydrationVersion]);
 
-  // 노드 드래그 끝났을 때 위치 저장 (자유 배치 유지)
-  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node) => {
-    if (node?.position) {
-      savePosition(node.id, node.position.x, node.position.y);
-    }
-  }, []);
+  // 노드 드래그 끝났을 때 위치 저장 (자유 배치 유지) + 서버 동기화 예약
+  const onNodeDragStop = useCallback(
+    (_e: React.MouseEvent, node: Node) => {
+      if (node?.position) {
+        savePosition(node.id, node.position.x, node.position.y);
+      }
+      schedulePersistMindmap();
+    },
+    [schedulePersistMindmap]
+  );
 
   // Listen for drop-on-node events
   useEffect(() => {
@@ -1184,6 +1331,20 @@ function TreeViewInner({
             </div>
           </PopoverContent>
         </Popover>
+
+        <div className="flex items-center gap-2 shrink-0 text-xs min-h-[1.25rem]">
+          {saveUi === "saving" && <span className="text-muted-foreground">저장 중...</span>}
+          {saveUi === "saved" && <span className="text-emerald-600">저장됨 ✓</span>}
+          {saveUi === "error" && (
+            <button
+              type="button"
+              className="text-red-600 hover:underline"
+              onClick={() => schedulePersistMindmap()}
+            >
+              저장 실패 - 다시 시도
+            </button>
+          )}
+        </div>
 
         <p className="text-xs text-muted-foreground hidden sm:block">
           💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)
