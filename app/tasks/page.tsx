@@ -1,6 +1,14 @@
 "use client";
 
-import React, { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  Component,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
@@ -81,6 +89,10 @@ const STATUS_LIST = [
 type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 
 const COLUMN_STORAGE_KEY = "tasks-board-visible-columns";
+/** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
+const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
+type ProjectScopeFilter = "all" | "mine" | "shared";
+
 type ColumnVisibility = Record<TaskStatus, boolean>;
 const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   TODO: true,
@@ -133,6 +145,21 @@ type Task = {
   createdById?: string | null;
   projectId?: string | null;
 };
+
+function taskCreatorId(t: Task): string | null {
+  return t.createdById ?? t.createdBy?.id ?? null;
+}
+
+function taskIsMine(t: Task, userId: string): boolean {
+  return taskCreatorId(t) === userId;
+}
+
+/** 생성자는 아니지만 담당·다중 담당으로 참여 중 */
+function taskIsSharedParticipation(t: Task, userId: string): boolean {
+  if (!userId || taskIsMine(t, userId)) return false;
+  if (t.assignedTo?.id === userId) return true;
+  return !!(t.assignees?.some((a) => a.id === userId));
+}
 
 function getEffectiveStatus(task: Task): TaskStatus {
   if (task.isCompleted) return "DONE";
@@ -289,19 +316,65 @@ export default function TasksPage() {
   const [view, setView] = useState<"list" | "mindmap" | "log">("list");
   const [mindmapMounted, setMindmapMounted] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>(() => {
+    if (typeof window === "undefined") return "all";
+    try {
+      const raw = localStorage.getItem(PROJECT_SCOPE_STORAGE_KEY);
+      if (raw === "mine" || raw === "shared" || raw === "all") return raw;
+    } catch {
+      /* ignore */
+    }
+    return "all";
+  });
+  const projectScopeHydratedRef = useRef(false);
 
-  /** 마인드맵·필터 적용 시 전체 목록 필요 (필터는 부분 페이지에만 적용되면 안 됨) */
+  /** 마인드맵·필터·보기 범위 적용 시 전체 목록 필요 (부분 페이지에만 클라이언트 필터를 쓰면 안 됨) */
   const needsFullTaskList =
     view === "mindmap" ||
     filterStatus !== "" ||
     filterAssigneeId !== "" ||
     filterPriority !== "" ||
-    filterDue !== "all";
+    filterDue !== "all" ||
+    projectScopeFilter !== "all";
 
   useEffect(() => {
     setColumnVisible(loadColumnVisibility());
     setColumnsReady(true);
   }, []);
+
+  /** 저장된 보기 범위 또는(없으면) 임원·관리자 기본 = 내 프로젝트 */
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !session?.user || projectScopeHydratedRef.current) return;
+    projectScopeHydratedRef.current = true;
+    try {
+      const raw = localStorage.getItem(PROJECT_SCOPE_STORAGE_KEY);
+      if (raw === "mine" || raw === "shared" || raw === "all") {
+        setProjectScopeFilter(raw);
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    const role = session.user.role;
+    if (role === "EXECUTIVE" || role === "ADMIN") {
+      setProjectScopeFilter("mine");
+    }
+  }, [authStatus, session?.user]);
+
+  useEffect(() => {
+    if (authStatus === "unauthenticated") {
+      projectScopeHydratedRef.current = false;
+    }
+  }, [authStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || authStatus !== "authenticated") return;
+    try {
+      localStorage.setItem(PROJECT_SCOPE_STORAGE_KEY, projectScopeFilter);
+    } catch {
+      /* ignore */
+    }
+  }, [projectScopeFilter, authStatus]);
 
   useEffect(() => {
     if (!columnsReady || typeof window === "undefined") return;
@@ -444,8 +517,16 @@ export default function TasksPage() {
     [refreshTasks]
   );
 
+  const scopeFilteredTasks = useMemo(() => {
+    if (!currentUserId || projectScopeFilter === "all") return tasks;
+    if (projectScopeFilter === "mine") {
+      return tasks.filter((t) => taskIsMine(t, currentUserId));
+    }
+    return tasks.filter((t) => taskIsSharedParticipation(t, currentUserId));
+  }, [tasks, projectScopeFilter, currentUserId]);
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t: Task) => {
+    return scopeFilteredTasks.filter((t: Task) => {
       if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
       if (
         filterAssigneeId &&
@@ -457,7 +538,7 @@ export default function TasksPage() {
       if (!passesDueFilter(t, filterDue)) return false;
       return true;
     });
-  }, [tasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
+  }, [scopeFilteredTasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
 
   const assigneePairs = tasks.flatMap((t: Task) => {
     const list = t.assignees?.length ? t.assignees : t.assignedTo ? [t.assignedTo] : [];
@@ -492,6 +573,16 @@ export default function TasksPage() {
       createdById: t.createdById ?? t.createdBy?.id ?? null,
     }));
   }, [filteredTasks]);
+
+  const mindmapTaskIdSet = useMemo(() => new Set(mindmapTasks.map((t: { id: string }) => t.id)), [mindmapTasks]);
+
+  const mindmapLinksForView = useMemo(
+    () =>
+      taskLinks.filter(
+        (l) => mindmapTaskIdSet.has(l.parentId) && mindmapTaskIdSet.has(l.childId)
+      ),
+    [taskLinks, mindmapTaskIdSet]
+  );
 
   if (authStatus === "loading" || authStatus === "unauthenticated") {
     return (
@@ -534,6 +625,24 @@ export default function TasksPage() {
             <TabsContent value="mindmap" className="mt-0" />
             <TabsContent value="log" className="mt-0" />
           </Tabs>
+          {view === "mindmap" && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground hidden text-xs sm:inline">보기</span>
+              <Select
+                value={projectScopeFilter}
+                onValueChange={(v) => setProjectScopeFilter(v as ProjectScopeFilter)}
+              >
+                <SelectTrigger className="h-9 w-[148px] border-gray-200 text-left text-sm">
+                  <SelectValue placeholder="범위" />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="mine">내 프로젝트</SelectItem>
+                  <SelectItem value="shared">공유·참여</SelectItem>
+                  <SelectItem value="all">전체 보기</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {view === "list" && (
             <Popover>
               <PopoverTrigger asChild>
@@ -654,6 +763,22 @@ export default function TasksPage() {
       <ViewErrorBoundary key={view}>
         {view === "list" && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-muted/15 px-4 py-3">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+              <span className="text-muted-foreground text-xs font-semibold tracking-wide">보기 범위</span>
+              <Select
+                value={projectScopeFilter}
+                onValueChange={(v) => setProjectScopeFilter(v as ProjectScopeFilter)}
+              >
+                <SelectTrigger className="h-9 w-full min-w-[160px] border-gray-200 sm:w-[180px]" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="mine">내 프로젝트 (내가 생성)</SelectItem>
+                  <SelectItem value="shared">공유·참여 (담당·배정)</SelectItem>
+                  <SelectItem value="all">전체 보기 (팀에 허용된 목록)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <span className="text-muted-foreground w-full text-xs font-semibold tracking-wide sm:w-auto">
               컬럼 표시
             </span>
@@ -702,7 +827,7 @@ export default function TasksPage() {
             <div key="mindmap" className="min-h-[480px] w-full">
               <TaskTreeView
                 tasks={mindmapTasks as any}
-                taskLinks={taskLinks as any}
+                taskLinks={mindmapLinksForView as any}
                 onRefresh={refreshTasks}
                 onTaskClick={(taskId: string, projectId?: string | null) => {
                   if (projectId) {
