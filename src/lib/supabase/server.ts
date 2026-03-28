@@ -1,4 +1,7 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient as createSupabaseClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 
 /**
  * 서버 전용 Supabase 클라이언트 싱글톤 (요청마다 new 하지 않음).
@@ -15,7 +18,7 @@ export function getSupabaseServer(): SupabaseClient | null {
   if (!url || !key) return null;
 
   if (!supabaseServerInstance) {
-    supabaseServerInstance = createClient(url, key, {
+    supabaseServerInstance = createSupabaseClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
   }
