@@ -141,89 +141,96 @@ export function CreateTaskModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="max-h-[min(90vh,calc(100dvh-2rem))] gap-0 overflow-hidden p-0 sm:max-w-md [@media(max-height:700px)]:max-h-[min(95dvh,calc(100dvh-1rem))]">
+        <DialogHeader className="shrink-0 border-b px-6 pt-6 pb-4 pr-14 text-left sm:text-left">
           <DialogTitle>새 프로젝트 만들기</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <Label>담당 직원 (복수 선택 가능)</Label>
-            <p className="text-muted-foreground text-xs">비워 두면 본인에게 배정됩니다.</p>
-            {selectedUsers.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <TaskAssigneeAvatars assignees={selectedUsers} size={26} />
-                <div className="flex flex-wrap gap-1">
-                  {selectedUsers.map((u) => (
-                    <Badge key={u.id} variant="secondary" className="font-normal">
-                      {formatUserName(u)}
-                    </Badge>
-                  ))}
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4 [-webkit-overflow-scrolling:touch] [@media(max-height:700px)]:px-5">
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label>담당 직원 (복수 선택 가능)</Label>
+                <p className="text-muted-foreground text-xs">비워 두면 본인에게 배정됩니다.</p>
+                {selectedUsers.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TaskAssigneeAvatars assignees={selectedUsers} size={26} />
+                    <div className="flex flex-wrap gap-1">
+                      {selectedUsers.map((u) => (
+                        <Badge key={u.id} variant="secondary" className="font-normal">
+                          {formatUserName(u)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/20 p-2 space-y-2 sm:max-h-36 [@media(max-height:700px)]:max-h-32">
+                  {loadingUsers ? (
+                    <p className="text-muted-foreground text-sm px-1 py-2">불러오는 중...</p>
+                  ) : (
+                    users.map((u) => (
+                      <label
+                        key={u.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/60"
+                      >
+                        <Checkbox checked={assigneeIds.includes(u.id)} onCheckedChange={() => toggleAssignee(u.id)} />
+                        <span className="flex-1">
+                          {formatUserName(u)}
+                          {u.department ? ` · ${u.department}` : ""}
+                        </span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
-            )}
-            <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/20 p-2 space-y-2">
-              {loadingUsers ? (
-                <p className="text-muted-foreground text-sm px-1 py-2">불러오는 중...</p>
-              ) : (
-                users.map((u) => (
-                  <label
-                    key={u.id}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/60"
-                  >
-                    <Checkbox checked={assigneeIds.includes(u.id)} onCheckedChange={() => toggleAssignee(u.id)} />
-                    <span className="flex-1">
-                      {formatUserName(u)}
-                      {u.department ? ` · ${u.department}` : ""}
-                    </span>
-                  </label>
-                ))
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="task-title">제목</Label>
+                <Input
+                  id="task-title"
+                  value={title}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+                  placeholder="프로젝트 제목"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="task-desc">설명</Label>
+                <Textarea
+                  id="task-desc"
+                  value={description}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+                  placeholder="설명 (선택)"
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="task-due">프로젝트 마감일</Label>
+                <Input
+                  id="task-due"
+                  type="datetime-local"
+                  value={dueDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>우선순위</Label>
+                <Select value={priority} onValueChange={(v: string) => setPriority(v as "HIGH" | "MEDIUM" | "LOW")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="HIGH">높음</SelectItem>
+                    <SelectItem value="MEDIUM">보통</SelectItem>
+                    <SelectItem value="LOW">낮음</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="task-title">제목</Label>
-            <Input
-              id="task-title"
-              value={title}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-              placeholder="프로젝트 제목"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="task-desc">설명</Label>
-            <Textarea
-              id="task-desc"
-              value={description}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
-              placeholder="설명 (선택)"
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="task-due">프로젝트 마감일</Label>
-            <Input
-              id="task-due"
-              type="datetime-local"
-              value={dueDate}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>우선순위</Label>
-            <Select value={priority} onValueChange={(v: string) => setPriority(v as "HIGH" | "MEDIUM" | "LOW")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="HIGH">높음</SelectItem>
-                <SelectItem value="MEDIUM">보통</SelectItem>
-                <SelectItem value="LOW">낮음</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-6 py-4 [@media(max-height:700px)]:px-5">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               취소
             </Button>
