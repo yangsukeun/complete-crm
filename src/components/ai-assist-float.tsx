@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +21,7 @@ import {
   Send,
   X,
   UserPlus,
+  StickyNote,
 } from "lucide-react";
 import { useAIAssistTarget } from "@/components/ai-assist-context";
 import { cn } from "@/lib/utils";
@@ -36,7 +39,9 @@ const PROVIDER_LABELS: Record<AIProvider, string> = {
 
 export function AIAssistFloat() {
   const { data: session } = useSession();
+  const pathname = usePathname();
   const ctx = useAIAssistTarget();
+  const memoFabVisible = pathname !== "/notes" && !pathname.startsWith("/notes/");
   const canPickAiProvider =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
   const [open, setOpen] = useState(false);
@@ -365,6 +370,20 @@ export function AIAssistFloat() {
             </div>
           </div>
         </div>
+      )}
+
+      {memoFabVisible && (
+        <Button
+          asChild
+          size="lg"
+          variant="secondary"
+          className="h-14 rounded-full border border-amber-200/80 bg-amber-400 text-amber-950 shadow-lg hover:bg-amber-500 gap-2 px-5 dark:border-amber-700/50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
+        >
+          <Link href="/notes" prefetch={true} title="메모장">
+            <StickyNote className="size-5" />
+            <span className="font-medium">메모장</span>
+          </Link>
+        </Button>
       )}
 
       <Button
