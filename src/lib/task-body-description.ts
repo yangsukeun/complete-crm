@@ -57,6 +57,11 @@ function blockHasContent(block: unknown): boolean {
     return !!(url && String(url).trim());
   }
 
+  if (b.type === "htmlBlock") {
+    const html = (b.props as { html?: string } | undefined)?.html;
+    return !!(html && String(html).trim());
+  }
+
   if (!Array.isArray(b.content) || b.content.length === 0) return false;
 
   return b.content.some((item) => {

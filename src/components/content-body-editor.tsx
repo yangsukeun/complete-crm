@@ -1,22 +1,28 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useMemo } from "react";
-import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/mantine";
-import { ko } from "@blocknote/core/locales";
+import { combineByGroup } from "@blocknote/core";
+import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import {
+  useCreateBlockNote,
+  useBlockNoteEditor,
   FormattingToolbar,
   FormattingToolbarController,
   SideMenu,
   SideMenuController,
   AddBlockButton,
   DragHandleButton,
+  SuggestionMenuController,
+  getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
+import { BlockNoteView } from "@blocknote/mantine";
+import { ko } from "@blocknote/core/locales";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { taskBodySchema } from "@/lib/task-body-schema";
+import { TASK_BODY_DOC_PREFIX, parseStoredTaskBody } from "@/lib/task-body-description";
 import {
   createPastedImageBlock,
   getClipboardImageFile,
@@ -48,6 +54,31 @@ function NotionStyleSideMenu() {
       <DragHandleButton key="dragHandleButton" />
     </SideMenu>
   );
+}
+
+/** `/` 메뉴: 기본 블록 + HTML 블록(코드·미리보기) */
+function BoardContentSlashMenu() {
+  const editor = useBlockNoteEditor();
+  const getItems = useMemo(
+    () => async (query: string) => {
+      const htmlItem = {
+        title: "HTML 블록",
+        subtext: "HTML 코드 작성 및 미리보기",
+        aliases: ["html", "HTML", "html block", "마크업", "웹"],
+        group: "기본 블록",
+        icon: <span className="text-base leading-none">🖥️</span>,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(editor, {
+            type: "htmlBlock",
+            props: { html: "", viewMode: "code" },
+          } as never);
+        },
+      };
+      return filterSuggestionItems(combineByGroup(getDefaultReactSlashMenuItems(editor), [htmlItem]), query);
+    },
+    [editor]
+  );
+  return <SuggestionMenuController triggerCharacter="/" getItems={getItems} />;
 }
 
 export type ContentBodyEditorProps = {
@@ -90,7 +121,13 @@ export function ContentBodyEditor({
     loadedInitialRef.current = true;
     if (!raw) return;
     try {
-      const blocks = editor.tryParseMarkdownToBlocks(raw);
+      const parsed = parseStoredTaskBody(raw);
+      if (parsed?.format === "blocks" && Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
+        editor.replaceBlocks(editor.document, parsed.blocks as never);
+        return;
+      }
+      const md = parsed?.format === "markdown" ? parsed.markdown : raw;
+      const blocks = editor.tryParseMarkdownToBlocks(md);
       if (blocks.length > 0) {
         editor.replaceBlocks(editor.document, blocks);
       }
@@ -101,6 +138,19 @@ export function ContentBodyEditor({
 
   const emitChange = useCallback(() => {
     if (!editor) return;
+    let blocks: unknown[];
+    try {
+      blocks = JSON.parse(JSON.stringify(editor.document)) as unknown[];
+    } catch {
+      const markdown = editor.blocksToMarkdownLossy(editor.document);
+      onChangeRef.current(markdown || "");
+      return;
+    }
+    const needsJson = JSON.stringify(blocks).includes('"type":"htmlBlock"');
+    if (needsJson) {
+      onChangeRef.current(TASK_BODY_DOC_PREFIX + JSON.stringify({ v: 1, blocks }));
+      return;
+    }
     const markdown = editor.blocksToMarkdownLossy(editor.document);
     onChangeRef.current(markdown || "");
   }, [editor]);
@@ -208,8 +258,9 @@ export function ContentBodyEditor({
             onChange={handleChange}
             formattingToolbar={false}
             sideMenu={false}
-            slashMenu={true}
+            slashMenu={false}
           >
+            <BoardContentSlashMenu />
             <FormattingToolbarController
               formattingToolbar={() => <FormattingToolbar />}
             />
@@ -219,7 +270,7 @@ export function ContentBodyEditor({
       </div>
       {showHelp && (
         <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-          💡 텍스트 드래그 시 서식 툴바 | <kbd className="rounded border px-1 py-0.5 text-[10px]">/</kbd> 블록 메뉴 | 이미지 드래그·붙여넣기
+          💡 텍스트 드래그 시 서식 툴바 | <kbd className="rounded border px-1 py-0.5 text-[10px]">/</kbd> 블록 메뉴(HTML 블록 포함) | 이미지 드래그·붙여넣기
         </p>
       )}
     </div>

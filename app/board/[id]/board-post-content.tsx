@@ -3,7 +3,9 @@
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { boardDescriptionLooksLikeHtml } from "@/lib/board-body";
+import { parseStoredTaskBody } from "@/lib/task-body-description";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { BoardBlockDocViewer } from "@/components/board-block-doc-viewer";
 import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -25,6 +27,7 @@ export function BoardPostContent({
   category: string;
 }) {
   const isStoredHtml = contentType === "html";
+  const structured = !isStoredHtml && description ? parseStoredTaskBody(description) : null;
 
   return (
     <article className="space-y-6">
@@ -64,6 +67,10 @@ export function BoardPostContent({
               }
             }}
           />
+        ) : structured?.format === "blocks" &&
+          Array.isArray(structured.blocks) &&
+          structured.blocks.length > 0 ? (
+          <BoardBlockDocViewer blocks={structured.blocks as unknown[]} />
         ) : boardDescriptionLooksLikeHtml(description) ? (
           <div
             className="prose prose-sm max-w-none dark:prose-invert rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed [&_a]:break-words [&_img]:max-w-full [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"

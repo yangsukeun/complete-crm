@@ -1,4 +1,5 @@
 import { createBlockConfig, createBlockSpec, defaultBlockSpecs, defaultProps } from "@blocknote/core";
+import { createHtmlBlockSpec } from "@/lib/blocknote-html-embed";
 
 /**
  * YouTube 영상 ID 추출 (watch, youtu.be, embed, shorts, music 등)
@@ -191,4 +192,5 @@ export const taskBodyBlockSpecs = {
   ...defaultBlockSpecs,
   youtube: createYoutubeBlockSpec(),
   linkPreview: createLinkPreviewBlockSpec(),
+  htmlBlock: createHtmlBlockSpec(),
 };

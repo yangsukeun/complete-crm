@@ -1,4 +1,5 @@
 import { plainTextFromHtml, sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { parseStoredTaskBody } from "@/lib/task-body-description";
 
 /** 기존 마크다운 본문과 구분해 HTML로 저장·표시할지 판별합니다. */
 export function boardDescriptionLooksLikeHtml(s: string): boolean {
@@ -49,6 +50,10 @@ export function previewPlainTextForBoard(
 ): string {
   const s = (description ?? "").trim();
   if (!s) return "";
+  const asDoc = parseStoredTaskBody(s);
+  if (asDoc?.format === "blocks") {
+    return "본문에 HTML 블록·서식이 포함된 글입니다.".slice(0, maxLen);
+  }
   const base =
     contentType === "html" || boardDescriptionLooksLikeHtml(s)
       ? plainTextFromHtml(s)
