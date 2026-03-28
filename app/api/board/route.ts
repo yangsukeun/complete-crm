@@ -2,7 +2,7 @@
  * 게시판 API — Prisma 모델 `BoardPost` → PostgreSQL 테이블 `"BoardPost"` (Prisma 기본명, snake_case `board_posts` 아님).
  * 공지는 별도 `Announcement` 모델. Supabase 대시보드에 동일 DB를 붙였다면 테이블명을 그대로 확인하세요.
  */
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { boardVisibilityWhere } from "@/lib/board-access";
@@ -56,21 +56,6 @@ const createSchema = z.object({
   ),
 });
 
-/** Vercel 등에서 `req.url`이 상대 경로만 올 때 `new URL(req.url)` 단독 사용 시 Invalid URL 방지 */
-function getRequestSearchParams(req: Request): URLSearchParams {
-  try {
-    return new URL(req.url).searchParams;
-  } catch {
-    try {
-      const host = req.headers.get("host") ?? "localhost";
-      const proto = req.headers.get("x-forwarded-proto") ?? "http";
-      return new URL(req.url, `${proto}://${host}`).searchParams;
-    } catch {
-      return new URLSearchParams();
-    }
-  }
-}
-
 function emptyBoardListResponse(
   searchParams: URLSearchParams,
   listCacheHeaders: Record<string, string>
@@ -93,14 +78,14 @@ function emptyBoardListResponse(
   );
 }
 
-export async function GET(req: Request) {
+async function boardGetHandler(req: NextRequest) {
   console.log("[board] 시작");
   const listCacheHeaders = {
     "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
   };
+  const searchParams = req.nextUrl.searchParams;
 
   try {
-    const searchParams = getRequestSearchParams(req);
     const session = await getAppSession();
     if (!session?.user?.id) {
       return emptyBoardListResponse(searchParams, listCacheHeaders);
@@ -202,7 +187,23 @@ export async function GET(req: Request) {
     );
   } catch (e) {
     console.error("[board 에러 원인]", e);
-    return emptyBoardListResponse(getRequestSearchParams(req), listCacheHeaders);
+    return emptyBoardListResponse(searchParams, listCacheHeaders);
+  }
+}
+
+/** 프로덕션에서 예외가 Next 전역 500 HTML로 번지지 않도록 최외곽에서도 JSON으로 삼킵니다. */
+export async function GET(req: NextRequest) {
+  try {
+    return await boardGetHandler(req);
+  } catch (e) {
+    console.error("[board GET fatal]", e);
+    return NextResponse.json(
+      { items: [], total: 0, hasMore: false, offset: 0, limit: 20 },
+      {
+        status: 200,
+        headers: { "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120" },
+      }
+    );
   }
 }
 

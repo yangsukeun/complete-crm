@@ -1,14 +1,25 @@
 import type { Metadata } from "next";
+import nextDynamic from "next/dynamic";
 import { headers } from "next/headers";
-import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 /* OneSignal: src/components/providers.tsx 안의 <OneSignalBridge /> — 클라이언트에서 init + login(User.id). _app.tsx 없음(App Router). */
 import { Providers } from "@/components/providers";
-import { AppNav } from "@/components/app-nav";
 import "./globals.css";
+
+/**
+ * AppNav는 useSearchParams()를 씁니다. 서버에서 Suspense로 감싼 채 RSC 하이드레이션할 때
+ * React 19에서 #419(Suspense 경계)가 날 수 있어, 헤더만 SSR 생략(ssr: false)로 동일 플레이스홀더만 맞춥니다.
+ */
+const AppNav = nextDynamic(
+  () => import("@/components/app-nav").then((m) => ({ default: m.AppNav })),
+  {
+    ssr: false,
+    loading: () => <header className="h-16 border-b border-gray-200" />,
+  }
+);
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -78,9 +89,7 @@ export default async function RootLayout({
         className={`${typeof geistSans?.variable === "string" ? geistSans.variable : ""} ${typeof geistMono?.variable === "string" ? geistMono.variable : ""} antialiased`}
       >
         <Providers session={session ?? undefined}>
-          <Suspense fallback={<header className="h-16 border-b border-gray-200" />}>
-            <AppNav />
-          </Suspense>
+          <AppNav />
           <main>{children}</main>
           <Toaster richColors position="top-center" />
         </Providers>
