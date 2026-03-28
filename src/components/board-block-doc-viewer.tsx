@@ -14,6 +14,8 @@ type Props = {
 
 /** 게시글 본문 `__BN_DOC_V1__` JSON을 읽기 전용 BlockNote로 표시 */
 export function BoardBlockDocViewer({ blocks }: Props) {
+  const hasBlocks = Array.isArray(blocks) && blocks.length > 0;
+
   const uploadFile = useMemo(
     () => async (file: File) => uploadImageViaApi(file),
     []
@@ -28,15 +30,15 @@ export function BoardBlockDocViewer({ blocks }: Props) {
   const serialized = JSON.stringify(blocks);
 
   useEffect(() => {
-    if (!editor || !blocks?.length) return;
+    if (!editor || !hasBlocks) return;
     try {
       editor.replaceBlocks(editor.document, blocks as never);
     } catch (e) {
       console.error("[BoardBlockDocViewer] replaceBlocks failed", e);
     }
-  }, [editor, serialized]);
+  }, [editor, serialized, hasBlocks]);
 
-  if (!blocks?.length) {
+  if (!hasBlocks) {
     return null;
   }
 

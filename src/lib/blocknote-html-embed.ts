@@ -1,5 +1,289 @@
-import { createBlockConfig, createBlockSpec, defaultProps } from "@blocknote/core";
+import {
+  createBlockConfig,
+  createBlockSpec,
+  defaultProps,
+  type BlockNoteEditor,
+} from "@blocknote/core";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+
+/** 참고용(스키마는 createHtmlBlockConfig와 동기화) */
+export const htmlEmbedBlockSpec = {
+  type: "htmlBlock" as const,
+  propSchema: {
+    html: { default: "" },
+  },
+  content: "none" as const,
+};
+
+type HtmlBlockProps = { html?: string };
+type HtmlBlockArg = { id: string; props: HtmlBlockProps };
+
+/**
+ * HTML 블록 DOM 렌더 (React 없음).
+ * `readOnly`: 게시판 상세 등 읽기 전용 — 코드/탭 전환 UI 최소화.
+ */
+export function renderHtmlBlock(
+  block: HtmlBlockArg,
+  editor: BlockNoteEditor<any, any, any>,
+  readOnly: boolean
+) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "bn-html-block-wrapper";
+  wrapper.setAttribute("data-html-block", "1");
+  wrapper.setAttribute("contenteditable", "false");
+  wrapper.style.cssText = `
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 4px 0;
+    width: 100%;
+  `;
+
+  const header = document.createElement("div");
+  header.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: #1e1e1e;
+  `;
+
+  const label = document.createElement("span");
+  label.textContent = "</> HTML";
+  label.style.cssText = `
+    font-size: 11px;
+    color: #888;
+    font-family: monospace;
+    margin-right: 6px;
+  `;
+
+  const mkBtn = (text: string, active = false) => {
+    const btn = document.createElement("button");
+    btn.textContent = text;
+    btn.type = "button";
+    btn.style.cssText = active
+      ? `padding:2px 10px;border-radius:4px;font-size:11px;
+         border:none;cursor:pointer;color:white;background:#6366f1;`
+      : `padding:2px 10px;border-radius:4px;font-size:11px;
+         border:1px solid #444;cursor:pointer;color:#aaa;background:transparent;`;
+    return btn;
+  };
+
+  const codeBtn = mkBtn("코드");
+  const previewBtn = mkBtn("미리보기");
+  const newTabBtn = mkBtn("↗ 새 탭");
+  newTabBtn.style.marginLeft = "auto";
+
+  if (readOnly) {
+    header.append(label, newTabBtn);
+  } else {
+    header.append(label, codeBtn, previewBtn, newTabBtn);
+  }
+  wrapper.appendChild(header);
+
+  const body = document.createElement("div");
+  wrapper.appendChild(body);
+
+  let mode: "code" | "preview" = readOnly
+    ? "preview"
+    : block.props.html
+      ? "preview"
+      : "code";
+
+  function updateBtns() {
+    if (readOnly) return;
+    codeBtn.style.background = mode === "code" ? "#6366f1" : "transparent";
+    codeBtn.style.color = mode === "code" ? "white" : "#aaa";
+    codeBtn.style.border = mode === "code" ? "none" : "1px solid #444";
+
+    previewBtn.style.background = mode === "preview" ? "#6366f1" : "transparent";
+    previewBtn.style.color = mode === "preview" ? "white" : "#aaa";
+    previewBtn.style.border = mode === "preview" ? "none" : "1px solid #444";
+  }
+
+  function renderBody() {
+    body.innerHTML = "";
+    updateBtns();
+
+    if (readOnly) {
+      const html = block.props.html ?? "";
+      if (!html.trim()) {
+        const p = document.createElement("p");
+        p.style.cssText =
+          "margin:0;padding:12px;font-size:12px;color:#888;background:#fafafa;";
+        p.textContent = "(비어 있는 HTML 블록)";
+        body.appendChild(p);
+        return;
+      }
+      const iframe = document.createElement("iframe");
+      iframe.title = "HTML 미리보기";
+      iframe.srcdoc = html;
+      iframe.setAttribute(
+        "sandbox",
+        "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+      );
+      iframe.style.cssText = `
+        width: 100%;
+        min-height: 200px;
+        border: none;
+        display: block;
+        background: white;
+      `;
+      iframe.addEventListener("load", () => {
+        try {
+          const h =
+            iframe.contentWindow?.document?.documentElement?.scrollHeight ??
+            iframe.contentWindow?.document?.body?.scrollHeight;
+          if (h && h > 60) {
+            iframe.style.height = h + 24 + "px";
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+      body.appendChild(iframe);
+      return;
+    }
+
+    if (mode === "code") {
+      const ta = document.createElement("textarea");
+      ta.value = block.props.html ?? "";
+      ta.placeholder = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>body{font-family:sans-serif;padding:20px}</style>
+</head>
+<body>
+  <h1>HTML 코드를 여기에 붙여넣으세요</h1>
+</body>
+</html>`;
+      ta.style.cssText = `
+        width: 100%;
+        min-height: 220px;
+        padding: 12px;
+        font-family: monospace;
+        font-size: 13px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border: none;
+        outline: none;
+        resize: vertical;
+        display: block;
+        box-sizing: border-box;
+        line-height: 1.6;
+      `;
+
+      ta.addEventListener("input", () => {
+        editor.updateBlock(block, {
+          props: { html: ta.value },
+        });
+      });
+
+      ta.addEventListener("blur", () => {
+        if (ta.value.trim()) {
+          mode = "preview";
+          editor.updateBlock(block, {
+            props: { html: ta.value },
+          });
+          renderBody();
+        }
+      });
+
+      body.appendChild(ta);
+      setTimeout(() => ta.focus(), 30);
+    } else {
+      if (!block.props.html) {
+        mode = "code";
+        renderBody();
+        return;
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.title = "HTML 미리보기";
+      iframe.srcdoc = block.props.html;
+      iframe.setAttribute(
+        "sandbox",
+        "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+      );
+      iframe.style.cssText = `
+        width: 100%;
+        min-height: 200px;
+        border: none;
+        display: block;
+        background: white;
+      `;
+
+      iframe.addEventListener("load", () => {
+        try {
+          const h =
+            iframe.contentWindow?.document?.documentElement?.scrollHeight ??
+            iframe.contentWindow?.document?.body?.scrollHeight;
+          if (h && h > 60) {
+            iframe.style.height = h + 24 + "px";
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+
+      const overlay = document.createElement("div");
+      overlay.title = "클릭하면 편집 모드로 전환";
+      overlay.style.cssText = `
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        z-index: 1;
+      `;
+      const iframeWrap = document.createElement("div");
+      iframeWrap.style.position = "relative";
+      iframeWrap.appendChild(iframe);
+      iframeWrap.appendChild(overlay);
+      overlay.addEventListener("click", () => {
+        mode = "code";
+        renderBody();
+      });
+      body.appendChild(iframeWrap);
+    }
+  }
+
+  if (!readOnly) {
+    codeBtn.addEventListener("click", () => {
+      mode = "code";
+      renderBody();
+    });
+
+    previewBtn.addEventListener("click", () => {
+      if (block.props.html) {
+        mode = "preview";
+        renderBody();
+      } else {
+        mode = "code";
+        renderBody();
+      }
+    });
+  }
+
+  newTabBtn.addEventListener("click", () => {
+    const html = block.props.html;
+    if (!html) return;
+    const blob = new Blob([html], {
+      type: "text/html;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  });
+
+  renderBody();
+
+  return {
+    dom: wrapper,
+    destroy() {
+      body.innerHTML = "";
+    },
+  };
+}
 
 const createHtmlBlockConfig = createBlockConfig(() => ({
   type: "htmlBlock" as const,
@@ -7,8 +291,6 @@ const createHtmlBlockConfig = createBlockConfig(() => ({
     textAlignment: defaultProps.textAlignment,
     backgroundColor: defaultProps.backgroundColor,
     html: { default: "" as const },
-    /** "code" = 편집, "preview" = 미리보기. 저장·삽입 시 viewMode 생략이면 미리보기 우선(본문 없을 때만 코드). */
-    viewMode: { default: "preview" as const },
   },
   content: "none" as const,
 }));
@@ -17,163 +299,11 @@ export const createHtmlBlockSpec = createBlockSpec(
   createHtmlBlockConfig,
   () => ({
     render(block, editor) {
-      const rawVm = (block.props as { viewMode?: string }).viewMode;
-      let viewMode: "code" | "preview" =
-        rawVm === "code" ? "code" : rawVm === "preview" ? "preview" : "preview";
-      const htmlTrim = ((block.props as { html?: string }).html ?? "").trim();
-      if (viewMode === "preview" && !htmlTrim) viewMode = "code";
-
-      const wrapper = document.createElement("div");
-      wrapper.className = "bn-html-block-wrapper";
-      wrapper.setAttribute("data-html-block", "1");
-      wrapper.style.cssText =
-        "margin:8px 0;background:#fff;border-radius:8px;overflow:visible";
-      wrapper.setAttribute("contenteditable", "false");
-
-      if (viewMode === "code") {
-        wrapper.style.border = "2px solid #6366f1";
-        const head = document.createElement("div");
-        head.style.cssText =
-          "display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#1e1e1e";
-        const hint = document.createElement("span");
-        hint.textContent = "HTML · 편집 중 (포커스를 잃으면 미리보기로 전환)";
-        hint.style.cssText =
-          "font-size:11px;color:#888;font-family:ui-monospace,monospace;letter-spacing:0.5px";
-        head.appendChild(hint);
-
-        const initialHtml = (block.props as { html?: string }).html ?? "";
-        const ta = document.createElement("textarea");
-        ta.value = initialHtml;
-        ta.placeholder = "HTML 코드를 입력하세요…";
-        ta.style.cssText = [
-          "width:100%",
-          "min-height:240px",
-          "padding:16px",
-          "font-family:ui-monospace,monospace",
-          "font-size:13px",
-          "border:none",
-          "resize:vertical",
-          "outline:none",
-          "line-height:1.6",
-          "background:#1e1e1e",
-          "color:#d4d4d4",
-          "box-sizing:border-box",
-        ].join(";");
-
-        const previewBtn = document.createElement("button");
-        previewBtn.type = "button";
-        previewBtn.textContent = "미리보기 →";
-        previewBtn.style.cssText =
-          "padding:2px 10px;border-radius:4px;font-size:11px;background:#6366f1;color:white;border:none;cursor:pointer";
-        previewBtn.style.display = initialHtml.trim() ? "block" : "none";
-        previewBtn.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const v = ta.value;
-          if (!v.trim()) return;
-          editor.updateBlock(block, { props: { html: v, viewMode: "preview" } });
-        });
-        head.appendChild(previewBtn);
-
-        ta.addEventListener("input", () => {
-          editor.updateBlock(block, { props: { html: ta.value, viewMode: "code" } });
-          previewBtn.style.display = ta.value.trim() ? "block" : "none";
-        });
-        ta.addEventListener("blur", () => {
-          const v = ta.value;
-          if (v.trim()) {
-            editor.updateBlock(block, { props: { html: v, viewMode: "preview" } });
-          }
-        });
-
-        wrapper.appendChild(head);
-        wrapper.appendChild(ta);
-      } else {
-        wrapper.style.border = "1px solid #e5e7eb";
-        const head = document.createElement("div");
-        head.style.cssText =
-          "display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:#f9fafb;border-bottom:1px solid #e5e7eb";
-        const left = document.createElement("div");
-        left.style.cssText = "display:flex;align-items:center;gap:8px";
-        const badge = document.createElement("span");
-        badge.textContent = "🖥️ HTML 미리보기";
-        badge.style.cssText = "font-size:11px;color:#6b7280;font-family:ui-monospace,monospace";
-        left.appendChild(badge);
-        const editBtn = document.createElement("button");
-        editBtn.type = "button";
-        editBtn.textContent = "✏️ 편집";
-        editBtn.style.cssText =
-          "padding:2px 8px;border-radius:4px;font-size:11px;background:transparent;color:#9ca3af;border:1px solid #e5e7eb;cursor:pointer";
-        editBtn.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        });
-        editBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          editor.updateBlock(block, { props: { viewMode: "code" } });
-        });
-        left.appendChild(editBtn);
-        head.appendChild(left);
-
-        const newTabBtn = document.createElement("button");
-        newTabBtn.type = "button";
-        newTabBtn.textContent = "↗ 새 탭";
-        newTabBtn.style.cssText =
-          "padding:2px 10px;border-radius:4px;font-size:11px;background:transparent;color:#6b7280;border:1px solid #e5e7eb;cursor:pointer";
-        newTabBtn.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        });
-        newTabBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const raw = (block.props as { html?: string }).html ?? "";
-          if (!raw.trim()) return;
-          const blob = new Blob([raw], { type: "text/html;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          window.open(url, "_blank");
-          setTimeout(() => URL.revokeObjectURL(url), 3000);
-        });
-        head.appendChild(newTabBtn);
-        wrapper.appendChild(head);
-
-        const previewWrap = document.createElement("div");
-        previewWrap.className = "html-block-preview";
-        previewWrap.style.cssText =
-          "background:white;max-height:500px;overflow-y:auto;min-height:200px";
-
-        const iframe = document.createElement("iframe");
-        iframe.title = "HTML 미리보기";
-        iframe.setAttribute(
-          "sandbox",
-          "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
-        );
-        iframe.style.cssText = "width:100%;min-height:200px;border:none;display:block;background:white";
-        const rawHtml = (block.props as { html?: string }).html ?? "";
-        iframe.srcdoc = rawHtml;
-        iframe.addEventListener("load", () => {
-          try {
-            const doc = iframe.contentWindow?.document;
-            if (!doc?.documentElement) return;
-            const h = Math.max(
-              doc.documentElement.scrollHeight,
-              doc.body?.scrollHeight ?? 0,
-              200
-            );
-            iframe.style.height = `${h + 24}px`;
-          } catch {
-            /* ignore */
-          }
-        });
-        previewWrap.appendChild(iframe);
-        wrapper.appendChild(previewWrap);
-      }
-
-      return { dom: wrapper };
+      const readOnly = !editor.isEditable;
+      return renderHtmlBlock(block as HtmlBlockArg, editor, readOnly);
     },
     toExternalHTML(block) {
-      const raw = (block.props as { html?: string }).html ?? "";
+      const raw = (block.props as HtmlBlockProps).html ?? "";
       const wrap = document.createElement("div");
       wrap.setAttribute("data-bn-html-block", "1");
       wrap.innerHTML = sanitizeNoteHtml(raw);
