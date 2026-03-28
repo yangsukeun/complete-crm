@@ -56,6 +56,21 @@ const createSchema = z.object({
   ),
 });
 
+/** Vercel 등에서 `req.url`이 상대 경로만 올 때 `new URL(req.url)` 단독 사용 시 Invalid URL 방지 */
+function getRequestSearchParams(req: Request): URLSearchParams {
+  try {
+    return new URL(req.url).searchParams;
+  } catch {
+    try {
+      const host = req.headers.get("host") ?? "localhost";
+      const proto = req.headers.get("x-forwarded-proto") ?? "http";
+      return new URL(req.url, `${proto}://${host}`).searchParams;
+    } catch {
+      return new URLSearchParams();
+    }
+  }
+}
+
 function emptyBoardListResponse(
   searchParams: URLSearchParams,
   listCacheHeaders: Record<string, string>
@@ -80,12 +95,12 @@ function emptyBoardListResponse(
 
 export async function GET(req: Request) {
   console.log("[board] 시작");
-  const { searchParams } = new URL(req.url);
   const listCacheHeaders = {
     "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
   };
 
   try {
+    const searchParams = getRequestSearchParams(req);
     const session = await getAppSession();
     if (!session?.user?.id) {
       return emptyBoardListResponse(searchParams, listCacheHeaders);
@@ -187,7 +202,7 @@ export async function GET(req: Request) {
     );
   } catch (e) {
     console.error("[board 에러 원인]", e);
-    return emptyBoardListResponse(searchParams, listCacheHeaders);
+    return emptyBoardListResponse(getRequestSearchParams(req), listCacheHeaders);
   }
 }
 

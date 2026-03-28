@@ -1,26 +1,32 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { BoardBlockDocViewer } from "@/components/board-block-doc-viewer";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { boardDescriptionLooksLikeHtml } from "@/lib/board-body";
 import { parseStoredTaskBody } from "@/lib/task-body-description";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
 
-/** BlockNote 뷰어는 SSR 시 Suspense 경계 오류(React #419)를 일으킬 수 있어 클라이언트에서만 마운트 */
-const BoardBlockDocViewer = dynamic(
-  () =>
-    import("@/components/board-block-doc-viewer").then((m) => ({ default: m.BoardBlockDocViewer })),
-  {
-    ssr: false,
-    loading: () => (
+/**
+ * BlockNote 내부 Suspense와 next/dynamic 조합 시 하이드레이션에서 React #419가 날 수 있어,
+ * 첫 페인트(서버·클라이언트)는 동일한 플레이스홀더만 쓰고, 마운트 이후에만 뷰어를 넣습니다.
+ */
+function BoardBlockViewerGate({ blocks }: { blocks: unknown[] }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) {
+    return (
       <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground dark:border-border">
         본문 블록을 불러오는 중…
       </div>
-    ),
+    );
   }
-);
+  return <BoardBlockDocViewer blocks={blocks} />;
+}
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -84,7 +90,7 @@ export function BoardPostContent({
         ) : structured?.format === "blocks" &&
           Array.isArray(structured.blocks) &&
           structured.blocks.length > 0 ? (
-          <BoardBlockDocViewer blocks={structured.blocks as unknown[]} />
+          <BoardBlockViewerGate blocks={structured.blocks as unknown[]} />
         ) : boardDescriptionLooksLikeHtml(description) ? (
           <div
             className="prose prose-sm max-w-none dark:prose-invert rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed [&_a]:break-words [&_img]:max-w-full [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
