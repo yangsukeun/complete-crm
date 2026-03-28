@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { ArrowLeft, FileText, Link2 } from "lucide-react";
+import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
 
 type QuotationOption = {
   id: string;
@@ -255,6 +256,14 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
             </Button>
           </div>
         )}
+      </section>
+
+      <section className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 space-y-4">
+        <UserNotesBoard
+          projectId={projectId}
+          heading="프로젝트 메모"
+          description="이 CRM 프로젝트에 연결된 메모입니다. 메모장의 글을 가져오거나 새로 적을 수 있습니다."
+        />
       </section>
 
       <section className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 space-y-4">

@@ -130,6 +130,7 @@ model User {
   currentProjectId String?
   currentProject   Project? @relation("UserCurrentProject", fields: [currentProjectId], references: [id], onDelete: SetNull)
   projects         Project[] @relation("ProjectTeamMembers")
+  userNotes        UserNote[]
   joinDate      DateTime  @default(now())
   birthDate     DateTime? // 생년월일
   emailVerified DateTime?
@@ -232,6 +233,7 @@ model Project {
   deletedAt DateTime?
   deletedById String?
   deletedBy User? @relation("ProjectDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  userNotes UserNote[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([brandId, name])
@@ -292,6 +294,22 @@ model DailyMemo {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([userId, date])
   @@index([userId])
+}
+
+// 구글 Keep 스타일 개인 메모 (다중 카드, HTML 본문, CRM 프로젝트에 선택 연결)
+model UserNote {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String   @default("")
+  content    String   @default("") @db.Text
+  colorHex   String?
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([userId])
+  @@index([projectId])
 }
 
 model Schedule {
