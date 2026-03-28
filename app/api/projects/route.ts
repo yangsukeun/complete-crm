@@ -49,9 +49,20 @@ export async function GET(req: Request) {
         },
         orderBy: { deletedAt: "desc" },
       });
-      return NextResponse.json({ projects, deletedProjects, isMaster: !!isMaster });
+      return NextResponse.json(
+        { projects, deletedProjects, isMaster: !!isMaster },
+        {
+          headers: {
+            "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
+          },
+        }
+      );
     }
-    return NextResponse.json(projects);
+    return NextResponse.json(projects, {
+      headers: {
+        "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
+      },
+    });
   } catch (e) {
     console.error("GET /api/projects", e);
     // Project 테이블 미생성 등으로 실패 시 빈 배열 반환 (500 방지)

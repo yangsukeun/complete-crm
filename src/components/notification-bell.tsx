@@ -38,7 +38,7 @@ export function NotificationBell() {
   const { data: unreadSwr, mutate: mutateUnread } = useSWR<{ count: number }>(
     session?.user?.id ? SWR_KEYS.notificationUnread : null,
     jsonFetcher,
-    { dedupingInterval: 30_000, revalidateOnFocus: true }
+    { dedupingInterval: 60_000, revalidateOnFocus: true }
   );
 
   useEffect(() => {

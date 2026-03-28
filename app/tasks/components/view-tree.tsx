@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef, DragEvent, KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import "./mindmap-toolbar.css";
 import {
   ReactFlow,
   Node,
@@ -76,6 +78,8 @@ type TreeViewProps = {
   currentUserId: string;
   /** EXECUTIVE/ADMIN: 타인이 만든 프로젝트 포함 전체 삭제(소프트) 가능 */
   isTaskDeleteAdmin: boolean;
+  /** 페이지 헤더 sticky 영역 DOM — 설정 시 툴바를 포털로 이동 */
+  toolbarPortalEl?: HTMLElement | null;
 };
 
 // Style settings for tree customization
@@ -550,6 +554,7 @@ function TreeViewInner({
   onCreateTask,
   currentUserId,
   isTaskDeleteAdmin,
+  toolbarPortalEl,
 }: TreeViewProps) {
   const { fitView, getNodes } = useReactFlow();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -1215,12 +1220,10 @@ function TreeViewInner({
     [onRefresh, deleteTaskLink]
   );
 
-  return (
-    <div className="space-y-4" onKeyDown={handleKeyDown} tabIndex={0}>
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+  const mindmapToolbar = (
+    <div className="mindmap-toolbar flex w-full min-w-0 items-center gap-2">
         {/* Quick Create */}
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[200px]">
           <Input
             ref={quickInputRef}
             placeholder={selectedNodeIds.length === 1 ? "하위 프로젝트 빠르게 추가..." : "새 프로젝트 빠르게 추가..."}
@@ -1232,22 +1235,23 @@ function TreeViewInner({
                 handleQuickCreate();
               }
             }}
-            className="h-9"
+            className="mindmap-toolbar-input h-9 min-w-0 flex-1"
             disabled={isCreating}
           />
           <Button
             size="sm"
+            className="mindmap-toolbar-btn shrink-0"
             onClick={handleQuickCreate}
             disabled={!quickTitle.trim() || isCreating}
           >
-            <Plus className="size-4 mr-1" />
+            <Plus className="mr-1 size-4" />
             추가
           </Button>
         </div>
 
         {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 프로젝트만 */}
         {selectedNodeIds.length > 0 && deletableSelectedIds.length > 0 && (
-          <Button variant="destructive" size="sm" onClick={deleteSelectedTasks}>
+          <Button variant="destructive" size="sm" className="mindmap-toolbar-btn shrink-0" onClick={deleteSelectedTasks}>
             <Trash2 className="mr-1 size-4" />
             {deletableSelectedIds.length}개 삭제
             {deletableSelectedIds.length < selectedNodeIds.length ? (
@@ -1259,8 +1263,8 @@ function TreeViewInner({
         {/* Style Settings */}
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" disabled={selectedNodeIds.length === 0}>
-              <Palette className="size-4 mr-1" />
+            <Button variant="outline" size="sm" className="mindmap-toolbar-btn shrink-0" disabled={selectedNodeIds.length === 0}>
+              <Palette className="mr-1 size-4" />
               스타일 {selectedNodeIds.length > 0 && `(${selectedNodeIds.length}개)`}
             </Button>
           </PopoverTrigger>
@@ -1359,7 +1363,7 @@ function TreeViewInner({
           </PopoverContent>
         </Popover>
 
-        <div className="flex items-center gap-2 shrink-0 text-xs min-h-[1.25rem]">
+        <div className="flex min-h-[1.25rem] shrink-0 items-center gap-2 text-xs">
           {saveUi === "saving" && <span className="text-muted-foreground">저장 중...</span>}
           {saveUi === "saved" && <span className="text-emerald-600">저장됨 ✓</span>}
           {saveUi === "error" && (
@@ -1373,10 +1377,17 @@ function TreeViewInner({
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground hidden sm:block">
+        <p className="text-muted-foreground hidden max-w-md text-xs lg:block">
           💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)
         </p>
-      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4" onKeyDown={handleKeyDown} tabIndex={0}>
+      {toolbarPortalEl
+        ? createPortal(mindmapToolbar, toolbarPortalEl)
+        : mindmapToolbar}
 
       {/* React Flow Canvas */}
       <div

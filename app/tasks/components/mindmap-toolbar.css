@@ -1,0 +1,19 @@
+/* 마인드맵 툴바 — 좁은 화면에서 줄바꿈·버튼 크기 */
+@media (max-width: 1280px) {
+  .mindmap-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mindmap-toolbar .mindmap-toolbar-btn {
+    font-size: 13px;
+    padding: 6px 10px;
+    height: auto;
+    min-height: 2rem;
+  }
+
+  .mindmap-toolbar .mindmap-toolbar-input {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+}

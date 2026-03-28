@@ -1,5 +1,6 @@
 "use client";
 
+import "./components/mindmap-toolbar.css";
 import React, {
   Component,
   type ReactNode,
@@ -327,6 +328,12 @@ export default function TasksPage() {
     return "all";
   });
   const projectScopeHydratedRef = useRef(false);
+  const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
+
+  /** 마인드맵이 아니면 툴바 포털 DOM 해제 */
+  useEffect(() => {
+    if (view !== "mindmap") setMindmapToolbarHost(null);
+  }, [view]);
 
   /** 마인드맵·필터·보기 범위 적용 시 전체 목록 필요 (부분 페이지에만 클라이언트 필터를 쓰면 안 됨) */
   const needsFullTaskList =
@@ -758,6 +765,12 @@ export default function TasksPage() {
             새 프로젝트
           </Button>
         </div>
+        {view === "mindmap" && mindmapMounted ? (
+          <div
+            ref={setMindmapToolbarHost}
+            className="mindmap-toolbar sticky top-0 z-[100] mt-3 flex w-full min-w-0 flex-wrap items-center gap-2 border-b border-border bg-background/95 py-2 pr-2 pl-1 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80"
+          />
+        ) : null}
       </div>
 
       <ViewErrorBoundary key={view}>
@@ -824,8 +837,9 @@ export default function TasksPage() {
               <Skeleton className="h-[420px] w-full rounded-lg" />
             </div>
           ) : (
-            <div key="mindmap" className="min-h-[480px] w-full">
+            <div key="mindmap" className="min-h-[480px] w-full min-w-0">
               <TaskTreeView
+                toolbarPortalEl={mindmapToolbarHost}
                 tasks={mindmapTasks as any}
                 taskLinks={mindmapLinksForView as any}
                 onRefresh={refreshTasks}

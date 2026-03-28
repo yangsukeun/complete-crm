@@ -39,7 +39,7 @@ export function Providers({
     >
       <SWRConfig
         value={{
-          dedupingInterval: 5000,
+          dedupingInterval: 10_000,
           revalidateOnFocus: true,
           focusThrottleInterval: 10_000,
           errorRetryCount: 2,
