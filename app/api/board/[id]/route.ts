@@ -6,6 +6,7 @@ import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
+import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,7 @@ function safeParseBoardAttachments(raw: string | null | undefined): { url: strin
 const updateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(50000).optional(),
+  contentType: z.enum(["text", "html"]).optional(),
   category: z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS"]).optional(),
   attachments: z.array(z.object({ url: z.string().min(1), name: z.string().optional() })).max(20).optional(),
 });
@@ -73,6 +75,7 @@ export async function GET(
       id: post.id,
       title: post.title,
       description: post.description ?? "",
+      contentType: post.contentType ?? "text",
       category: post.category,
       isAnonymous: anon,
       workspaceScope: post.workspaceScope,
@@ -138,6 +141,7 @@ export async function PATCH(
     const data: {
       title?: string;
       description?: string | null;
+      contentType?: string;
       category?: string;
       isAnonymous?: boolean;
       workspaceScope?: "TEAM" | "PERSONAL";
@@ -145,7 +149,20 @@ export async function PATCH(
     } = {};
     let removedAttachmentUrls: string[] = [];
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
-    if (parsed.data.description !== undefined) data.description = (parsed.data.description ?? "").trim() || null;
+
+    const typeForDescription: "text" | "html" =
+      parsed.data.contentType === "html" || parsed.data.contentType === "text"
+        ? parsed.data.contentType
+        : post.contentType === "html"
+          ? "html"
+          : "text";
+    if (parsed.data.description !== undefined) {
+      const d = normalizeBoardDescriptionForStore(parsed.data.description ?? "", typeForDescription);
+      data.description = d || null;
+    }
+    if (parsed.data.contentType !== undefined) {
+      data.contentType = parsed.data.contentType;
+    }
     if (parsed.data.category !== undefined) {
       data.category = parsed.data.category;
       data.isAnonymous = parsed.data.category === "ANONYMOUS";
@@ -173,6 +190,7 @@ export async function PATCH(
         id: true,
         title: true,
         description: true,
+        contentType: true,
         category: true,
         isAnonymous: true,
         workspaceScope: true,

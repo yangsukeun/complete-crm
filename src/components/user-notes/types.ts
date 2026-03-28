@@ -2,6 +2,7 @@ export type UserNoteDto = {
   id: string;
   title: string;
   content: string;
+  contentType?: string;
   colorHex: string | null;
   projectId: string | null;
   createdAt: string;

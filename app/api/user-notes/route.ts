@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { normalizeUserNoteContent } from "@/lib/user-note-body";
 
 const NOTE_COLORS = ["#fef08a", "#fde68a", "#fbcfe8", "#e9d5ff", "#bfdbfe", "#a7f3d0", "#fed7aa"];
 
 const createSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
+  contentType: z.enum(["text", "html"]).optional().default("text"),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
 });
@@ -62,7 +63,8 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
     }
-    const { title, content, projectId, colorHex } = parsed.data;
+    const { title, content, contentType, projectId, colorHex } = parsed.data;
+    const ct: "text" | "html" = contentType === "html" ? "html" : "text";
     let resolvedProjectId: string | null = projectId ?? null;
     if (resolvedProjectId) {
       const p = await prisma.project.findFirst({
@@ -77,7 +79,8 @@ export async function POST(req: Request) {
       data: {
         userId: session.user.id,
         title: (title ?? "").trim(),
-        content: sanitizeNoteHtml(content ?? ""),
+        content: normalizeUserNoteContent(content ?? "", ct),
+        contentType: ct,
         colorHex: colorHex ?? NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
         projectId: resolvedProjectId,
       },
@@ -85,6 +88,7 @@ export async function POST(req: Request) {
         id: true,
         title: true,
         content: true,
+        contentType: true,
         colorHex: true,
         projectId: true,
         createdAt: true,

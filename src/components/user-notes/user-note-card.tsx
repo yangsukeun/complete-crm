@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { MoreVertical, Trash2, FolderKanban } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,15 +10,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
 import type { UserNoteDto } from "./types";
 import { cn } from "@/lib/utils";
+
+type PatchBody = {
+  title?: string;
+  content?: string;
+  contentType?: "text" | "html";
+};
 
 type Props = {
   note: UserNoteDto;
   showProjectLink?: boolean;
   showConvertToProject?: boolean;
-  onPatch: (id: string, body: { title?: string; content?: string }) => Promise<UserNoteDto | void>;
+  onPatch: (id: string, body: PatchBody) => Promise<UserNoteDto | void>;
   onDelete: (id: string) => Promise<void>;
   onRequestConvert: (note: UserNoteDto) => void;
 };
@@ -32,38 +38,49 @@ export function UserNoteCard({
   onRequestConvert,
 }: Props) {
   const [title, setTitle] = useState(note.title);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const savingRef = useRef(false);
+  const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
+  const [plainContent, setPlainContent] = useState("");
+  const [htmlContent, setHtmlContent] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setTitle(note.title);
-    if (bodyRef.current && !savingRef.current) {
-      const next = sanitizeNoteHtml(note.content);
-      if (bodyRef.current.innerHTML !== next) {
-        bodyRef.current.innerHTML = next;
-      }
+    const ct = note.contentType === "html" ? "html" : "text";
+    if (ct === "html") {
+      setHtmlContent(note.content);
+      setPlainContent("");
+      setEditorMode("html");
+    } else {
+      setPlainContent(note.content);
+      setHtmlContent("");
+      setEditorMode("text");
     }
-  }, [note.id, note.updatedAt, note.title, note.content]);
+  }, [note.id, note.updatedAt, note.title, note.content, note.contentType]);
 
-  const persist = async (nextTitle: string, html: string) => {
-    savingRef.current = true;
+  const flush = async (modeOverride?: HtmlEditorMode) => {
+    const mode = modeOverride ?? editorMode;
+    const isHtml = mode === "html" || mode === "preview";
+    const nextContent = isHtml ? htmlContent : plainContent;
+    const nextType: "text" | "html" = isHtml ? "html" : "text";
+    const nt = note.contentType === "html" ? "html" : "text";
+    if (title.trim() === note.title && nextContent === note.content && nextType === nt) return;
+
+    const body: PatchBody = {
+      title: title.trim(),
+      content: nextContent,
+      contentType: nextType,
+    };
+    setSaving(true);
     try {
-      const clean = sanitizeNoteHtml(html);
-      await onPatch(note.id, { title: nextTitle.trim(), content: clean });
+      await onPatch(note.id, body);
     } finally {
-      savingRef.current = false;
+      setSaving(false);
     }
   };
 
   const handleTitleBlur = () => {
     if (title === note.title) return;
-    void persist(title, bodyRef.current?.innerHTML ?? note.content);
-  };
-
-  const handleBodyBlur = () => {
-    const html = bodyRef.current?.innerHTML ?? "";
-    if (html === sanitizeNoteHtml(note.content)) return;
-    void persist(title, html);
+    void flush();
   };
 
   const bg = note.colorHex ?? "#fef9c3";
@@ -113,18 +130,30 @@ export function UserNoteCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div
-        ref={bodyRef}
-        contentEditable
-        suppressContentEditableWarning
-        onBlur={handleBodyBlur}
-        className={cn(
-          "min-h-[4.5rem] max-h-48 overflow-y-auto text-sm outline-none",
-          "prose prose-sm dark:prose-invert max-w-none [&_a]:underline",
-          "empty:before:text-foreground/40 empty:before:content-[attr(data-placeholder)]"
-        )}
-        data-placeholder="메모를 입력하세요…"
+
+      <HtmlEditorModeTabs
+        editorMode={editorMode}
+        setEditorMode={setEditorMode}
+        htmlContent={htmlContent}
+        setHtmlContent={setHtmlContent}
+        onHtmlBlur={() => void flush("html")}
+        textEditor={
+          <textarea
+            value={plainContent}
+            onChange={(e) => setPlainContent(e.target.value)}
+            onBlur={() => void flush("text")}
+            placeholder="메모를 입력하세요…"
+            rows={6}
+            className="w-full resize-y rounded-md border border-input bg-background/80 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[6rem]"
+          />
+        }
+        emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
       />
+
+      {saving ? (
+        <p className="mt-1 text-[10px] text-muted-foreground">저장 중…</p>
+      ) : null}
+
       {showProjectLink && note.project ? (
         <p className="mt-2 text-xs text-foreground/65">
           연결: {note.project.brand.name} / {note.project.name}

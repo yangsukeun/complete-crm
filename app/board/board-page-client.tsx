@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { previewPlainTextForBoard } from "@/lib/board-body";
+import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
 import { toast } from "sonner";
 import {
   postUploadFile,
@@ -156,6 +158,8 @@ export function BoardPageClient({
   const [submitLoading, setSubmitLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [bodyContent, setBodyContent] = useState("");
+  const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
+  const [htmlContent, setHtmlContent] = useState("");
   const [category, setCategory] = useState<BoardCategory>("COMPANY");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -264,12 +268,14 @@ export function BoardPageClient({
     }
     setSubmitLoading(true);
     try {
+      const isHtmlPayload = editorMode === "html" || editorMode === "preview";
       const res = await fetch("/api/board", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          description: bodyContent.trim() || "",
+          description: (isHtmlPayload ? htmlContent : bodyContent).trim() || "",
+          contentType: isHtmlPayload ? "html" : "text",
           category,
           workspaceScope:
             category === "FREE" || category === "ANONYMOUS"
@@ -285,6 +291,8 @@ export function BoardPageClient({
       toast.success("자료가 등록되었습니다.");
       setTitle("");
       setBodyContent("");
+      setHtmlContent("");
+      setEditorMode("text");
       setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
       setAttachments([]);
       setOpenBoard(false);
@@ -385,6 +393,8 @@ export function BoardPageClient({
   const resetBoardForm = () => {
     setTitle("");
     setBodyContent("");
+    setHtmlContent("");
+    setEditorMode("text");
     setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
     setAttachments([]);
     setUrlLink("");
@@ -562,7 +572,7 @@ export function BoardPageClient({
               const b = item.data;
               const preview =
                 b.description != null && b.description !== ""
-                  ? stripMarkdownPreview(b.description, 120)
+                  ? previewPlainTextForBoard(b.description, 120)
                   : "";
               const media = getPreviewMedia(b.attachments, b.description);
               const boardThumbRank = media?.type === "image" ? boardCardImageIndex++ : -1;
@@ -782,13 +792,21 @@ export function BoardPageClient({
               )}
             </div>
             <div className="space-y-2">
-              <Label>설명 (프로젝트 상세와 동일한 서식)</Label>
-              <ContentBodyEditor
-                key={openBoard ? "board-open" : "board-closed"}
-                initialContent={bodyContent}
-                onChange={setBodyContent}
-                minHeight="240px"
-                showHelp={true}
+              <Label>설명</Label>
+              <HtmlEditorModeTabs
+                editorMode={editorMode}
+                setEditorMode={setEditorMode}
+                htmlContent={htmlContent}
+                setHtmlContent={setHtmlContent}
+                textEditor={
+                  <ContentBodyEditor
+                    key={openBoard ? "board-rich-open" : "board-rich-closed"}
+                    initialContent={bodyContent}
+                    onChange={setBodyContent}
+                    minHeight="240px"
+                    showHelp={true}
+                  />
+                }
               />
             </div>
             <div className="space-y-2">

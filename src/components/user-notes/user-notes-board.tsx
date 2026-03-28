@@ -120,7 +120,10 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
     }
   };
 
-  const handlePatch = async (id: string, body: { title?: string; content?: string }) => {
+  const handlePatch = async (
+    id: string,
+    body: { title?: string; content?: string; contentType?: "text" | "html" }
+  ) => {
     const updated = await fetchJson<UserNoteDto>(`/api/user-notes/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

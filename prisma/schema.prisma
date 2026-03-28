@@ -303,6 +303,8 @@ model UserNote {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title      String   @default("")
   content    String   @default("") @db.Text
+  /// 본문 저장 형식: text(일반 텍스트) | html(HTML)
+  contentType String  @default("text") @map("content_type") @db.VarChar(20)
   colorHex   String?
   projectId  String?
   project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -565,6 +567,8 @@ model BoardPost {
   id          String            @id @default(cuid())
   title       String
   description String?           @default("")
+  /// 본문: text(마크다운/노션형) | html(HTML)
+  contentType String            @default("text") @map("content_type") @db.VarChar(20)
   category    String             // "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS"
   /// 익명 게시판(ANONYMOUS) 글 — DB에는 createdById 유지, 노출은 API/UI에서 마스킹 (대표만 상세에서 실명 확인)
   isAnonymous Boolean           @default(false)

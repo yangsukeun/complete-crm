@@ -87,6 +87,7 @@ export default async function BoardPostPage({
           canEdit={canEditPost}
           initialTitle={post.title}
           initialDescription={post.description ?? ""}
+          initialContentType={post.contentType ?? "text"}
           initialCategory={
             post.category as "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS"
           }
@@ -95,6 +96,7 @@ export default async function BoardPostPage({
       </div>
       <BoardPostContent
         description={post.description ?? ""}
+        contentType={post.contentType ?? "text"}
         attachments={attachments}
         category={post.category}
       />

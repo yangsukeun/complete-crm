@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { normalizeUserNoteContent } from "@/lib/user-note-body";
 
 const patchSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
+  contentType: z.enum(["text", "html"]).optional(),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
 });
@@ -14,7 +15,7 @@ const patchSchema = z.object({
 async function getOwnedNote(noteId: string, userId: string) {
   return prisma.userNote.findFirst({
     where: { id: noteId, userId },
-    select: { id: true },
+    select: { id: true, contentType: true },
   });
 }
 
@@ -37,11 +38,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const data: {
       title?: string;
       content?: string;
+      contentType?: string;
       projectId?: string | null;
       colorHex?: string | null;
     } = {};
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
-    if (parsed.data.content !== undefined) data.content = sanitizeNoteHtml(parsed.data.content);
+    const effectiveCt: "text" | "html" =
+      parsed.data.contentType === "html" || parsed.data.contentType === "text"
+        ? parsed.data.contentType
+        : owned.contentType === "html"
+          ? "html"
+          : "text";
+    if (parsed.data.content !== undefined) {
+      data.content = normalizeUserNoteContent(parsed.data.content, effectiveCt);
+    }
+    if (parsed.data.contentType !== undefined) data.contentType = parsed.data.contentType;
     if (parsed.data.colorHex !== undefined) data.colorHex = parsed.data.colorHex;
     if (parsed.data.projectId !== undefined) {
       const pid = parsed.data.projectId;
@@ -65,6 +76,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         id: true,
         title: true,
         content: true,
+        contentType: true,
         colorHex: true,
         projectId: true,
         createdAt: true,

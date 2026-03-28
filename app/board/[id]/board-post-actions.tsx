@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ContentBodyEditor } from "@/components/content-body-editor";
+import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { FileText, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ type Props = {
   canEdit: boolean;
   initialTitle: string;
   initialDescription: string;
+  initialContentType?: string;
   initialCategory: BoardEditCategory;
   initialAttachments: AttachmentItem[];
 };
@@ -40,6 +42,7 @@ export function BoardPostActions({
   canEdit,
   initialTitle,
   initialDescription,
+  initialContentType = "text",
   initialCategory,
   initialAttachments,
 }: Props) {
@@ -48,6 +51,8 @@ export function BoardPostActions({
   const [editOpen, setEditOpen] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [bodyContent, setBodyContent] = useState(initialDescription);
+  const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
+  const [htmlContent, setHtmlContent] = useState("");
   const [category, setCategory] = useState<BoardEditCategory>(initialCategory);
   const [attachments, setAttachments] = useState<AttachmentItem[]>(initialAttachments);
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -59,7 +64,15 @@ export function BoardPostActions({
 
   const openEdit = () => {
     setTitle(initialTitle);
-    setBodyContent(initialDescription);
+    if (initialContentType === "html") {
+      setEditorMode("html");
+      setHtmlContent(initialDescription);
+      setBodyContent("");
+    } else {
+      setEditorMode("text");
+      setBodyContent(initialDescription);
+      setHtmlContent("");
+    }
     setCategory(initialCategory);
     setAttachments([...initialAttachments]);
     setUrlLink("");
@@ -112,12 +125,14 @@ export function BoardPostActions({
     }
     setSubmitLoading(true);
     try {
+      const isHtmlPayload = editorMode === "html" || editorMode === "preview";
       const res = await fetch(`/api/board/${postId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          description: bodyContent.trim() || "",
+          description: (isHtmlPayload ? htmlContent : bodyContent).trim() || "",
+          contentType: isHtmlPayload ? "html" : "text",
           category,
           attachments,
         }),
@@ -208,12 +223,20 @@ export function BoardPostActions({
             </div>
             <div className="space-y-2">
               <Label>설명</Label>
-              <ContentBodyEditor
-                key={editOpen ? "edit-open" : "edit-closed"}
-                initialContent={bodyContent}
-                onChange={setBodyContent}
-                minHeight="240px"
-                showHelp={true}
+              <HtmlEditorModeTabs
+                editorMode={editorMode}
+                setEditorMode={setEditorMode}
+                htmlContent={htmlContent}
+                setHtmlContent={setHtmlContent}
+                textEditor={
+                  <ContentBodyEditor
+                    key={editOpen ? "edit-rich-open" : "edit-rich-closed"}
+                    initialContent={bodyContent}
+                    onChange={setBodyContent}
+                    minHeight="240px"
+                    showHelp={true}
+                  />
+                }
               />
             </div>
             <div className="space-y-2">

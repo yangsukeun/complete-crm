@@ -1,0 +1,122 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+
+export type HtmlEditorMode = "text" | "html" | "preview";
+
+type Props = {
+  editorMode: HtmlEditorMode;
+  setEditorMode: (m: HtmlEditorMode) => void;
+  htmlContent: string;
+  setHtmlContent: (v: string) => void;
+  /** 텍스트 탭: 게시판은 ContentBodyEditor, 메모는 textarea 등 */
+  textEditor: ReactNode;
+  emptyPreviewMessage?: string;
+  /** HTML 탭 textarea blur 시 저장 등 */
+  onHtmlBlur?: () => void;
+};
+
+/**
+ * 게시판·메모 본문용: 텍스트 / HTML / 미리보기 탭
+ * 미리보기·상세는 sanitize된 HTML만 iframe에 넣고, sandbox는 스크립트 비허용.
+ */
+export function HtmlEditorModeTabs({
+  editorMode,
+  setEditorMode,
+  htmlContent,
+  setHtmlContent,
+  textEditor,
+  emptyPreviewMessage = "HTML 탭에서 코드를 입력하면 여기에 표시됩니다",
+  onHtmlBlur,
+}: Props) {
+  return (
+    <div className="space-y-2">
+      <div
+        className="flex gap-1 border-b border-gray-200 pb-2 dark:border-border"
+        style={{ display: "flex", gap: "4px", marginBottom: "8px", paddingBottom: "8px" }}
+      >
+        {(["text", "html", "preview"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setEditorMode(mode)}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "6px",
+              fontSize: "13px",
+              background: editorMode === mode ? "#6366f1" : "transparent",
+              color: editorMode === mode ? "white" : "#6b7280",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            {mode === "text" ? "텍스트" : mode === "html" ? "HTML" : "미리보기"}
+          </button>
+        ))}
+      </div>
+
+      {editorMode === "text" && textEditor}
+
+      {editorMode === "html" && (
+        <textarea
+          value={htmlContent}
+          onChange={(e) => setHtmlContent(e.target.value)}
+          onBlur={() => onHtmlBlur?.()}
+          placeholder="HTML 코드를 붙여넣으세요..."
+          style={{
+            width: "100%",
+            minHeight: "300px",
+            padding: "12px",
+            fontFamily: "monospace",
+            fontSize: "13px",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            resize: "vertical",
+          }}
+          className="bg-background text-foreground dark:border-border"
+        />
+      )}
+
+      {editorMode === "preview" && htmlContent.trim() && (
+        <iframe
+          title="미리보기"
+          srcDoc={sanitizeNoteHtml(htmlContent)}
+          sandbox=""
+          style={{
+            width: "100%",
+            minHeight: "400px",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+          }}
+          className="bg-white dark:bg-card"
+          onLoad={(e) => {
+            const iframe = e.target as HTMLIFrameElement;
+            try {
+              if (iframe.contentWindow?.document.body) {
+                iframe.style.height = `${iframe.contentWindow.document.body.scrollHeight + 40}px`;
+              }
+            } catch {
+              /* cross-origin 방어 */
+            }
+          }}
+        />
+      )}
+
+      {editorMode === "preview" && !htmlContent.trim() && (
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            color: "#9ca3af",
+            border: "1px dashed #e5e7eb",
+            borderRadius: "8px",
+          }}
+          className="dark:border-border dark:text-muted-foreground"
+        >
+          {emptyPreviewMessage}
+        </div>
+      )}
+    </div>
+  );
+}

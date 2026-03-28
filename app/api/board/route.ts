@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { boardVisibilityWhere } from "@/lib/board-access";
 import { boardCategoryIsAnonymous, isBoardCategory } from "@/lib/board-category";
 import { z } from "zod";
+import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
 
 export const runtime = "nodejs";
 /** Drive 업로드·DB 지연 대비 (Vercel Pro 등에서 상한 상향 시 반영) */
@@ -35,6 +36,7 @@ const createSchema = z.object({
     (v) => (typeof v === "string" ? v : ""),
     z.string().max(50000)
   ),
+  contentType: z.enum(["text", "html"]).optional().default("text"),
   category: categorySchema,
   workspaceScope: workspaceScopeSchema.optional().default("TEAM"),
   attachments: z.preprocess(
@@ -185,10 +187,15 @@ export async function POST(req: Request) {
         ? "TEAM"
         : parsed.data.workspaceScope;
 
+    const descNorm = normalizeBoardDescriptionForStore(
+      parsed.data.description,
+      parsed.data.contentType === "html" ? "html" : "text"
+    );
     const created = await prisma.boardPost.create({
       data: {
         title: parsed.data.title.trim(),
-        description: parsed.data.description.trim() || null,
+        description: descNorm || null,
+        contentType: parsed.data.contentType === "html" ? "html" : "text",
         category: parsed.data.category,
         isAnonymous: isAnonBoard,
         workspaceScope,
@@ -199,6 +206,7 @@ export async function POST(req: Request) {
         id: true,
         title: true,
         description: true,
+        contentType: true,
         category: true,
         isAnonymous: true,
         workspaceScope: true,
@@ -211,6 +219,7 @@ export async function POST(req: Request) {
       id: created.id,
       title: created.title,
       description: created.description ?? "",
+      contentType: created.contentType ?? "text",
       category: created.category,
       isAnonymous: created.isAnonymous,
       workspaceScope: created.workspaceScope,
