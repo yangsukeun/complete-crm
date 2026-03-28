@@ -39,8 +39,21 @@ import {
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useWorkspaceStore } from "@/store/workspace-store";
-import { ContentBodyEditor } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+
+/** BlockNote 기반 에디터는 SSR·하이드레이션 시 Suspense(#419) 이슈가 있어 클라이언트에서만 로드 */
+const ContentBodyEditor = dynamic(
+  () =>
+    import("@/components/content-body-editor").then((m) => ({ default: m.ContentBodyEditor })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[200px] items-center justify-center rounded-md border bg-muted/30 text-sm text-muted-foreground">
+        본문 편집기를 불러오는 중…
+      </div>
+    ),
+  }
+);
 import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
 import { getDriveThumbnailUrl } from "@/lib/google-drive-url";
