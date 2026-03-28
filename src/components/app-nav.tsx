@@ -4,7 +4,7 @@ import Link from "next/link";
 import NextImage from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -78,7 +78,7 @@ type ChatRowForBadge = {
   lastMessage: { createdAt: string; user: { id: string } } | null;
 };
 
-export function AppNav() {
+function AppNavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
@@ -623,5 +623,15 @@ export function AppNav() {
         </div>
       </div>
     </header>
+  );
+}
+
+export function AppNav() {
+  return (
+    <Suspense
+      fallback={<header className="h-16 shrink-0 border-b border-gray-200 bg-background" aria-hidden />}
+    >
+      <AppNavContent />
+    </Suspense>
   );
 }
