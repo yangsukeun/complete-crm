@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { useState, useRef, useEffect } from "react";
 
 /**
  * HTML 블록 UI (코드 + 미리보기 + 새 탭).
- * BlockNote 편집기는 `blocknote-html-embed.ts`(DOM 스펙)와 동일 UX를 맞춥니다.
+ * BlockNote 편집기 미리보기와 동일하게 전체 HTML 문서는 원본 srcDoc으로 렌더링합니다.
  */
 export function HTMLBlock({
   content,
@@ -17,35 +16,40 @@ export function HTMLBlock({
   readOnly?: boolean;
 }) {
   const [mode, setMode] = useState<"code" | "preview">(readOnly ? "preview" : "code");
+  const [iframeHeight, setIframeHeight] = useState(400);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const autoResize = () => {
-    const el = iframeRef.current;
-    if (el?.contentWindow?.document?.body) {
-      const h = el.contentWindow.document.body.scrollHeight;
-      el.style.height = `${Math.max(h + 40, 100)}px`;
-    }
-  };
+  useEffect(() => {
+    if (mode !== "preview") return;
+    const timer = setTimeout(() => {
+      const el = iframeRef.current;
+      if (el?.contentWindow?.document) {
+        const d = el.contentWindow.document;
+        const h = Math.max(d.documentElement?.scrollHeight ?? 0, d.body?.scrollHeight ?? 0, 200);
+        setIframeHeight(h + 20);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [mode, content]);
 
   const openNewTab = () => {
     if (!content) return;
-    const blob = new Blob([content], { type: "text/html" });
+    const blob = new Blob([content], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
   };
-
-  const safePreview = sanitizeNoteHtml(content);
 
   return (
     <div
+      className="html-block-root"
       style={{
         border: "1px solid #e5e7eb",
         borderRadius: "8px",
         overflow: "hidden",
-        margin: "12px 0",
+        margin: "8px 0",
+        minHeight: mode === "preview" ? "200px" : "160px",
       }}
-      className="dark:border-border"
     >
       <div
         style={{
@@ -53,32 +57,33 @@ export function HTMLBlock({
           alignItems: "center",
           gap: "4px",
           padding: "6px 10px",
-          background: "#f9fafb",
-          borderBottom: "1px solid #e5e7eb",
+          background: "#1e1e1e",
+          borderBottom: "1px solid #333",
+          flexWrap: "wrap",
         }}
-        className="dark:bg-muted/50 dark:border-border"
       >
         <span
           style={{
             fontSize: "12px",
-            color: "#6b7280",
+            color: "#888",
             fontWeight: 500,
             marginRight: "8px",
+            fontFamily: "monospace",
           }}
         >
-          🖥️ HTML
+          &lt;/&gt; HTML
         </span>
 
         <button
           type="button"
           onClick={() => setMode("code")}
           style={{
-            padding: "2px 10px",
+            padding: "3px 12px",
             borderRadius: "4px",
             fontSize: "12px",
             background: mode === "code" ? "#6366f1" : "transparent",
-            color: mode === "code" ? "white" : "#6b7280",
-            border: "none",
+            color: mode === "code" ? "white" : "#888",
+            border: mode === "code" ? "none" : "1px solid #444",
             cursor: "pointer",
           }}
         >
@@ -89,12 +94,12 @@ export function HTMLBlock({
           type="button"
           onClick={() => setMode("preview")}
           style={{
-            padding: "2px 10px",
+            padding: "3px 12px",
             borderRadius: "4px",
             fontSize: "12px",
             background: mode === "preview" ? "#6366f1" : "transparent",
-            color: mode === "preview" ? "white" : "#6b7280",
-            border: "none",
+            color: mode === "preview" ? "white" : "#888",
+            border: mode === "preview" ? "none" : "1px solid #444",
             cursor: "pointer",
           }}
         >
@@ -107,13 +112,16 @@ export function HTMLBlock({
             onClick={openNewTab}
             style={{
               marginLeft: "auto",
-              padding: "2px 10px",
+              padding: "3px 12px",
               borderRadius: "4px",
               fontSize: "12px",
               background: "transparent",
-              color: "#6b7280",
-              border: "1px solid #e5e7eb",
+              color: "#888",
+              border: "1px solid #444",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
             }}
           >
             ↗ 새 탭
@@ -126,7 +134,18 @@ export function HTMLBlock({
           value={content}
           onChange={(e) => onChange?.(e.target.value)}
           readOnly={readOnly}
-          placeholder="HTML 코드를 입력하세요..."
+          placeholder={`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+  </style>
+</head>
+<body>
+  <h1>여기에 HTML 코드 붙여넣기</h1>
+</body>
+</html>`}
           style={{
             width: "100%",
             minHeight: "200px",
@@ -146,29 +165,50 @@ export function HTMLBlock({
       )}
 
       {mode === "preview" && content ? (
-        <iframe
-          ref={iframeRef}
-          title="HTML 미리보기"
-          srcDoc={safePreview}
-          sandbox="allow-scripts"
+        <div
+          className="html-block-preview"
           style={{
-            width: "100%",
-            minHeight: "100px",
-            border: "none",
-            display: "block",
             background: "white",
+            minHeight: "200px",
+            maxHeight: "500px",
+            overflowY: "auto",
           }}
-          onLoad={autoResize}
-        />
+        >
+          <iframe
+            ref={iframeRef}
+            title="HTML 미리보기"
+            srcDoc={content}
+            sandbox="allow-scripts allow-same-origin"
+            style={{
+              width: "100%",
+              height: `${iframeHeight}px`,
+              border: "none",
+              display: "block",
+            }}
+            onLoad={() => {
+              const el = iframeRef.current;
+              if (el?.contentWindow?.document) {
+                const d = el.contentWindow.document;
+                const h = Math.max(
+                  d.documentElement?.scrollHeight ?? 0,
+                  d.body?.scrollHeight ?? 0,
+                  200
+                );
+                setIframeHeight(h + 20);
+              }
+            }}
+          />
+        </div>
       ) : null}
 
       {mode === "preview" && !content ? (
         <div
           style={{
-            padding: "32px",
+            padding: "40px",
             textAlign: "center",
             color: "#9ca3af",
             fontSize: "13px",
+            background: "#f9fafb",
           }}
         >
           코드 탭에서 HTML을 입력하면 여기에 미리보기가 표시됩니다

@@ -187,11 +187,11 @@ export function BoardPostActions({
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
           <DialogHeader>
             <DialogTitle>자료 수정</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmitEdit} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmitEdit} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <div className="space-y-2">
               <Label htmlFor="edit-board-title">제목</Label>
               <Input
@@ -233,7 +233,7 @@ export function BoardPostActions({
                     key={editOpen ? "edit-rich-open" : "edit-rich-closed"}
                     initialContent={bodyContent}
                     onChange={setBodyContent}
-                    minHeight="240px"
+                    minHeight="320px"
                     showHelp={true}
                   />
                 }

@@ -24,7 +24,7 @@ export const createHtmlBlockSpec = createBlockSpec(
       wrapper.className = "bn-html-block-wrapper";
       wrapper.setAttribute("data-html-block", "1");
       wrapper.style.cssText =
-        "border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:8px 0;background:#fff";
+        "border:1px solid #e5e7eb;border-radius:8px;overflow:visible;margin:8px 0;background:#fff";
       wrapper.setAttribute("contenteditable", "false");
 
       const header = document.createElement("div");
@@ -74,10 +74,10 @@ export const createHtmlBlockSpec = createBlockSpec(
         e.preventDefault();
         e.stopPropagation();
         if (!html.trim()) return;
-        const blob = new Blob([html], { type: "text/html" });
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
       });
       header.appendChild(newTabBtn);
 
@@ -106,21 +106,35 @@ export const createHtmlBlockSpec = createBlockSpec(
         });
         wrapper.appendChild(ta);
       } else if (html.trim()) {
+        const previewWrap = document.createElement("div");
+        previewWrap.className = "html-block-preview";
+        previewWrap.style.cssText =
+          "background:white;min-height:200px;max-height:500px;overflow-y:auto;border-top:1px solid #e5e7eb";
+
         const iframe = document.createElement("iframe");
         iframe.title = "HTML 미리보기";
-        iframe.setAttribute("sandbox", "allow-scripts");
-        iframe.style.cssText =
-          "width:100%;min-height:200px;border:none;display:block;background:white";
-        iframe.srcdoc = sanitizeNoteHtml(html);
-        iframe.addEventListener("load", () => {
+        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        iframe.style.cssText = "width:100%;min-height:200px;border:none;display:block;background:white";
+
+        const resizeIframe = () => {
           try {
-            const doc = iframe.contentWindow?.document?.body;
-            if (doc) iframe.style.height = `${doc.scrollHeight + 40}px`;
+            const doc = iframe.contentWindow?.document;
+            if (!doc?.documentElement) return;
+            const h = Math.max(
+              doc.documentElement.scrollHeight,
+              doc.body?.scrollHeight ?? 0,
+              200
+            );
+            iframe.style.height = `${h + 24}px`;
           } catch {
             /* ignore */
           }
-        });
-        wrapper.appendChild(iframe);
+        };
+
+        iframe.srcdoc = html;
+        iframe.addEventListener("load", resizeIframe);
+        previewWrap.appendChild(iframe);
+        wrapper.appendChild(previewWrap);
       } else {
         const empty = document.createElement("div");
         empty.style.cssText =

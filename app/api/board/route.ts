@@ -1,3 +1,7 @@
+/**
+ * 게시판 API — 데이터는 Prisma `BoardPost`(PostgreSQL)입니다.
+ * Supabase `board_posts` 등과는 별개이며, 클라이언트는 `items`·`hasMore`·`offset`·`limit` 형식을 사용합니다.
+ */
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -200,8 +204,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
 
+    console.log("[board POST body]", body);
+
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
+      console.error("[board POST] validation failed", parsed.error.flatten());
       return NextResponse.json(
         {
           error: "제목과 구분을 입력하세요.",
@@ -210,6 +217,14 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    console.log("[board POST parsed]", {
+      titleLen: parsed.data.title.length,
+      category: parsed.data.category,
+      contentType: parsed.data.contentType,
+      descriptionLen: parsed.data.description.length,
+      attachmentCount: parsed.data.attachments?.length ?? 0,
+    });
 
     const attachments = (parsed.data.attachments ?? []).map((a) => ({
       url: a.url,
@@ -226,29 +241,44 @@ export async function POST(req: Request) {
       parsed.data.description,
       parsed.data.contentType === "html" ? "html" : "text"
     );
-    const created = await prisma.boardPost.create({
-      data: {
-        title: parsed.data.title.trim(),
-        description: descNorm || null,
-        contentType: parsed.data.contentType === "html" ? "html" : "text",
-        category: parsed.data.category,
-        isAnonymous: isAnonBoard,
-        workspaceScope,
-        attachments: JSON.stringify(attachments),
-        createdById: session.user.id,
-      },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        contentType: true,
-        category: true,
-        isAnonymous: true,
-        workspaceScope: true,
-        attachments: true,
-        createdAt: true,
-      },
-    });
+    let created;
+    try {
+      created = await prisma.boardPost.create({
+        data: {
+          title: parsed.data.title.trim(),
+          description: descNorm || null,
+          contentType: parsed.data.contentType === "html" ? "html" : "text",
+          category: parsed.data.category,
+          isAnonymous: isAnonBoard,
+          workspaceScope,
+          attachments: JSON.stringify(attachments),
+          createdById: session.user.id,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          contentType: true,
+          category: true,
+          isAnonymous: true,
+          workspaceScope: true,
+          attachments: true,
+          createdAt: true,
+        },
+      });
+    } catch (dbErr) {
+      console.error("[board POST error]", dbErr);
+      const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      return NextResponse.json(
+        {
+          error: "자료 등록에 실패했습니다.",
+          detail: process.env.NODE_ENV === "development" ? msg : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log("[board POST] created id=", created.id);
 
     return NextResponse.json({
       id: created.id,
@@ -262,7 +292,7 @@ export async function POST(req: Request) {
       attachments: safeParseAttachments(created.attachments),
     });
   } catch (e) {
-    console.error("Board POST:", e);
+    console.error("[board POST catch]", e);
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
       { error: "자료 등록에 실패했습니다.", detail: process.env.NODE_ENV === "development" ? msg : undefined },

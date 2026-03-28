@@ -240,6 +240,7 @@ export function ContentBodyEditor({
           "[&_.bn-block-outer]:my-1 [&_.bn-block-content]:leading-relaxed",
           "[&_.bn-mantine]:border-0 [&_.bn-mantine]:bg-transparent [&_.bn-mantine]:rounded-lg [&_.bn-mantine]:overflow-visible",
           "[&_.bn-container]:overflow-visible",
+          "[&_.bn-html-block-wrapper]:min-w-0 [&_.html-block-preview]:max-h-[500px] [&_.html-block-preview]:overflow-y-auto",
           "[&_.bn-inline-content]:text-[15px] [&_.bn-inline-content]:leading-[1.7]",
           "[&_h1_.bn-inline-content]:text-2xl [&_h1_.bn-inline-content]:font-bold",
           "[&_h2_.bn-inline-content]:text-xl [&_h2_.bn-inline-content]:font-semibold",

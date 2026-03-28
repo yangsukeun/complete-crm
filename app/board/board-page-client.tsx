@@ -717,11 +717,11 @@ export function BoardPageClient({
 
       {/* 공지 등록 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
       <Dialog open={openAnnouncement} onOpenChange={(o: any) => !o && resetAnnouncementForm()}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
           <DialogHeader>
             <DialogTitle>공지사항 등록</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmitAnnouncement} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmitAnnouncement} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <div className="space-y-2">
               <Label htmlFor="announcement-title">제목</Label>
               <Input
@@ -738,7 +738,7 @@ export function BoardPageClient({
                 key={openAnnouncement ? "ann-open" : "ann-closed"}
                 initialContent={bodyContent}
                 onChange={setBodyContent}
-                minHeight="240px"
+                minHeight="320px"
                 showHelp={true}
               />
             </div>
@@ -757,11 +757,11 @@ export function BoardPageClient({
 
       {/* 자료 올리기 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
       <Dialog open={openBoard} onOpenChange={(o: any) => !o && resetBoardForm()}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
           <DialogHeader>
             <DialogTitle>자료 올리기</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmitBoard} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmitBoard} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <div className="space-y-2">
               <Label htmlFor="board-title">제목</Label>
               <Input
@@ -803,7 +803,7 @@ export function BoardPageClient({
                     key={openBoard ? "board-rich-open" : "board-rich-closed"}
                     initialContent={bodyContent}
                     onChange={setBodyContent}
-                    minHeight="240px"
+                    minHeight="320px"
                     showHelp={true}
                   />
                 }
