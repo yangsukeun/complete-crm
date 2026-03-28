@@ -51,13 +51,24 @@ function normalizeNotesPayload(json: unknown): UserNoteDto[] {
 }
 
 async function fetchNotesList(url: string): Promise<UserNoteDto[]> {
-  const res = await fetch(url);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    console.error("[user-notes SWR]", url, res.status, data);
+  try {
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return [];
+    }
+    return normalizeNotesPayload(data);
+  } catch {
     return [];
   }
-  return normalizeNotesPayload(data);
+}
+
+function unwrapNotePayload(data: unknown): UserNoteDto {
+  if (data && typeof data === "object" && "note" in data) {
+    const n = (data as { note: UserNoteDto }).note;
+    if (n && typeof n === "object" && "id" in n) return n;
+  }
+  return data as UserNoteDto;
 }
 
 function listUrlBuilder(projectId?: string) {
@@ -80,6 +91,8 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
     mutate,
   } = useSWR(listUrlBuilder(projectId), fetchNotesList, {
     revalidateOnFocus: true,
+    onError: () => {},
+    fallbackData: [],
   });
   const [importOpen, setImportOpen] = useState(false);
   const [unlinked, setUnlinked] = useState<UserNoteDto[]>([]);
@@ -119,7 +132,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
 
   const handleAdd = async () => {
     try {
-      const created = await fetchJson<UserNoteDto>("/api/user-notes", {
+      const res = await fetch("/api/user-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -128,6 +141,11 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
           projectId: projectId ?? null,
         }),
       });
+      const raw = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof (raw as { error?: string }).error === "string" ? (raw as { error: string }).error : "요청 실패");
+      }
+      const created = unwrapNotePayload(raw);
       await mutate((prev) => [created, ...(prev ?? [])], { revalidate: false });
       toast.success(projectId ? "프로젝트에 메모가 추가되었습니다." : "새 메모를 작성하세요.");
     } catch (e) {
@@ -153,7 +171,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
 
   const handleDelete = async (id: string) => {
     try {
-      await fetchJson<{ ok: boolean }>(`/api/user-notes/${id}`, { method: "DELETE" });
+      await fetchJson<{ ok: boolean }>(`/api/user-notes?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       await mutate(
         (prev) => (prev ?? []).filter((n) => n.id !== id),
         { revalidate: false }
@@ -168,10 +186,16 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
     if (!projectId) return;
     setLinkingId(noteId);
     try {
-      await fetchJson<UserNoteDto>(`/api/user-notes/${noteId}`, {
+      await fetch("/api/user-notes", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({ id: noteId, projectId }),
+      }).then(async (res) => {
+        const raw = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(typeof (raw as { error?: string }).error === "string" ? (raw as { error: string }).error : "요청 실패");
+        }
+        return unwrapNotePayload(raw);
       });
       toast.success("메모를 이 프로젝트에 연결했습니다.");
       setImportOpen(false);

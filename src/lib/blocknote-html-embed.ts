@@ -7,8 +7,8 @@ const createHtmlBlockConfig = createBlockConfig(() => ({
     textAlignment: defaultProps.textAlignment,
     backgroundColor: defaultProps.backgroundColor,
     html: { default: "" as const },
-    /** "code" = 편집, "preview" = 미리보기 (노션 스타일 전환) */
-    viewMode: { default: "code" as const },
+    /** "code" = 편집, "preview" = 미리보기. 저장·삽입 시 viewMode 생략이면 미리보기 우선(본문 없을 때만 코드). */
+    viewMode: { default: "preview" as const },
   },
   content: "none" as const,
 }));
@@ -17,7 +17,9 @@ export const createHtmlBlockSpec = createBlockSpec(
   createHtmlBlockConfig,
   () => ({
     render(block, editor) {
-      let viewMode = (block.props as { viewMode?: string }).viewMode === "preview" ? "preview" : "code";
+      const rawVm = (block.props as { viewMode?: string }).viewMode;
+      let viewMode: "code" | "preview" =
+        rawVm === "code" ? "code" : rawVm === "preview" ? "preview" : "preview";
       const htmlTrim = ((block.props as { html?: string }).html ?? "").trim();
       if (viewMode === "preview" && !htmlTrim) viewMode = "code";
 
@@ -143,7 +145,10 @@ export const createHtmlBlockSpec = createBlockSpec(
 
         const iframe = document.createElement("iframe");
         iframe.title = "HTML 미리보기";
-        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        iframe.setAttribute(
+          "sandbox",
+          "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
+        );
         iframe.style.cssText = "width:100%;min-height:200px;border:none;display:block;background:white";
         const rawHtml = (block.props as { html?: string }).html ?? "";
         iframe.srcdoc = rawHtml;

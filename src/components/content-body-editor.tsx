@@ -70,7 +70,7 @@ function BoardContentSlashMenu() {
         onItemClick: () => {
           insertOrUpdateBlockForSlashMenu(editor, {
             type: "htmlBlock",
-            props: { html: "", viewMode: "code" },
+            props: { html: "" },
           } as never);
         },
       };

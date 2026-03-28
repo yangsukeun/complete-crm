@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 
 export type HtmlEditorMode = "text" | "html" | "preview";
 
@@ -19,7 +18,7 @@ type Props = {
 
 /**
  * 게시판·메모 본문용: 텍스트 / HTML / 미리보기 탭
- * 미리보기·상세는 sanitize된 HTML만 iframe에 넣고, sandbox는 스크립트 비허용.
+ * 미리보기는 원본 HTML을 iframe에 넣습니다(XSS 주의 — 신뢰할 수 있는 입력만).
  */
 export function HtmlEditorModeTabs({
   editorMode,
@@ -27,7 +26,7 @@ export function HtmlEditorModeTabs({
   htmlContent,
   setHtmlContent,
   textEditor,
-  emptyPreviewMessage = "HTML 탭에서 코드를 입력하면 여기에 표시됩니다",
+  emptyPreviewMessage = "HTML 탭에서 코드를 입력하세요",
   onHtmlBlur,
 }: Props) {
   return (
@@ -81,23 +80,24 @@ export function HtmlEditorModeTabs({
       {editorMode === "preview" && htmlContent.trim() && (
         <iframe
           title="미리보기"
-          srcDoc={sanitizeNoteHtml(htmlContent)}
-          sandbox=""
+          srcDoc={htmlContent}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
           style={{
             width: "100%",
             minHeight: "400px",
-            border: "1px solid #e5e7eb",
-            borderRadius: "8px",
+            border: "none",
+            display: "block",
           }}
           className="bg-white dark:bg-card"
           onLoad={(e) => {
-            const iframe = e.target as HTMLIFrameElement;
+            const el = e.target as HTMLIFrameElement;
             try {
-              if (iframe.contentWindow?.document.body) {
-                iframe.style.height = `${iframe.contentWindow.document.body.scrollHeight + 40}px`;
+              const h = el.contentWindow?.document?.documentElement?.scrollHeight;
+              if (h && h > 100) {
+                el.style.height = `${h + 24}px`;
               }
             } catch {
-              /* cross-origin 방어 */
+              /* ignore */
             }
           }}
         />
