@@ -56,6 +56,31 @@ export const createHtmlBlockSpec = createBlockSpec(
       };
       header.appendChild(mkBtn("코드", "code"));
       header.appendChild(mkBtn("미리보기", "preview"));
+
+      const newTabBtn = document.createElement("button");
+      newTabBtn.type = "button";
+      newTabBtn.textContent = "↗ 새 탭";
+      newTabBtn.style.cssText = [
+        "margin-left:auto",
+        "padding:2px 10px",
+        "border-radius:4px",
+        "font-size:12px",
+        "background:transparent",
+        "color:#6b7280",
+        "border:1px solid #e5e7eb",
+        "cursor:pointer",
+      ].join(";");
+      newTabBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!html.trim()) return;
+        const blob = new Blob([html], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      header.appendChild(newTabBtn);
+
       wrapper.appendChild(header);
 
       if (viewMode === "code") {
@@ -83,7 +108,7 @@ export const createHtmlBlockSpec = createBlockSpec(
       } else if (html.trim()) {
         const iframe = document.createElement("iframe");
         iframe.title = "HTML 미리보기";
-        iframe.sandbox = "";
+        iframe.setAttribute("sandbox", "allow-scripts");
         iframe.style.cssText =
           "width:100%;min-height:200px;border:none;display:block;background:white";
         iframe.srcdoc = sanitizeNoteHtml(html);

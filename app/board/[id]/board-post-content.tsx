@@ -1,12 +1,26 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { boardDescriptionLooksLikeHtml } from "@/lib/board-body";
 import { parseStoredTaskBody } from "@/lib/task-body-description";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
-import { BoardBlockDocViewer } from "@/components/board-block-doc-viewer";
 import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
+
+/** BlockNote 뷰어는 SSR 시 Suspense 경계 오류(React #419)를 일으킬 수 있어 클라이언트에서만 마운트 */
+const BoardBlockDocViewer = dynamic(
+  () =>
+    import("@/components/board-block-doc-viewer").then((m) => ({ default: m.BoardBlockDocViewer })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground dark:border-border">
+        본문 블록을 불러오는 중…
+      </div>
+    ),
+  }
+);
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",

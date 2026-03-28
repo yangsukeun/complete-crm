@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json([], { status: 200 });
     }
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
@@ -31,24 +31,32 @@ export async function GET(req: Request) {
       where.projectId = projectId;
     }
 
-    const notes = await prisma.userNote.findMany({
-      where,
-      orderBy: { updatedAt: "desc" },
-      select: {
-        id: true,
-        title: true,
-        content: true,
-        colorHex: true,
-        projectId: true,
-        createdAt: true,
-        updatedAt: true,
-        project: { select: { id: true, name: true, brand: { select: { name: true } } } },
-      },
-    });
+    let notes;
+    try {
+      notes = await prisma.userNote.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          contentType: true,
+          colorHex: true,
+          projectId: true,
+          createdAt: true,
+          updatedAt: true,
+          project: { select: { id: true, name: true, brand: { select: { name: true } } } },
+        },
+      });
+    } catch (dbErr) {
+      console.error("user-notes query error:", dbErr);
+      return NextResponse.json([], { status: 200 });
+    }
+
     return NextResponse.json(notes);
   } catch (e) {
-    console.error("GET /api/user-notes", e);
-    return NextResponse.json({ error: "목록을 불러올 수 없습니다." }, { status: 500 });
+    console.error("user-notes API error:", e);
+    return NextResponse.json([], { status: 200 });
   }
 }
 

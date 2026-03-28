@@ -52,14 +52,40 @@ const createSchema = z.object({
   ),
 });
 
+function emptyBoardListResponse(
+  searchParams: URLSearchParams,
+  listCacheHeaders: Record<string, string>
+) {
+  const limit = Math.min(20, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
+  const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
+  const all = searchParams.get("all") === "1";
+  if (all) {
+    return NextResponse.json([], { status: 200, headers: listCacheHeaders });
+  }
+  return NextResponse.json(
+    {
+      items: [],
+      total: 0,
+      hasMore: false,
+      offset,
+      limit,
+    },
+    { status: 200, headers: listCacheHeaders }
+  );
+}
+
 export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const listCacheHeaders = {
+    "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
+  };
+
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return emptyBoardListResponse(searchParams, listCacheHeaders);
     }
 
-    const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
     const role = (session.user as { role?: string }).role ?? "";
     const vis = boardVisibilityWhere(session.user.id, role);
@@ -82,10 +108,6 @@ export async function GET(req: Request) {
       createdById: true,
       createdBy: { select: { name: true, position: true } },
     } as const;
-
-    const listCacheHeaders = {
-      "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
-    };
 
     const mapRowList = (p: {
       id: string;
@@ -115,25 +137,38 @@ export async function GET(req: Request) {
     };
 
     if (all) {
-      const list = await prisma.boardPost.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        select: selectList,
-      });
+      let list;
+      try {
+        list = await prisma.boardPost.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          select: selectList,
+        });
+      } catch (dbErr) {
+        console.error("board query error:", dbErr);
+        return NextResponse.json([], { status: 200, headers: listCacheHeaders });
+      }
       return NextResponse.json(list.map(mapRowList), { headers: listCacheHeaders });
     }
 
-    const [total, list] = await Promise.all([
-      prisma.boardPost.count({ where }),
-      prisma.boardPost.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip: offset,
-        take: limit,
-        select: selectList,
-      }),
-    ]);
+    let total: number;
+    let list;
+    try {
+      [total, list] = await Promise.all([
+        prisma.boardPost.count({ where }),
+        prisma.boardPost.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: offset,
+          take: limit,
+          select: selectList,
+        }),
+      ]);
+    } catch (dbErr) {
+      console.error("board query error:", dbErr);
+      return emptyBoardListResponse(searchParams, listCacheHeaders);
+    }
 
     return NextResponse.json(
       {
@@ -147,7 +182,7 @@ export async function GET(req: Request) {
     );
   } catch (e) {
     console.error("Board GET:", e);
-    return NextResponse.json({ error: "자료 목록을 불러올 수 없습니다." }, { status: 500 });
+    return emptyBoardListResponse(searchParams, listCacheHeaders);
   }
 }
 
