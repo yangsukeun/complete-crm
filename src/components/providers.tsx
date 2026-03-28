@@ -8,6 +8,7 @@ import { SWRConfig } from "swr";
 import { OneSignalBridge } from "@/components/one-signal-bridge";
 import { SupabaseRealtimeBridge } from "@/components/supabase-realtime-bridge";
 import { clearProfileMeCache } from "@/lib/profile-me-client";
+import { UrlSearchModeBridge } from "@/components/url-search-mode-bridge";
 import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
 
@@ -49,6 +50,7 @@ export function Providers({
         <OneSignalBridge userId={session?.user?.id} />
         <SupabaseRealtimeBridge />
         <AIAssistProvider>
+          <UrlSearchModeBridge />
           <WorkspaceThemeSync />
           {children}
           {session?.user && <AIAssistFloat />}

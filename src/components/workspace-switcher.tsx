@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { flushSync } from "react-dom";
 import { Building2, Lock } from "lucide-react";
 import { useWorkspaceStore, workspaceToMode, modeToWorkspace, type Workspace } from "@/store/workspace-store";
@@ -72,11 +72,11 @@ export function WorkspaceSwitcher() {
   );
 }
 
-/** useSearchParams는 Suspense 안에서만 써야 RSC 하이드레이션(React #419)이 안 납니다. */
-function WorkspaceThemeSyncInner() {
+/** html[data-workspace] 동기화 + 초기 로드 시 쿠키와 스토어 동기화 (`?mode`는 UrlSearchModeBridge → urlSearchMode) */
+export function WorkspaceThemeSync() {
   const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
   const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
-  const urlMode = useSearchParams().get("mode");
+  const urlMode = useWorkspaceStore((s: any) => s.urlSearchMode);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -106,13 +106,4 @@ function WorkspaceThemeSyncInner() {
   }, [setWorkspace, urlMode]);
 
   return null;
-}
-
-/** html[data-workspace] 동기화 + 초기 로드 시 쿠키와 스토어 동기화 */
-export function WorkspaceThemeSync() {
-  return (
-    <Suspense fallback={null}>
-      <WorkspaceThemeSyncInner />
-    </Suspense>
-  );
 }

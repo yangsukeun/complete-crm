@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import NextImage from "next/image";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -78,19 +78,17 @@ type ChatRowForBadge = {
   lastMessage: { createdAt: string; user: { id: string } } | null;
 };
 
-function AppNavContent() {
+export function AppNav() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { mutate: swrMutate } = useSWRConfig();
   const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
+  const urlMode = useWorkspaceStore((s: any) => s.urlSearchMode);
   const [mode, setMode] = useState<"company" | "personal" | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [paymentAlertCount, setPaymentAlertCount] = useState(0);
   const [paymentAlertLabel, setPaymentAlertLabel] = useState<string>("알림");
-
-  const urlMode = searchParams.get("mode");
   const effectiveMode: "company" | "personal" =
     urlMode === "MY" ? "personal" : urlMode === "TEAM" ? "company" : mode ?? (currentWorkspace === "MY" ? "personal" : "company");
 
@@ -626,12 +624,3 @@ function AppNavContent() {
   );
 }
 
-export function AppNav() {
-  return (
-    <Suspense
-      fallback={<header className="h-16 shrink-0 border-b border-gray-200 bg-background" aria-hidden />}
-    >
-      <AppNavContent />
-    </Suspense>
-  );
-}

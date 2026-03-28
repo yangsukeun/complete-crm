@@ -8,6 +8,9 @@ const STORAGE_KEY = "crm-workspace";
 type WorkspaceState = {
   currentWorkspace: Workspace;
   setWorkspace: (workspace: Workspace) => void;
+  /** `?mode=MY|TEAM` — UrlSearchModeBridge(useSearchParams+Suspense 단일 지점)에서만 갱신. 비영속. */
+  urlSearchMode: "MY" | "TEAM" | null;
+  setUrlSearchMode: (mode: "MY" | "TEAM" | null) => void;
 };
 
 export const useWorkspaceStore = create<WorkspaceState>()(
@@ -15,6 +18,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     (set: any) => ({
       currentWorkspace: "TEAM" as Workspace,
       setWorkspace: (currentWorkspace: Workspace) => set({ currentWorkspace }),
+      urlSearchMode: null as "MY" | "TEAM" | null,
+      setUrlSearchMode: (urlSearchMode: "MY" | "TEAM" | null) => set({ urlSearchMode }),
     }),
     {
       name: STORAGE_KEY,

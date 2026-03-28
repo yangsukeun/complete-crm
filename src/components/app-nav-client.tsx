@@ -4,7 +4,7 @@ import nextDynamic from "next/dynamic";
 
 /**
  * Next.js 16: `ssr: false` dynamic는 Server Component(layout)에서 금지 → 클라이언트 경계에서만 로드.
- * AppNav의 useSearchParams()와 맞물린 Suspense 하이드레이션(React #419) 완화용.
+ * 헤더 무거운 chunk 지연 로드. `?mode`는 UrlSearchModeBridge에서만 useSearchParams 사용.
  */
 const AppNavLazy = nextDynamic(
   () => import("@/components/app-nav").then((m) => ({ default: m.AppNav })),
