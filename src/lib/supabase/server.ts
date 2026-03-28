@@ -21,3 +21,12 @@ export function getSupabaseServer(): SupabaseClient | null {
   }
   return supabaseServerInstance;
 }
+
+/** Route에서 `import { createClient } from '@/lib/supabase/server'` 호환용. 세션은 NextAuth 기준이면 `auth.getUser()`만으로는 로그인 사용자가 안 잡힐 수 있습니다. */
+export async function createClient(): Promise<SupabaseClient> {
+  const c = getSupabaseServer();
+  if (!c) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL 및 SUPABASE_SERVICE_ROLE_KEY(또는 ANON)가 필요합니다.");
+  }
+  return c;
+}

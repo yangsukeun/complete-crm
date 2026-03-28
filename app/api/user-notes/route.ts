@@ -64,13 +64,17 @@ export async function GET(req: Request) {
         select: noteSelect,
       });
     } catch (dbErr) {
-      console.error("[user-notes GET]", dbErr);
+      console.error(
+        "[user-notes GET error]",
+        dbErr && typeof dbErr === "object" && "code" in dbErr ? (dbErr as { code?: string }).code : "",
+        dbErr instanceof Error ? dbErr.message : String(dbErr)
+      );
       return NextResponse.json({ notes: [] }, { status: 200 });
     }
 
     return NextResponse.json({ notes });
   } catch (e) {
-    console.error("[user-notes catch]", e);
+    console.error("[user-notes GET catch]", e);
     return NextResponse.json({ notes: [] }, { status: 200 });
   }
 }

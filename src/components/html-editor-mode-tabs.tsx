@@ -18,7 +18,7 @@ type Props = {
 
 /**
  * 게시판·메모 본문용: 텍스트 / HTML / 미리보기 탭
- * 미리보기는 원본 HTML을 iframe에 넣습니다(XSS 주의 — 신뢰할 수 있는 입력만).
+ * 미리보기 iframe은 원본 htmlContent 사용(XSS 주의).
  */
 export function HtmlEditorModeTabs({
   editorMode,
@@ -29,6 +29,11 @@ export function HtmlEditorModeTabs({
   emptyPreviewMessage = "HTML 탭에서 코드를 입력하세요",
   onHtmlBlur,
 }: Props) {
+  const previewFallback = `<p style="color:#999;padding:20px;margin:0">${emptyPreviewMessage
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")}</p>`;
+
   return (
     <div className="space-y-2">
       <div
@@ -77,16 +82,18 @@ export function HtmlEditorModeTabs({
         />
       )}
 
-      {editorMode === "preview" && htmlContent.trim() && (
+      {editorMode === "preview" && (
         <iframe
+          key={htmlContent}
           title="미리보기"
-          srcDoc={htmlContent}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+          srcDoc={htmlContent.trim() ? htmlContent : previewFallback}
+          sandbox="allow-scripts allow-same-origin allow-forms"
           style={{
             width: "100%",
             minHeight: "400px",
             border: "none",
             display: "block",
+            background: "white",
           }}
           className="bg-white dark:bg-card"
           onLoad={(e) => {
@@ -101,21 +108,6 @@ export function HtmlEditorModeTabs({
             }
           }}
         />
-      )}
-
-      {editorMode === "preview" && !htmlContent.trim() && (
-        <div
-          style={{
-            padding: "40px",
-            textAlign: "center",
-            color: "#9ca3af",
-            border: "1px dashed #e5e7eb",
-            borderRadius: "8px",
-          }}
-          className="dark:border-border dark:text-muted-foreground"
-        >
-          {emptyPreviewMessage}
-        </div>
       )}
     </div>
   );

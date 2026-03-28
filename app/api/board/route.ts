@@ -79,7 +79,7 @@ function emptyBoardListResponse(
 }
 
 export async function GET(req: Request) {
-  console.log("[board GET] Prisma 테이블: BoardPost (Supabase에서 board_posts로 찾지 마세요 — 마이그레이션 기준)");
+  console.log("[board] 시작");
   const { searchParams } = new URL(req.url);
   const listCacheHeaders = {
     "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
@@ -186,7 +186,7 @@ export async function GET(req: Request) {
       { headers: listCacheHeaders }
     );
   } catch (e) {
-    console.error("[board GET catch]", e);
+    console.error("[board 에러 원인]", e);
     return emptyBoardListResponse(searchParams, listCacheHeaders);
   }
 }
@@ -294,7 +294,7 @@ export async function POST(req: Request) {
       attachments: safeParseAttachments(created.attachments),
     });
   } catch (e) {
-    console.error("[board POST catch]", e);
+    console.error("[board 에러 원인]", e);
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
       { error: "자료 등록에 실패했습니다.", detail: process.env.NODE_ENV === "development" ? msg : undefined },
