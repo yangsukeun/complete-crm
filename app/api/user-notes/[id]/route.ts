@@ -86,7 +86,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     });
     return NextResponse.json(note);
   } catch (e) {
-    console.error("PATCH /api/user-notes/[id]", e);
+    console.error("[user-notes PATCH catch]", e);
     return NextResponse.json({ error: "저장하지 못했습니다." }, { status: 500 });
   }
 }
@@ -105,7 +105,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     await prisma.userNote.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("DELETE /api/user-notes/[id]", e);
+    console.error("[user-notes DELETE catch]", e);
     return NextResponse.json({ error: "삭제하지 못했습니다." }, { status: 500 });
   }
 }

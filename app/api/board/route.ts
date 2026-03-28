@@ -1,6 +1,6 @@
 /**
- * 게시판 API — 데이터는 Prisma `BoardPost`(PostgreSQL)입니다.
- * Supabase `board_posts` 등과는 별개이며, 클라이언트는 `items`·`hasMore`·`offset`·`limit` 형식을 사용합니다.
+ * 게시판 API — Prisma 모델 `BoardPost` → PostgreSQL 테이블 `"BoardPost"` (Prisma 기본명, snake_case `board_posts` 아님).
+ * 공지는 별도 `Announcement` 모델. Supabase 대시보드에 동일 DB를 붙였다면 테이블명을 그대로 확인하세요.
  */
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
@@ -79,6 +79,7 @@ function emptyBoardListResponse(
 }
 
 export async function GET(req: Request) {
+  console.log("[board GET] Prisma 테이블: BoardPost (Supabase에서 board_posts로 찾지 마세요 — 마이그레이션 기준)");
   const { searchParams } = new URL(req.url);
   const listCacheHeaders = {
     "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
@@ -185,12 +186,13 @@ export async function GET(req: Request) {
       { headers: listCacheHeaders }
     );
   } catch (e) {
-    console.error("Board GET:", e);
+    console.error("[board GET catch]", e);
     return emptyBoardListResponse(searchParams, listCacheHeaders);
   }
 }
 
 export async function POST(req: Request) {
+  console.log("[board POST] 엔드포인트 진입 (저장소: Prisma BoardPost)");
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {

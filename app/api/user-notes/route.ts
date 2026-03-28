@@ -15,6 +15,7 @@ const createSchema = z.object({
 });
 
 export async function GET(req: Request) {
+  console.log("[user-notes GET] Prisma 테이블: UserNote (코드의 user_notes / memos 아님)");
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
@@ -49,13 +50,13 @@ export async function GET(req: Request) {
         },
       });
     } catch (dbErr) {
-      console.error("user-notes query error:", dbErr);
+      console.error("[user-notes GET] query error:", dbErr);
       return NextResponse.json([], { status: 200 });
     }
 
     return NextResponse.json(notes);
   } catch (e) {
-    console.error("user-notes API error:", e);
+    console.error("[user-notes GET catch]", e);
     return NextResponse.json([], { status: 200 });
   }
 }
@@ -67,8 +68,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const body = await req.json();
+    console.log("[user-notes POST body]", body);
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
+      console.error("[user-notes POST] validation", parsed.error.flatten());
       return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
     }
     const { title, content, contentType, projectId, colorHex } = parsed.data;
@@ -106,7 +109,7 @@ export async function POST(req: Request) {
     });
     return NextResponse.json(note);
   } catch (e) {
-    console.error("POST /api/user-notes", e);
+    console.error("[user-notes POST catch]", e);
     return NextResponse.json({ error: "메모를 만들 수 없습니다." }, { status: 500 });
   }
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import { Plus, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,34 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** API가 배열 또는 `{ notes: [] }` 둘 다 올 수 있도록 정규화 */
+function normalizeNotesPayload(json: unknown): UserNoteDto[] {
+  if (Array.isArray(json)) return json as UserNoteDto[];
+  if (
+    json &&
+    typeof json === "object" &&
+    "notes" in json &&
+    Array.isArray((json as { notes: unknown }).notes)
+  ) {
+    return (json as { notes: UserNoteDto[] }).notes;
+  }
+  return [];
+}
+
+async function fetchNotesList(url: string): Promise<UserNoteDto[]> {
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error("[user-notes SWR]", url, res.status, data);
+    return [];
+  }
+  return normalizeNotesPayload(data);
+}
+
+function listUrlBuilder(projectId?: string) {
+  return projectId ? `/api/user-notes?projectId=${encodeURIComponent(projectId)}` : "/api/user-notes";
+}
+
 type Props = {
   /** 설정 시 해당 프로젝트에 연결된 메모만 표시하고, 가져오기/추가 시 연결합니다. */
   projectId?: string;
@@ -45,8 +74,13 @@ type Props = {
 
 export function UserNotesBoard({ projectId, heading, description }: Props) {
   const router = useRouter();
-  const [notes, setNotes] = useState<UserNoteDto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: notes = [],
+    isLoading: loading,
+    mutate,
+  } = useSWR(listUrlBuilder(projectId), fetchNotesList, {
+    revalidateOnFocus: true,
+  });
   const [importOpen, setImportOpen] = useState(false);
   const [unlinked, setUnlinked] = useState<UserNoteDto[]>([]);
   const [importLoading, setImportLoading] = useState(false);
@@ -56,25 +90,6 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
   const [brandId, setBrandId] = useState("");
   const [converting, setConverting] = useState(false);
   const [canConvertProject, setCanConvertProject] = useState(false);
-
-  const listUrl = projectId ? `/api/user-notes?projectId=${encodeURIComponent(projectId)}` : "/api/user-notes";
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await fetchJson<UserNoteDto[]>(listUrl);
-      setNotes(Array.isArray(list) ? list : []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "메모를 불러오지 못했습니다.");
-      setNotes([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [listUrl]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
 
   useEffect(() => {
     (async () => {
@@ -92,8 +107,8 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
     setImportOpen(true);
     setImportLoading(true);
     try {
-      const list = await fetchJson<UserNoteDto[]>("/api/user-notes?unlinked=1");
-      setUnlinked(Array.isArray(list) ? list : []);
+      const list = await fetchNotesList("/api/user-notes?unlinked=1");
+      setUnlinked(list);
     } catch {
       toast.error("메모 목록을 불러오지 못했습니다.");
       setUnlinked([]);
@@ -113,7 +128,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
           projectId: projectId ?? null,
         }),
       });
-      setNotes((prev) => [created, ...prev]);
+      await mutate((prev) => [created, ...(prev ?? [])], { revalidate: false });
       toast.success(projectId ? "프로젝트에 메모가 추가되었습니다." : "새 메모를 작성하세요.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "메모를 추가하지 못했습니다.");
@@ -129,14 +144,20 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...updated } : n)));
+    await mutate(
+      (prev) => (prev ?? []).map((n) => (n.id === id ? { ...n, ...updated } : n)),
+      { revalidate: false }
+    );
     return updated;
   };
 
   const handleDelete = async (id: string) => {
     try {
       await fetchJson<{ ok: boolean }>(`/api/user-notes/${id}`, { method: "DELETE" });
-      setNotes((prev) => prev.filter((n) => n.id !== id));
+      await mutate(
+        (prev) => (prev ?? []).filter((n) => n.id !== id),
+        { revalidate: false }
+      );
       toast.success("삭제했습니다.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "삭제하지 못했습니다.");
@@ -154,7 +175,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       });
       toast.success("메모를 이 프로젝트에 연결했습니다.");
       setImportOpen(false);
-      await reload();
+      await mutate();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "연결하지 못했습니다.");
     } finally {
@@ -193,7 +214,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       );
       toast.success("프로젝트를 만들었습니다.");
       setConvertNote(null);
-      await reload();
+      await mutate();
       router.push(`/projects/${project.id}`);
       router.refresh();
     } catch (e) {
