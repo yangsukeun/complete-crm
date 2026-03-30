@@ -87,5 +87,8 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "jsdom": "22.1.0"
   }
 }
