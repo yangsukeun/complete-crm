@@ -27,6 +27,29 @@ type AttachmentItem = { url: string; name: string };
 
 type BoardEditCategory = "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS";
 
+/** PATCH/DELETE가 HTML(에러 페이지·502 등)을 돌려줄 때 res.json() 대비 */
+async function readBoardMutationJson(res: Response): Promise<{ error?: string }> {
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json")) {
+    try {
+      return (await res.json()) as { error?: string };
+    } catch {
+      throw new Error(
+        `서버 응답을 해석할 수 없습니다 (${res.status}). 배포 직후이거나 일시 장애일 수 있습니다. 잠시 후 다시 시도해 주세요.`
+      );
+    }
+  }
+  const text = await res.text();
+  const compact = text.replace(/\s+/g, " ").trimStart().slice(0, 120);
+  const looksHtml = compact.startsWith("<") || /<!DOCTYPE/i.test(text);
+  if (!res.ok && looksHtml) {
+    throw new Error(
+      `서버 오류 (${res.status}). 배포 중이거나 API가 HTML 오류 페이지를 반환했습니다. 잠시 후 다시 시도하거나 Vercel 로그를 확인해 주세요.`
+    );
+  }
+  throw new Error(!res.ok ? `요청 실패 (${res.status}).` : "서버 응답 형식이 올바르지 않습니다.");
+}
+
 type Props = {
   postId: string;
   canEdit: boolean;
@@ -137,7 +160,7 @@ export function BoardPostActions({
           attachments,
         }),
       });
-      const data = await res.json();
+      const data = await readBoardMutationJson(res);
       if (!res.ok) throw new Error(data.error ?? "수정 실패");
       toast.success("수정되었습니다.");
       setEditOpen(false);
@@ -154,7 +177,7 @@ export function BoardPostActions({
     setDeleting(true);
     try {
       const res = await fetch(`/api/board/${postId}`, { method: "DELETE" });
-      const data = await res.json();
+      const data = await readBoardMutationJson(res);
       if (!res.ok) throw new Error(data.error ?? "삭제 실패");
       toast.success("삭제되었습니다.");
       router.push("/board");
