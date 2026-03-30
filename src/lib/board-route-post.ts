@@ -78,10 +78,19 @@ export async function handleBoardPost(req: Request): Promise<Response> {
         ? "TEAM"
         : parsed.data.workspaceScope;
 
-    const descNorm = normalizeBoardDescriptionForStore(
-      parsed.data.description,
-      parsed.data.contentType === "html" ? "html" : "text"
-    );
+    let descNorm: string;
+    try {
+      descNorm = normalizeBoardDescriptionForStore(
+        parsed.data.description,
+        parsed.data.contentType === "html" ? "html" : "text"
+      );
+    } catch (normErr) {
+      console.error("[board POST] 본문 정규화 실패", normErr);
+      return NextResponse.json(
+        { error: "본문을 저장할 수 없습니다. 형식·길이를 확인해 주세요." },
+        { status: 400 }
+      );
+    }
     let created;
     try {
       created = await prisma.boardPost.create({

@@ -16,6 +16,7 @@ import {
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import { ko } from "@blocknote/core/locales";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -252,21 +253,26 @@ export function ContentBodyEditor({
         onPasteCapture={handlePasteCapture}
         onDropCapture={handleDropCapture}
       >
-        <div style={{ minHeight: minHeight || "280px" }} className="[&_.bn-editor]:min-h-[inherit]">
-          <BlockNoteView
-            editor={editor}
-            theme="light"
-            onChange={handleChange}
-            formattingToolbar={false}
-            sideMenu={false}
-            slashMenu={false}
-          >
-            <BoardContentSlashMenu />
-            <FormattingToolbarController
-              formattingToolbar={() => <FormattingToolbar />}
-            />
-            <SideMenuController sideMenu={NotionStyleSideMenu} />
-          </BlockNoteView>
+        <div
+          style={{ minHeight: minHeight || "280px" }}
+          className="rounded-lg bg-white text-gray-900 [&_.bn-editor]:min-h-[inherit] [&_.bn-editor]:bg-white"
+        >
+          <BlockNoteMantineShell>
+            <BlockNoteView
+              editor={editor}
+              theme="light"
+              onChange={handleChange}
+              formattingToolbar={false}
+              sideMenu={false}
+              slashMenu={false}
+            >
+              <BoardContentSlashMenu />
+              <FormattingToolbarController
+                formattingToolbar={() => <FormattingToolbar />}
+              />
+              <SideMenuController sideMenu={NotionStyleSideMenu} />
+            </BlockNoteView>
+          </BlockNoteMantineShell>
         </div>
       </div>
       {showHelp && (

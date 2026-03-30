@@ -143,10 +143,7 @@ export function renderHtmlBlock(
       const iframe = document.createElement("iframe");
       iframe.title = "HTML 미리보기";
       iframe.srcdoc = html;
-      iframe.setAttribute(
-        "sandbox",
-        "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-      );
+      /* CRM 내부 작성 HTML 미리보기 — sandbox 제거(브라우저 동일 출처 경고 회피·리소스 로딩 허용) */
       iframe.style.cssText = `
         width: 100%;
         min-height: 200px;
@@ -233,10 +230,6 @@ export function renderHtmlBlock(
       const iframe = document.createElement("iframe");
       iframe.title = "HTML 미리보기";
       iframe.srcdoc = block.props.html;
-      iframe.setAttribute(
-        "sandbox",
-        "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-      );
       iframe.style.cssText = `
         width: 100%;
         min-height: 200px;

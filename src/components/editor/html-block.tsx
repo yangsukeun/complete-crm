@@ -221,7 +221,6 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
             ref={iframeRef}
             title="HTML 미리보기"
             srcDoc={localContent}
-            sandbox="allow-scripts allow-same-origin"
             style={{
               width: "100%",
               height: `${iframeHeight}px`,

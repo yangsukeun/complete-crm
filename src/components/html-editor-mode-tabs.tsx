@@ -87,7 +87,6 @@ export function HtmlEditorModeTabs({
           key={htmlContent}
           title="미리보기"
           srcDoc={htmlContent.trim() ? htmlContent : previewFallback}
-          sandbox="allow-scripts allow-same-origin allow-forms"
           style={{
             width: "100%",
             minHeight: "400px",

@@ -344,7 +344,11 @@ export async function DELETE(
         fileIdPrefix: fid.slice(0, 12) + "…",
         supportsAllDrives: true,
       });
-      await deleteFile(fid);
+      try {
+        await deleteFile(fid);
+      } catch (delErr) {
+        console.error("[board] DELETE(soft): deleteFile 예외(글 삭제 자체는 유지)", delErr);
+      }
     }
     console.log("[board] DELETE(soft): deleteFile 배치 종료", { postId: id, attempted: driveIdsToDelete.size });
 

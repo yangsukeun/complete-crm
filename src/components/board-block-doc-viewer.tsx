@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { uploadImageViaApi } from "@/lib/editor-image-upload";
 import "@blocknote/core/fonts/inter.css";
@@ -48,18 +49,20 @@ export function BoardBlockDocViewer({ blocks }: Props) {
   }
 
   return (
-    <div className="board-bn-readonly rounded-lg border bg-muted/30 p-2 dark:border-border">
-      <BlockNoteView
-        editor={editor}
-        editable={false}
-        theme="light"
-        formattingToolbar={false}
-        linkToolbar={false}
-        slashMenu={false}
-        sideMenu={false}
-        filePanel={false}
-        tableHandles={false}
-      />
+    <div className="board-bn-readonly rounded-lg border bg-white p-2 text-gray-900 dark:border-border">
+      <BlockNoteMantineShell>
+        <BlockNoteView
+          editor={editor}
+          editable={false}
+          theme="light"
+          formattingToolbar={false}
+          linkToolbar={false}
+          slashMenu={false}
+          sideMenu={false}
+          filePanel={false}
+          tableHandles={false}
+        />
+      </BlockNoteMantineShell>
     </div>
   );
 }

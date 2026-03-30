@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { Button } from "@/components/ui/button";
@@ -53,8 +54,10 @@ export function DocsEditor({ className }: DocsEditorProps) {
       />
 
       {/* 본문: BlockNote 에디터 */}
-      <div className="min-h-[360px] [&_.bn-editor]:min-h-[320px] [&_.bn-mantine]:border-0 [&_.bn-mantine]:bg-transparent [&_.bn-block-outer]:gap-2">
-        <BlockNoteView editor={editor} theme="light" />
+      <div className="min-h-[360px] rounded-lg bg-white text-gray-900 [&_.bn-editor]:min-h-[320px] [&_.bn-editor]:bg-white [&_.bn-mantine]:border-0 [&_.bn-mantine]:bg-transparent [&_.bn-block-outer]:gap-2">
+        <BlockNoteMantineShell>
+          <BlockNoteView editor={editor} theme="light" />
+        </BlockNoteMantineShell>
       </div>
     </div>
   );

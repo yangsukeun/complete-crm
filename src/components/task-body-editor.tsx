@@ -16,6 +16,7 @@ import {
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import { ko } from "@blocknote/core/locales";
 import {
   withMultiColumn,
@@ -439,19 +440,21 @@ export function TaskBodyEditor({
         onPasteCapture={handlePasteCapture}
         onDropCapture={handleDropCapture}
       >
-        <BlockNoteView
-          editor={editor}
-          theme="light"
-          onChange={handleChange}
-          formattingToolbar={false}
-          sideMenu={false}
-          slashMenu={false}
-        >
-          <TaskMentionMenu />
-          <TaskSlashMenu />
-          <FormattingToolbarController formattingToolbar={() => <FormattingToolbar />} />
-          <SideMenuController sideMenu={NotionStyleSideMenu} />
-        </BlockNoteView>
+        <BlockNoteMantineShell>
+          <BlockNoteView
+            editor={editor}
+            theme="light"
+            onChange={handleChange}
+            formattingToolbar={false}
+            sideMenu={false}
+            slashMenu={false}
+          >
+            <TaskMentionMenu />
+            <TaskSlashMenu />
+            <FormattingToolbarController formattingToolbar={() => <FormattingToolbar />} />
+            <SideMenuController sideMenu={NotionStyleSideMenu} />
+          </BlockNoteView>
+        </BlockNoteMantineShell>
       </div>
 
       <style jsx global>{`
