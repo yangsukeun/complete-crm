@@ -317,16 +317,8 @@ export default function TasksPage() {
   const [view, setView] = useState<"list" | "mindmap" | "log">("list");
   const [mindmapMounted, setMindmapMounted] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
-  const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>(() => {
-    if (typeof window === "undefined") return "all";
-    try {
-      const raw = localStorage.getItem(PROJECT_SCOPE_STORAGE_KEY);
-      if (raw === "mine" || raw === "shared" || raw === "all") return raw;
-    } catch {
-      /* ignore */
-    }
-    return "all";
-  });
+  /** 초기값은 항상 고정 — localStorage/역할 기반 보정은 아래 useEffect에서만(하이드레이션 안전) */
+  const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>("all");
   const projectScopeHydratedRef = useRef(false);
   const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
 

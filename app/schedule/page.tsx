@@ -398,9 +398,13 @@ export default function SchedulePage() {
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [googleEvents, setGoogleEvents] = useState<ScheduleEvent[]>([]);
+  /** 서버·클라이언트 초기값 동일(localStorage는 마운트 후에만 읽기) → 하이드레이션 불일치 방지 */
   const [visibleCalendars, setVisibleCalendars] = useState<Record<CalendarLayerId, boolean>>(
-    () => (typeof window !== "undefined" ? loadVisibleCalendars() : DEFAULT_VISIBLE_CALENDARS)
+    DEFAULT_VISIBLE_CALENDARS
   );
+  useEffect(() => {
+    setVisibleCalendars(loadVisibleCalendars());
+  }, []);
   const { data: session } = useSession();
   const router = useRouter();
 

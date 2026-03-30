@@ -153,14 +153,14 @@ export default function TaskDetailPage() {
   >([]);
   const [assigneeDraft, setAssigneeDraft] = useState<string[]>([]);
   const [savingAssignees, setSavingAssignees] = useState(false);
-  const [pageFullWidth, setPageFullWidth] = useState(() => {
-    if (typeof window === "undefined") return true;
+  const [pageFullWidth, setPageFullWidth] = useState(true);
+  useEffect(() => {
     try {
-      return localStorage.getItem(TASK_PAGE_WIDTH_KEY) !== "0";
+      setPageFullWidth(localStorage.getItem(TASK_PAGE_WIDTH_KEY) !== "0");
     } catch {
-      return true;
+      /* ignore */
     }
-  });
+  }, []);
 
   const togglePageWidth = useCallback(() => {
     setPageFullWidth((w) => {

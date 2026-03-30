@@ -28,11 +28,11 @@ type AttachmentItem = { url: string; name: string };
 type BoardEditCategory = "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS";
 
 /** PATCH/DELETE가 HTML(에러 페이지·502 등)을 돌려줄 때 res.json() 대비 */
-async function readBoardMutationJson(res: Response): Promise<{ error?: string }> {
+async function readBoardMutationJson(res: Response): Promise<{ error?: string; message?: string }> {
   const ct = res.headers.get("content-type") ?? "";
   if (ct.includes("application/json")) {
     try {
-      return (await res.json()) as { error?: string };
+      return (await res.json()) as { error?: string; message?: string };
     } catch {
       throw new Error(
         `서버 응답을 해석할 수 없습니다 (${res.status}). 배포 직후이거나 일시 장애일 수 있습니다. 잠시 후 다시 시도해 주세요.`
@@ -150,8 +150,9 @@ export function BoardPostActions({
     setSubmitLoading(true);
     try {
       const isHtmlPayload = editorMode === "html" || editorMode === "preview";
+      /** POST는 PATCH와 동일 처리(API route). 일부 환경에서 PATCH가 비정상일 때 대비 */
       const res = await fetch(`/api/board/${postId}`, {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
@@ -162,7 +163,14 @@ export function BoardPostActions({
         }),
       });
       const data = await readBoardMutationJson(res);
-      if (!res.ok) throw new Error(data.error ?? "수정 실패");
+      if (!res.ok) {
+        const msg =
+          data.error ??
+          data.message ??
+          (res.status === 409 ? "저장이 거절되었습니다(409). 새로고침 후 다시 시도해 주세요." : null) ??
+          `수정 실패 (${res.status})`;
+        throw new Error(msg);
+      }
       toast.success("수정되었습니다.");
       setEditOpen(false);
       router.refresh();
@@ -211,11 +219,19 @@ export function BoardPostActions({
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
-          <DialogHeader>
+        <DialogContent
+          fullScreen
+          className="gap-0"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
             <DialogTitle>자료 수정</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmitEdit} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+          <form
+            onSubmit={handleSubmitEdit}
+            className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4 pb-8"
+          >
             <div className="space-y-2">
               <Label htmlFor="edit-board-title">제목</Label>
               <Input
@@ -257,7 +273,7 @@ export function BoardPostActions({
                     key={editOpen ? "edit-rich-open" : "edit-rich-closed"}
                     initialContent={bodyContent}
                     onChange={setBodyContent}
-                    minHeight="320px"
+                    minHeight="clamp(360px, 58vh, 900px)"
                     showHelp={true}
                   />
                 }

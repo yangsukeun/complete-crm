@@ -51,24 +51,36 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  fullScreen = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** true면 뷰포트 전체를 쓰는 편집·상세 패널(중앙 모달 아님) */
+  fullScreen?: boolean
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
       <div data-dialog-root>
-        <DialogOverlay />
+        <DialogOverlay
+          className={cn(fullScreen && "bg-background")}
+        />
         {/* flex 포지셔너: 작은 뷰포트에서 translate 중앙 정렬로 잘리는 문제 완화 */}
         <div
-          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-5"
+          className={cn(
+            "pointer-events-none fixed inset-0 z-50 flex p-5",
+            fullScreen
+              ? "items-stretch justify-stretch p-0"
+              : "items-center justify-center"
+          )}
           data-slot="dialog-positioner"
         >
           <DialogPrimitive.Content
             data-slot="dialog-content"
             aria-describedby={undefined}
             className={cn(
-              "pointer-events-auto bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 flex max-h-[min(90vh,calc(100dvh-2rem))] min-h-0 w-full max-w-[calc(100%-2rem)] flex-col gap-4 overflow-y-auto rounded-lg border p-6 shadow-lg duration-200 outline-none [-webkit-overflow-scrolling:touch] [@media(max-height:700px)]:max-h-[min(95dvh,calc(100dvh-1rem))] sm:max-w-lg",
+              fullScreen
+                ? "pointer-events-auto bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 flex h-[100dvh] max-h-none min-h-0 w-full max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none duration-200 outline-none"
+                : "pointer-events-auto bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 flex max-h-[min(90vh,calc(100dvh-2rem))] min-h-0 w-full max-w-[calc(100%-2rem)] flex-col gap-4 overflow-y-auto rounded-lg border p-6 shadow-lg duration-200 outline-none [-webkit-overflow-scrolling:touch] [@media(max-height:700px)]:max-h-[min(95dvh,calc(100dvh-1rem))] sm:max-w-lg",
               className
             )}
             {...props}

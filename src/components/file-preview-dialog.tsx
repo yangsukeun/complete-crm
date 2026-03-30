@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { ExternalLink, FileText, Image as ImageIcon, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,12 @@ function getExt(urlOrName: string): string {
   return last.slice(idx + 1).toLowerCase();
 }
 
-function toAbsoluteUrl(url: string): string {
+/** SSR·클라이언트 첫 페인트 동일하게 유지 (window 사용 시 하이드레이션 불일치 방지) */
+function toPathForPreview(url: string): string {
   if (!url) return "";
   if (/^https?:\/\//i.test(url)) return url;
   if (url.startsWith("data:")) return url;
-  if (typeof window === "undefined") return url;
-  return `${window.location.origin}${url.startsWith("/") ? url : `/${url}`}`;
+  return url.startsWith("/") ? url : `/${url}`;
 }
 
 function isYouTube(url: string) {
@@ -66,11 +66,30 @@ export function FilePreviewDialog({
   triggerVariant = "ghost",
 }: Props) {
   const [open, setOpen] = useState(false);
+  /** Office Online Viewer는 공개 절대 URL 필요 — 다이얼로그 오픈 후에만 채움 */
+  const [officeEmbedSrc, setOfficeEmbedSrc] = useState<string | null>(null);
   const title = name || url;
+
+  useEffect(() => {
+    if (!open) {
+      setOfficeEmbedSrc(null);
+      return;
+    }
+    const raw = url.trim();
+    if (!raw) return;
+    const ext = getExt(name || raw);
+    if (!isOfficeLike(ext)) return;
+    const abs = /^https?:\/\//i.test(raw)
+      ? raw
+      : `${window.location.origin}${raw.startsWith("/") ? raw : `/${raw}`}`;
+    setOfficeEmbedSrc(
+      `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(abs)}`
+    );
+  }, [open, url, name]);
 
   const { kind, embedUrl, icon } = useMemo(() => {
     const ext = getExt(name || url);
-    const abs = toAbsoluteUrl(url);
+    const abs = toPathForPreview(url);
 
     if (url.startsWith("data:image/")) {
       return { kind: "image" as const, embedUrl: url, icon: <ImageIcon className="size-4" /> };
@@ -158,7 +177,7 @@ export function FilePreviewDialog({
           )}
           {(kind === "pdf" || kind === "office") && (
             <iframe
-              src={embedUrl}
+              src={kind === "office" ? officeEmbedSrc ?? embedUrl : embedUrl}
               className="w-full h-[70vh]"
               title={title}
             />

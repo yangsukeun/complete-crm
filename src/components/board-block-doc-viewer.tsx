@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { taskBodySchema } from "@/lib/task-body-schema";
@@ -28,15 +28,20 @@ export function BoardBlockDocViewer({ blocks }: Props) {
   });
 
   const serialized = JSON.stringify(blocks);
+  /** 같은 본문인데 부모 리마운트·참조만 바뀌는 경우 replaceBlocks 반복 → React #185 방지 */
+  const lastSerializedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!editor || !hasBlocks) return;
+    if (lastSerializedRef.current === serialized) return;
+    lastSerializedRef.current = serialized;
     try {
       editor.replaceBlocks(editor.document, blocks as never);
     } catch (e) {
       console.error("[BoardBlockDocViewer] replaceBlocks failed", e);
+      lastSerializedRef.current = null;
     }
-  }, [editor, serialized, hasBlocks]);
+  }, [editor, serialized, hasBlocks, blocks]);
 
   if (!hasBlocks) {
     return null;

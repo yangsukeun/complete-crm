@@ -32,6 +32,47 @@ function BoardBlockViewerGate({ blocks }: { blocks: unknown[] }) {
   return <BoardBlockDocViewer blocks={blocks} />;
 }
 
+/**
+ * DOMPurify·마크다운 파이프라인은 Node와 브라우저에서 미세하게 달라질 수 있어
+ * sanitize된 HTML / ReactMarkdown을 초기 HTML과 분리(마운트 이후만 그리기).
+ */
+function HydrationSafeRichBody({
+  showAsSanitizedHtml,
+  forHtmlDetect,
+  description,
+  proseHtmlClass,
+}: {
+  showAsSanitizedHtml: boolean;
+  forHtmlDetect: string;
+  description: string;
+  proseHtmlClass: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) {
+    return (
+      <div className="min-h-[120px] rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground dark:border-border">
+        본문을 불러오는 중…
+      </div>
+    );
+  }
+  if (showAsSanitizedHtml) {
+    return (
+      <div
+        className={proseHtmlClass}
+        dangerouslySetInnerHTML={{ __html: sanitizeNoteHtml(forHtmlDetect) }}
+      />
+    );
+  }
+  return (
+    <div className="rounded-lg border bg-muted/30 p-4">
+      <MarkdownRenderer content={description} />
+    </div>
+  );
+}
+
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
   TRAINING: "교육자료",
@@ -88,15 +129,13 @@ export function BoardPostContent({
         Array.isArray(structured.blocks) &&
         structured.blocks.length > 0 ? (
           <BoardBlockViewerGate blocks={structured.blocks as unknown[]} />
-        ) : showAsSanitizedHtml ? (
-          <div
-            className={proseHtmlClass}
-            dangerouslySetInnerHTML={{ __html: sanitizeNoteHtml(forHtmlDetect) }}
-          />
         ) : (
-          <div className="rounded-lg border bg-muted/30 p-4">
-            <MarkdownRenderer content={description} />
-          </div>
+          <HydrationSafeRichBody
+            showAsSanitizedHtml={showAsSanitizedHtml}
+            forHtmlDetect={forHtmlDetect}
+            description={description}
+            proseHtmlClass={proseHtmlClass}
+          />
         )
       ) : null}
       {attachments.length > 0 && (

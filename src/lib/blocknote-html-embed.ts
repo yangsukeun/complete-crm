@@ -31,6 +31,7 @@ export function renderHtmlBlock(
   wrapper.className = "bn-html-block-wrapper";
   wrapper.setAttribute("data-html-block", "1");
   wrapper.setAttribute("contenteditable", "false");
+  /** overflow·width는 renderBody에서 모드별로 조정 (미리보기는 가로로 뷰포트까지 확장) */
   wrapper.style.cssText = `
     border: 1px solid #e5e7eb;
     border-radius: 8px;
@@ -38,6 +39,29 @@ export function renderHtmlBlock(
     margin: 4px 0;
     width: 100%;
   `;
+
+  let resizeHandler: (() => void) | null = null;
+  const clearPreviewResize = () => {
+    if (resizeHandler) {
+      window.removeEventListener("resize", resizeHandler);
+      resizeHandler = null;
+    }
+  };
+
+  const attachViewportAlignedPreview = (iframe: HTMLIFrameElement) => {
+    clearPreviewResize();
+    const sync = () => {
+      const r = wrapper.getBoundingClientRect();
+      const w = Math.max(280, window.innerWidth - r.left);
+      iframe.style.width = `${w}px`;
+      iframe.style.maxWidth = "none";
+      iframe.style.boxSizing = "border-box";
+      iframe.style.minHeight = `${Math.max(320, Math.round(window.innerHeight * 0.5))}px`;
+    };
+    sync();
+    resizeHandler = sync;
+    window.addEventListener("resize", resizeHandler);
+  };
 
   const header = document.createElement("div");
   header.style.cssText = `
@@ -102,6 +126,7 @@ export function renderHtmlBlock(
   }
 
   function renderBody() {
+    clearPreviewResize();
     body.innerHTML = "";
     updateBtns();
 
@@ -135,13 +160,18 @@ export function renderHtmlBlock(
             iframe.contentWindow?.document?.documentElement?.scrollHeight ??
             iframe.contentWindow?.document?.body?.scrollHeight;
           if (h && h > 60) {
-            iframe.style.height = h + 24 + "px";
+            iframe.style.height = Math.max(
+              h + 24,
+              Math.round(window.innerHeight * 0.5)
+            ) + "px";
           }
         } catch {
           /* ignore */
         }
       });
+      wrapper.style.overflow = "visible";
       body.appendChild(iframe);
+      attachViewportAlignedPreview(iframe);
       return;
     }
 
@@ -190,6 +220,7 @@ export function renderHtmlBlock(
         }
       });
 
+      wrapper.style.overflow = "hidden";
       body.appendChild(ta);
       setTimeout(() => ta.focus(), 30);
     } else {
@@ -220,30 +251,20 @@ export function renderHtmlBlock(
             iframe.contentWindow?.document?.documentElement?.scrollHeight ??
             iframe.contentWindow?.document?.body?.scrollHeight;
           if (h && h > 60) {
-            iframe.style.height = h + 24 + "px";
+            iframe.style.height = Math.max(
+              h + 24,
+              Math.round(window.innerHeight * 0.5)
+            ) + "px";
           }
         } catch {
           /* ignore */
         }
       });
 
-      const overlay = document.createElement("div");
-      overlay.title = "클릭하면 편집 모드로 전환";
-      overlay.style.cssText = `
-        position: absolute;
-        inset: 0;
-        cursor: pointer;
-        z-index: 1;
-      `;
-      const iframeWrap = document.createElement("div");
-      iframeWrap.style.position = "relative";
-      iframeWrap.appendChild(iframe);
-      iframeWrap.appendChild(overlay);
-      overlay.addEventListener("click", () => {
-        mode = "code";
-        renderBody();
-      });
-      body.appendChild(iframeWrap);
+      wrapper.style.overflow = "visible";
+      /** 투명 오버레이는 iframe 클릭·스크롤·내부 미리보기를 전부 막음 → 편집은 '코드' 버튼으로만 전환 */
+      body.appendChild(iframe);
+      attachViewportAlignedPreview(iframe);
     }
   }
 
@@ -280,6 +301,7 @@ export function renderHtmlBlock(
   return {
     dom: wrapper,
     destroy() {
+      clearPreviewResize();
       body.innerHTML = "";
     },
   };

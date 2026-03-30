@@ -248,6 +248,14 @@ export async function POST(
   return PATCH(req, context);
 }
 
+/** 일부 클라이언트·HTTP 클라이언트가 수정에 PUT만 쓰는 경우 대비 (POST/PATCH와 동일) */
+export async function PUT(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  return PATCH(req, context);
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
