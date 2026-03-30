@@ -17,6 +17,44 @@ function logClient(step: string, payload?: Record<string, unknown>) {
   }
 }
 
+/**
+ * OneSignal 웹 SDK는 대시보드의 사이트 URL과 브라우저 origin이 맞지 않으면
+ * `Can only be used on: https://…` 형태로 초기화를 거부합니다.
+ * localhost / 프리뷰 도메인에서는 init을 생략해 콘솔 오류를 막습니다.
+ */
+function oneSignalSkipInitReason(): string | null {
+  if (typeof window === "undefined") return "no window";
+  if (process.env.NEXT_PUBLIC_ONESIGNAL_ENABLE_ON_LOCALHOST === "1") {
+    return null;
+  }
+
+  const host = window.location.hostname;
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  if (isLocal) {
+    return "localhost — OneSignal 사이트 URL이 프로덕션만이면 SDK가 거부합니다. 로컬에서 쓰려면 대시보드에 http://localhost:3000(포트 포함)을 허용 출처로 추가하거나, NEXT_PUBLIC_ONESIGNAL_ENABLE_ON_LOCALHOST=1 을 설정하세요.";
+  }
+
+  const configured = (
+    process.env.NEXT_PUBLIC_ONESIGNAL_ALLOWED_ORIGIN?.trim() ||
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    ""
+  ).trim();
+
+  if (!configured) return null;
+
+  try {
+    const expected = new URL(configured).origin;
+    if (window.location.origin !== expected) {
+      return `현재 ${window.location.origin} — 허용 프로덕션 출처는 ${expected} 입니다. Vercel 프리뷰·스테이징이면 대시보드에 해당 출처를 추가하거나, 이 환경에서는 NEXT_PUBLIC_ONESIGNAL_APP_ID 를 비워 주세요.`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 /** Web v16: REST/DB용 ID는 Push 구독 ID 우선 (PushSubscription.id / getId). getUserId 미사용. */
 async function resolveIdsForBackend(): Promise<{
   subscriptionId: string | null;
@@ -66,6 +104,15 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
     if (!appId) {
       logClient("① 스킵: NEXT_PUBLIC_ONESIGNAL_APP_ID 없음");
+      return;
+    }
+
+    const skipReason = oneSignalSkipInitReason();
+    if (skipReason) {
+      logClient("① 스킵 (출처)", { reason: skipReason });
+      if (clientDebug()) {
+        console.info("[OneSignal]", skipReason);
+      }
       return;
     }
 

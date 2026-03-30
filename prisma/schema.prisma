@@ -526,6 +526,8 @@ model ChatParticipant {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   joinedAt  DateTime @default(now())
+  /// 상대방 읽음 표시용 — 채팅방을 열어 메시지 목록을 마지막으로 본 시각 (PATCH /messages 시 갱신)
+  lastReadAt DateTime?
   @@unique([chatId, userId])
   @@index([userId])
 }

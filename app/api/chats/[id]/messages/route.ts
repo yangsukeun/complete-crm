@@ -33,7 +33,18 @@ export async function PATCH(
     }
 
     const updated = await markChatNotificationsRead(session.user.id, chatId);
-    return NextResponse.json({ ok: true, markedRead: updated });
+    await prisma.chatParticipant.updateMany({
+      where: { chatId, userId: session.user.id },
+      data: { lastReadAt: new Date() },
+    });
+    const participants = await prisma.chatParticipant.findMany({
+      where: { chatId },
+      select: { userId: true, lastReadAt: true },
+    });
+    const readAtByUserId = Object.fromEntries(
+      participants.map((p) => [p.userId, p.lastReadAt?.toISOString() ?? null])
+    );
+    return NextResponse.json({ ok: true, markedRead: updated, readAtByUserId });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "읽음 처리에 실패했습니다." }, { status: 500 });
@@ -69,6 +80,22 @@ export async function GET(
     const limit = Math.min(Number(searchParams.get("limit")) || 100, 200);
     const afterId = searchParams.get("after");
     const sinceIso = searchParams.get("since");
+    const readMetaOnly = searchParams.get("readMeta") === "1";
+
+    async function readAtMap() {
+      const participants = await prisma.chatParticipant.findMany({
+        where: { chatId },
+        select: { userId: true, lastReadAt: true },
+      });
+      return Object.fromEntries(
+        participants.map((p) => [p.userId, p.lastReadAt?.toISOString() ?? null])
+      ) as Record<string, string | null>;
+    }
+
+    if (readMetaOnly) {
+      const readAtByUserId = await readAtMap();
+      return NextResponse.json({ messages: [], readAtByUserId });
+    }
 
     const messageUserSelect = { id: true, name: true, position: true };
     // createdAt 기준 증분 (cuid 정렬 after= 보다 안전)
@@ -81,7 +108,8 @@ export async function GET(
           orderBy: { createdAt: "asc" },
           take: 50,
         });
-        return NextResponse.json(newMessages);
+        const readAtByUserId = await readAtMap();
+        return NextResponse.json({ messages: newMessages, readAtByUserId });
       }
     }
     if (afterId) {
@@ -91,7 +119,8 @@ export async function GET(
         orderBy: { createdAt: "asc" },
         take: 50,
       });
-      return NextResponse.json(newMessages);
+      const readAtByUserId = await readAtMap();
+      return NextResponse.json({ messages: newMessages, readAtByUserId });
     }
 
     // 초기/이전 로드: 최근 limit개만 조회 (목록용으로 user는 id/name/position만)
@@ -102,7 +131,8 @@ export async function GET(
       take: limit,
     });
     messages.reverse();
-    return NextResponse.json(messages);
+    const readAtByUserId = await readAtMap();
+    return NextResponse.json({ messages, readAtByUserId });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

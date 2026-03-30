@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import path from "path";
-import fs from "fs";
+import { storeUploadedFile, resolveStorageProvider } from "@/lib/storage";
+import {
+  grantDriveAnyoneWithLinkRead,
+  parseGoogleDriveFileIdFromUrl,
+} from "@/lib/storage/google-drive-storage";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "logo");
+export const runtime = "nodejs";
+
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
 
@@ -69,22 +73,46 @@ export async function POST(req: Request) {
               ? "svg"
               : "webp";
     const filename = `logo-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-    try {
-      if (!fs.existsSync(UPLOAD_DIR)) {
-        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const provider = resolveStorageProvider();
+    if (provider === "vercel-blob" && !process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
+      if (process.env.VERCEL) {
+        return NextResponse.json(
+          {
+            error:
+              "배포 환경에서 파일 저장소가 설정되지 않았습니다. Google Drive 또는 BLOB_READ_WRITE_TOKEN(WebDAV 등)을 설정한 뒤 다시 시도하세요. README의 파일 저장소 절을 참고하세요.",
+          },
+          { status: 503 }
+        );
       }
-      const filepath = path.join(UPLOAD_DIR, filename);
-      const buffer = Buffer.from(await file.arrayBuffer());
-      fs.writeFileSync(filepath, buffer);
+    }
+
+    let url: string;
+    try {
+      const stored = await storeUploadedFile({
+        buffer,
+        filename,
+        mime: file.type,
+        originalName: file.name,
+      });
+      url = stored.url;
+      if (stored.provider === "google-drive") {
+        const fid = parseGoogleDriveFileIdFromUrl(stored.url);
+        if (fid) await grantDriveAnyoneWithLinkRead(fid);
+      }
     } catch (fileErr) {
-      console.error("[logo] file write error", fileErr);
+      console.error("[logo] storage error", fileErr);
       return NextResponse.json(
-        { error: "로고 파일을 저장할 수 없습니다. public/uploads/logo 폴더 권한을 확인하세요." },
+        {
+          error:
+            fileErr instanceof Error
+              ? fileErr.message
+              : "로고 파일을 저장할 수 없습니다. Vercel에서는 로컬 디스크 대신 Blob/Drive/WebDAV 저장소가 필요합니다.",
+        },
         { status: 500 }
       );
     }
-
-    const url = `/uploads/logo/${filename}`;
 
     try {
       const existing = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });

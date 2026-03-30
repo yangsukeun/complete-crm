@@ -85,6 +85,43 @@ type ScheduleItem = {
 const CHAT_READ_KEY = "chat_read_";
 const DELETE_ALLOWED_MS = 10 * 60 * 1000; // 10분
 
+function parseChatMessagesResponse(json: unknown): {
+  messages: Message[];
+  readAtByUserId: Record<string, string | null>;
+} {
+  if (Array.isArray(json)) {
+    return { messages: json as Message[], readAtByUserId: {} };
+  }
+  if (!json || typeof json !== "object") {
+    return { messages: [], readAtByUserId: {} };
+  }
+  const o = json as { messages?: unknown; readAtByUserId?: unknown };
+  const messages = Array.isArray(o.messages) ? (o.messages as Message[]) : [];
+  const readAtByUserId =
+    o.readAtByUserId && typeof o.readAtByUserId === "object" && !Array.isArray(o.readAtByUserId)
+      ? (o.readAtByUserId as Record<string, string | null>)
+      : {};
+  return { messages, readAtByUserId };
+}
+
+/** 내 메시지가 채팅 참가자 모두(나 제외)의 lastReadAt 이후로 읽혔는지 */
+function isMessageReadByPeers(
+  message: Message,
+  myId: string | undefined,
+  readAtByUserId: Record<string, string | null>
+): boolean {
+  if (!myId || message.user.id !== myId || message.isDeleted) return false;
+  const msgT = new Date(message.createdAt).getTime();
+  if (Number.isNaN(msgT)) return false;
+  const peers = Object.entries(readAtByUserId).filter(([uid]) => uid !== myId);
+  if (peers.length === 0) return false;
+  return peers.every(([, iso]) => {
+    if (!iso) return false;
+    const t = new Date(iso).getTime();
+    return !Number.isNaN(t) && t >= msgT;
+  });
+}
+
 export function ChatPageClient({ initialChatId = null }: { initialChatId?: string | null }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -92,6 +129,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const [loading, setLoading] = useState(true);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [readAtByUserId, setReadAtByUserId] = useState<Record<string, string | null>>({});
   const [messageLoading, setMessageLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -231,25 +269,29 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           : `/api/chats/${chatId}/messages?limit=100`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("Failed");
-        const data = (await res.json()) as Message[];
+        const raw = await res.json();
+        const { messages: list, readAtByUserId: readMap } = parseChatMessagesResponse(raw);
+        if (Object.keys(readMap).length > 0) {
+          setReadAtByUserId(readMap);
+        }
         if (silent && sinceIso) {
-          if (data.length === 0) return;
+          if (list.length === 0) return;
           setMessages((prev: Message[]) => {
             const existingIds = new Set(prev.map((m: Message) => m.id));
-            const toAdd = data.filter((m: Message) => !existingIds.has(m.id));
+            const toAdd = list.filter((m: Message) => !existingIds.has(m.id));
             if (toAdd.length === 0) return prev;
             return [...prev, ...toAdd];
           });
         } else if (silent) {
           setMessages((prev: Message[]) => {
-            if (prev.length !== data.length) return data;
-            if (data.length === 0) return prev;
-            if (prev[0]?.id !== data[0]?.id || prev[prev.length - 1]?.id !== data[data.length - 1]?.id)
-              return data;
+            if (prev.length !== list.length) return list;
+            if (list.length === 0) return prev;
+            if (prev[0]?.id !== list[0]?.id || prev[prev.length - 1]?.id !== list[list.length - 1]?.id)
+              return list;
             return prev;
           });
         } else {
-          setMessages(data);
+          setMessages(list);
         }
       } catch {
         if (!silent) setMessages([]);
@@ -333,9 +375,36 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         localStorage.setItem(CHAT_READ_KEY + selectedChatId, new Date().toISOString());
         window.dispatchEvent(new Event("chat-read"));
       }
-      void fetch(`/api/chats/${selectedChatId}/messages`, { method: "PATCH" }).catch(() => {});
-    } else setMessages([]);
+      void fetch(`/api/chats/${selectedChatId}/messages`, { method: "PATCH" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { readAtByUserId?: Record<string, string | null> } | null) => {
+          if (d?.readAtByUserId && typeof d.readAtByUserId === "object") {
+            setReadAtByUserId(d.readAtByUserId);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setMessages([]);
+      setReadAtByUserId({});
+    }
   }, [selectedChatId, fetchMessages]);
+
+  useEffect(() => {
+    if (!selectedChatId) return;
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      void fetch(`/api/chats/${selectedChatId}/messages?readMeta=1`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((raw) => {
+          if (!raw) return;
+          const { readAtByUserId: m } = parseChatMessagesResponse(raw);
+          if (Object.keys(m).length > 0) setReadAtByUserId(m);
+        })
+        .catch(() => {});
+    };
+    const id = window.setInterval(tick, 12_000);
+    return () => window.clearInterval(id);
+  }, [selectedChatId]);
 
   useEffect(() => {
     if (modalOpen) {
@@ -849,11 +918,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                     {messages.map((m: any) => {
                       if (m.isSystem || m.user?.id === "__system__") {
                         return (
-                          <div
-                            key={m.id}
-                            className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-900"
-                          >
-                            {m.body}
+                          <div key={m.id} className="flex justify-center px-2">
+                            <div className="max-w-[min(520px,100%)] rounded-lg border border-dashed border-emerald-200 bg-emerald-50/80 px-3 py-2 text-center text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                              {m.body}
+                            </div>
                           </div>
                         );
                       }
@@ -862,64 +930,93 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                         isMine &&
                         !m.isDeleted &&
                         Date.now() - new Date(m.createdAt).getTime() < DELETE_ALLOWED_MS;
+                      const showRead = isMessageReadByPeers(m, session?.user?.id, readAtByUserId);
+                      const bubbleBody = m.isDeleted ? (
+                        <p className="text-muted-foreground italic text-sm">🚫 삭제된 메시지입니다</p>
+                      ) : (
+                        <p className="whitespace-pre-wrap break-words text-sm">
+                          {m.body
+                            .split(/(!\[[^\]]*\]\([^)]+\)|https?:\/\/[^\s]+)/g)
+                            .filter(Boolean)
+                            .map((part: any, i: any) => {
+                              const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+                              if (imgMatch) {
+                                const src = imgMatch[2];
+                                return (
+                                  <span key={i} className="relative mt-1 block max-h-64 max-w-full">
+                                    <Image
+                                      src={src}
+                                      alt={imgMatch[1] || "이미지"}
+                                      width={800}
+                                      height={256}
+                                      unoptimized
+                                      className="max-h-64 max-w-full rounded object-contain"
+                                    />
+                                  </span>
+                                );
+                              }
+                              if (part.match(/^https?:\/\//)) {
+                                return (
+                                  <a
+                                    key={i}
+                                    href={part}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary underline"
+                                  >
+                                    {part}
+                                  </a>
+                                );
+                              }
+                              return part;
+                            })}
+                        </p>
+                      );
                       return (
                         <div
                           key={m.id}
-                          className="group flex flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2"
+                          className={`group flex w-full min-w-0 ${isMine ? "justify-end" : "justify-start"}`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-muted-foreground text-xs">{formatUserName(m.user)}</span>
-                            {canDelete && selectedChatId && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-6 opacity-70 hover:opacity-100"
-                                title="메시지 삭제 (10분 이내)"
-                                onClick={() => handleDeleteMessage(selectedChatId, m.id)}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
+                          <div
+                            className={`flex max-w-[min(85%,520px)] min-w-0 flex-col gap-1 ${isMine ? "items-end" : "items-start"}`}
+                          >
+                            {!isMine && (
+                              <span className="text-muted-foreground px-0.5 text-xs font-medium">
+                                {formatUserName(m.user)}
+                              </span>
                             )}
+                            <div
+                              className={`relative w-full rounded-2xl border px-3 py-2 shadow-sm ${
+                                isMine
+                                  ? "rounded-tr-sm border-amber-300 bg-amber-100 text-foreground dark:border-amber-800 dark:bg-amber-950/55 dark:text-amber-50"
+                                  : "rounded-tl-sm border-sky-300 bg-sky-100 text-foreground dark:border-sky-800 dark:bg-sky-950/55 dark:text-sky-50"
+                              }`}
+                            >
+                              {canDelete && selectedChatId && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-0.5 top-0.5 size-7 opacity-70 hover:opacity-100"
+                                  title="메시지 삭제 (10분 이내)"
+                                  onClick={() => handleDeleteMessage(selectedChatId, m.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              )}
+                              {bubbleBody}
+                              <div
+                                className={`mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground ${isMine ? "justify-end" : "justify-start"}`}
+                              >
+                                <span>{formatKstDateTime(m.createdAt)}</span>
+                                {isMine && showRead && !m.isDeleted && (
+                                  <span className="text-primary font-medium dark:text-sky-300" title="상대가 읽음">
+                                    읽음
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          {m.isDeleted ? (
-                            <p className="text-muted-foreground italic text-sm">🚫 삭제된 메시지입니다</p>
-                          ) : (
-                            <p className="whitespace-pre-wrap break-words text-sm">
-                              {m.body
-                                .split(/(!\[[^\]]*\]\([^)]+\)|https?:\/\/[^\s]+)/g)
-                                .filter(Boolean)
-                                .map((part: any, i: any) => {
-                                  const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-                                  if (imgMatch) {
-                                    const src = imgMatch[2];
-                                    return (
-                                      <span key={i} className="relative mt-1 block max-h-64 max-w-full">
-                                        <Image
-                                          src={src}
-                                          alt={imgMatch[1] || "이미지"}
-                                          width={800}
-                                          height={256}
-                                          unoptimized
-                                          className="max-h-64 max-w-full rounded object-contain"
-                                        />
-                                      </span>
-                                    );
-                                  }
-                                  if (part.match(/^https?:\/\//)) {
-                                    return (
-                                      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                                        {part}
-                                      </a>
-                                    );
-                                  }
-                                  return part;
-                                })}
-                            </p>
-                          )}
-                          <span className="text-muted-foreground text-xs">
-                            {formatKstDateTime(m.createdAt)}
-                          </span>
                         </div>
                       );
                     })}
