@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import Link from "next/link";
@@ -17,7 +17,6 @@ import {
   MessageSquare,
   Ghost,
 } from "lucide-react";
-import type { BoardCategory } from "@/lib/board-category";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,18 +28,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { previewPlainTextForBoard } from "@/lib/board-body";
-import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
 import { toast } from "sonner";
-import {
-  postUploadFile,
-  UPLOAD_ERROR_MESSAGE,
-  UPLOAD_TOAST_DURATION_MS,
-} from "@/lib/upload-client-validate";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { useWorkspaceStore } from "@/store/workspace-store";
-import { FilePreviewDialog } from "@/components/file-preview-dialog";
-
 /** BlockNote 기반 에디터는 SSR·하이드레이션 시 Suspense(#419) 이슈가 있어 클라이언트에서만 로드 */
 const ContentBodyEditor = dynamic(
   () =>
@@ -166,21 +156,11 @@ export function BoardPageClient({
   const [boardLoadingMore, setBoardLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
-  const [openBoard, setOpenBoard] = useState(false);
   const [openAnnouncement, setOpenAnnouncement] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [bodyContent, setBodyContent] = useState("");
-  const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
-  const [htmlContent, setHtmlContent] = useState("");
-  const [category, setCategory] = useState<BoardCategory>("COMPANY");
-  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [urlLink, setUrlLink] = useState("");
-  const [urlName, setUrlName] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
 
   const BOARD_PAGE = 20;
 
@@ -273,49 +253,10 @@ export function BoardPageClient({
     return merged;
   })();
 
-  const handleSubmitBoard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      toast.error("제목을 입력하세요.");
-      return;
-    }
-    setSubmitLoading(true);
-    try {
-      const isHtmlPayload = editorMode === "html" || editorMode === "preview";
-      const res = await fetch("/api/board", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: (isHtmlPayload ? htmlContent : bodyContent).trim() || "",
-          contentType: isHtmlPayload ? "html" : "text",
-          category,
-          workspaceScope:
-            category === "FREE" || category === "ANONYMOUS"
-              ? "TEAM"
-              : currentWorkspace === "MY"
-                ? "PERSONAL"
-                : "TEAM",
-          attachments,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "등록 실패");
-      toast.success("자료가 등록되었습니다.");
-      setTitle("");
-      setBodyContent("");
-      setHtmlContent("");
-      setEditorMode("text");
-      setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
-      setAttachments([]);
-      setOpenBoard(false);
-      void refreshBoard();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "자료 등록에 실패했습니다.");
-    } finally {
-      setSubmitLoading(false);
-    }
-  };
+  const newBoardHref =
+    filter === "COMPANY" || filter === "TRAINING" || filter === "FREE" || filter === "ANONYMOUS"
+      ? `/board/new?category=${encodeURIComponent(filter)}`
+      : "/board/new";
 
   const handleSubmitAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -344,49 +285,6 @@ export function BoardPageClient({
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files?.length) return;
-    if (attachments.length + files.length > 20) {
-      toast.error("첨부파일은 최대 20개까지 가능합니다.");
-      return;
-    }
-    setUploading(true);
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const data = await postUploadFile(file);
-        setAttachments((prev: any) => [...prev, { url: data.url, name: data.name ?? file.name }]);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
-        duration: UPLOAD_TOAST_DURATION_MS,
-      });
-    } finally {
-      setUploading(false);
-      e.target.value = "";
-    }
-  };
-
-  const removeAttachment = (index: number) => {
-    setAttachments((prev: any) => prev.filter((_: any, i: any) => i !== index));
-  };
-
-  const handleAddUrl = () => {
-    const link = urlLink.trim();
-    if (!link) {
-      toast.error("URL을 입력하세요.");
-      return;
-    }
-    if (attachments.length >= 20) {
-      toast.error("첨부는 최대 20개까지 가능합니다.");
-      return;
-    }
-    setAttachments((prev: any) => [...prev, { url: link, name: urlName.trim() || "링크" }]);
-    setUrlLink("");
-    setUrlName("");
-  };
-
   const handleDeleteBoard = async (id: string) => {
     if (!confirm("이 자료를 삭제(숨김)할까요? 관리자는 휴지통에서 복원하거나 영구 삭제할 수 있습니다.")) return;
     setDeletingId(id);
@@ -401,18 +299,6 @@ export function BoardPageClient({
     } finally {
       setDeletingId(null);
     }
-  };
-
-  const resetBoardForm = () => {
-    setTitle("");
-    setBodyContent("");
-    setHtmlContent("");
-    setEditorMode("text");
-    setCategory(filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY");
-    setAttachments([]);
-    setUrlLink("");
-    setUrlName("");
-    setOpenBoard(false);
   };
 
   const resetAnnouncementForm = () => {
@@ -494,20 +380,11 @@ export function BoardPageClient({
             </Button>
           )}
           {canCreate && (
-            <Button
-              onClick={() => {
-                setTitle("");
-                setBodyContent("");
-                setCategory(
-                  filter === "FREE" || filter === "ANONYMOUS" ? filter : "COMPANY"
-                );
-                setAttachments([]);
-                setOpenBoard(true);
-              }}
-              className="gap-1"
-            >
-              <Plus className="size-4" />
-              자료 올리기
+            <Button asChild className="gap-1">
+              <Link href={newBoardHref}>
+                <Plus className="size-4" />
+                자료 올리기
+              </Link>
             </Button>
           )}
         </div>
@@ -757,143 +634,6 @@ export function BoardPageClient({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={resetAnnouncementForm}>
-                취소
-              </Button>
-              <Button type="submit" disabled={submitLoading}>
-                {submitLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
-                등록
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* 자료 올리기 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
-      <Dialog open={openBoard} onOpenChange={(o: any) => !o && resetBoardForm()}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
-          <DialogHeader>
-            <DialogTitle>자료 올리기</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmitBoard} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            <div className="space-y-2">
-              <Label htmlFor="board-title">제목</Label>
-              <Input
-                id="board-title"
-                value={title}
-                onChange={(e: any) => setTitle(e.target.value)}
-                placeholder="제목을 입력하세요"
-                maxLength={200}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="board-category">구분</Label>
-              <select
-                id="board-category"
-                value={category}
-                onChange={(e: any) => setCategory(e.target.value as BoardCategory)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="COMPANY">회사 자료</option>
-                <option value="TRAINING">교육자료</option>
-                <option value="FREE">자유게시판</option>
-                <option value="ANONYMOUS">익명게시판</option>
-              </select>
-              {category === "ANONYMOUS" && (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-                  이 글은 익명으로 게시됩니다. 목록과 상세에는 작성자가 &quot;익명&quot;으로만 표시되며, 대표 계정만 실명을 확인할 수 있습니다.
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>설명</Label>
-              <HtmlEditorModeTabs
-                editorMode={editorMode}
-                setEditorMode={setEditorMode}
-                htmlContent={htmlContent}
-                setHtmlContent={setHtmlContent}
-                textEditor={
-                  <ContentBodyEditor
-                    key={openBoard ? "board-rich-open" : "board-rich-closed"}
-                    initialContent={bodyContent}
-                    onChange={setBodyContent}
-                    minHeight="320px"
-                    showHelp={true}
-                  />
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>첨부파일 / 링크</Label>
-              <div className="flex flex-wrap items-end gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
-                  onChange={handleFileSelect}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading || attachments.length >= 20}
-                  className="gap-1"
-                >
-                  <FileText className="size-4" />
-                  {uploading ? "업로드 중..." : "파일 선택"}
-                </Button>
-                <div className="flex flex-1 min-w-[200px] gap-2 items-center">
-                  <Input
-                    placeholder="URL 입력 (예: https://... 또는 /uploads/...)"
-                    value={urlLink}
-                    onChange={(e: any) => setUrlLink(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                  <Input
-                    placeholder="이름 (선택)"
-                    value={urlName}
-                    onChange={(e: any) => setUrlName(e.target.value)}
-                    className="h-9 w-28 text-sm"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddUrl}
-                    disabled={attachments.length >= 20 || !urlLink.trim()}
-                  >
-                    URL 추가
-                  </Button>
-                </div>
-              </div>
-              {attachments.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {attachments.map((att, idx) => (
-                    <li key={idx} className="flex items-center gap-2 text-sm">
-                      <FilePreviewDialog
-                        url={att.url}
-                        name={att.name}
-                        triggerVariant="ghost"
-                        triggerClassName="h-7 px-2 justify-start text-sm"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={() => removeAttachment(idx)}
-                      >
-                        <Trash2 className="size-3" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={resetBoardForm}>
                 취소
               </Button>
               <Button type="submit" disabled={submitLoading}>

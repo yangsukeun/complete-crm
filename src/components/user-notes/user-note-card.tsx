@@ -47,17 +47,17 @@ export function UserNoteCard({
 }: Props) {
   const [title, setTitle] = useState(note.title);
   const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
-  const [plainContent, setPlainContent] = useState("");
   const [htmlContent, setHtmlContent] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const isStoredHtml = note.contentType === "html" && !isBlockNoteDoc(note.content);
 
   const noteRef = useRef(note);
   noteRef.current = note;
   const titleRef = useRef(title);
   titleRef.current = title;
-
-  /** 게시판과 동일: BlockNote(슬래시 메뉴 HTML 블록 포함). 예전 전체 HTML 메모만 탭 에디터 유지 */
-  const legacyFullHtml = note.contentType === "html" && !isBlockNoteDoc(note.content);
+  const editorModeRef = useRef(editorMode);
+  editorModeRef.current = editorMode;
 
   const draftBodyRef = useRef(note.content);
   const bodyDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,19 +71,42 @@ export function UserNoteCard({
   useEffect(() => {
     setTitle(note.title);
     draftBodyRef.current = note.content;
-    const ct = note.contentType === "html" ? "html" : "text";
-    if (legacyFullHtml) {
-      if (ct === "html") {
-        setHtmlContent(note.content);
-        setPlainContent("");
-        setEditorMode("html");
-      } else {
-        setPlainContent(note.content);
-        setHtmlContent("");
-        setEditorMode("text");
-      }
+    if (isStoredHtml) {
+      setHtmlContent(note.content);
+      setEditorMode("html");
+    } else {
+      setHtmlContent("");
+      setEditorMode("text");
     }
-  }, [note.id, note.updatedAt, note.title, note.content, note.contentType, legacyFullHtml]);
+  }, [note.id, note.updatedAt, note.title, note.content, note.contentType, isStoredHtml]);
+
+  const flushDebouncedText = useCallback(async () => {
+    if (bodyDebounceRef.current) {
+      clearTimeout(bodyDebounceRef.current);
+      bodyDebounceRef.current = null;
+    }
+    const body = draftBodyRef.current;
+    const n = noteRef.current;
+    if (body === n.content && n.contentType === "text") return;
+    setSaving(true);
+    try {
+      await onPatch(note.id, { content: body, contentType: "text" });
+    } finally {
+      setSaving(false);
+    }
+  }, [note.id, onPatch]);
+
+  const flushHtmlIfDirty = useCallback(async () => {
+    const n = noteRef.current;
+    if (htmlContent === n.content && n.contentType === "html") return;
+    if (!htmlContent.trim() && n.contentType === "text" && isBlockNoteDoc(n.content)) return;
+    setSaving(true);
+    try {
+      await onPatch(note.id, { content: htmlContent, contentType: "html" });
+    } finally {
+      setSaving(false);
+    }
+  }, [htmlContent, note.id, onPatch]);
 
   const scheduleBlockNoteSave = useCallback(
     (body: string) => {
@@ -91,6 +114,7 @@ export function UserNoteCard({
       if (bodyDebounceRef.current) clearTimeout(bodyDebounceRef.current);
       bodyDebounceRef.current = setTimeout(async () => {
         bodyDebounceRef.current = null;
+        if (editorModeRef.current !== "text") return;
         const n = noteRef.current;
         if (body === n.content && titleRef.current.trim() === n.title) return;
         setSaving(true);
@@ -104,39 +128,30 @@ export function UserNoteCard({
     [note.id, onPatch]
   );
 
-  const flushLegacy = async (modeOverride?: HtmlEditorMode) => {
-    const mode = modeOverride ?? editorMode;
-    const isHtml = mode === "html" || mode === "preview";
-    const nextContent = isHtml ? htmlContent : plainContent;
-    const nextType: "text" | "html" = isHtml ? "html" : "text";
-    const nt = note.contentType === "html" ? "html" : "text";
-    if (title.trim() === note.title && nextContent === note.content && nextType === nt) return;
-
-    const body: PatchBody = {
-      title: title.trim(),
-      content: nextContent,
-      contentType: nextType,
-    };
-    setSaving(true);
-    try {
-      await onPatch(note.id, body);
-    } finally {
-      setSaving(false);
+  const handleEditorModeChange = (m: HtmlEditorMode) => {
+    if (m === editorMode) return;
+    if (editorMode === "text" && m !== "text") {
+      void flushDebouncedText();
     }
+    if ((editorMode === "html" || editorMode === "preview") && m !== "html" && m !== "preview") {
+      void flushHtmlIfDirty();
+    }
+    setEditorMode(m);
   };
 
   const handleTitleBlur = () => {
     if (title.trim() === note.title) return;
     setSaving(true);
-    const legacyBody =
-      editorMode === "html" || editorMode === "preview" ? htmlContent : plainContent;
-    const p: PatchBody = {
-      title: title.trim(),
-      content: legacyFullHtml ? legacyBody : draftBodyRef.current,
-      contentType:
-        legacyFullHtml && (editorMode === "html" || editorMode === "preview") ? "html" : "text",
-    };
-    void onPatch(note.id, p).finally(() => setSaving(false));
+    const body =
+      editorMode === "html" || editorMode === "preview" ? htmlContent : draftBodyRef.current;
+    const ct: "text" | "html" = editorMode === "html" || editorMode === "preview" ? "html" : "text";
+    if (ct === "html" && !htmlContent.trim() && note.contentType === "text" && isBlockNoteDoc(note.content)) {
+      setSaving(false);
+      return;
+    }
+    void onPatch(note.id, { title: title.trim(), content: body, contentType: ct }).finally(() =>
+      setSaving(false)
+    );
   };
 
   const bg = note.colorHex ?? "#fef9c3";
@@ -187,37 +202,26 @@ export function UserNoteCard({
         </DropdownMenu>
       </div>
 
-      {legacyFullHtml ? (
-        <HtmlEditorModeTabs
-          editorMode={editorMode}
-          setEditorMode={setEditorMode}
-          htmlContent={htmlContent}
-          setHtmlContent={setHtmlContent}
-          onHtmlBlur={() => void flushLegacy("html")}
-          textEditor={
-            <textarea
-              value={plainContent}
-              onChange={(e) => setPlainContent(e.target.value)}
-              onBlur={() => void flushLegacy("text")}
-              placeholder="메모를 입력하세요…"
-              rows={6}
-              className="w-full resize-y rounded-md border border-input bg-background/80 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[6rem]"
-            />
-          }
-          emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
-        />
-      ) : (
-        <ContentBodyEditor
-          key={note.id}
-          initialContent={note.content}
-          onChange={(body) => {
-            draftBodyRef.current = body;
-            scheduleBlockNoteSave(body);
-          }}
-          minHeight="220px"
-          showHelp={true}
-        />
-      )}
+      <HtmlEditorModeTabs
+        editorMode={editorMode}
+        setEditorMode={handleEditorModeChange}
+        htmlContent={htmlContent}
+        setHtmlContent={setHtmlContent}
+        onHtmlBlur={() => void flushHtmlIfDirty()}
+        textEditor={
+          <ContentBodyEditor
+            key={`${note.id}-${note.contentType}-${note.updatedAt}`}
+            initialContent={isStoredHtml ? "" : note.content}
+            onChange={(body) => {
+              draftBodyRef.current = body;
+              scheduleBlockNoteSave(body);
+            }}
+            minHeight="220px"
+            showHelp={true}
+          />
+        }
+        emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
+      />
 
       {saving ? (
         <p className="mt-1 text-[10px] text-muted-foreground">저장 중…</p>

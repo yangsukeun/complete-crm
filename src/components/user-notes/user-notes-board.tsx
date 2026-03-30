@@ -258,8 +258,8 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">
               {projectId
-                ? "이 프로젝트에만 연결되는 메모입니다. 제목·본문은 자동 저장됩니다."
-                : "구글 Keep 스타일 메모입니다. HTML 붙여넣기가 가능하며 저장 시 정제됩니다."}
+                ? "이 프로젝트에만 연결되는 메모입니다. 게시판과 같이 텍스트·HTML·미리보기 탭으로 편집하며 자동 저장됩니다."
+                : "구글 Keep 스타일 메모입니다. 텍스트·HTML·미리보기 탭으로 편집할 수 있습니다."}
             </p>
           )}
         </div>

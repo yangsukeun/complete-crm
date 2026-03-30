@@ -259,7 +259,7 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
       </section>
 
       <section className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 space-y-4">
-        {/* 게시판과 동일: 메모 본문은 BlockNote + `/` HTML 블록(htmlBlock) — UserNoteCard → ContentBodyEditor */}
+        {/* 메모: 게시판과 동일 HtmlEditorModeTabs(텍스트·HTML·미리보기) + BlockNote 본문 */}
         <UserNotesBoard
           projectId={projectId}
           heading="프로젝트 메모"
