@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 
 export type HtmlEditorMode = "text" | "html" | "preview";
@@ -30,12 +31,29 @@ export function HtmlEditorModeTabs({
   emptyPreviewMessage = "HTML 탭에서 코드를 입력하세요",
   onHtmlBlur,
 }: Props) {
-  const previewFallback = injectIframePreviewBaseStyle(
-    `<p style="color:#999;padding:20px;margin:0">${emptyPreviewMessage
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")}</p>`
+  const fallbackInner = useMemo(
+    () =>
+      `<p style="color:#999;padding:20px;margin:0">${emptyPreviewMessage
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")}</p>`,
+    [emptyPreviewMessage]
   );
+
+  const [previewSrcDoc, setPreviewSrcDoc] = useState(() =>
+    htmlContent.trim()
+      ? injectIframePreviewBaseStyle(htmlContent)
+      : injectIframePreviewBaseStyle(fallbackInner)
+  );
+
+  useEffect(() => {
+    const o = window.location.origin;
+    setPreviewSrcDoc(
+      htmlContent.trim()
+        ? injectIframePreviewBaseStyle(htmlContent, { documentOrigin: o })
+        : injectIframePreviewBaseStyle(fallbackInner, { documentOrigin: o })
+    );
+  }, [htmlContent, fallbackInner]);
 
   return (
     <div className="space-y-2">
@@ -138,11 +156,7 @@ export function HtmlEditorModeTabs({
         <iframe
           key={htmlContent}
           title="미리보기"
-          srcDoc={
-            htmlContent.trim()
-              ? injectIframePreviewBaseStyle(htmlContent)
-              : previewFallback
-          }
+          srcDoc={previewSrcDoc}
           style={{
             width: "100%",
             minHeight: "400px",

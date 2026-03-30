@@ -16,8 +16,19 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
   const [isEditing, setIsEditing] = useState(!content.trim());
   const [localContent, setLocalContent] = useState(content);
   const [iframeHeight, setIframeHeight] = useState(300);
+  const [iframeSrcDoc, setIframeSrcDoc] = useState(() =>
+    injectIframePreviewBaseStyle(localContent)
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    setIframeSrcDoc(
+      injectIframePreviewBaseStyle(localContent, {
+        documentOrigin: window.location.origin,
+      })
+    );
+  }, [localContent]);
 
   useEffect(() => {
     setLocalContent(content);
@@ -40,9 +51,16 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
 
   const openNewTab = () => {
     if (!localContent.trim()) return;
-    const blob = new Blob([injectIframePreviewBaseStyle(localContent)], {
-      type: "text/html;charset=utf-8",
-    });
+    const blob = new Blob(
+      [
+        injectIframePreviewBaseStyle(localContent, {
+          documentOrigin: window.location.origin,
+        }),
+      ],
+      {
+        type: "text/html;charset=utf-8",
+      }
+    );
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 3000);
@@ -223,7 +241,7 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
           <iframe
             ref={iframeRef}
             title="HTML 미리보기"
-            srcDoc={injectIframePreviewBaseStyle(localContent)}
+            srcDoc={iframeSrcDoc}
             style={{
               width: "100%",
               height: `${iframeHeight}px`,

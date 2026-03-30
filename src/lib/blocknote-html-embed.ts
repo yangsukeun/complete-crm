@@ -7,6 +7,12 @@ import {
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 
+/** BlockNote HTML 블록은 브라우저에서만 렌더 — srcdoc 상대 URL이 about:srcdoc로 붙는 404 방지 */
+function iframeSrcdocForBlockPreview(html: string): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return injectIframePreviewBaseStyle(html, origin ? { documentOrigin: origin } : undefined);
+}
+
 /** 참고용(스키마는 createHtmlBlockConfig와 동기화) */
 export const htmlEmbedBlockSpec = {
   type: "htmlBlock" as const,
@@ -129,7 +135,7 @@ export function renderHtmlBlock(
     } else {
       const iframe = document.createElement("iframe");
       iframe.title = "HTML 미리보기";
-      iframe.srcdoc = injectIframePreviewBaseStyle(html);
+      iframe.srcdoc = iframeSrcdocForBlockPreview(html);
       iframe.style.cssText = `
         width: 100%;
         min-height: 200px;
@@ -147,7 +153,7 @@ export function renderHtmlBlock(
       e.stopPropagation();
       const raw = block.props.html ?? "";
       if (!raw.trim()) return;
-      const blob = new Blob([injectIframePreviewBaseStyle(raw)], {
+      const blob = new Blob([iframeSrcdocForBlockPreview(raw)], {
         type: "text/html;charset=utf-8",
       });
       const url = URL.createObjectURL(blob);
@@ -283,7 +289,7 @@ export function renderHtmlBlock(
   let mode: "code" | "preview" = block.props.html?.trim() ? "preview" : "code";
 
   const updateIframe = (html: string) => {
-    iframe.srcdoc = injectIframePreviewBaseStyle(html);
+    iframe.srcdoc = iframeSrcdocForBlockPreview(html);
   };
 
   attachHtmlPreviewIframeAutoResize(iframe);
@@ -327,7 +333,7 @@ export function renderHtmlBlock(
     e.stopPropagation();
     const html = textarea.value.trim() || (block.props.html ?? "").trim();
     if (!html) return;
-    const blob = new Blob([injectIframePreviewBaseStyle(html)], {
+    const blob = new Blob([iframeSrcdocForBlockPreview(html)], {
       type: "text/html;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);

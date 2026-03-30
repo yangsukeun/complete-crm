@@ -39,10 +39,24 @@ function BoardBlockViewerGate({ blocks }: { blocks: unknown[] }) {
  */
 /** DB에 contentType=html로 저장된 전체 HTML 본문 — iframe으로 격리 렌더 */
 function BoardStoredHtmlIframe({ html }: { html: string }) {
-  const srcDoc = injectIframePreviewBaseStyle(sanitizeNoteHtml(html));
+  const sanitized = sanitizeNoteHtml(html);
+  const [srcDoc, setSrcDoc] = useState(() =>
+    injectIframePreviewBaseStyle(sanitized)
+  );
+
+  useEffect(() => {
+    setSrcDoc(
+      injectIframePreviewBaseStyle(sanitizeNoteHtml(html), {
+        documentOrigin: window.location.origin,
+      })
+    );
+  }, [html]);
 
   const openNewTab = () => {
-    const blob = new Blob([srcDoc], { type: "text/html;charset=utf-8" });
+    const doc = injectIframePreviewBaseStyle(sanitizeNoteHtml(html), {
+      documentOrigin: window.location.origin,
+    });
+    const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank", "noopener,noreferrer");
     setTimeout(() => URL.revokeObjectURL(url), 3000);
