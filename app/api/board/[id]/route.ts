@@ -157,7 +157,16 @@ export async function PATCH(
           ? "html"
           : "text";
     if (parsed.data.description !== undefined) {
-      const d = normalizeBoardDescriptionForStore(parsed.data.description ?? "", typeForDescription);
+      let d: string;
+      try {
+        d = normalizeBoardDescriptionForStore(parsed.data.description ?? "", typeForDescription);
+      } catch (normErr) {
+        console.error("Board PATCH normalize:", normErr);
+        return NextResponse.json(
+          { error: "본문을 저장할 수 없습니다. 길이·형식을 확인하거나 잠시 후 다시 시도해 주세요." },
+          { status: 400 }
+        );
+      }
       data.description = d || null;
     }
     if (parsed.data.contentType !== undefined) {
@@ -181,6 +190,10 @@ export async function PATCH(
           name: (a.name && a.name.trim()) || "링크",
         }))
       );
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "수정할 필드가 없습니다. 요청 본문을 확인해 주세요." }, { status: 400 });
     }
 
     const updated = await prisma.boardPost.update({
@@ -215,13 +228,24 @@ export async function PATCH(
     return NextResponse.json({
       ...updated,
       createdAt: updated.createdAt.toISOString(),
-      attachments: JSON.parse(updated.attachments || "[]"),
+      attachments: safeParseBoardAttachments(updated.attachments),
       isAnonymous: updated.isAnonymous,
     });
   } catch (e) {
     console.error("Board PATCH:", e);
     return NextResponse.json({ error: "수정에 실패했습니다." }, { status: 500 });
   }
+}
+
+/**
+ * 일부 네트워크/프록시에서 PATCH가 본문 없이 전달되거나 POST로 변환되는 경우가 있어
+ * POST도 동일하게 처리합니다. (콘솔에 POST /api/board/[id] 로만 보일 때 대비)
+ */
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  return PATCH(req, context);
 }
 
 export async function DELETE(

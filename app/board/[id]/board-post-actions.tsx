@@ -142,6 +142,7 @@ export function BoardPostActions({
 
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!title.trim()) {
       toast.error("제목을 입력하세요.");
       return;
