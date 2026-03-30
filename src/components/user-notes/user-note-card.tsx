@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { MoreVertical, Trash2, FolderKanban } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,10 +12,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
-import { ContentBodyEditor } from "@/components/content-body-editor";
 import { TASK_BODY_DOC_PREFIX } from "@/lib/task-body-description";
 import type { UserNoteDto } from "./types";
 import { cn } from "@/lib/utils";
+
+/** 게시판 글쓰기(`board-new-client`)와 동일: BlockNote + HTML 탭, SSR 비활성로 하이드레이션 안전 */
+const ContentBodyEditor = dynamic(
+  () =>
+    import("@/components/content-body-editor").then((m) => ({ default: m.ContentBodyEditor })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[200px] items-center justify-center rounded-md border bg-muted/30 text-sm text-muted-foreground">
+        본문 편집기를 불러오는 중…
+      </div>
+    ),
+  }
+);
 
 const BODY_SAVE_DEBOUNCE_MS = 800;
 
@@ -216,7 +230,7 @@ export function UserNoteCard({
               draftBodyRef.current = body;
               scheduleBlockNoteSave(body);
             }}
-            minHeight="220px"
+            minHeight="320px"
             showHelp={true}
           />
         }

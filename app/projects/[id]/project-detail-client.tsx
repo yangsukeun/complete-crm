@@ -259,11 +259,10 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
       </section>
 
       <section className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 space-y-4">
-        {/* 메모: 게시판과 동일 HtmlEditorModeTabs(텍스트·HTML·미리보기) + BlockNote 본문 */}
         <UserNotesBoard
           projectId={projectId}
-          heading="프로젝트 메모"
-          description="이 CRM 프로젝트에 연결된 메모입니다. 메모장의 글을 가져오거나 새로 적을 수 있습니다."
+          heading="프로젝트 메모 · 본문"
+          description="게시판과 같은 방식으로 작성합니다. 텍스트 탭에서는 BlockNote(슬래시로 HTML 블록), HTML 탭에서는 전체 HTML 문서, 미리보기에서 확인 후 자동 저장됩니다. 메모장의 글을 가져오거나 여기서 새로 적을 수 있습니다."
         />
       </section>
 

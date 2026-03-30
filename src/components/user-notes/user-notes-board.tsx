@@ -258,8 +258,8 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">
               {projectId
-                ? "이 프로젝트에만 연결되는 메모입니다. 게시판과 같이 텍스트·HTML·미리보기 탭으로 편집하며 자동 저장됩니다."
-                : "구글 Keep 스타일 메모입니다. 텍스트·HTML·미리보기 탭으로 편집할 수 있습니다."}
+                ? "이 프로젝트에만 연결되는 메모입니다. 게시판 글쓰기와 동일하게 텍스트(BlockNote, 슬래시 메뉴의 HTML 블록)와 HTML 전체 페이지 탭·미리보기로 작성하며 자동 저장됩니다."
+                : "구글 Keep 스타일 메모입니다. 게시판과 동일한 본문 편집기로 텍스트·HTML·미리보기 탭을 사용할 수 있습니다."}
             </p>
           )}
         </div>
