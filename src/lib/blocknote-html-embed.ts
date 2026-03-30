@@ -6,6 +6,7 @@ import {
 } from "@blocknote/core";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
+import { mountIframeMobileScale } from "@/lib/iframe-embed-scale";
 
 /** BlockNote HTML 블록은 브라우저에서만 렌더 — srcdoc 상대 URL이 about:srcdoc로 붙는 404 방지 */
 function iframeSrcdocForBlockPreview(html: string): string {
@@ -37,7 +38,6 @@ const HTML_BLOCK_WRAPPER_STYLE = `
 `;
 
 const HTML_BLOCK_IFRAME_STYLE = `
-  width: 100% !important;
   min-height: 200px;
   border: none;
   display: block;
@@ -51,7 +51,7 @@ const HTML_BLOCK_IFRAME_STYLE = `
  * iframe 높이 자동 조절.
  * ResizeObserver는 높이·내용 순환으로 무한 증가할 수 있어 사용하지 않음.
  */
-function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
+function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement, syncScale?: () => void) {
   let isResizing = false;
 
   const resizeIframe = () => {
@@ -87,8 +87,10 @@ function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
 
       const finalH = Math.min(Math.max(h + 32, 100), 5000);
       iframe.style.height = `${finalH}px`;
+      syncScale?.();
     } catch {
       /* cross-origin 또는 문서 미준비 */
+      syncScale?.();
     }
 
     setTimeout(() => {
@@ -113,6 +115,8 @@ export function renderHtmlBlock(
   editor: BlockNoteEditor<any, any, any>,
   readOnly: boolean
 ) {
+  let scaleCleanup: (() => void) | undefined;
+
   if (readOnly) {
     const wrapper = document.createElement("div");
     wrapper.className = "bn-html-block-wrapper";
@@ -166,8 +170,10 @@ export function renderHtmlBlock(
       iframe.title = "HTML 미리보기";
       iframe.srcdoc = iframeSrcdocForBlockPreview(html);
       iframe.style.cssText = HTML_BLOCK_IFRAME_STYLE;
-      attachHtmlPreviewIframeAutoResize(iframe);
-      wrapper.appendChild(iframe);
+      const scaled = mountIframeMobileScale(iframe);
+      scaleCleanup = scaled.disconnect;
+      attachHtmlPreviewIframeAutoResize(iframe, scaled.updateScale);
+      wrapper.appendChild(scaled.outer);
     }
 
     newTabBtn.addEventListener("click", (e) => {
@@ -186,7 +192,7 @@ export function renderHtmlBlock(
     return {
       dom: wrapper,
       destroy() {
-        /* BlockNote가 DOM 제거 */
+        scaleCleanup?.();
       },
     };
   }
@@ -293,6 +299,9 @@ export function renderHtmlBlock(
   const iframe = document.createElement("iframe");
   iframe.title = "HTML 미리보기";
   iframe.style.cssText = HTML_BLOCK_IFRAME_STYLE;
+  const scaled = mountIframeMobileScale(iframe);
+  scaleCleanup = scaled.disconnect;
+  const previewOuter = scaled.outer;
 
   let mode: "code" | "preview" = block.props.html?.trim() ? "preview" : "code";
 
@@ -300,12 +309,12 @@ export function renderHtmlBlock(
     iframe.srcdoc = iframeSrcdocForBlockPreview(html);
   };
 
-  attachHtmlPreviewIframeAutoResize(iframe);
+  attachHtmlPreviewIframeAutoResize(iframe, scaled.updateScale);
 
   const showCode = () => {
     mode = "code";
     textarea.style.display = "block";
-    iframe.style.display = "none";
+    previewOuter.style.display = "none";
     setActiveBtn("code");
     setTimeout(() => textarea.focus(), 50);
   };
@@ -313,7 +322,7 @@ export function renderHtmlBlock(
   const showPreview = () => {
     mode = "preview";
     textarea.style.display = "none";
-    iframe.style.display = "block";
+    previewOuter.style.display = "block";
     setActiveBtn("preview");
     const v = textarea.value.trim();
     if (v) {
@@ -417,7 +426,7 @@ export function renderHtmlBlock(
 
   wrapper.appendChild(toolbar);
   wrapper.appendChild(textarea);
-  wrapper.appendChild(iframe);
+  wrapper.appendChild(previewOuter);
 
   if (mode === "preview") {
     showPreview();
@@ -428,7 +437,7 @@ export function renderHtmlBlock(
   return {
     dom: wrapper,
     destroy() {
-      /* BlockNote가 DOM 제거 */
+      scaleCleanup?.();
     },
   };
 }

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
+import { ScaledHtmlIframe } from "@/components/scaled-html-iframe";
 
 export type HtmlEditorMode = "text" | "html" | "preview";
 
@@ -153,30 +154,13 @@ export function HtmlEditorModeTabs({
       )}
 
       {editorMode === "preview" && (
-        <iframe
-          key={htmlContent}
+        <ScaledHtmlIframe
+          key={htmlContent || "empty"}
           title="미리보기"
           srcDoc={previewSrcDoc}
-          style={{
-            width: "100%",
-            minHeight: "400px",
-            border: "none",
-            display: "block",
-            background: "white",
-            colorScheme: "light",
-          }}
           className="bg-white"
-          onLoad={(e) => {
-            const el = e.target as HTMLIFrameElement;
-            try {
-              const h = el.contentWindow?.document?.documentElement?.scrollHeight;
-              if (h && h > 100) {
-                el.style.height = `${h + 24}px`;
-              }
-            } catch {
-              /* ignore */
-            }
-          }}
+          minLogicalHeight={400}
+          maxLogicalHeight={4000}
         />
       )}
     </div>

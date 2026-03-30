@@ -12,6 +12,7 @@ import {
 import { parseStoredTaskBody } from "@/lib/task-body-description";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
+import { ScaledHtmlIframe } from "@/components/scaled-html-iframe";
 import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
 
 /**
@@ -79,29 +80,12 @@ function BoardStoredHtmlIframe({ html }: { html: string }) {
           ↗ 새 탭으로 열기
         </button>
       </div>
-      <iframe
+      <ScaledHtmlIframe
         title="게시글 HTML 본문"
         srcDoc={srcDoc}
-        className="block w-full border-0 bg-white"
-        style={{
-          minHeight: 400,
-          colorScheme: "light",
-        }}
-        onLoad={(e) => {
-          const el = e.currentTarget;
-          try {
-            const doc = el.contentWindow?.document;
-            if (!doc?.body) return;
-            const prev = doc.body.style.overflow;
-            doc.body.style.overflow = "hidden";
-            const h = doc.body.offsetHeight;
-            doc.body.style.overflow = prev;
-            const finalH = Math.min(Math.max(h + 32, 400), 3000);
-            el.style.height = `${finalH}px`;
-          } catch {
-            /* sandbox / cross-origin */
-          }
-        }}
+        className="bg-white"
+        minLogicalHeight={400}
+        maxLogicalHeight={3000}
       />
     </div>
   );

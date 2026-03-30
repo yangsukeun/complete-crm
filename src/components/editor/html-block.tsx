@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
+import { ScaledHtmlIframe } from "@/components/scaled-html-iframe";
 
 export interface HTMLBlockProps {
   content: string;
@@ -15,12 +16,10 @@ export interface HTMLBlockProps {
 export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProps) {
   const [isEditing, setIsEditing] = useState(!content.trim());
   const [localContent, setLocalContent] = useState(content);
-  const [iframeHeight, setIframeHeight] = useState(300);
   const [iframeSrcDoc, setIframeSrcDoc] = useState(() =>
     injectIframePreviewBaseStyle(localContent)
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     setIframeSrcDoc(
@@ -64,14 +63,6 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 3000);
-  };
-
-  const handleIframeLoad = () => {
-    const el = iframeRef.current;
-    if (el?.contentWindow?.document?.documentElement) {
-      const h = el.contentWindow.document.documentElement.scrollHeight;
-      setIframeHeight(Math.max(h + 24, 200));
-    }
   };
 
   if (isEditing) {
@@ -237,20 +228,13 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
       </div>
 
       {localContent.trim() ? (
-        <div className="html-block-preview" style={{ maxHeight: "500px", overflowY: "auto", background: "white" }}>
-          <iframe
-            ref={iframeRef}
+        <div className="html-block-preview" style={{ background: "white" }}>
+          <ScaledHtmlIframe
+            key={iframeSrcDoc.slice(0, 64)}
             title="HTML 미리보기"
             srcDoc={iframeSrcDoc}
-            style={{
-              width: "100%",
-              height: `${iframeHeight}px`,
-              border: "none",
-              display: "block",
-              background: "white",
-              colorScheme: "light",
-            }}
-            onLoad={handleIframeLoad}
+            minLogicalHeight={200}
+            maxLogicalHeight={5000}
           />
         </div>
       ) : (
