@@ -19,58 +19,142 @@ export const htmlEmbedBlockSpec = {
 type HtmlBlockProps = { html?: string };
 type HtmlBlockArg = { id: string; props: HtmlBlockProps };
 
+function resizeIframeToContent(iframe: HTMLIFrameElement) {
+  try {
+    const h =
+      iframe.contentWindow?.document?.documentElement?.scrollHeight ??
+      iframe.contentWindow?.document?.body?.scrollHeight;
+    if (h && h > 50) {
+      iframe.style.height = `${h + 24}px`;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * HTML 블록 DOM 렌더 (React 없음).
- * `readOnly`: 게시판 상세 등 읽기 전용 — 코드/탭 전환 UI 최소화.
+ * 편집: 툴바 + textarea(코드) + iframe(미리보기) 단일 트리, 토글만 표시 전환.
+ * 읽기 전용: 라벨·새 탭 + iframe만.
  */
 export function renderHtmlBlock(
   block: HtmlBlockArg,
   editor: BlockNoteEditor<any, any, any>,
   readOnly: boolean
 ) {
+  if (readOnly) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "bn-html-block-wrapper";
+    wrapper.setAttribute("data-html-block", "1");
+    wrapper.setAttribute("contenteditable", "false");
+    wrapper.style.cssText = `
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 8px 0;
+      background: white;
+      width: 100%;
+    `;
+
+    const toolbar = document.createElement("div");
+    toolbar.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: #1e1e1e;
+      border-bottom: 1px solid #333;
+    `;
+    const label = document.createElement("span");
+    label.textContent = "</> HTML";
+    label.style.cssText = `
+      font-size: 11px;
+      color: #888;
+      font-family: monospace;
+      margin-right: 8px;
+    `;
+    const newTabBtn = document.createElement("button");
+    newTabBtn.textContent = "↗ 새 탭";
+    newTabBtn.type = "button";
+    newTabBtn.style.cssText = `
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      border: 1px solid #444;
+      cursor: pointer;
+      background: transparent;
+      color: #888;
+      margin-left: auto;
+    `;
+    toolbar.appendChild(label);
+    toolbar.appendChild(newTabBtn);
+    wrapper.appendChild(toolbar);
+
+    const html = block.props.html ?? "";
+    if (!html.trim()) {
+      const empty = document.createElement("p");
+      empty.style.cssText =
+        "margin:0;padding:12px;font-size:12px;color:#888;background:#fafafa;";
+      empty.textContent = "(비어 있는 HTML 블록)";
+      wrapper.appendChild(empty);
+    } else {
+      const iframe = document.createElement("iframe");
+      iframe.title = "HTML 미리보기";
+      iframe.srcdoc = injectIframePreviewBaseStyle(html);
+      iframe.style.cssText = `
+        width: 100%;
+        min-height: 200px;
+        border: none;
+        display: block;
+        background: white;
+        color-scheme: light;
+      `;
+      iframe.addEventListener("load", () => resizeIframeToContent(iframe));
+      wrapper.appendChild(iframe);
+    }
+
+    newTabBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const raw = block.props.html ?? "";
+      if (!raw.trim()) return;
+      const blob = new Blob([injectIframePreviewBaseStyle(raw)], {
+        type: "text/html;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    });
+
+    return {
+      dom: wrapper,
+      destroy() {
+        /* BlockNote가 DOM 제거 */
+      },
+    };
+  }
+
   const wrapper = document.createElement("div");
   wrapper.className = "bn-html-block-wrapper";
   wrapper.setAttribute("data-html-block", "1");
   wrapper.setAttribute("contenteditable", "false");
-  /** overflow·width는 renderBody에서 모드별로 조정 (미리보기는 가로로 뷰포트까지 확장) */
   wrapper.style.cssText = `
     border: 1px solid #e5e7eb;
     border-radius: 8px;
     overflow: hidden;
-    margin: 4px 0;
+    margin: 8px 0;
+    background: white;
     width: 100%;
   `;
 
-  let resizeHandler: (() => void) | null = null;
-  const clearPreviewResize = () => {
-    if (resizeHandler) {
-      window.removeEventListener("resize", resizeHandler);
-      resizeHandler = null;
-    }
-  };
-
-  const attachViewportAlignedPreview = (iframe: HTMLIFrameElement) => {
-    clearPreviewResize();
-    const sync = () => {
-      const r = wrapper.getBoundingClientRect();
-      const w = Math.max(280, window.innerWidth - r.left);
-      iframe.style.width = `${w}px`;
-      iframe.style.maxWidth = "none";
-      iframe.style.boxSizing = "border-box";
-      iframe.style.minHeight = `${Math.max(320, Math.round(window.innerHeight * 0.5))}px`;
-    };
-    sync();
-    resizeHandler = sync;
-    window.addEventListener("resize", resizeHandler);
-  };
-
-  const header = document.createElement("div");
-  header.style.cssText = `
+  const toolbar = document.createElement("div");
+  toolbar.style.cssText = `
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 10px;
+    padding: 6px 10px;
     background: #1e1e1e;
+    border-bottom: 1px solid #333;
   `;
 
   const label = document.createElement("span");
@@ -79,210 +163,140 @@ export function renderHtmlBlock(
     font-size: 11px;
     color: #888;
     font-family: monospace;
-    margin-right: 6px;
+    margin-right: 8px;
   `;
 
-  const mkBtn = (text: string, active = false) => {
-    const btn = document.createElement("button");
-    btn.textContent = text;
-    btn.type = "button";
-    btn.style.cssText = active
-      ? `padding:2px 10px;border-radius:4px;font-size:11px;
-         border:none;cursor:pointer;color:white;background:#6366f1;`
-      : `padding:2px 10px;border-radius:4px;font-size:11px;
-         border:1px solid #444;cursor:pointer;color:#aaa;background:transparent;`;
-    return btn;
+  const codeBtn = document.createElement("button");
+  codeBtn.textContent = "코드";
+  codeBtn.type = "button";
+
+  const previewBtn = document.createElement("button");
+  previewBtn.textContent = "미리보기";
+  previewBtn.type = "button";
+
+  const newTabBtn = document.createElement("button");
+  newTabBtn.textContent = "↗ 새 탭";
+  newTabBtn.type = "button";
+
+  const baseToggleStyle = `
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: #888;
+  `;
+
+  const setActiveBtn = (active: "code" | "preview") => {
+    codeBtn.style.cssText = baseToggleStyle;
+    previewBtn.style.cssText = baseToggleStyle;
+    const activeBtn = active === "code" ? codeBtn : previewBtn;
+    activeBtn.style.background = "#6366f1";
+    activeBtn.style.color = "white";
   };
 
-  const codeBtn = mkBtn("코드");
-  const previewBtn = mkBtn("미리보기");
-  const newTabBtn = mkBtn("↗ 새 탭");
-  newTabBtn.style.marginLeft = "auto";
+  newTabBtn.style.cssText = `
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    border: 1px solid #444;
+    cursor: pointer;
+    background: transparent;
+    color: #888;
+    margin-left: auto;
+  `;
 
-  if (readOnly) {
-    header.append(label, newTabBtn);
-  } else {
-    header.append(label, codeBtn, previewBtn, newTabBtn);
-  }
-  wrapper.appendChild(header);
+  toolbar.appendChild(label);
+  toolbar.appendChild(codeBtn);
+  toolbar.appendChild(previewBtn);
+  toolbar.appendChild(newTabBtn);
 
-  const body = document.createElement("div");
-  wrapper.appendChild(body);
-
-  let mode: "code" | "preview" = readOnly
-    ? "preview"
-    : block.props.html
-      ? "preview"
-      : "code";
-
-  function updateBtns() {
-    if (readOnly) return;
-    codeBtn.style.background = mode === "code" ? "#6366f1" : "transparent";
-    codeBtn.style.color = mode === "code" ? "white" : "#aaa";
-    codeBtn.style.border = mode === "code" ? "none" : "1px solid #444";
-
-    previewBtn.style.background = mode === "preview" ? "#6366f1" : "transparent";
-    previewBtn.style.color = mode === "preview" ? "white" : "#aaa";
-    previewBtn.style.border = mode === "preview" ? "none" : "1px solid #444";
-  }
-
-  function renderBody() {
-    clearPreviewResize();
-    body.innerHTML = "";
-    updateBtns();
-
-    if (readOnly) {
-      const html = block.props.html ?? "";
-      if (!html.trim()) {
-        const p = document.createElement("p");
-        p.style.cssText =
-          "margin:0;padding:12px;font-size:12px;color:#888;background:#fafafa;";
-        p.textContent = "(비어 있는 HTML 블록)";
-        body.appendChild(p);
-        return;
-      }
-      const iframe = document.createElement("iframe");
-      iframe.title = "HTML 미리보기";
-      iframe.srcdoc = injectIframePreviewBaseStyle(html);
-      /* CRM 내부 작성 HTML 미리보기 — sandbox 제거(브라우저 동일 출처 경고 회피·리소스 로딩 허용) */
-      iframe.style.cssText = `
-        width: 100%;
-        min-height: 200px;
-        border: none;
-        display: block;
-        background: white;
-        color-scheme: light;
-      `;
-      iframe.addEventListener("load", () => {
-        try {
-          const h =
-            iframe.contentWindow?.document?.documentElement?.scrollHeight ??
-            iframe.contentWindow?.document?.body?.scrollHeight;
-          if (h && h > 60) {
-            iframe.style.height = Math.max(
-              h + 24,
-              Math.round(window.innerHeight * 0.5)
-            ) + "px";
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-      wrapper.style.overflow = "visible";
-      body.appendChild(iframe);
-      attachViewportAlignedPreview(iframe);
-      return;
-    }
-
-    if (mode === "code") {
-      const ta = document.createElement("textarea");
-      ta.value = block.props.html ?? "";
-      ta.placeholder = `<!DOCTYPE html>
+  const textarea = document.createElement("textarea");
+  textarea.value = block.props.html ?? "";
+  textarea.placeholder = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>body{font-family:sans-serif;padding:20px}</style>
+  <style>body { font-family: sans-serif; }</style>
 </head>
 <body>
-  <h1>HTML 코드를 여기에 붙여넣으세요</h1>
+  <h1>HTML 코드를 여기에 입력하세요</h1>
 </body>
 </html>`;
-      ta.style.cssText = `
-        width: 100%;
-        min-height: 220px;
-        padding: 12px;
-        font-family: monospace;
-        font-size: 13px;
-        background: #1e1e1e;
-        color: #d4d4d4;
-        border: none;
-        outline: none;
-        resize: vertical;
-        display: block;
-        box-sizing: border-box;
-        line-height: 1.6;
-      `;
+  textarea.style.cssText = `
+    width: 100%;
+    min-height: 200px;
+    padding: 12px 16px;
+    font-family: monospace;
+    font-size: 13px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border: none;
+    outline: none;
+    resize: vertical;
+    display: block;
+    box-sizing: border-box;
+    line-height: 1.6;
+  `;
 
-      ta.addEventListener("input", () => {
-        editor.updateBlock(block, {
-          props: { html: ta.value },
-        });
-      });
+  const iframe = document.createElement("iframe");
+  iframe.title = "HTML 미리보기";
+  iframe.style.cssText = `
+    width: 100%;
+    min-height: 200px;
+    border: none;
+    display: block;
+    background: white;
+    color-scheme: light;
+  `;
 
-      ta.addEventListener("blur", () => {
-        if (ta.value.trim()) {
-          mode = "preview";
-          editor.updateBlock(block, {
-            props: { html: ta.value },
-          });
-          renderBody();
-        }
-      });
+  let mode: "code" | "preview" = block.props.html?.trim() ? "preview" : "code";
 
-      wrapper.style.overflow = "hidden";
-      body.appendChild(ta);
-      setTimeout(() => ta.focus(), 30);
+  const updateIframe = (html: string) => {
+    iframe.srcdoc = injectIframePreviewBaseStyle(html);
+  };
+
+  iframe.addEventListener("load", () => resizeIframeToContent(iframe));
+
+  const showCode = () => {
+    mode = "code";
+    textarea.style.display = "block";
+    iframe.style.display = "none";
+    setActiveBtn("code");
+    setTimeout(() => textarea.focus(), 50);
+  };
+
+  const showPreview = () => {
+    mode = "preview";
+    textarea.style.display = "none";
+    iframe.style.display = "block";
+    setActiveBtn("preview");
+    const v = textarea.value.trim();
+    if (v) {
+      editor.updateBlock(block, { props: { html: textarea.value } });
+      updateIframe(textarea.value);
     } else {
-      if (!block.props.html) {
-        mode = "code";
-        renderBody();
-        return;
-      }
-
-      const iframe = document.createElement("iframe");
-      iframe.title = "HTML 미리보기";
-      iframe.srcdoc = injectIframePreviewBaseStyle(block.props.html ?? "");
-      iframe.style.cssText = `
-        width: 100%;
-        min-height: 200px;
-        border: none;
-        display: block;
-        background: white;
-        color-scheme: light;
-      `;
-
-      iframe.addEventListener("load", () => {
-        try {
-          const h =
-            iframe.contentWindow?.document?.documentElement?.scrollHeight ??
-            iframe.contentWindow?.document?.body?.scrollHeight;
-          if (h && h > 60) {
-            iframe.style.height = Math.max(
-              h + 24,
-              Math.round(window.innerHeight * 0.5)
-            ) + "px";
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-
-      wrapper.style.overflow = "visible";
-      /** 투명 오버레이는 iframe 클릭·스크롤·내부 미리보기를 전부 막음 → 편집은 '코드' 버튼으로만 전환 */
-      body.appendChild(iframe);
-      attachViewportAlignedPreview(iframe);
+      iframe.srcdoc = "";
     }
-  }
+  };
 
-  if (!readOnly) {
-    codeBtn.addEventListener("click", () => {
-      mode = "code";
-      renderBody();
-    });
+  codeBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showCode();
+  });
 
-    previewBtn.addEventListener("click", () => {
-      if (block.props.html) {
-        mode = "preview";
-        renderBody();
-      } else {
-        mode = "code";
-        renderBody();
-      }
-    });
-  }
+  previewBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showPreview();
+  });
 
-  newTabBtn.addEventListener("click", () => {
-    const html = block.props.html;
+  newTabBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const html = textarea.value.trim() || (block.props.html ?? "").trim();
     if (!html) return;
     const blob = new Blob([injectIframePreviewBaseStyle(html)], {
       type: "text/html;charset=utf-8",
@@ -292,13 +306,41 @@ export function renderHtmlBlock(
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   });
 
-  renderBody();
+  textarea.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+  });
+  textarea.addEventListener("paste", (e) => {
+    e.stopPropagation();
+  });
+  textarea.addEventListener("input", (e) => {
+    e.stopPropagation();
+    editor.updateBlock(block, {
+      props: { html: textarea.value },
+    });
+  });
+  textarea.addEventListener("blur", () => {
+    if (textarea.value.trim()) {
+      editor.updateBlock(block, {
+        props: { html: textarea.value },
+      });
+      showPreview();
+    }
+  });
+
+  wrapper.appendChild(toolbar);
+  wrapper.appendChild(textarea);
+  wrapper.appendChild(iframe);
+
+  if (mode === "preview") {
+    showPreview();
+  } else {
+    showCode();
+  }
 
   return {
     dom: wrapper,
     destroy() {
-      clearPreviewResize();
-      body.innerHTML = "";
+      /* BlockNote가 DOM 제거 */
     },
   };
 }

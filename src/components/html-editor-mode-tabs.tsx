@@ -66,8 +66,24 @@ export function HtmlEditorModeTabs({
       {editorMode === "text" && textEditor}
 
       {editorMode === "html" && (
+        <>
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#9ca3af",
+              padding: "8px 12px",
+              background: "#f9fafb",
+              borderBottom: "1px solid #e5e7eb",
+              borderRadius: "8px 8px 0 0",
+              marginBottom: "-1px",
+            }}
+            className="dark:border-border dark:bg-muted/40 dark:text-muted-foreground"
+          >
+            💡 글 전체를 HTML로 작성할 때 사용합니다. 텍스트와 HTML을 섞으려면 텍스트 탭에서{" "}
+            <kbd className="rounded border px-1 text-[10px]">/</kbd> 키로 HTML 블록을 추가하세요.
+          </div>
         <div
-          className="relative isolate"
+          className="relative isolate rounded-b-lg border border-t-0 border-[#e5e7eb] dark:border-border"
           onPointerDownCapture={(e) => e.stopPropagation()}
           onKeyDownCapture={(e) => e.stopPropagation()}
           onPasteCapture={(e) => e.stopPropagation()}
@@ -112,9 +128,10 @@ export function HtmlEditorModeTabs({
               resize: "vertical",
               outline: "none",
             }}
-            className="dark:border-border"
+            className="dark:border-border rounded-b-lg border-0"
           />
         </div>
+        </>
       )}
 
       {editorMode === "preview" && (
