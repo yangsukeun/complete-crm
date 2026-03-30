@@ -34,7 +34,13 @@ export async function GET() {
         take: 80,
         include: {
           participants: {
-            include: { user: { select: userSelect } },
+            select: {
+              id: true,
+              chatId: true,
+              userId: true,
+              joinedAt: true,
+              user: { select: userSelect },
+            },
           },
           messages: {
             orderBy: { createdAt: "desc" },
@@ -70,7 +76,13 @@ export async function GET() {
         chat: {
           include: {
             participants: {
-              include: { user: { select: userSelect } },
+              select: {
+                id: true,
+                chatId: true,
+                userId: true,
+                joinedAt: true,
+                user: { select: userSelect },
+              },
             },
             messages: {
               orderBy: { createdAt: "desc" },

@@ -73,6 +73,24 @@ const financeGroupLinks: { href: string; label: string; icon: typeof Wallet; fea
 
 const CHAT_READ_KEY = "chat_read_";
 
+/** 관리 드롭다운: 대표는 전부, 그 외는 기능 권한(예: 팀장 admin_logs → Daily Report만) */
+const ADMIN_MENU_DEFS: {
+  href: string;
+  label: string;
+  icon: typeof Settings;
+  executiveOnly?: boolean;
+  feature?: string;
+}[] = [
+  { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
+  { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
+  { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
+  { href: "/admin/departments-positions", label: "부서·직책", icon: Layers, feature: "admin_departments" },
+  { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban, feature: "admin_projects" },
+  { href: "/admin/trash", label: "삭제된 항목", icon: Trash2, executiveOnly: true },
+  { href: "/admin/company", label: "회사 정보", icon: Building2, feature: "admin_company" },
+  { href: "/admin/settings/logo", label: "로고 설정", icon: Image, executiveOnly: true },
+];
+
 type ChatRowForBadge = {
   id: string;
   lastMessage: { createdAt: string; user: { id: string } } | null;
@@ -225,18 +243,11 @@ export function AppNav() {
   );
   const financeLinks = financeGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
 
-  const adminLinks = isExecutive
-    ? [
-        { href: "/admin", label: "관리 홈", icon: Settings },
-        { href: "/admin/employees", label: "직원 관리", icon: Users },
-        { href: "/admin/logs", label: "Daily Report 조회", icon: FileText },
-        { href: "/admin/departments-positions", label: "부서·직책", icon: Layers },
-        { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban },
-        { href: "/admin/trash", label: "삭제된 항목", icon: Trash2 },
-        { href: "/admin/company", label: "회사 정보", icon: Building2 },
-        { href: "/admin/settings/logo", label: "로고 설정", icon: Image },
-      ]
-    : [];
+  const adminLinks = ADMIN_MENU_DEFS.filter((d) => {
+    if (d.executiveOnly) return isExecutive;
+    if (d.feature) return isExecutive || can(d.feature);
+    return isExecutive;
+  }).map(({ href, label, icon }) => ({ href, label, icon }));
 
   const roleLabel =
     session?.user?.role === "TEAM_LEAD"
@@ -606,7 +617,7 @@ export function AppNav() {
           })}
           {adminLinks.length > 0 && (
             <Link
-              href="/admin/employees"
+              href={adminLinks[0]?.href ?? "/admin"}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium",
                 pathname.startsWith("/admin")

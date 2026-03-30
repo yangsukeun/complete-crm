@@ -3,6 +3,8 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { extractTaskStatusMarkers, getOrCreateDailyWorkLog, stripTaskStatusMarkers } from "@/lib/activity-log";
 import { createNotificationWithOptions } from "@/lib/notifications";
+import { userHasPermission } from "@/lib/permissions";
+import { assertCanViewOthersDailyWorkLog } from "@/lib/work-log-access";
 import { format } from "date-fns";
 
 /**
@@ -21,12 +23,31 @@ export async function GET(req: Request) {
     const dateStr = searchParams.get("date") ?? format(new Date(), "yyyy-MM-dd");
     const targetUserId = searchParams.get("userId") ?? null;
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    /** 직원은 본인만; 팀장도 타인 일지 조회 불가. 임원·관리자만 userId 지정 가능 */
-    const userId = targetUserId && isAdmin ? targetUserId : session.user.id;
+    const isExecutive = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const canViewOthersLogs =
+      isExecutive ||
+      userHasPermission(session.user as { role: string; permissions?: string | null }, "admin_logs");
+    /** 타인 일지: 임원/관리자 또는 admin_logs 권한(팀장 기본 포함) */
+    const userId = targetUserId && canViewOthersLogs ? targetUserId : session.user.id;
 
-    if (targetUserId && !isAdmin) {
+    if (targetUserId && !canViewOthersLogs) {
       return NextResponse.json({ error: "다른 직원의 Daily Report는 조회할 수 없습니다." }, { status: 403 });
+    }
+
+    if (targetUserId && canViewOthersLogs && targetUserId !== session.user.id) {
+      const viewer = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { department: true, role: true },
+      });
+      const gate = await assertCanViewOthersDailyWorkLog({
+        viewerId: session.user.id,
+        viewerRole: String(viewer?.role ?? session.user.role ?? "USER"),
+        viewerDepartment: viewer?.department,
+        targetUserId,
+      });
+      if (!gate.ok) {
+        return NextResponse.json({ error: gate.error }, { status: gate.status });
+      }
     }
 
     const log = await getOrCreateDailyWorkLog(userId, dateStr);

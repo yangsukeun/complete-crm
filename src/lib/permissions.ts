@@ -61,6 +61,7 @@ const DEFAULT_BY_ROLE: Record<RoleName, string[]> = {
     "attendance",
     "announcements",
     "board",
+    "admin_logs", // 직원 Daily Report 조회 (/admin/logs) — 팀장 기본
     "profile",
   ],
   EXECUTIVE: FEATURE_KEYS,

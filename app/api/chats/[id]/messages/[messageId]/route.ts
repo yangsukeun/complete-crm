@@ -18,6 +18,7 @@ export async function DELETE(
 
     const participant = await prisma.chatParticipant.findFirst({
       where: { chatId, userId: session.user.id },
+      select: { id: true },
     });
     const role = (session.user as { role?: string }).role;
     const isAdmin = role === "EXECUTIVE" || role === "ADMIN";

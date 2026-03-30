@@ -6,6 +6,37 @@ import { z } from "zod";
 
 const postSchema = z.object({ body: z.string().min(1).max(2000) });
 
+/** 마이그레이션 전 DB에 lastReadAt 없으면 Prisma 오류 — 메시지 API 전체 500 방지 */
+function isMissingLastReadAtColumnError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return (
+    msg.includes("lastreadat") ||
+    msg.includes("last_read_at") ||
+    (msg.includes("unknown arg") && msg.includes("lastread")) ||
+    (msg.includes("column") && msg.includes("does not exist") && msg.includes("lastread"))
+  );
+}
+
+async function fetchReadAtByUserId(chatId: string): Promise<Record<string, string | null>> {
+  try {
+    const participants = await prisma.chatParticipant.findMany({
+      where: { chatId },
+      select: { userId: true, lastReadAt: true },
+    });
+    return Object.fromEntries(
+      participants.map((p) => [p.userId, p.lastReadAt?.toISOString() ?? null])
+    );
+  } catch (e) {
+    if (isMissingLastReadAtColumnError(e)) {
+      console.warn(
+        "[chat/messages] ChatParticipant.lastReadAt 컬럼 없음 — 읽음 표시 생략. `npx prisma db push` 또는 migrate deploy 권장."
+      );
+      return {};
+    }
+    throw e;
+  }
+}
+
 /** 채팅을 읽음으로 처리할 때 해당 방의 CHAT_MESSAGE 알림을 서버에서도 읽음 처리 */
 export async function PATCH(
   _req: Request,
@@ -26,6 +57,7 @@ export async function PATCH(
 
     const participant = await prisma.chatParticipant.findFirst({
       where: { chatId, userId: session.user.id },
+      select: { id: true },
     });
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     if (!participant && !isAdmin) {
@@ -33,17 +65,16 @@ export async function PATCH(
     }
 
     const updated = await markChatNotificationsRead(session.user.id, chatId);
-    await prisma.chatParticipant.updateMany({
-      where: { chatId, userId: session.user.id },
-      data: { lastReadAt: new Date() },
-    });
-    const participants = await prisma.chatParticipant.findMany({
-      where: { chatId },
-      select: { userId: true, lastReadAt: true },
-    });
-    const readAtByUserId = Object.fromEntries(
-      participants.map((p) => [p.userId, p.lastReadAt?.toISOString() ?? null])
-    );
+    try {
+      await prisma.chatParticipant.updateMany({
+        where: { chatId, userId: session.user.id },
+        data: { lastReadAt: new Date() },
+      });
+    } catch (e) {
+      if (!isMissingLastReadAtColumnError(e)) throw e;
+      console.warn("[chat/messages PATCH] lastReadAt 갱신 생략(DB 컬럼 미적용)");
+    }
+    const readAtByUserId = await fetchReadAtByUserId(chatId);
     return NextResponse.json({ ok: true, markedRead: updated, readAtByUserId });
   } catch (e) {
     console.error(e);
@@ -70,6 +101,7 @@ export async function GET(
 
     const participant = await prisma.chatParticipant.findFirst({
       where: { chatId, userId: session.user.id },
+      select: { id: true },
     });
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     if (!participant && !isAdmin) {
@@ -82,18 +114,8 @@ export async function GET(
     const sinceIso = searchParams.get("since");
     const readMetaOnly = searchParams.get("readMeta") === "1";
 
-    async function readAtMap() {
-      const participants = await prisma.chatParticipant.findMany({
-        where: { chatId },
-        select: { userId: true, lastReadAt: true },
-      });
-      return Object.fromEntries(
-        participants.map((p) => [p.userId, p.lastReadAt?.toISOString() ?? null])
-      ) as Record<string, string | null>;
-    }
-
     if (readMetaOnly) {
-      const readAtByUserId = await readAtMap();
+      const readAtByUserId = await fetchReadAtByUserId(chatId);
       return NextResponse.json({ messages: [], readAtByUserId });
     }
 
@@ -108,7 +130,7 @@ export async function GET(
           orderBy: { createdAt: "asc" },
           take: 50,
         });
-        const readAtByUserId = await readAtMap();
+        const readAtByUserId = await fetchReadAtByUserId(chatId);
         return NextResponse.json({ messages: newMessages, readAtByUserId });
       }
     }
@@ -119,7 +141,7 @@ export async function GET(
         orderBy: { createdAt: "asc" },
         take: 50,
       });
-      const readAtByUserId = await readAtMap();
+      const readAtByUserId = await fetchReadAtByUserId(chatId);
       return NextResponse.json({ messages: newMessages, readAtByUserId });
     }
 
@@ -131,7 +153,7 @@ export async function GET(
       take: limit,
     });
     messages.reverse();
-    const readAtByUserId = await readAtMap();
+    const readAtByUserId = await fetchReadAtByUserId(chatId);
     return NextResponse.json({ messages, readAtByUserId });
   } catch (e) {
     console.error(e);
@@ -161,6 +183,7 @@ export async function POST(
 
     const participant = await prisma.chatParticipant.findFirst({
       where: { chatId, userId: session.user.id },
+      select: { id: true },
     });
     if (!participant) {
       return NextResponse.json({ error: "채팅방에 접근할 수 없습니다." }, { status: 403 });
