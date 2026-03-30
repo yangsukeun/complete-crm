@@ -25,9 +25,31 @@ export const htmlEmbedBlockSpec = {
 type HtmlBlockProps = { html?: string };
 type HtmlBlockArg = { id: string; props: HtmlBlockProps };
 
+const HTML_BLOCK_WRAPPER_STYLE = `
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+  background: white;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+`;
+
+const HTML_BLOCK_IFRAME_STYLE = `
+  width: 100% !important;
+  min-height: 200px;
+  border: none;
+  display: block;
+  background: white;
+  box-sizing: border-box;
+  overflow: hidden;
+  color-scheme: light;
+`;
+
 /**
  * iframe 높이 자동 조절.
- * ResizeObserver + scrollHeight 조합은 높이 변경 → 재관측 루프로 무한 증가할 수 있어 제거.
+ * ResizeObserver는 높이·내용 순환으로 무한 증가할 수 있어 사용하지 않음.
  */
 function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
   let isResizing = false;
@@ -43,14 +65,27 @@ function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
         return;
       }
 
-      const prevOverflow = doc.body.style.overflow;
-      doc.body.style.overflow = "hidden";
+      const body = doc.body;
+      const htmlEl = doc.documentElement;
 
-      const h = doc.body.offsetHeight;
+      const prevBodyOverflow = body.style.overflow;
+      const prevHtmlOverflow = htmlEl.style.overflow;
+      body.style.overflow = "hidden";
+      htmlEl.style.overflow = "hidden";
 
-      doc.body.style.overflow = prevOverflow;
+      const h = Math.max(
+        body.scrollHeight,
+        body.offsetHeight,
+        htmlEl.clientHeight,
+        htmlEl.scrollHeight,
+        htmlEl.offsetHeight,
+        100
+      );
 
-      const finalH = Math.min(Math.max(h + 32, 100), 2000);
+      body.style.overflow = prevBodyOverflow;
+      htmlEl.style.overflow = prevHtmlOverflow;
+
+      const finalH = Math.min(Math.max(h + 32, 100), 5000);
       iframe.style.height = `${finalH}px`;
     } catch {
       /* cross-origin 또는 문서 미준비 */
@@ -58,12 +93,13 @@ function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
 
     setTimeout(() => {
       isResizing = false;
-    }, 100);
+    }, 200);
   };
 
   iframe.addEventListener("load", () => {
     resizeIframe();
-    setTimeout(resizeIframe, 500);
+    setTimeout(resizeIframe, 300);
+    setTimeout(resizeIframe, 800);
   });
 }
 
@@ -82,14 +118,7 @@ export function renderHtmlBlock(
     wrapper.className = "bn-html-block-wrapper";
     wrapper.setAttribute("data-html-block", "1");
     wrapper.setAttribute("contenteditable", "false");
-    wrapper.style.cssText = `
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      overflow: hidden;
-      margin: 8px 0;
-      background: white;
-      width: 100%;
-    `;
+    wrapper.style.cssText = HTML_BLOCK_WRAPPER_STYLE;
 
     const toolbar = document.createElement("div");
     toolbar.style.cssText = `
@@ -136,14 +165,7 @@ export function renderHtmlBlock(
       const iframe = document.createElement("iframe");
       iframe.title = "HTML 미리보기";
       iframe.srcdoc = iframeSrcdocForBlockPreview(html);
-      iframe.style.cssText = `
-        width: 100%;
-        min-height: 200px;
-        border: none;
-        display: block;
-        background: white;
-        color-scheme: light;
-      `;
+      iframe.style.cssText = HTML_BLOCK_IFRAME_STYLE;
       attachHtmlPreviewIframeAutoResize(iframe);
       wrapper.appendChild(iframe);
     }
@@ -173,14 +195,7 @@ export function renderHtmlBlock(
   wrapper.className = "bn-html-block-wrapper";
   wrapper.setAttribute("data-html-block", "1");
   wrapper.setAttribute("contenteditable", "false");
-  wrapper.style.cssText = `
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    overflow: hidden;
-    margin: 8px 0;
-    background: white;
-    width: 100%;
-  `;
+  wrapper.style.cssText = HTML_BLOCK_WRAPPER_STYLE;
 
   const toolbar = document.createElement("div");
   toolbar.style.cssText = `
@@ -277,14 +292,7 @@ export function renderHtmlBlock(
 
   const iframe = document.createElement("iframe");
   iframe.title = "HTML 미리보기";
-  iframe.style.cssText = `
-    width: 100%;
-    min-height: 200px;
-    border: none;
-    display: block;
-    background: white;
-    color-scheme: light;
-  `;
+  iframe.style.cssText = HTML_BLOCK_IFRAME_STYLE;
 
   let mode: "code" | "preview" = block.props.html?.trim() ? "preview" : "code";
 
