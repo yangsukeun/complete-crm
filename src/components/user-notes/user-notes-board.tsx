@@ -24,6 +24,7 @@ import {
 import { UserNoteCard } from "./user-note-card";
 import type { UserNoteDto } from "./types";
 import { plainTextFromHtml } from "@/lib/sanitize-note-html";
+import { cn } from "@/lib/utils";
 
 type BrandOption = { id: string; name: string };
 
@@ -283,14 +284,24 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
         </div>
       </div>
 
+      {projectId ? (
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          각 메모 카드에서 상단의 「텍스트」「HTML」「미리보기」를 전환해 작성합니다. HTML 탭에 전체 HTML 코드를 넣고 미리보기에서 화면처럼 확인할 수 있습니다. (게시판 글쓰기와 동일)
+        </p>
+      ) : null}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">불러오는 중…</p>
       ) : notes.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          메모가 없습니다. 위에서 「+ 추가」로 새 메모를 만드세요.
+          {projectId
+            ? "메모가 없습니다. 「+ 추가」로 카드를 만든 뒤, 그 안에서 텍스트·HTML·미리보기 탭을 사용하세요."
+            : "메모가 없습니다. 위에서 「+ 추가」로 새 메모를 만드세요."}
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div
+          className={cn("grid gap-3", projectId ? "grid-cols-1" : "sm:grid-cols-2")}
+        >
           {notes.map((n) => (
             <UserNoteCard
               key={n.id}
