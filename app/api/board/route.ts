@@ -190,10 +190,20 @@ export async function GET(req: Request) {
 /** POST는 `board-body` → DOMPurify 체인이 있는 모듈만 동적 로드합니다. */
 export async function POST(req: Request) {
   try {
+    try {
+      const preview = await req.clone().json();
+      console.error("[board POST] 받은 데이터:", JSON.stringify(preview, null, 2));
+    } catch (e) {
+      console.error("[board POST] body 미리보기 파싱 실패:", e);
+    }
     const { handleBoardPost } = await import("@/lib/board-route-post");
     return handleBoardPost(req);
   } catch (e) {
-    console.error("[board POST] 모듈 로드 실패", e);
-    return NextResponse.json({ error: "서버 오류가 발생했습니다." }, { status: 500 });
+    console.error("[board POST] 에러 타입:", typeof e, e instanceof Error ? e.message : e);
+    if (e instanceof Error) console.error("[board POST] 스택:", e.stack);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : String(e) },
+      { status: 500 }
+    );
   }
 }

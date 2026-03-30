@@ -19,17 +19,44 @@ export const htmlEmbedBlockSpec = {
 type HtmlBlockProps = { html?: string };
 type HtmlBlockArg = { id: string; props: HtmlBlockProps };
 
-function resizeIframeToContent(iframe: HTMLIFrameElement) {
-  try {
-    const h =
-      iframe.contentWindow?.document?.documentElement?.scrollHeight ??
-      iframe.contentWindow?.document?.body?.scrollHeight;
-    if (h && h > 50) {
-      iframe.style.height = `${h + 24}px`;
+/** iframe 높이 자동 조절 — 로드 직후·이미지·폰트·레이아웃 변경까지 대응 */
+function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
+  let resizeObserver: ResizeObserver | null = null;
+
+  const resizeIframe = () => {
+    try {
+      const doc = iframe.contentWindow?.document;
+      if (!doc) return;
+
+      const h = Math.max(
+        doc.body?.scrollHeight ?? 0,
+        doc.documentElement?.scrollHeight ?? 0,
+        300
+      );
+      iframe.style.height = `${h}px`;
+    } catch {
+      /* cross-origin 또는 문서 미준비 */
     }
-  } catch {
-    /* ignore */
-  }
+  };
+
+  iframe.addEventListener("load", () => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+
+    resizeIframe();
+    setTimeout(resizeIframe, 300);
+    setTimeout(resizeIframe, 1000);
+
+    try {
+      const body = iframe.contentDocument?.body;
+      if (body) {
+        resizeObserver = new ResizeObserver(resizeIframe);
+        resizeObserver.observe(body);
+      }
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
 /**
@@ -109,7 +136,7 @@ export function renderHtmlBlock(
         background: white;
         color-scheme: light;
       `;
-      iframe.addEventListener("load", () => resizeIframeToContent(iframe));
+      attachHtmlPreviewIframeAutoResize(iframe);
       wrapper.appendChild(iframe);
     }
 
@@ -257,7 +284,7 @@ export function renderHtmlBlock(
     iframe.srcdoc = injectIframePreviewBaseStyle(html);
   };
 
-  iframe.addEventListener("load", () => resizeIframeToContent(iframe));
+  attachHtmlPreviewIframeAutoResize(iframe);
 
   const showCode = () => {
     mode = "code";

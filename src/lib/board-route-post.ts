@@ -57,11 +57,12 @@ export async function handleBoardPost(req: Request): Promise<Response> {
     let body: unknown;
     try {
       body = await req.json();
-    } catch {
-      return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
+    } catch (e) {
+      console.error("[board POST] body 파싱 실패:", e);
+      return NextResponse.json({ error: "body 파싱 실패" }, { status: 400 });
     }
 
-    console.log("[board POST body]", body);
+    console.error("[board POST body]", JSON.stringify(body, null, 2));
 
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
@@ -148,8 +149,8 @@ export async function handleBoardPost(req: Request): Promise<Response> {
       return NextResponse.json(
         {
           error: hint ?? "자료 등록에 실패했습니다.",
-          code: process.env.NODE_ENV === "development" ? code : undefined,
-          detail: process.env.NODE_ENV === "development" ? msg : undefined,
+          ...(code ? { code } : {}),
+          detail: msg,
         },
         { status: 500 }
       );
@@ -169,11 +170,10 @@ export async function handleBoardPost(req: Request): Promise<Response> {
       attachments: safeParseAttachments(created.attachments),
     });
   } catch (e) {
-    console.error("[board 에러 원인]", e);
+    console.error("[board POST catch]", e);
+    console.error("[board POST] 에러 타입:", typeof e, e instanceof Error ? e.message : e);
+    if (e instanceof Error) console.error("[board POST] 스택:", e.stack);
     const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json(
-      { error: "자료 등록에 실패했습니다.", detail: process.env.NODE_ENV === "development" ? msg : undefined },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
