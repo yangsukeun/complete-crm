@@ -333,18 +333,48 @@ export function renderHtmlBlock(
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   });
 
-  textarea.addEventListener("keydown", (e) => {
+  const stopAll = (e: Event) => {
     e.stopPropagation();
-  });
+    e.stopImmediatePropagation();
+  };
+
+  textarea.addEventListener("keydown", stopAll);
+  textarea.addEventListener("keyup", stopAll);
+  textarea.addEventListener("keypress", stopAll);
+  textarea.addEventListener("click", stopAll);
+  textarea.addEventListener("focus", stopAll);
+  textarea.addEventListener("mousedown", stopAll);
+
   textarea.addEventListener("paste", (e) => {
     e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    if (!text) return;
+    e.preventDefault();
+
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+
+    const newVal =
+      textarea.value.slice(0, start) + text + textarea.value.slice(end);
+    textarea.value = newVal;
+    textarea.selectionStart = start + text.length;
+    textarea.selectionEnd = start + text.length;
+
+    editor.updateBlock(block, {
+      props: { html: newVal },
+    });
   });
+
   textarea.addEventListener("input", (e) => {
     e.stopPropagation();
+    e.stopImmediatePropagation();
     editor.updateBlock(block, {
       props: { html: textarea.value },
     });
   });
+
   textarea.addEventListener("blur", () => {
     if (textarea.value.trim()) {
       editor.updateBlock(block, {
@@ -353,6 +383,21 @@ export function renderHtmlBlock(
       showPreview();
     }
   });
+
+  wrapper.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+  });
+
+  /* 툴바 클릭은 그대로 두기 — 캡처에서 막으면 코드/미리보기 버튼이 동작하지 않음 */
+  wrapper.addEventListener(
+    "click",
+    (e) => {
+      if (toolbar.contains(e.target as Node)) return;
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    },
+    true
+  );
 
   wrapper.appendChild(toolbar);
   wrapper.appendChild(textarea);
