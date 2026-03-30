@@ -19,43 +19,45 @@ export const htmlEmbedBlockSpec = {
 type HtmlBlockProps = { html?: string };
 type HtmlBlockArg = { id: string; props: HtmlBlockProps };
 
-/** iframe 높이 자동 조절 — 로드 직후·이미지·폰트·레이아웃 변경까지 대응 */
+/**
+ * iframe 높이 자동 조절.
+ * ResizeObserver + scrollHeight 조합은 높이 변경 → 재관측 루프로 무한 증가할 수 있어 제거.
+ */
 function attachHtmlPreviewIframeAutoResize(iframe: HTMLIFrameElement) {
-  let resizeObserver: ResizeObserver | null = null;
+  let isResizing = false;
 
   const resizeIframe = () => {
+    if (isResizing) return;
+    isResizing = true;
+
     try {
       const doc = iframe.contentWindow?.document;
-      if (!doc) return;
+      if (!doc?.body) {
+        isResizing = false;
+        return;
+      }
 
-      const h = Math.max(
-        doc.body?.scrollHeight ?? 0,
-        doc.documentElement?.scrollHeight ?? 0,
-        300
-      );
-      iframe.style.height = `${h}px`;
+      const prevOverflow = doc.body.style.overflow;
+      doc.body.style.overflow = "hidden";
+
+      const h = doc.body.offsetHeight;
+
+      doc.body.style.overflow = prevOverflow;
+
+      const finalH = Math.min(Math.max(h + 32, 100), 2000);
+      iframe.style.height = `${finalH}px`;
     } catch {
       /* cross-origin 또는 문서 미준비 */
     }
+
+    setTimeout(() => {
+      isResizing = false;
+    }, 100);
   };
 
   iframe.addEventListener("load", () => {
-    resizeObserver?.disconnect();
-    resizeObserver = null;
-
     resizeIframe();
-    setTimeout(resizeIframe, 300);
-    setTimeout(resizeIframe, 1000);
-
-    try {
-      const body = iframe.contentDocument?.body;
-      if (body) {
-        resizeObserver = new ResizeObserver(resizeIframe);
-        resizeObserver.observe(body);
-      }
-    } catch {
-      /* ignore */
-    }
+    setTimeout(resizeIframe, 500);
   });
 }
 

@@ -11,6 +11,7 @@ import {
 } from "@/lib/board-body";
 import { parseStoredTaskBody } from "@/lib/task-body-description";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
 
 /**
@@ -36,6 +37,62 @@ function BoardBlockViewerGate({ blocks }: { blocks: unknown[] }) {
  * DOMPurify·마크다운 파이프라인은 Node와 브라우저에서 미세하게 달라질 수 있어
  * sanitize된 HTML / ReactMarkdown을 초기 HTML과 분리(마운트 이후만 그리기).
  */
+/** DB에 contentType=html로 저장된 전체 HTML 본문 — iframe으로 격리 렌더 */
+function BoardStoredHtmlIframe({ html }: { html: string }) {
+  const srcDoc = injectIframePreviewBaseStyle(sanitizeNoteHtml(html));
+
+  const openNewTab = () => {
+    const blob = new Blob([srcDoc], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  };
+
+  return (
+    <div
+      className="overflow-hidden rounded-lg border border-border"
+      style={{ margin: "16px 0" }}
+    >
+      <div
+        className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground"
+      >
+        <span>HTML 페이지</span>
+        <button
+          type="button"
+          onClick={openNewTab}
+          className="cursor-pointer rounded border border-border bg-transparent px-2 py-0.5 text-muted-foreground hover:bg-muted"
+        >
+          ↗ 새 탭으로 열기
+        </button>
+      </div>
+      <iframe
+        title="게시글 HTML 본문"
+        srcDoc={srcDoc}
+        className="block w-full border-0 bg-white"
+        style={{
+          minHeight: 400,
+          colorScheme: "light",
+        }}
+        onLoad={(e) => {
+          const el = e.currentTarget;
+          try {
+            const doc = el.contentWindow?.document;
+            if (!doc?.body) return;
+            const prev = doc.body.style.overflow;
+            doc.body.style.overflow = "hidden";
+            const h = doc.body.offsetHeight;
+            doc.body.style.overflow = prev;
+            const finalH = Math.min(Math.max(h + 32, 400), 3000);
+            el.style.height = `${finalH}px`;
+          } catch {
+            /* sandbox / cross-origin */
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 function HydrationSafeRichBody({
   showAsSanitizedHtml,
   forHtmlDetect,
@@ -124,10 +181,11 @@ export function BoardPostContent({
         {CATEGORY_LABEL[category] ?? category}
       </div>
       {description ? (
-        !isStoredHtml &&
-        structured?.format === "blocks" &&
-        Array.isArray(structured.blocks) &&
-        structured.blocks.length > 0 ? (
+        isStoredHtml ? (
+          <BoardStoredHtmlIframe html={description} />
+        ) : structured?.format === "blocks" &&
+          Array.isArray(structured.blocks) &&
+          structured.blocks.length > 0 ? (
           <BoardBlockViewerGate blocks={structured.blocks as unknown[]} />
         ) : (
           <HydrationSafeRichBody
