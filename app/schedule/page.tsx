@@ -174,18 +174,31 @@ function CustomDateHeader({
   return content;
 }
 
+/** 승인 휴가를 캘린더에 표시할 때 종류(휴가·반차 등) */
+const CALENDAR_LEAVE_LABELS: Record<string, string> = {
+  ANNUAL: "휴가",
+  HALF_AM: "오전 반차",
+  HALF_PM: "오후 반차",
+  QUARTER_AM: "오전 반반차",
+  QUARTER_PM: "오후 반반차",
+};
+
+function calendarLeaveTypeLabel(type: string): string {
+  return CALENDAR_LEAVE_LABELS[type] ?? "휴가";
+}
+
 function createDateCellWrapper(leaveByDate: Record<string, string[]>) {
   return function DateCellWrapper({ value, children }: { value: Date; children: React.ReactNode }) {
     const key = format(value, "yyyy-MM-dd");
-    const names = leaveByDate[key] ?? [];
+    const lines = leaveByDate[key] ?? [];
     return (
       <div className="rbc-date-cell-wrapper-inner">
         {children}
-        {names.length > 0 && (
-          <div className="rbc-date-cell-leave-names" aria-label={`휴가: ${names.join(", ")}`}>
-            {names.map((name: any) => (
-              <span key={name} className="rbc-date-cell-leave-name">
-                {name}
+        {lines.length > 0 && (
+          <div className="rbc-date-cell-leave-names" aria-label={`근태: ${lines.join(", ")}`}>
+            {lines.map((line) => (
+              <span key={line} className="rbc-date-cell-leave-name">
+                {line}
               </span>
             ))}
           </div>
@@ -351,6 +364,7 @@ type TaskItem = {
 
 type LeaveRequestItem = {
   id: string;
+  type: string;
   startDate: string;
   endDate: string;
   status: string;
@@ -657,19 +671,21 @@ export default function SchedulePage() {
     return [...prev, ...curr, ...next].map(holidayToEvent);
   }, [date]);
 
-  /** 날짜별 휴가자 이름 (yyyy-MM-dd -> 표시명[]) */
+  /** 날짜별 승인 휴가 (yyyy-MM-dd -> "이름 (휴가|반차 …)"[]) */
   const leaveByDate = useMemo(() => {
     const map: Record<string, string[]> = {};
-    const approved = leaveRequests.filter((r: any) => r.status === "APPROVED");
+    const approved = leaveRequests.filter((r: LeaveRequestItem) => r.status === "APPROVED");
     for (const r of approved) {
       const start = startOfDay(new Date(r.startDate));
       const end = endOfDay(new Date(r.endDate));
       const name = formatUserName(r.user);
+      const kind = calendarLeaveTypeLabel(r.type);
       let d = start;
       while (d <= end) {
         const key = format(d, "yyyy-MM-dd");
         if (!map[key]) map[key] = [];
-        if (!map[key].includes(name)) map[key].push(name);
+        const line = `${name} (${kind})`;
+        if (!map[key].includes(line)) map[key].push(line);
         d = addDays(d, 1);
       }
     }
