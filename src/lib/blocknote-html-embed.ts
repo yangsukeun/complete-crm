@@ -5,6 +5,7 @@ import {
   type BlockNoteEditor,
 } from "@blocknote/core";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
+import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 
 /** 참고용(스키마는 createHtmlBlockConfig와 동기화) */
 export const htmlEmbedBlockSpec = {
@@ -142,7 +143,7 @@ export function renderHtmlBlock(
       }
       const iframe = document.createElement("iframe");
       iframe.title = "HTML 미리보기";
-      iframe.srcdoc = html;
+      iframe.srcdoc = injectIframePreviewBaseStyle(html);
       /* CRM 내부 작성 HTML 미리보기 — sandbox 제거(브라우저 동일 출처 경고 회피·리소스 로딩 허용) */
       iframe.style.cssText = `
         width: 100%;
@@ -150,6 +151,7 @@ export function renderHtmlBlock(
         border: none;
         display: block;
         background: white;
+        color-scheme: light;
       `;
       iframe.addEventListener("load", () => {
         try {
@@ -229,13 +231,14 @@ export function renderHtmlBlock(
 
       const iframe = document.createElement("iframe");
       iframe.title = "HTML 미리보기";
-      iframe.srcdoc = block.props.html;
+      iframe.srcdoc = injectIframePreviewBaseStyle(block.props.html ?? "");
       iframe.style.cssText = `
         width: 100%;
         min-height: 200px;
         border: none;
         display: block;
         background: white;
+        color-scheme: light;
       `;
 
       iframe.addEventListener("load", () => {
@@ -281,7 +284,7 @@ export function renderHtmlBlock(
   newTabBtn.addEventListener("click", () => {
     const html = block.props.html;
     if (!html) return;
-    const blob = new Blob([html], {
+    const blob = new Blob([injectIframePreviewBaseStyle(html)], {
       type: "text/html;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);

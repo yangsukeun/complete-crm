@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 
 export type HtmlEditorMode = "text" | "html" | "preview";
 
@@ -29,10 +30,12 @@ export function HtmlEditorModeTabs({
   emptyPreviewMessage = "HTML 탭에서 코드를 입력하세요",
   onHtmlBlur,
 }: Props) {
-  const previewFallback = `<p style="color:#999;padding:20px;margin:0">${emptyPreviewMessage
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</p>`;
+  const previewFallback = injectIframePreviewBaseStyle(
+    `<p style="color:#999;padding:20px;margin:0">${emptyPreviewMessage
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")}</p>`
+  );
 
   return (
     <div className="space-y-2">
@@ -63,38 +66,75 @@ export function HtmlEditorModeTabs({
       {editorMode === "text" && textEditor}
 
       {editorMode === "html" && (
-        <textarea
-          value={htmlContent}
-          onChange={(e) => setHtmlContent(e.target.value)}
-          onBlur={() => onHtmlBlur?.()}
-          placeholder="HTML 코드를 붙여넣으세요..."
-          style={{
-            width: "100%",
-            minHeight: "300px",
-            padding: "12px",
-            fontFamily: "monospace",
-            fontSize: "13px",
-            border: "1px solid #e5e7eb",
-            borderRadius: "8px",
-            resize: "vertical",
-          }}
-          className="bg-background text-foreground dark:border-border"
-        />
+        <div
+          className="relative isolate"
+          onPointerDownCapture={(e) => e.stopPropagation()}
+          onKeyDownCapture={(e) => e.stopPropagation()}
+          onPasteCapture={(e) => e.stopPropagation()}
+        >
+          <textarea
+            value={htmlContent}
+            onChange={(e) => {
+              e.stopPropagation();
+              setHtmlContent(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+            }}
+            onPaste={(e) => {
+              e.stopPropagation();
+              const text = e.clipboardData.getData("text/plain");
+              const ta = e.currentTarget;
+              const start = ta.selectionStart ?? 0;
+              const end = ta.selectionEnd ?? 0;
+              const next =
+                htmlContent.slice(0, start) + text + htmlContent.slice(end);
+              setHtmlContent(next);
+              e.preventDefault();
+              requestAnimationFrame(() => {
+                const pos = start + text.length;
+                ta.setSelectionRange(pos, pos);
+              });
+            }}
+            onBlur={() => onHtmlBlur?.()}
+            placeholder="HTML 코드를 붙여넣으세요..."
+            spellCheck={false}
+            style={{
+              width: "100%",
+              minHeight: "300px",
+              padding: "12px",
+              fontFamily: "monospace",
+              fontSize: "13px",
+              background: "#1e1e1e",
+              color: "#d4d4d4",
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              resize: "vertical",
+              outline: "none",
+            }}
+            className="dark:border-border"
+          />
+        </div>
       )}
 
       {editorMode === "preview" && (
         <iframe
           key={htmlContent}
           title="미리보기"
-          srcDoc={htmlContent.trim() ? htmlContent : previewFallback}
+          srcDoc={
+            htmlContent.trim()
+              ? injectIframePreviewBaseStyle(htmlContent)
+              : previewFallback
+          }
           style={{
             width: "100%",
             minHeight: "400px",
             border: "none",
             display: "block",
             background: "white",
+            colorScheme: "light",
           }}
-          className="bg-white dark:bg-card"
+          className="bg-white"
           onLoad={(e) => {
             const el = e.target as HTMLIFrameElement;
             try {

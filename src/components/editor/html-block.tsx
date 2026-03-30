@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 
 export interface HTMLBlockProps {
   content: string;
@@ -39,7 +40,9 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
 
   const openNewTab = () => {
     if (!localContent.trim()) return;
-    const blob = new Blob([localContent], { type: "text/html;charset=utf-8" });
+    const blob = new Blob([injectIframePreviewBaseStyle(localContent)], {
+      type: "text/html;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 3000);
@@ -220,13 +223,14 @@ export function HTMLBlock({ content, onChange, readOnly = false }: HTMLBlockProp
           <iframe
             ref={iframeRef}
             title="HTML 미리보기"
-            srcDoc={localContent}
+            srcDoc={injectIframePreviewBaseStyle(localContent)}
             style={{
               width: "100%",
               height: `${iframeHeight}px`,
               border: "none",
               display: "block",
               background: "white",
+              colorScheme: "light",
             }}
             onLoad={handleIframeLoad}
           />

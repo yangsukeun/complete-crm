@@ -14,11 +14,27 @@ const createSchema = z.object({
     (v) => (typeof v === "string" ? v : ""),
     z.string().max(50000)
   ),
-  contentType: z.enum(["text", "html"]).optional().default("text"),
+  /** 잘못된 값은 text로 통일 — 파싱 실패·500 방지 */
+  contentType: z.preprocess(
+    (v) => (v === "html" ? "html" : "text"),
+    z.enum(["text", "html"])
+  ),
   category: categorySchema,
-  workspaceScope: workspaceScopeSchema.optional().default("TEAM"),
+  workspaceScope: z.preprocess(
+    (v) => (v === "PERSONAL" || v === "TEAM" ? v : undefined),
+    workspaceScopeSchema.optional()
+  ).default("TEAM"),
   attachments: z.preprocess(
-    (v) => (Array.isArray(v) ? v : []),
+    (v) => {
+      if (!Array.isArray(v)) return [];
+      return v
+        .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
+        .map((x) => ({
+          url: typeof x.url === "string" ? x.url.trim() : "",
+          name: typeof x.name === "string" ? x.name : undefined,
+        }))
+        .filter((x) => x.url.length > 0);
+    },
     z
       .array(
         z.object({
@@ -116,12 +132,23 @@ export async function handleBoardPost(req: Request): Promise<Response> {
           createdAt: true,
         },
       });
-    } catch (dbErr) {
+    } catch (dbErr: unknown) {
       console.error("[board POST error]", dbErr);
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      const code =
+        dbErr && typeof dbErr === "object" && "code" in dbErr
+          ? String((dbErr as { code: unknown }).code)
+          : "";
+      const hint =
+        code === "P2003"
+          ? "로그인 정보와 DB가 맞지 않습니다. 다시 로그인한 뒤 시도해 주세요."
+          : code === "P2002"
+            ? "저장 충돌이 발생했습니다. 잠시 후 다시 시도해 주세요."
+            : null;
       return NextResponse.json(
         {
-          error: "자료 등록에 실패했습니다.",
+          error: hint ?? "자료 등록에 실패했습니다.",
+          code: process.env.NODE_ENV === "development" ? code : undefined,
           detail: process.env.NODE_ENV === "development" ? msg : undefined,
         },
         { status: 500 }
