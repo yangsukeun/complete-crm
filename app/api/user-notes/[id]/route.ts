@@ -3,14 +3,36 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { normalizeUserNoteContent } from "@/lib/user-note-body";
+import {
+  mapNoteWithParsedAttachments,
+  userNoteAttachmentsFieldSchema,
+  userNoteAttachmentsToDbJson,
+  userNoteCategorySchema,
+} from "@/lib/user-note-api";
 
 const patchSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
   contentType: z.enum(["text", "html"]).optional(),
+  category: userNoteCategorySchema.optional(),
+  attachments: userNoteAttachmentsFieldSchema.optional(),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
 });
+
+const noteSelect = {
+  id: true,
+  title: true,
+  content: true,
+  contentType: true,
+  category: true,
+  attachments: true,
+  colorHex: true,
+  projectId: true,
+  createdAt: true,
+  updatedAt: true,
+  project: { select: { id: true, name: true, brand: { select: { name: true } } } },
+} as const;
 
 async function getOwnedNote(noteId: string, userId: string) {
   return prisma.userNote.findFirst({
@@ -39,6 +61,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       title?: string;
       content?: string;
       contentType?: string;
+      category?: string;
+      attachments?: string;
       projectId?: string | null;
       colorHex?: string | null;
     } = {};
@@ -53,6 +77,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       data.content = normalizeUserNoteContent(parsed.data.content, effectiveCt);
     }
     if (parsed.data.contentType !== undefined) data.contentType = parsed.data.contentType;
+    if (parsed.data.category !== undefined) data.category = parsed.data.category;
+    if (parsed.data.attachments !== undefined) {
+      data.attachments = userNoteAttachmentsToDbJson(parsed.data.attachments);
+    }
     if (parsed.data.colorHex !== undefined) data.colorHex = parsed.data.colorHex;
     if (parsed.data.projectId !== undefined) {
       const pid = parsed.data.projectId;
@@ -72,19 +100,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const note = await prisma.userNote.update({
       where: { id },
       data,
-      select: {
-        id: true,
-        title: true,
-        content: true,
-        contentType: true,
-        colorHex: true,
-        projectId: true,
-        createdAt: true,
-        updatedAt: true,
-        project: { select: { id: true, name: true, brand: { select: { name: true } } } },
-      },
+      select: noteSelect,
     });
-    return NextResponse.json(note);
+    return NextResponse.json(mapNoteWithParsedAttachments(note));
   } catch (e) {
     console.error("[user-notes PATCH catch]", e);
     return NextResponse.json({ error: "저장하지 못했습니다." }, { status: 500 });

@@ -7,6 +7,12 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { normalizeUserNoteContent } from "@/lib/user-note-body";
+import {
+  mapNoteWithParsedAttachments,
+  userNoteAttachmentsFieldSchema,
+  userNoteAttachmentsToDbJson,
+  userNoteCategorySchema,
+} from "@/lib/user-note-api";
 
 const NOTE_COLORS = ["#fef08a", "#fde68a", "#fbcfe8", "#e9d5ff", "#bfdbfe", "#a7f3d0", "#fed7aa"];
 
@@ -14,6 +20,8 @@ const createSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
   contentType: z.enum(["text", "html"]).optional().default("text"),
+  category: userNoteCategorySchema.optional().default("COMPANY"),
+  attachments: userNoteAttachmentsFieldSchema.optional().default([]),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
 });
@@ -23,6 +31,8 @@ const patchSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),
   contentType: z.enum(["text", "html"]).optional(),
+  category: userNoteCategorySchema.optional(),
+  attachments: userNoteAttachmentsFieldSchema.optional(),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
 });
@@ -32,6 +42,8 @@ const noteSelect = {
   title: true,
   content: true,
   contentType: true,
+  category: true,
+  attachments: true,
   colorHex: true,
   projectId: true,
   createdAt: true,
@@ -72,7 +84,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ notes: [] }, { status: 200 });
     }
 
-    return NextResponse.json({ notes });
+    return NextResponse.json({ notes: notes.map(mapNoteWithParsedAttachments) });
   } catch (e) {
     console.error("[user-notes GET catch]", e);
     return NextResponse.json({ notes: [] }, { status: 200 });
@@ -92,7 +104,7 @@ export async function POST(req: Request) {
       console.error("[user-notes POST] validation", parsed.error.flatten());
       return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
     }
-    const { title, content, contentType, projectId, colorHex } = parsed.data;
+    const { title, content, contentType, category, attachments, projectId, colorHex } = parsed.data;
     const ct: "text" | "html" = contentType === "html" ? "html" : "text";
     let resolvedProjectId: string | null = projectId ?? null;
     if (resolvedProjectId) {
@@ -110,12 +122,14 @@ export async function POST(req: Request) {
         title: (title ?? "").trim(),
         content: normalizeUserNoteContent(content ?? "", ct),
         contentType: ct,
+        category,
+        attachments: userNoteAttachmentsToDbJson(attachments ?? []),
         colorHex: colorHex ?? NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
         projectId: resolvedProjectId,
       },
       select: noteSelect,
     });
-    return NextResponse.json({ note });
+    return NextResponse.json({ note: mapNoteWithParsedAttachments(note) });
   } catch (e) {
     console.error("[user-notes POST catch]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
@@ -133,7 +147,7 @@ export async function PATCH(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
     }
-    const { id, title, content, contentType, projectId, colorHex } = parsed.data;
+    const { id, title, content, contentType, category, attachments, projectId, colorHex } = parsed.data;
 
     const owned = await prisma.userNote.findFirst({
       where: { id, userId: session.user.id },
@@ -147,6 +161,8 @@ export async function PATCH(req: Request) {
       title?: string;
       content?: string;
       contentType?: string;
+      category?: string;
+      attachments?: string;
       projectId?: string | null;
       colorHex?: string | null;
     } = {};
@@ -161,6 +177,8 @@ export async function PATCH(req: Request) {
       data.content = normalizeUserNoteContent(content, effectiveCt);
     }
     if (contentType !== undefined) data.contentType = contentType;
+    if (category !== undefined) data.category = category;
+    if (attachments !== undefined) data.attachments = userNoteAttachmentsToDbJson(attachments);
     if (colorHex !== undefined) data.colorHex = colorHex;
     if (projectId !== undefined) {
       if (projectId) {
@@ -182,7 +200,7 @@ export async function PATCH(req: Request) {
       data,
       select: noteSelect,
     });
-    return NextResponse.json({ note });
+    return NextResponse.json({ note: mapNoteWithParsedAttachments(note) });
   } catch (e) {
     console.error("[user-notes PATCH catch]", e);
     return NextResponse.json({ error: "저장하지 못했습니다." }, { status: 500 });

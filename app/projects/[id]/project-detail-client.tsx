@@ -262,7 +262,7 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
         <UserNotesBoard
           projectId={projectId}
           heading="프로젝트 메모 · 본문"
-          description="게시판과 같은 방식으로 작성합니다. 텍스트 탭에서는 BlockNote(슬래시로 HTML 블록), HTML 탭에서는 전체 HTML 문서, 미리보기에서 확인 후 자동 저장됩니다. 메모장의 글을 가져오거나 여기서 새로 적을 수 있습니다."
+          description="게시판과 같이 구분·첨부파일·링크·본문(텍스트/BlockNote·슬래시 HTML 블록·HTML 전체·미리보기)까지 작성하며 자동 저장됩니다. 메모장에서 가져오거나 여기서 새로 적을 수 있습니다."
         />
       </section>
 

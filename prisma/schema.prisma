@@ -305,6 +305,9 @@ model UserNote {
   content    String   @default("") @db.Text
   /// 본문 저장 형식: text(일반 텍스트) | html(HTML)
   contentType String  @default("text") @map("content_type") @db.VarChar(20)
+  /// 게시판 구분과 동일: COMPANY | TRAINING | FREE | ANONYMOUS
+  category   String   @default("COMPANY") @db.VarChar(32)
+  attachments String  @default("[]") @db.Text // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
   colorHex   String?
   projectId  String?
   project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -312,6 +315,7 @@ model UserNote {
   updatedAt  DateTime @updatedAt
   @@index([userId])
   @@index([projectId])
+  @@index([category])
 }
 
 model Schedule {
