@@ -32,13 +32,7 @@ export async function GET(req: Request) {
     const schedules = await prisma.schedule.findMany({
       where,
       include: {
-        user: {
-          select: {
-            name: true,
-            position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
-          },
-        },
+        user: { select: { name: true, position: true } },
       },
       orderBy: { startTime: "asc" },
     });

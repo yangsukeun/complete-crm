@@ -22,11 +22,6 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } });
-    if (!me) {
-      return NextResponse.json({ error: "계정이 존재하지 않습니다." }, { status: 401 });
-    }
-
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
 
     if (isAdmin) {
@@ -127,11 +122,6 @@ export async function POST(req: Request) {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } });
-    if (!me) {
-      return NextResponse.json({ error: "계정이 존재하지 않습니다." }, { status: 401 });
     }
 
     const body = await req.json();

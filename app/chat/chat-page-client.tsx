@@ -249,10 +249,17 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           toSync.push(c.id);
         }
       }
+      /** 목록 동기화 PATCH를 한꺼번에 쏘면 서버·브라우저가 막힘 → 소규모 배치 */
       if (toSync.length > 0) {
-        void Promise.all(
-          toSync.map((id) => fetch(`/api/chats/${id}/messages`, { method: "PATCH" }).catch(() => {}))
-        );
+        void (async () => {
+          const batch = 4;
+          for (let i = 0; i < toSync.length; i += batch) {
+            const slice = toSync.slice(i, i + batch);
+            await Promise.all(
+              slice.map((id) => fetch(`/api/chats/${id}/messages`, { method: "PATCH" }).catch(() => {}))
+            );
+          }
+        })();
       }
     } catch {
       // ignore
@@ -266,7 +273,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       try {
         const url = sinceIso
           ? `/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`
-          : `/api/chats/${chatId}/messages?limit=100`;
+          : `/api/chats/${chatId}/messages?limit=100&markRead=1`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("Failed");
         const raw = await res.json();
@@ -375,14 +382,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         localStorage.setItem(CHAT_READ_KEY + selectedChatId, new Date().toISOString());
         window.dispatchEvent(new Event("chat-read"));
       }
-      void fetch(`/api/chats/${selectedChatId}/messages`, { method: "PATCH" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d: { readAtByUserId?: Record<string, string | null> } | null) => {
-          if (d?.readAtByUserId && typeof d.readAtByUserId === "object") {
-            setReadAtByUserId(d.readAtByUserId);
-          }
-        })
-        .catch(() => {});
+      /* 읽음·readAt는 GET ?markRead=1 에서 처리 */
     } else {
       setMessages([]);
       setReadAtByUserId({});
@@ -402,7 +402,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         })
         .catch(() => {});
     };
-    const id = window.setInterval(tick, 12_000);
+    const id = window.setInterval(tick, 24_000);
     return () => window.clearInterval(id);
   }, [selectedChatId]);
 

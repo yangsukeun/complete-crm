@@ -25,10 +25,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
     const { id } = await params;
 
-    const me = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, email: true, currentProjectId: true },
-    });
+    const [me, project] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { role: true, email: true, currentProjectId: true },
+      }),
+      prisma.project.findFirst({
+        where: { id, deletedAt: null },
+        include: {
+          brand: { select: { id: true, name: true } },
+          quote: {
+            select: {
+              id: true,
+              title: true,
+              finalAmount: true,
+              validUntil: true,
+              status: true,
+              issuedAt: true,
+              quotationNumber: true,
+            },
+          },
+        },
+      }),
+    ]);
     const role = (me?.role ?? session.user.role) as string | undefined;
     const allowed = await userCanAccessProject(session.user.id, id, {
       role,
@@ -38,24 +57,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-
-    const project = await prisma.project.findFirst({
-      where: { id, deletedAt: null },
-      include: {
-        brand: { select: { id: true, name: true } },
-        quote: {
-          select: {
-            id: true,
-            title: true,
-            finalAmount: true,
-            validUntil: true,
-            status: true,
-            issuedAt: true,
-            quotationNumber: true,
-          },
-        },
-      },
-    });
     if (!project) {
       return NextResponse.json({ error: "Not Found" }, { status: 404 });
     }

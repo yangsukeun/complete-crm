@@ -48,11 +48,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } });
-    if (!me) {
-      return NextResponse.json({ error: "계정이 존재하지 않습니다." }, { status: 401 });
-    }
-
     const { id: chatId } = await params;
 
     const participant = await prisma.chatParticipant.findFirst({
@@ -92,11 +87,6 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } });
-    if (!me) {
-      return NextResponse.json({ error: "계정이 존재하지 않습니다." }, { status: 401 });
-    }
-
     const { id: chatId } = await params;
 
     const participant = await prisma.chatParticipant.findFirst({
@@ -113,6 +103,8 @@ export async function GET(
     const afterId = searchParams.get("after");
     const sinceIso = searchParams.get("since");
     const readMetaOnly = searchParams.get("readMeta") === "1";
+    /** 방 열 때 읽음·알림 처리까지 한 번에 (기존 PATCH와 동일, 왕복 1회 절약) */
+    const markRead = searchParams.get("markRead") === "1" && !!participant;
 
     if (readMetaOnly) {
       const readAtByUserId = await fetchReadAtByUserId(chatId);
@@ -120,39 +112,65 @@ export async function GET(
     }
 
     const messageUserSelect = { id: true, name: true, position: true };
+
+    const runMarkRead = async () => {
+      if (!markRead) return;
+      try {
+        await markChatNotificationsRead(session.user.id, chatId);
+        await prisma.chatParticipant.updateMany({
+          where: { chatId, userId: session.user.id },
+          data: { lastReadAt: new Date() },
+        });
+      } catch (e) {
+        if (!isMissingLastReadAtColumnError(e)) throw e;
+        console.warn("[chat/messages GET markRead] lastReadAt 갱신 생략(DB 컬럼 미적용)");
+      }
+    };
+
     // createdAt 기준 증분 (cuid 정렬 after= 보다 안전)
     if (sinceIso) {
       const sinceDate = new Date(sinceIso);
       if (!Number.isNaN(sinceDate.getTime())) {
-        const newMessages = await prisma.chatMessage.findMany({
-          where: { chatId, createdAt: { gt: sinceDate } },
-          include: { user: { select: messageUserSelect } },
-          orderBy: { createdAt: "asc" },
-          take: 50,
-        });
+        const [newMessages] = await Promise.all([
+          prisma.chatMessage.findMany({
+            where: { chatId, createdAt: { gt: sinceDate } },
+            include: { user: { select: messageUserSelect } },
+            orderBy: { createdAt: "asc" },
+            take: 50,
+          }),
+          runMarkRead(),
+        ]);
         const readAtByUserId = await fetchReadAtByUserId(chatId);
         return NextResponse.json({ messages: newMessages, readAtByUserId });
       }
     }
     if (afterId) {
-      const newMessages = await prisma.chatMessage.findMany({
-        where: { chatId, id: { gt: afterId } },
-        include: { user: { select: messageUserSelect } },
-        orderBy: { createdAt: "asc" },
-        take: 50,
-      });
+      const [newMessages] = await Promise.all([
+        prisma.chatMessage.findMany({
+          where: { chatId, id: { gt: afterId } },
+          include: { user: { select: messageUserSelect } },
+          orderBy: { createdAt: "asc" },
+          take: 50,
+        }),
+        runMarkRead(),
+      ]);
       const readAtByUserId = await fetchReadAtByUserId(chatId);
       return NextResponse.json({ messages: newMessages, readAtByUserId });
     }
 
-    // 초기/이전 로드: 최근 limit개만 조회 (목록용으로 user는 id/name/position만)
-    const messages = await prisma.chatMessage.findMany({
-      where: { chatId },
-      include: { user: { select: messageUserSelect } },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
-    messages.reverse();
+    const [messages] = await Promise.all([
+      (async () => {
+        const list = await prisma.chatMessage.findMany({
+          where: { chatId },
+          include: { user: { select: messageUserSelect } },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        });
+        list.reverse();
+        return list;
+      })(),
+      runMarkRead(),
+    ]);
     const readAtByUserId = await fetchReadAtByUserId(chatId);
     return NextResponse.json({ messages, readAtByUserId });
   } catch (e) {
@@ -172,11 +190,6 @@ export async function POST(
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } });
-    if (!me) {
-      return NextResponse.json({ error: "계정이 존재하지 않습니다." }, { status: 401 });
     }
 
     const { id: chatId } = await params;
@@ -226,11 +239,6 @@ export async function POST(
     const participants = await prisma.chatParticipant.findMany({
       where: { chatId, userId: { not: session.user.id } },
       select: { userId: true },
-    });
-    console.log("[chat/messages POST] 수신자에게 알림+푸시 트리거", {
-      chatId,
-      recipientCount: participants.length,
-      senderId: session.user.id,
     });
     for (const p of participants) {
       await createNotificationWithOptions({

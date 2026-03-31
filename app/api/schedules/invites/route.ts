@@ -13,15 +13,17 @@ export async function GET() {
     const invites = await prisma.scheduleInvite.findMany({
       where: { toUserId: session.user.id, status: "PENDING" },
       include: {
-        schedule: true,
-          fromUser: {
-            select: {
-              id: true,
-              name: true,
-              position: true,
-              currentProject: { select: { name: true, brand: { select: { name: true } } } },
-            },
+        schedule: {
+          select: {
+            id: true,
+            title: true,
+            startTime: true,
+            endTime: true,
           },
+        },
+        fromUser: {
+          select: { id: true, name: true, position: true },
+        },
       },
       orderBy: { createdAt: "desc" },
     });

@@ -2,13 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import {
-  jsonFetcher,
-  SWR_KEYS,
-  schedulePersonalKey,
-  scheduleTeamKey,
-  schedulesWorkspaceFetcher,
-} from "@/lib/api-swr";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
+import { EVENT_PALETTE, type CalendarLayerId } from "@/lib/schedule-colors";
+
+export type { CalendarLayerId };
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -64,8 +61,6 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales,
 });
-
-export type CalendarLayerId = "personal" | "team" | "holiday" | "google" | "taskDue";
 
 type ScheduleEvent = {
   id: string;
@@ -234,14 +229,6 @@ function createDateCellWrapper(leaveByDate: Record<string, string[]>) {
     );
   };
 }
-
-const EVENT_PALETTE: Record<CalendarLayerId, { bg: string; light: string; text: string }> = {
-  personal: { bg: "#1a73e8", light: "#e8f0fe", text: "#ffffff" },
-  team: { bg: "#0f9d58", light: "#e6f4ea", text: "#ffffff" },
-  holiday: { bg: "#f4511e", light: "#fce8e6", text: "#ffffff" },
-  google: { bg: "#8430ce", light: "#f3e8fd", text: "#ffffff" },
-  taskDue: { bg: "#e53935", light: "#fce8e6", text: "#ffffff" },
-};
 
 function getDday(dueDate: string) {
   const today = new Date();
@@ -632,16 +619,17 @@ export default function SchedulePage() {
   const { data: session } = useSession();
   const router = useRouter();
 
-  const { data: personalRaw = [], mutate: mutatePersonalSched, isLoading: personalSchedLoading } = useSWR(
-    session?.user ? schedulePersonalKey : null,
-    schedulesWorkspaceFetcher,
-    { dedupingInterval: 8000, revalidateOnFocus: true }
-  );
-  const { data: teamRaw = [], mutate: mutateTeamSched, isLoading: teamSchedLoading } = useSWR(
-    session?.user ? scheduleTeamKey : null,
-    schedulesWorkspaceFetcher,
-    { dedupingInterval: 8000, revalidateOnFocus: true }
-  );
+  type SchedBundle = { personal?: unknown[]; team?: unknown[] };
+  const {
+    data: schedBundle,
+    mutate: mutateSchedBundle,
+    isLoading: bundleLoading,
+  } = useSWR<SchedBundle>(session?.user ? SWR_KEYS.schedulesBundle : null, jsonFetcher, {
+    dedupingInterval: 12_000,
+    revalidateOnFocus: false,
+  });
+  const personalRaw = (schedBundle?.personal ?? []) as Parameters<typeof toEvent>[0][];
+  const teamRaw = (schedBundle?.team ?? []) as Parameters<typeof toEvent>[0][];
 
   const personalEvents = useMemo(
     () => (personalRaw as Parameters<typeof toEvent>[0][]).map((s) => toEvent(s, "personal")),
@@ -665,7 +653,7 @@ export default function SchedulePage() {
   const { data: calendarDueRaw = [] } = useSWR(
     calendarDueKey,
     jsonFetcher,
-    { dedupingInterval: 12_000, revalidateOnFocus: true }
+    { dedupingInterval: 15_000, revalidateOnFocus: false }
   );
   const taskDueEvents = useMemo(
     () =>
@@ -676,12 +664,12 @@ export default function SchedulePage() {
     [calendarDueRaw]
   );
 
-  const schedulesLoading = Boolean(session?.user) && (personalSchedLoading || teamSchedLoading);
+  const schedulesLoading = Boolean(session?.user) && bundleLoading;
 
   const { data: tasksRaw, mutate: mutateTasks } = useSWR(
     session?.user ? SWR_KEYS.tasksAll : null,
     jsonFetcher,
-    { dedupingInterval: 10_000, revalidateOnFocus: true }
+    { dedupingInterval: 12_000, revalidateOnFocus: false }
   );
   const tasks = useMemo((): TaskItem[] => {
     if (tasksRaw == null) return [];
@@ -709,13 +697,13 @@ export default function SchedulePage() {
   const { data: invites = [], mutate: mutateInvites } = useSWR<ScheduleInvite[]>(
     session?.user ? SWR_KEYS.scheduleInvites : null,
     jsonFetcher,
-    { dedupingInterval: 12_000, revalidateOnFocus: true }
+    { dedupingInterval: 20_000, revalidateOnFocus: false }
   );
 
   const { data: leaveData, mutate: mutateLeave } = useSWR<LeaveApiResponse>(
     session?.user ? SWR_KEYS.leave : null,
     jsonFetcher,
-    { dedupingInterval: 20_000, revalidateOnFocus: true }
+    { dedupingInterval: 25_000, revalidateOnFocus: false }
   );
   const leaveRequests = leaveData?.requests ?? [];
 
@@ -738,9 +726,8 @@ export default function SchedulePage() {
   const googleConnected = gcalStatus?.connected ?? false;
 
   const revalidateSchedules = useCallback(() => {
-    void mutatePersonalSched();
-    void mutateTeamSched();
-  }, [mutatePersonalSched, mutateTeamSched]);
+    void mutateSchedBundle();
+  }, [mutateSchedBundle]);
 
   useEffect(() => {
     const onWorkspaceChange = () => revalidateSchedules();

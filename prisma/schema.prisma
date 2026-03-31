@@ -337,6 +337,7 @@ model Schedule {
   @@index([userId])
   @@index([startTime])
   @@index([scope])
+  @@index([scope, userId, startTime(sort: Asc)])
 }
 
 model ScheduleInvite {
@@ -551,6 +552,7 @@ model ChatMessage {
   createdAt DateTime @default(now())
   isDeleted Boolean  @default(false)
   @@index([chatId])
+  @@index([chatId, createdAt(sort: Desc)])
   @@index([chatId, isDeleted])
   @@index([userId])
 }

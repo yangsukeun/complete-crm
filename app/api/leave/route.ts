@@ -29,38 +29,42 @@ export async function GET() {
 
     const role = session.user.role;
     const isManager = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN"; // 팀장/대표: 전체 목록
+    const year = new Date().getFullYear();
+    const uid = session.user.id;
 
-    const requests = await prisma.leaveRequest.findMany({
-      where: isManager ? {} : { userId: session.user.id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            department: true,
-            position: true,
-            currentProject: { select: { name: true, brand: { select: { name: true } } } },
+    const [requests, user, balanceFound] = await Promise.all([
+      prisma.leaveRequest.findMany({
+        where: isManager ? {} : { userId: uid },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              department: true,
+              position: true,
+              currentProject: { select: { name: true, brand: { select: { name: true } } } },
+            },
           },
         },
-      },
-      orderBy: { startDate: "desc" },
-    });
+        orderBy: { startDate: "desc" },
+      }),
+      prisma.user.findUnique({
+        where: { id: uid },
+        select: { joinDate: true },
+      }),
+      prisma.leaveBalance.findUnique({
+        where: { userId_year: { userId: uid, year } },
+      }),
+    ]);
 
-    const year = new Date().getFullYear();
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { joinDate: true },
-    });
     const joinDate = user?.joinDate ?? new Date();
     const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
 
-    let balance = await prisma.leaveBalance.findUnique({
-      where: { userId_year: { userId: session.user.id, year } },
-    });
+    let balance = balanceFound;
     if (!balance) {
       balance = await prisma.leaveBalance.create({
-        data: { userId: session.user.id, year, annualTotal, annualUsed: 0, manualDeduction: 0 },
+        data: { userId: uid, year, annualTotal, annualUsed: 0, manualDeduction: 0 },
       });
     }
     const carryOver = balance.annualCarryOver ?? 0;

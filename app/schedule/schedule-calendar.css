@@ -1,4 +1,7 @@
-/* —— Google Calendar 스타일 (react-big-calendar 오버라이드) —— */
+/* —— Google Calendar 스타일 (react-big-calendar 오버라이드) ——
+ * 일정 블록·레이어 칩 색(hex)은 src/lib/schedule-colors.ts 의 EVENT_PALETTE 에서 지정합니다.
+ */
+
 
 .schedule-gcal-root {
   --gcal-text: #3c4043;
