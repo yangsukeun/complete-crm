@@ -1,11 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
+import { BoardPostContent } from "../../board/[id]/board-post-content";
 import {
   Table,
   TableBody,
@@ -31,8 +35,13 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { ArrowLeft, FileText, Link2 } from "lucide-react";
+import { ArrowLeft, FileText, Link2, Loader2, Pencil } from "lucide-react";
 import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
+
+const ContentBodyEditor = dynamic(
+  () => import("@/components/content-body-editor").then((m) => ({ default: m.ContentBodyEditor })),
+  { ssr: false }
+);
 
 type QuotationOption = {
   id: string;
@@ -69,6 +78,8 @@ type ProjectPayload = {
   name: string;
   dueDate: string | null;
   quoteAmount: number;
+  description?: string | null;
+  contentType?: string | null;
   brand: { id: string; name: string };
   quote: {
     id: string;
@@ -98,6 +109,12 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
   const [quotations, setQuotations] = useState<QuotationOption[]>([]);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string>("");
   const [linking, setLinking] = useState(false);
+  const [bodyEditOpen, setBodyEditOpen] = useState(false);
+  const [bodyContent, setBodyContent] = useState("");
+  const [htmlContent, setHtmlContent] = useState("");
+  const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
+  const [bodyEditorKey, setBodyEditorKey] = useState(0);
+  const [bodySaving, setBodySaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -166,6 +183,65 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
       toast.error(e instanceof Error ? e.message : "연결에 실패했습니다.");
     } finally {
       setLinking(false);
+    }
+  };
+
+  const openBodyEdit = () => {
+    if (!data) return;
+    const ct = data.contentType ?? "text";
+    const desc = data.description ?? "";
+    if (ct === "html") {
+      setEditorMode("html");
+      setHtmlContent(desc);
+      setBodyContent("");
+    } else {
+      setEditorMode("text");
+      setBodyContent(desc);
+      setHtmlContent("");
+    }
+    setBodyEditorKey((k) => k + 1);
+    setBodyEditOpen(true);
+  };
+
+  const saveBody = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBodySaving(true);
+    try {
+      /** 텍스트 탭 = BlockNote(슬래시 메뉴 HTML 블록 포함). HTML/미리보기 탭은 전체 HTML 페이지 모드.
+       *  미리보기만 보다가 HTML이 비어 있으면 본문(bodyContent)을 유지해 잘못 덮어쓰지 않음. */
+      let description: string;
+      let contentType: "text" | "html";
+      if (editorMode === "text") {
+        description = bodyContent.trim();
+        contentType = "text";
+      } else if (htmlContent.trim()) {
+        description = htmlContent.trim();
+        contentType = "html";
+      } else {
+        description = bodyContent.trim();
+        contentType = "text";
+      }
+
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: description || "",
+          contentType,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof json?.error === "string" ? json.error : "저장에 실패했습니다.");
+      }
+      toast.success("프로젝트 본문을 저장했습니다.");
+      setBodyEditOpen(false);
+      load();
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "저장에 실패했습니다.");
+    } finally {
+      setBodySaving(false);
     }
   };
 
@@ -259,10 +335,38 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
       </section>
 
       <section className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            <FileText className="size-5" />
+            프로젝트 본문
+          </h2>
+          <Button type="button" variant="outline" size="sm" onClick={openBodyEdit} className="gap-1">
+            <Pencil className="size-4" />
+            편집
+          </Button>
+        </div>
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          게시판 본문과 동일합니다. 텍스트 탭은 BlockNote이며{" "}
+          <kbd className="rounded border px-1 py-px text-[10px] text-foreground">/</kbd> 메뉴에서{" "}
+          <span className="font-medium text-foreground">HTML 블록</span>(코드·미리보기)을 넣을 수 있습니다. 글 전체를 HTML로
+          쓸 때는 HTML·미리보기 탭을 사용하세요.
+        </p>
+        {(data.description ?? "").trim() ? (
+          <BoardPostContent
+            description={data.description ?? ""}
+            contentType={data.contentType ?? "text"}
+            attachments={[]}
+          />
+        ) : (
+          <p className="text-muted-foreground text-sm py-4">본문이 없습니다. 편집에서 내용을 추가하세요.</p>
+        )}
+      </section>
+
+      <section className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/50 space-y-4">
         <UserNotesBoard
           projectId={projectId}
-          heading="프로젝트 메모 · 본문"
-          description="게시판과 같이 구분·첨부파일·링크·본문(텍스트/BlockNote·슬래시 HTML 블록·HTML 전체·미리보기)까지 작성하며 자동 저장됩니다. 메모장에서 가져오거나 여기서 새로 적을 수 있습니다."
+          heading="프로젝트 메모"
+          description="카드 단위 메모·자동 저장. 위 본문은 프로젝트 단위로 한 덩어리 저장됩니다."
         />
       </section>
 
@@ -321,6 +425,43 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
           </>
         )}
       </section>
+
+      <Dialog open={bodyEditOpen} onOpenChange={setBodyEditOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-4 overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>프로젝트 본문 편집</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={saveBody} className="flex flex-col gap-4 min-h-0">
+            <div className="space-y-2 min-h-0 flex-1">
+              <Label>본문</Label>
+              <HtmlEditorModeTabs
+                editorMode={editorMode}
+                setEditorMode={setEditorMode}
+                htmlContent={htmlContent}
+                setHtmlContent={setHtmlContent}
+                textEditor={
+                  <ContentBodyEditor
+                    key={bodyEditorKey}
+                    initialContent={bodyContent}
+                    onChange={setBodyContent}
+                    minHeight="320px"
+                    showHelp={true}
+                  />
+                }
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setBodyEditOpen(false)}>
+                취소
+              </Button>
+              <Button type="submit" disabled={bodySaving}>
+                {bodySaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                저장
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
         <DialogContent>
