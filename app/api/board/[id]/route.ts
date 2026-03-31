@@ -34,6 +34,37 @@ const updateSchema = z.object({
   attachments: z.array(z.object({ url: z.string().min(1), name: z.string().optional() })).max(20).optional(),
 });
 
+function computeBoardChangedFieldKeys(
+  post: {
+    title: string;
+    description: string | null;
+    contentType: string;
+    category: string;
+    attachments: string;
+  },
+  patch: {
+    title?: string;
+    description?: string | null;
+    contentType?: string;
+    category?: string;
+    attachments?: string;
+  }
+): string[] {
+  const keys: string[] = [];
+  if (patch.title !== undefined && patch.title !== post.title) keys.push("title");
+  if (patch.description !== undefined && (patch.description ?? "") !== (post.description ?? "")) {
+    keys.push("description");
+  }
+  if (patch.contentType !== undefined && patch.contentType !== post.contentType) {
+    keys.push("contentType");
+  }
+  if (patch.category !== undefined && patch.category !== post.category) keys.push("category");
+  if (patch.attachments !== undefined && patch.attachments !== post.attachments) {
+    keys.push("attachments");
+  }
+  return keys;
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -196,20 +227,50 @@ export async function PATCH(
       return NextResponse.json({ error: "수정할 필드가 없습니다. 요청 본문을 확인해 주세요." }, { status: 400 });
     }
 
-    const updated = await prisma.boardPost.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        contentType: true,
-        category: true,
-        isAnonymous: true,
-        workspaceScope: true,
-        attachments: true,
-        createdAt: true,
+    const changedKeys = computeBoardChangedFieldKeys(
+      {
+        title: post.title,
+        description: post.description,
+        contentType: post.contentType,
+        category: post.category,
+        attachments: post.attachments ?? "[]",
       },
+      data
+    );
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.boardPost.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          contentType: true,
+          category: true,
+          isAnonymous: true,
+          workspaceScope: true,
+          attachments: true,
+          createdAt: true,
+        },
+      });
+
+      if (changedKeys.length > 0) {
+        const editor = await tx.user.findUnique({
+          where: { id: session.user.id },
+          select: { name: true },
+        });
+        await tx.boardPostRevision.create({
+          data: {
+            boardPostId: id,
+            userId: session.user.id,
+            userName: editor?.name ?? "알 수 없음",
+            changedFields: changedKeys,
+          },
+        });
+      }
+
+      return u;
     });
 
     if (removedAttachmentUrls.length > 0) {

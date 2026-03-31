@@ -111,6 +111,7 @@ enum NotificationType {
   CHAT_MESSAGE       // 채팅 메시지
   NOTICE_POSTED      // 공지 등록
   WORK_LOG_SUBMITTED // 업무일지 제출
+  LEAVE_REQUEST      // 휴가 신청·승인 단계 알림
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
@@ -171,6 +172,7 @@ model User {
   boardPosts            BoardPost[]
   boardPostsDeletedByMe BoardPost[]       @relation("BoardPostDeletedBy")
   boardPostComments    BoardPostComment[]
+  boardPostRevisions   BoardPostRevision[]
   accessLogs            AccessLog[]
   activityLogs          ActivityLog[]
   taskRevisions         TaskRevision[]
@@ -228,6 +230,9 @@ model Project {
   quote       Quotation? @relation("ProjectPrimaryQuote", fields: [quoteId], references: [id], onDelete: SetNull)
   quoteAmount Int       @default(0)
   dueDate     DateTime?
+  /// 프로젝트 본문(게시판과 동일: text | html)
+  description String?   @default("")
+  contentType String      @default("text") @map("content_type") @db.VarChar(20)
   tasks       Task[]
   quotationsLinked Quotation[] @relation("QuotationLinkedProject")
   deletedAt DateTime?
@@ -587,6 +592,7 @@ model BoardPost {
   deletedById String?
   deletedBy   User?             @relation("BoardPostDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   comments    BoardPostComment[]
+  revisions   BoardPostRevision[]
   @@index([createdAt])
   @@index([category])
   @@index([createdById])
@@ -605,6 +611,24 @@ model BoardPostComment {
   mentionedIds   String    @default("[]") // JSON: ["userId1", "userId2"]
   createdAt      DateTime  @default(now())
   @@index([boardPostId])
+  @@index([userId])
+}
+
+/// 게시글 수정 이력 (변경 필드 요약만 저장 — 본문 전체 JSON 미저장)
+model BoardPostRevision {
+  id            String    @id @default(cuid())
+  boardPostId   String
+  boardPost     BoardPost @relation(fields: [boardPostId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userName      String
+  /// 예: ["title","description"] — 구버전·수동 이관 시 null 가능
+  changedFields Json?
+  /// 구데이터(전체 JSON 등) 보관 시 표시는 "내용 수정"으로 통일
+  legacyPayload Json?
+  createdAt     DateTime  @default(now())
+  @@index([boardPostId])
+  @@index([boardPostId, createdAt])
   @@index([userId])
 }
 

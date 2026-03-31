@@ -9,6 +9,7 @@ import { PageHeadline } from "@/components/page-headline";
 import { BoardPostContent } from "./board-post-content";
 import { BoardPostComments } from "./board-post-comments";
 import { BoardPostActions } from "./board-post-actions";
+import { BoardPostRevisionHistory } from "./board-post-revision-history";
 import { ArrowLeft } from "lucide-react";
 
 /** 로그인·회사 모드 전용 — generateStaticParams 미적용 */
@@ -65,6 +66,21 @@ export default async function BoardPostPage({
     : `${post.createdBy?.name ?? "삭제된 사용자"}${post.createdBy?.position ? ` · ${post.createdBy.position}` : ""}`;
   const canEditPost = session.user.id === post.createdById || isAdmin;
 
+  const postRevisions = await prisma.boardPostRevision.findMany({
+    where: { boardPostId: id },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      userName: true,
+      changedFields: true,
+      legacyPayload: true,
+      createdAt: true,
+    },
+  });
+
+  const initialHistoryName =
+    postAnonymous && role !== "EXECUTIVE" ? "익명" : post.createdBy?.name ?? "삭제된 사용자";
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="flex items-center gap-3">
@@ -99,6 +115,17 @@ export default async function BoardPostPage({
         contentType={post.contentType ?? "text"}
         attachments={attachments}
         category={post.category}
+      />
+      <BoardPostRevisionHistory
+        edits={postRevisions.map((r) => ({
+          id: r.id,
+          userName: r.userName,
+          createdAt: r.createdAt.toISOString(),
+          changedFields: r.changedFields,
+          legacyPayload: r.legacyPayload ?? undefined,
+        }))}
+        initialAuthorName={initialHistoryName}
+        initialCreatedAtIso={post.createdAt.toISOString()}
       />
       <BoardPostComments postId={id} />
     </div>
