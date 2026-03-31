@@ -42,6 +42,7 @@ export default async function QuotationEditPage({
     quotationNumber: quotation.quotationNumber,
     title: quotation.title,
     clientName: quotation.clientName,
+    issuedAt: quotation.issuedAt.toISOString().slice(0, 10),
     validUntil: quotation.validUntil.toISOString().slice(0, 10),
     remarks: quotation.remarks,
     projectId: quotation.projectId,

@@ -2,20 +2,20 @@
 
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 const DATE_PREFIX = "EST-"; // YYYYMMDD
 const PAD_LEN = 2; // 01, 02, ...
 
-/** 오늘 날짜 기준 마지막 견적 번호 찾아 +1 (예: EST-240211-01) */
-export async function getNextQuotationNumber(): Promise<string> {
+/** 발행일 기준 마지막 견적 번호 찾아 +1 (예: EST-240211-01). 생략 시 오늘. */
+export async function getNextQuotationNumber(issueDate?: Date): Promise<string> {
   const session = await getAppSession();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
+  const base = issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : new Date();
+  const yyyy = base.getFullYear();
+  const mm = String(base.getMonth() + 1).padStart(2, "0");
+  const dd = String(base.getDate()).padStart(2, "0");
   const dateStr = `${yyyy}${mm}${dd}`;
   const prefix = `${DATE_PREFIX}${dateStr}-`;
 
@@ -46,6 +46,8 @@ export type CreateQuotationInput = {
   title: string;
   clientName: string;
   validUntil: string; // ISO date
+  /** 발행일(견적 작성일) yyyy-MM-dd — 통계 월·문서번호 일자에 사용. 생략 시 오늘 */
+  issuedAt?: string | null;
   items: QuotationItemInput[];
   remarks?: string | null;
   /** 부가세 포함 총액을 사용자가 직접 지정할 때(원 단위). 비우면 품목 합계 기준 자동 계산 */
@@ -63,7 +65,13 @@ export async function createQuotation(input: CreateQuotationInput): Promise<{ id
   const session = await getAppSession();
   if (!session?.user?.id) return { error: "로그인이 필요합니다." };
 
-  const number = await getNextQuotationNumber();
+  const issuedDayRaw = (input.issuedAt ?? "").trim();
+  const issuedDay = issuedDayRaw
+    ? new Date(`${issuedDayRaw}T12:00:00`)
+    : new Date();
+  if (Number.isNaN(issuedDay.getTime())) return { error: "발행일(작성일)이 올바르지 않습니다." };
+
+  const number = await getNextQuotationNumber(issuedDay);
   const computedTotal = input.items.reduce((sum, i) => sum + i.amount, 0);
   const computedVat = Math.floor(computedTotal * 0.1);
   const computedFinal = computedTotal + computedVat;
@@ -79,6 +87,7 @@ export async function createQuotation(input: CreateQuotationInput): Promise<{ id
       title: input.title,
       clientName: input.clientName,
       validUntil: new Date(input.validUntil),
+      issuedAt: issuedDay,
       totalAmount,
       vatAmount,
       finalAmount,
@@ -97,6 +106,11 @@ export async function createQuotation(input: CreateQuotationInput): Promise<{ id
     },
   });
   revalidatePath("/quotations");
+  try {
+    revalidateTag("dashboard-sales-stats", "default");
+  } catch (e) {
+    console.warn("[createQuotation] revalidateTag", e);
+  }
   return { id: quotation.id };
 }
 
@@ -215,6 +229,11 @@ async function updateQuotationInternal(
     revalidatePath(`/quotations/${id}`);
   } catch (revalErr) {
     console.warn("[updateQuotation] revalidatePath", revalErr);
+  }
+  try {
+    revalidateTag("dashboard-sales-stats", "default");
+  } catch (e) {
+    console.warn("[updateQuotation] revalidateTag", e);
   }
   return { ok: true };
 }

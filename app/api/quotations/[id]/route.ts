@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
 
 const VALID_STATUSES = [
@@ -60,6 +60,17 @@ export async function PUT(
       updateData.validUntil = d;
     }
     if (body.remarks !== undefined) updateData.remarks = body.remarks === "" || body.remarks == null ? null : String(body.remarks);
+    if (body.issuedAt !== undefined) {
+      const raw = String(body.issuedAt ?? "").trim().slice(0, 10);
+      if (!raw) {
+        return NextResponse.json({ error: "발행일을 입력하세요." });
+      }
+      const idate = new Date(`${raw}T12:00:00`);
+      if (Number.isNaN(idate.getTime())) {
+        return NextResponse.json({ error: "발행일(작성일) 형식이 올바르지 않습니다." });
+      }
+      updateData.issuedAt = idate;
+    }
 
     const items = Array.isArray(body.items) ? body.items : undefined;
     const finalAmountOverrideRaw = body.finalAmountOverride;
@@ -112,6 +123,7 @@ export async function PUT(
     });
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${id}`);
+    revalidateTag("dashboard-sales-stats", "default");
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[PUT /api/quotations/[id]]", e);
@@ -219,6 +231,7 @@ export async function PATCH(
     });
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${id}`);
+    revalidateTag("dashboard-sales-stats", "default");
     if (quotation?.projectId) {
       revalidatePath(`/projects/${quotation.projectId}`);
     }

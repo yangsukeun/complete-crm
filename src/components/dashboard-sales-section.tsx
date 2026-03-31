@@ -45,6 +45,7 @@ export function DashboardSalesSection({
           <p className="mt-2 text-2xl font-semibold tabular-nums">
             {formatAmount(currentMonth.totalQuotation)}
           </p>
+          <p className="text-muted-foreground mt-1 text-xs">거절·초안 제외</p>
         </div>
         <div className="rounded-lg border bg-card p-4 shadow-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -63,6 +64,7 @@ export function DashboardSalesSection({
           <p className="mt-2 text-2xl font-semibold tabular-nums text-red-600 dark:text-red-400">
             {formatAmount(currentMonth.awaitingPayment)}
           </p>
+          <p className="text-muted-foreground mt-1 text-xs">입금대기만 (거절 제외)</p>
         </div>
       </div>
 

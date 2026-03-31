@@ -17,6 +17,11 @@ export type DashboardSalesStats = {
   }>;
 };
 
+/** 대시보드 '총 견적·미수' 파이프라인: 거절·미발송 초안은 실적에서 제외 */
+export function quotationCountsTowardSalesTotals(status: string): boolean {
+  return status !== "REJECTED" && status !== "DRAFT";
+}
+
 const fetchDashboardSalesStatsCached = unstable_cache(
   async (): Promise<DashboardSalesStats> => {
     const now = new Date();
@@ -40,15 +45,18 @@ const fetchDashboardSalesStatsCached = unstable_cache(
       (q: any) => q.issuedAt >= thisMonthStart && q.issuedAt <= thisMonthEnd
     );
 
-    const excludeRejected = (q: { status: string }) => q.status !== "REJECTED";
-
     const currentMonth = {
-      totalQuotation: currentMonthQuotations.filter(excludeRejected).reduce((sum, q) => sum + q.finalAmount, 0),
+      totalQuotation: currentMonthQuotations
+        .filter((q: any) => quotationCountsTowardSalesTotals(q.status))
+        .reduce((sum, q) => sum + q.finalAmount, 0),
       paymentCompleted: currentMonthQuotations
-        .filter((q: any) => q.status === "PAYMENT_COMPLETED")
+        .filter((q: any) => q.status === "PAYMENT_COMPLETED" && quotationCountsTowardSalesTotals(q.status))
         .reduce((sum, q) => sum + q.finalAmount, 0),
       awaitingPayment: currentMonthQuotations
-        .filter((q: any) => q.status === "AWAITING_PAYMENT")
+        .filter(
+          (q: any) =>
+            q.status === "AWAITING_PAYMENT" && quotationCountsTowardSalesTotals(q.status)
+        )
         .reduce((sum, q) => sum + q.finalAmount, 0),
     };
 
@@ -67,8 +75,10 @@ const fetchDashboardSalesStatsCached = unstable_cache(
       const key = format(q.issuedAt, "yyyy-MM");
       const cur = monthlyMap.get(key);
       if (!cur) continue;
-      if (q.status !== "REJECTED") cur.totalQuotation += q.finalAmount;
-      if (q.status === "PAYMENT_COMPLETED") cur.paymentCompleted += q.finalAmount;
+      if (quotationCountsTowardSalesTotals(q.status)) cur.totalQuotation += q.finalAmount;
+      if (q.status === "PAYMENT_COMPLETED" && quotationCountsTowardSalesTotals(q.status)) {
+        cur.paymentCompleted += q.finalAmount;
+      }
     }
 
     const monthly = Array.from(monthlyMap.entries())
@@ -83,7 +93,7 @@ const fetchDashboardSalesStatsCached = unstable_cache(
     return { currentMonth, monthly };
   },
   ["dashboard-sales-stats"],
-  { revalidate: 60 }
+  { revalidate: 60, tags: ["dashboard-sales-stats"] }
 );
 
 /**

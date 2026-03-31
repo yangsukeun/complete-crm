@@ -56,6 +56,7 @@ export default function NewQuotationPage() {
 
   const [title, setTitle] = useState("");
   const [clientName, setClientName] = useState("");
+  const [issuedAt, setIssuedAt] = useState(() => formatYMD(new Date()));
   const [validUntil, setValidUntil] = useState(() => formatYMD(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)));
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<QuotationItemInput[]>([defaultItem()]);
@@ -154,6 +155,7 @@ export default function NewQuotationPage() {
       const result = await createQuotation({
         title: title.trim(),
         clientName: clientName.trim(),
+        issuedAt,
         validUntil,
         items: validItems.map((i: any) => ({
           description: i.description.trim() || "(품목)",
@@ -239,14 +241,26 @@ export default function NewQuotationPage() {
               />
             </div>
           </div>
-          <div className="grid gap-2 max-w-xs">
-            <Label htmlFor="validUntil">유효기간</Label>
-            <Input
-              id="validUntil"
-              type="date"
-              value={validUntil}
-              onChange={(e: any) => setValidUntil(e.target.value)}
-            />
+          <div className="grid gap-4 sm:grid-cols-2 sm:max-w-xl">
+            <div className="grid gap-2">
+              <Label htmlFor="issuedAt">발행일(작성일)</Label>
+              <Input
+                id="issuedAt"
+                type="date"
+                value={issuedAt}
+                onChange={(e: any) => setIssuedAt(e.target.value)}
+              />
+              <p className="text-muted-foreground text-xs">대시보드 월별 집계·문서번호 일자(EST-YYYYMMDD)에 반영됩니다.</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="validUntil">유효기간</Label>
+              <Input
+                id="validUntil"
+                type="date"
+                value={validUntil}
+                onChange={(e: any) => setValidUntil(e.target.value)}
+              />
+            </div>
           </div>
 
           <div>
