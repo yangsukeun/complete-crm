@@ -371,7 +371,7 @@ export function UserNoteCard({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt,.heic,.heif,.avif"
             onChange={(e) => void handleFileSelect(e)}
           />
           <Button

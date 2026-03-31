@@ -11,7 +11,16 @@ export const maxDuration = 60;
 
 /** Google Drive 등 가벼운 저장 경로 기준 (초과 시 NAS 등 별도 연동 예정) */
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/avif",
+  "image/heic",
+  "image/heif",
+];
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/webm",
@@ -56,6 +65,9 @@ const ALLOWED_EXTENSIONS = new Set([
   "gif",
   "webp",
   "bmp",
+  "avif",
+  "heic",
+  "heif",
   "mp4",
   "webm",
   "ogg",
@@ -79,6 +91,10 @@ function getExt(mime: string, fileName?: string): string {
     "video/quicktime": "mov",
     "video/x-msvideo": "avi",
     "video/x-m4v": "m4v",
+    "image/bmp": "bmp",
+    "image/avif": "avif",
+    "image/heic": "heic",
+    "image/heif": "heif",
     "application/x-hwp": "hwp",
     "application/haansofthwp": "hwp",
     "application/vnd.hancom.hwp": "hwp",

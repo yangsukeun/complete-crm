@@ -23,7 +23,7 @@ import "@blocknote/mantine/style.css";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { taskBodySchema } from "@/lib/task-body-schema";
-import { TASK_BODY_DOC_PREFIX, parseStoredTaskBody } from "@/lib/task-body-description";
+import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 import {
   createPastedImageBlock,
   getClipboardImageFile,
@@ -139,21 +139,11 @@ export function ContentBodyEditor({
 
   const emitChange = useCallback(() => {
     if (!editor) return;
-    let blocks: unknown[];
-    try {
-      blocks = JSON.parse(JSON.stringify(editor.document)) as unknown[];
-    } catch {
-      const markdown = editor.blocksToMarkdownLossy(editor.document);
-      onChangeRef.current(markdown || "");
-      return;
-    }
-    const needsJson = JSON.stringify(blocks).includes('"type":"htmlBlock"');
-    if (needsJson) {
-      onChangeRef.current(TASK_BODY_DOC_PREFIX + JSON.stringify({ v: 1, blocks }));
-      return;
-    }
-    const markdown = editor.blocksToMarkdownLossy(editor.document);
-    onChangeRef.current(markdown || "");
+    const stored = serializeTaskBodyForStore({
+      document: editor.document,
+      blocksToMarkdownLossy: (blocks) => editor.blocksToMarkdownLossy(blocks ?? editor.document),
+    });
+    onChangeRef.current(stored ?? "");
   }, [editor]);
 
   useEffect(() => {
