@@ -28,7 +28,7 @@ import {
   ArrowLeft,
   Download,
   FolderKanban,
-  History,
+  ChevronDown,
   StretchHorizontal,
   AlignLeft,
   Trash2,
@@ -154,6 +154,7 @@ export default function TaskDetailPage() {
   const [assigneeDraft, setAssigneeDraft] = useState<string[]>([]);
   const [savingAssignees, setSavingAssignees] = useState(false);
   const [pageFullWidth, setPageFullWidth] = useState(true);
+  const [revisionOpen, setRevisionOpen] = useState(false);
   useEffect(() => {
     try {
       setPageFullWidth(localStorage.getItem(TASK_PAGE_WIDTH_KEY) !== "0");
@@ -742,46 +743,55 @@ export default function TaskDetailPage() {
           />
 
           {task.revisions && task.revisions.length > 0 && (
-            <div className="border-t px-2 py-6">
-              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <History className="size-4" />
-                수정 이력 (누가, 무엇을, 언제)
-              </div>
-              <ul className="space-y-3">
-                {task.revisions.map((r: any) => {
-                  const fieldLabels: Record<string, string> = {
-                    title: "제목",
-                    description: "설명",
-                    status: "상태",
-                    dueDate: "마감일",
-                    assignedToId: "담당자",
-                    assignees: "담당자",
-                    priority: "우선순위",
-                    isCompleted: "완료 여부",
-                    categoryId: "카테고리",
-                    parentId: "상위 프로젝트",
-                  };
-                  const label = fieldLabels[r.field] ?? r.field;
-                  const oldVal = r.oldValue ?? "(비어 있음)";
-                  const newVal = r.newValue ?? "(비어 있음)";
-                  return (
-                    <li key={r.id} className="flex gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-                        {(r.user?.name ?? "?").slice(0, 1)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-muted-foreground">
-                          {formatUserName(r.user)}
-                          <span className="ml-2">{format(new Date(r.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}</span>
-                        </p>
-                        <p className="mt-1 font-medium text-foreground">
-                          {label}: <span className="text-muted-foreground line-through">{oldVal}</span> → <span className="font-medium">{newVal}</span>
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+            <div className="border-t px-2 pt-2 pb-2">
+              <button
+                type="button"
+                onClick={() => setRevisionOpen((v) => !v)}
+                className="flex w-full items-center gap-1.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ChevronDown
+                  className={cn("size-4 shrink-0 transition-transform duration-200", revisionOpen && "rotate-180")}
+                  aria-hidden
+                />
+                수정 이력 ({task.revisions.length}건)
+              </button>
+              {revisionOpen && (
+                <ul className="space-y-3 border-t border-border/60 py-3">
+                  {task.revisions.map((r: any) => {
+                    const fieldLabels: Record<string, string> = {
+                      title: "제목",
+                      description: "설명",
+                      status: "상태",
+                      dueDate: "마감일",
+                      assignedToId: "담당자",
+                      assignees: "담당자",
+                      priority: "우선순위",
+                      isCompleted: "완료 여부",
+                      categoryId: "카테고리",
+                      parentId: "상위 프로젝트",
+                    };
+                    const label = fieldLabels[r.field] ?? r.field;
+                    const oldVal = r.oldValue ?? "(비어 있음)";
+                    const newVal = r.newValue ?? "(비어 있음)";
+                    return (
+                      <li key={r.id} className="flex gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+                          {(r.user?.name ?? "?").slice(0, 1)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-muted-foreground">
+                            {formatUserName(r.user)}
+                            <span className="ml-2">{format(new Date(r.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}</span>
+                          </p>
+                          <p className="mt-1 font-medium text-foreground">
+                            {label}: <span className="text-muted-foreground line-through">{oldVal}</span> → <span className="font-medium">{newVal}</span>
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           )}
 
