@@ -135,17 +135,22 @@ const CATEGORY_LABEL: Record<string, string> = {
   ANONYMOUS: "익명게시판",
 };
 
+export type BoardPostAttachmentItem = { url: string; name: string };
+
+export type BoardPostContentProps = {
+  description: string;
+  contentType?: string;
+  attachments?: BoardPostAttachmentItem[];
+  /** 없으면 카테고리 뱃지(게시판 구분)를 숨김 — 프로젝트 본문 등 */
+  category?: string;
+};
+
 export function BoardPostContent({
   description,
   contentType = "text",
-  attachments,
+  attachments = [],
   category,
-}: {
-  description: string;
-  contentType?: string;
-  attachments: { url: string; name: string }[];
-  category: string;
-}) {
+}: BoardPostContentProps) {
   const isStoredHtml = contentType === "html";
   const structured = !isStoredHtml && description ? parseStoredTaskBody(description) : null;
 
@@ -166,18 +171,20 @@ export function BoardPostContent({
 
   return (
     <article className="space-y-6">
-      <div className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
-        {category === "TRAINING" ? (
-          <GraduationCap className="size-3.5" />
-        ) : category === "FREE" ? (
-          <MessageSquare className="size-3.5" />
-        ) : category === "ANONYMOUS" ? (
-          <Ghost className="size-3.5" />
-        ) : (
-          <Building2 className="size-3.5" />
-        )}
-        {CATEGORY_LABEL[category] ?? category}
-      </div>
+      {category ? (
+        <div className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
+          {category === "TRAINING" ? (
+            <GraduationCap className="size-3.5" />
+          ) : category === "FREE" ? (
+            <MessageSquare className="size-3.5" />
+          ) : category === "ANONYMOUS" ? (
+            <Ghost className="size-3.5" />
+          ) : (
+            <Building2 className="size-3.5" />
+          )}
+          {CATEGORY_LABEL[category] ?? category}
+        </div>
+      ) : null}
       {description ? (
         isStoredHtml ? (
           <BoardStoredHtmlIframe html={description} />

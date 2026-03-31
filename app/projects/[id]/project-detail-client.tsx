@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
-import { BoardPostContent } from "../../board/[id]/board-post-content";
+import { BoardPostContent, type BoardPostAttachmentItem } from "../../board/[id]/board-post-content";
 import {
   Table,
   TableBody,
@@ -68,6 +68,8 @@ const PAY_STATUS_LABEL: Record<string, string> = {
   COMPLETED: "이체완료",
   REJECTED: "거절",
 };
+
+const EMPTY_BOARD_ATTACHMENTS: BoardPostAttachmentItem[] = [];
 
 function formatWon(n: number) {
   return `${new Intl.NumberFormat("ko-KR").format(n)}원`;
@@ -355,7 +357,7 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
           <BoardPostContent
             description={data.description ?? ""}
             contentType={data.contentType ?? "text"}
-            attachments={[]}
+            attachments={EMPTY_BOARD_ATTACHMENTS}
           />
         ) : (
           <p className="text-muted-foreground text-sm py-4">본문이 없습니다. 편집에서 내용을 추가하세요.</p>
