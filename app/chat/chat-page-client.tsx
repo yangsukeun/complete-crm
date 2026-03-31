@@ -863,7 +863,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                   <li key={chat.id}>
                     <Link
                       href={`/chat/${chat.id}`}
-                      prefetch={true}
+                      prefetch={false}
                       className={`flex w-full flex-col gap-0.5 px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
                         selectedChatId === chat.id ? "bg-muted" : ""
                       }`}
