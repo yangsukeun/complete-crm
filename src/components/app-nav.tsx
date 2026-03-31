@@ -328,7 +328,7 @@ export function AppNav() {
 
           {can("tasks") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/tasks" || pathname.startsWith("/tasks/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/tasks" prefetch={true} className="flex items-center gap-1.5">
+              <Link href="/tasks" prefetch={false} className="flex items-center gap-1.5">
                 <ListTodo className="size-4" />
                 <span>Projects</span>
               </Link>
@@ -338,7 +338,7 @@ export function AppNav() {
           {/* 게시판(자료실) - 회사 모드에서만 */}
           {isCompany && can("board") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/board" || pathname.startsWith("/board/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/board" prefetch={true} className="flex items-center gap-1.5">
+              <Link href="/board" prefetch={false} className="flex items-center gap-1.5">
                 <FolderOpen className="size-4" />
                 <span>게시판</span>
               </Link>
@@ -348,7 +348,7 @@ export function AppNav() {
           {/* 채팅 - 회사 모드에서만 */}
           {isCompany && can("chat") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/chat" || pathname.startsWith("/chat/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/chat" prefetch={true} className="relative flex items-center gap-1.5">
+              <Link href="/chat" prefetch={false} className="relative flex items-center gap-1.5">
                 <MessageCircle className="size-4" />
                 <span>채팅</span>
                 {chatUnreadCount > 0 && (
@@ -370,7 +370,7 @@ export function AppNav() {
                 : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
             )}
           >
-            <Link href="/ai-secretary" prefetch={true} className="flex items-center gap-1.5">
+            <Link href="/ai-secretary" prefetch={false} className="flex items-center gap-1.5">
               <Sparkles className="size-4" />
               <span>AI 비서</span>
             </Link>

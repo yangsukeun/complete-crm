@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { SWR_KEYS } from "@/lib/api-swr";
+import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -151,6 +151,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatsRef = useRef<ChatItem[]>([]);
+  const pendingReadSyncSigRef = useRef("");
+  const lastReadSyncOkSigRef = useRef("");
 
   const isExecutive =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
@@ -190,15 +192,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     data: swrChatList,
     mutate: mutateChats,
     isLoading: swrChatsLoading,
-  } = useSWR<ChatItem[]>(
-    session?.user?.id ? SWR_KEYS.chatsList : null,
-    async (url) => {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<ChatItem[]>;
-    },
-    { dedupingInterval: 8000, keepPreviousData: true }
-  );
+  } = useSWR<ChatItem[]>(session?.user?.id ? SWR_KEYS.chatsList : null, jsonFetcher, {
+    dedupingInterval: 8000,
+    keepPreviousData: true,
+  });
 
   useEffect(() => {
     if (swrChatsLoading && swrChatList === undefined) return;
@@ -217,12 +214,16 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       );
       return same ? prev : list;
     });
+    setLoading(false);
+  }, [swrChatList, swrChatsLoading]);
 
+  useEffect(() => {
+    if (!swrChatList || !session?.user?.id) return;
+    const myId = session.user.id;
     try {
-      const myId = session?.user?.id;
       const next: Record<string, number> = {};
-      for (const c of list) {
-        if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
+      for (const c of swrChatList) {
+        if (!c.lastMessage || c.lastMessage.user?.id === myId) continue;
         const readAt =
           typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
         const isUnread = !readAt || new Date(c.lastMessage.createdAt) > new Date(readAt);
@@ -239,33 +240,47 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         }
         return prevCounts;
       });
+    } catch {
+      // ignore
+    }
+  }, [swrChatList, selectedChatId, session?.user?.id]);
 
+  useEffect(() => {
+    if (swrChatsLoading && swrChatList === undefined) return;
+    if (!swrChatList || !session?.user?.id) return;
+    const myId = session.user.id;
+
+    try {
       const toSync: string[] = [];
-      for (const c of list) {
-        if (!c.lastMessage || !myId || c.lastMessage.user?.id === myId) continue;
+      for (const c of swrChatList) {
+        if (!c.lastMessage || c.lastMessage.user?.id === myId) continue;
         const readAt =
           typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
         if (readAt && new Date(readAt) >= new Date(c.lastMessage.createdAt)) {
           toSync.push(c.id);
         }
       }
-      /** 목록 동기화 PATCH를 한꺼번에 쏘면 서버·브라우저가 막힘 → 소규모 배치 */
-      if (toSync.length > 0) {
-        void (async () => {
-          const batch = 4;
-          for (let i = 0; i < toSync.length; i += batch) {
-            const slice = toSync.slice(i, i + batch);
-            await Promise.all(
-              slice.map((id) => fetch(`/api/chats/${id}/messages`, { method: "PATCH" }).catch(() => {}))
-            );
-          }
-        })();
-      }
+      if (toSync.length === 0) return;
+      const sig = [...toSync].sort().join("|");
+      if (sig === lastReadSyncOkSigRef.current || sig === pendingReadSyncSigRef.current) return;
+
+      pendingReadSyncSigRef.current = sig;
+      void fetch("/api/chats/read-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ chatIds: toSync }),
+      })
+        .then((res) => {
+          if (res.ok) lastReadSyncOkSigRef.current = sig;
+        })
+        .finally(() => {
+          if (pendingReadSyncSigRef.current === sig) pendingReadSyncSigRef.current = "";
+        });
     } catch {
-      // ignore
+      pendingReadSyncSigRef.current = "";
     }
-    setLoading(false);
-  }, [swrChatList, swrChatsLoading, selectedChatId, session?.user?.id]);
+  }, [swrChatList, swrChatsLoading, session?.user?.id]);
 
   const fetchMessages = useCallback(
     async (chatId: string, silent?: boolean, sinceIso?: string | null) => {
@@ -274,7 +289,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         const url = sinceIso
           ? `/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`
           : `/api/chats/${chatId}/messages?limit=100&markRead=1`;
-        const res = await fetch(url);
+        const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error("Failed");
         const raw = await res.json();
         const { messages: list, readAtByUserId: readMap } = parseChatMessagesResponse(raw);
