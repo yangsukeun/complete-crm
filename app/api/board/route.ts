@@ -11,6 +11,7 @@ import prisma from "@/lib/prisma";
 import { boardVisibilityWhere } from "@/lib/board-access";
 import { boardCategoryIsAnonymous, isBoardCategory } from "@/lib/board-category";
 import { safeParseAttachments } from "@/lib/board-attachments";
+import { buildBoardListPreview } from "@/lib/board-list-preview";
 
 export const runtime = "nodejs";
 /** Drive 업로드·DB 지연 대비 (Vercel Pro 등에서 상한 상향 시 반영) */
@@ -59,7 +60,6 @@ function emptyBoardListResponse(
 }
 
 async function boardGetHandler(req: Request) {
-  console.log("[board] 시작");
   const listCacheHeaders = {
     "Cache-Control": "private, s-maxage=30, stale-while-revalidate=120",
   };
@@ -81,13 +81,15 @@ async function boardGetHandler(req: Request) {
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
     const all = searchParams.get("all") === "1";
 
-    /** 목록: 본문(description) 제외 — 상세에서만 로드 */
+    /** 목록: 본문은 서버에서만 읽고 listPreview만 응답(클라이언트로 raw 미전송) */
     const selectList = {
       id: true,
       title: true,
       category: true,
       isAnonymous: true,
       workspaceScope: true,
+      contentType: true,
+      description: true,
       attachments: true,
       createdAt: true,
       createdById: true,
@@ -100,18 +102,22 @@ async function boardGetHandler(req: Request) {
       category: string;
       isAnonymous: boolean;
       workspaceScope: string;
+      contentType: string;
+      description: string | null;
       attachments: string | null;
       createdAt: Date;
       createdById: string;
       createdBy: { name: string; position: string | null } | null;
     }) => {
       const anon = p.isAnonymous || boardCategoryIsAnonymous(p.category);
+      const listPreview = buildBoardListPreview(p.description, p.contentType, p.attachments);
       return {
         id: p.id,
         title: p.title,
         category: p.category,
         isAnonymous: anon,
         attachments: safeParseAttachments(p.attachments),
+        listPreview,
         createdAt: p.createdAt.toISOString(),
         createdById: anon ? undefined : p.createdById,
         createdByName: anon ? "익명" : p.createdBy?.name ?? "삭제된 사용자",

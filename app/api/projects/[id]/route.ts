@@ -3,7 +3,19 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { userCanAccessProject } from "@/lib/project-access";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
+import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const patchSchema = z
+  .object({
+    quoteId: z.union([z.string(), z.null()]).optional(),
+    description: z.string().max(50000).optional(),
+    contentType: z.enum(["text", "html"]).optional(),
+  })
+  .refine((b) => b.quoteId !== undefined || b.description !== undefined || b.contentType !== undefined, {
+    message: "quoteId, description, contentType 중 하나 이상 필요합니다.",
+  });
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -103,29 +115,69 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const body = await req.json().catch(() => ({}));
-    const quoteIdRaw = body?.quoteId;
-    if (quoteIdRaw === undefined) {
-      return NextResponse.json({ error: "quoteId가 필요합니다." }, { status: 400 });
-    }
-    if (quoteIdRaw !== null && typeof quoteIdRaw !== "string") {
-      return NextResponse.json({ error: "quoteId가 올바르지 않습니다." }, { status: 400 });
+    const parsed = patchSchema.safeParse(body);
+    if (!parsed.success) {
+      const msg = parsed.error.flatten().formErrors[0] ?? "입력값이 올바르지 않습니다.";
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (quoteIdRaw === null || quoteIdRaw === "") {
-        const p = await tx.project.findUnique({
-          where: { id: projectId },
-          select: { quoteId: true },
-        });
-        if (p?.quoteId) {
-          await syncQuotationProjectLink(tx, { quotationId: p.quoteId, projectId: null });
+    const { quoteId: quoteIdRaw, description: descriptionRaw, contentType: contentTypeRaw } = parsed.data;
+
+    if (quoteIdRaw !== undefined) {
+      if (quoteIdRaw !== null && typeof quoteIdRaw !== "string") {
+        return NextResponse.json({ error: "quoteId가 올바르지 않습니다." }, { status: 400 });
+      }
+      await prisma.$transaction(async (tx) => {
+        if (quoteIdRaw === null || quoteIdRaw === "") {
+          const p = await tx.project.findUnique({
+            where: { id: projectId },
+            select: { quoteId: true },
+          });
+          if (p?.quoteId) {
+            await syncQuotationProjectLink(tx, { quotationId: p.quoteId, projectId: null });
+          }
+          return;
         }
-        return;
+        if (typeof quoteIdRaw === "string" && quoteIdRaw.length > 0) {
+          await syncQuotationProjectLink(tx, { quotationId: quoteIdRaw, projectId });
+        }
+      });
+    }
+
+    if (descriptionRaw !== undefined || contentTypeRaw !== undefined) {
+      const existing = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { contentType: true },
+      });
+      const typeForNorm: "text" | "html" =
+        contentTypeRaw === "html" || contentTypeRaw === "text"
+          ? contentTypeRaw
+          : existing?.contentType === "html"
+            ? "html"
+            : "text";
+
+      const data: { description?: string | null; contentType?: string } = {};
+      if (descriptionRaw !== undefined) {
+        try {
+          data.description = normalizeBoardDescriptionForStore(descriptionRaw, typeForNorm) || null;
+        } catch (normErr) {
+          console.error("Project PATCH normalize:", normErr);
+          return NextResponse.json(
+            { error: "본문을 저장할 수 없습니다. 길이·형식을 확인하거나 잠시 후 다시 시도해 주세요." },
+            { status: 400 }
+          );
+        }
       }
-      if (typeof quoteIdRaw === "string" && quoteIdRaw.length > 0) {
-        await syncQuotationProjectLink(tx, { quotationId: quoteIdRaw, projectId });
+      if (contentTypeRaw !== undefined) {
+        data.contentType = contentTypeRaw;
       }
-    });
+      if (Object.keys(data).length > 0) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data,
+        });
+      }
+    }
 
     revalidatePath("/quotations");
     revalidatePath(`/projects/${projectId}`);

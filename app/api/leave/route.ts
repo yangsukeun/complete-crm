@@ -3,7 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
-import { sendPushToUsers } from "@/lib/notifications/push";
+import { createNotificationWithOptions } from "@/lib/notifications";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -162,23 +162,27 @@ export async function POST(req: Request) {
       include: { user: { select: { name: true, position: true } } },
     });
 
-    const execRecipients = await prisma.user.findMany({
-      where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
-      select: { id: true },
+    const applicantId = session.user.id;
+    const applicant = leave.user?.name ?? "직원";
+    const managers = await prisma.user.findMany({
+      where: {
+        role: { in: ["TEAM_LEAD", "EXECUTIVE", "ADMIN"] },
+        id: { not: applicantId },
+      },
+      select: { id: true, role: true },
     });
-    const execIds = execRecipients.map((u) => u.id).filter(Boolean);
-    if (execIds.length > 0) {
-      const applicant = leave.user?.name ?? "직원";
-      const msg = `${applicant}님이 휴가를 신청했습니다.`;
-      void sendPushToUsers({
-        userIds: execIds,
-        title: "휴가 신청",
-        message: msg,
-        headings: { ko: "휴가 신청", en: "Leave request" },
-        contents: { ko: msg, en: msg },
-        url: "/leave",
-        data: { type: "leave_request", leaveId: leave.id },
-        priority: "high",
+
+    for (const r of managers) {
+      const isTeamLead = r.role === "TEAM_LEAD";
+      const message = isTeamLead
+        ? `${applicant}님이 휴가를 신청했습니다. 아래 목록에서 1차 승인해 주세요.`
+        : `${applicant}님이 휴가를 신청했습니다. 팀장 1차 승인 후 최종 승인할 수 있습니다. 연차/근태(/leave)에서 확인하세요.`;
+      await createNotificationWithOptions({
+        userId: r.id,
+        type: "LEAVE_REQUEST",
+        message,
+        link: "/leave",
+        actorId: applicantId,
       });
     }
 

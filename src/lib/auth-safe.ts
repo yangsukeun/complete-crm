@@ -1,11 +1,13 @@
+import { cache } from "react";
 import { getAppSession } from "@/auth";
 
 const AUTH_TIMEOUT_MS = 10000;
 
 /**
  * getAppSession() (= NextAuth 세션). 응답 지연 시 타임아웃.
+ * React cache: 동일 요청 내 layout·page 등 중복 호출을 한 번으로 합침.
  */
-export async function authWithTimeout(): Promise<any> {
+async function authWithTimeoutImpl(): Promise<any> {
   try {
     return await Promise.race<any>([
       getAppSession() as any,
@@ -20,3 +22,5 @@ export async function authWithTimeout(): Promise<any> {
     return null;
   }
 }
+
+export const authWithTimeout = cache(authWithTimeoutImpl);

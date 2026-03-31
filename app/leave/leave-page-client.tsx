@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -212,10 +213,22 @@ export function LeavePageClient({
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <PageHeadline
-          title="연차 / 근태"
-          description="연차·반차·반반차를 신청하고, 출퇴근을 기록하세요."
-        />
+        <div className="space-y-2 min-w-0">
+          <PageHeadline
+            title="연차 / 근태"
+            description="연차·반차·반반차를 신청하고, 출퇴근을 기록하세요."
+          />
+          {canApprove && (
+            <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
+              <span className="font-medium text-foreground">대표·팀장·관리자:</span> 직원이 휴가를 신청하면 헤더
+              알림함{" "}
+              <Link href="/notifications" className="underline underline-offset-4 hover:no-underline">
+                /notifications
+              </Link>
+              과 이 페이지 목록에서 확인할 수 있습니다. 최종 승인 전에 팀장 1차 승인이 먼저 필요합니다.
+            </p>
+          )}
+        </div>
         <Card className="sm:w-auto">
           <CardContent className="flex items-center gap-2 py-3">
             <LogIn className="text-muted-foreground size-5 shrink-0" />

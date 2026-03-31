@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import prisma from "@/lib/prisma";
 import { addDays } from "date-fns";
 import type { DashboardSalesStats } from "@/lib/dashboard-sales";
@@ -14,54 +15,66 @@ export type DashboardAnnouncementItem = {
   createdByPosition: string | null;
 };
 
-type PollOpt = { text: string; voterIds: string[] };
+const fetchAnnouncementsForDashboardCached = unstable_cache(
+  async (): Promise<DashboardAnnouncementItem[]> => {
+    const list = await prisma.announcement.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        createdAt: true,
+        pollData: true,
+        createdBy: { select: { name: true, position: true } },
+      },
+    });
 
-export async function getAnnouncementsForDashboard(userId: string): Promise<DashboardAnnouncementItem[]> {
-  const list = await prisma.announcement.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    select: {
-      id: true,
-      title: true,
-      content: true,
-      createdAt: true,
-      pollData: true,
-      createdBy: { select: { name: true, position: true } },
-    },
-  });
+    return list.map((a) => {
+      return {
+        id: a.id,
+        title: a.title,
+        content: a.content,
+        createdAt: a.createdAt.toISOString(),
+        createdByName: a.createdBy?.name ?? "삭제된 사용자",
+        createdByPosition: a.createdBy?.position ?? null,
+      };
+    });
+  },
+  ["dashboard-announcements"],
+  { revalidate: 45 }
+);
 
-  return list.map((a) => {
-    const poll = a.pollData ? (JSON.parse(a.pollData) as PollOpt[]) : null;
-    return {
-      id: a.id,
-      title: a.title,
-      content: a.content,
-      createdAt: a.createdAt.toISOString(),
-      createdByName: a.createdBy?.name ?? "삭제된 사용자",
-      createdByPosition: a.createdBy?.position ?? null,
-    };
-  });
+/** userId는 API 시그니처 호환용(목록은 워크스페이스 공통). */
+export async function getAnnouncementsForDashboard(_userId: string): Promise<DashboardAnnouncementItem[]> {
+  return fetchAnnouncementsForDashboardCached();
 }
 
-/** 다음 7일 일정 프리뷰 (대시보드 카드·목록) */
+/** 다음 7일 일정 프리뷰 (대시보드 카드·목록) — 사용자별 짧은 캐시로 반복 방문 시 DB 완화 */
 export async function getUpcomingSchedulesForDashboard(userId: string, take = 5) {
-  const now = new Date();
-  const weekEnd = addDays(now, 7);
-  return prisma.schedule.findMany({
-    where: {
-      userId,
-      startTime: { gte: now, lte: weekEnd },
+  return unstable_cache(
+    async () => {
+      const now = new Date();
+      const weekEnd = addDays(now, 7);
+      return prisma.schedule.findMany({
+        where: {
+          userId,
+          startTime: { gte: now, lte: weekEnd },
+        },
+        orderBy: { startTime: "asc" },
+        take,
+        select: {
+          id: true,
+          title: true,
+          startTime: true,
+          endTime: true,
+          isAllDay: true,
+        },
+      });
     },
-    orderBy: { startTime: "asc" },
-    take,
-    select: {
-      id: true,
-      title: true,
-      startTime: true,
-      endTime: true,
-      isAllDay: true,
-    },
-  });
+    ["dashboard-upcoming-schedules", userId, String(take)],
+    { revalidate: 30 }
+  )();
 }
 
 const userTaskSelect = {

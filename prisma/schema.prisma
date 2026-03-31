@@ -595,6 +595,7 @@ model BoardPost {
   revisions   BoardPostRevision[]
   @@index([createdAt])
   @@index([category])
+  @@index([category, createdAt(sort: Desc)])
   @@index([createdById])
   @@index([deletedAt])
   @@index([workspaceScope])

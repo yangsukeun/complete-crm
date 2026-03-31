@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { previewPlainTextForBoard } from "@/lib/board-body";
+import { getPreviewMediaFromAttachmentsClient } from "@/lib/board-list-preview";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -67,58 +68,32 @@ type AnnouncementItem = {
   createdByPosition: string | null;
 };
 
+type BoardListPreviewPayload = {
+  text: string;
+  mediaType: "image" | "video" | null;
+  imageUrl: string | null;
+  videoUrl: string | null;
+};
+
 type BoardItem = {
   id: string;
   title: string;
-  /** 목록 API에서는 생략됨 — 상세에서만 제공 */
+  /** 레거시/폴백 — 목록 API는 listPreview 우선 */
   description?: string;
   category: string;
   workspaceScope?: "TEAM" | "PERSONAL";
   attachments: AttachmentItem[];
+  listPreview?: BoardListPreviewPayload;
   createdAt: string;
   createdById?: string;
   createdByName: string;
   createdByPosition: string | null;
+  isAuthorSelf?: boolean;
 };
 
 type UnifiedItem =
   | { type: "ANNOUNCEMENT"; data: AnnouncementItem }
   | { type: "BOARD"; data: BoardItem };
-
-const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|avif)(\?|$)/i;
-const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i;
-const YOUTUBE_REGEX = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-
-function getYoutubeThumbnail(urlOrText: string): string | null {
-  const m = urlOrText.match(YOUTUBE_REGEX);
-  return m ? `https://img.youtube.com/vi/${m[1]}/mqdefault.jpg` : null;
-}
-
-function getPreviewMedia(
-  attachments: AttachmentItem[],
-  description?: string
-): { type: "image" | "video"; url: string; name: string } | null {
-  // 1) 첨부 중 직접 업로드 이미지 (URL 또는 파일명에 확장자)
-  if (attachments?.length) {
-    const img = attachments.find((a) => IMAGE_EXT.test(a.url) || IMAGE_EXT.test(a.name));
-    if (img) return { type: "image", url: img.url, name: img.name };
-    // 2) 첨부 중 YouTube 링크 → 썸네일로 미리보기
-    const yt = attachments.find((a) => YOUTUBE_REGEX.test(a.url || "") || YOUTUBE_REGEX.test(a.name || ""));
-    if (yt) {
-      const thumb = getYoutubeThumbnail(yt.url || yt.name);
-      if (thumb) return { type: "image", url: thumb, name: yt.name };
-    }
-    // 3) 첨부 중 직접 업로드 영상 파일
-    const vid = attachments.find((a) => VIDEO_EXT.test(a.url) || VIDEO_EXT.test(a.name));
-    if (vid) return { type: "video", url: vid.url, name: vid.name };
-  }
-  // 4) 본문(description)에 YouTube 링크가 있으면 썸네일 사용
-  if (description?.trim()) {
-    const thumb = getYoutubeThumbnail(description);
-    if (thumb) return { type: "image", url: thumb, name: "YouTube" };
-  }
-  return null;
-}
 
 function stripMarkdownPreview(text: string, maxLen: number): string {
   const stripped = text
@@ -144,10 +119,10 @@ export function BoardPageClient({
   const {
     data: swrAnnouncements = [],
     mutate: mutateAnnouncements,
-    isLoading: annLoading,
+    isLoading: announcementsLoading,
   } = useSWR<AnnouncementItem[]>(SWR_KEYS.announcements, jsonFetcher, {
-    dedupingInterval: 12_000,
-    revalidateOnFocus: true,
+    dedupingInterval: 15_000,
+    revalidateOnFocus: false,
   });
   const announcements = swrAnnouncements;
   const [boardList, setBoardList] = useState<BoardItem[]>([]);
@@ -207,9 +182,15 @@ export function BoardPageClient({
     }
   };
 
+  /**
+   * 게시판 자료: API 응답만 스켈레톤 게이트.
+   * 공지 전용 탭은 공지 SWR 첫 로드까지 스켈레톤 유지.
+   */
   const pageLoading = useMemo(
-    () => loading || (annLoading && announcements.length === 0),
-    [loading, annLoading, announcements.length]
+    () =>
+      loading ||
+      (filter === "ANNOUNCEMENT" && announcementsLoading && announcements.length === 0),
+    [loading, filter, announcementsLoading, announcements.length]
   );
 
   const loadMoreBoard = async () => {
@@ -461,10 +442,16 @@ export function BoardPageClient({
               }
               const b = item.data;
               const preview =
-                b.description != null && b.description !== ""
+                b.listPreview?.text?.trim() ??
+                (b.description != null && b.description !== ""
                   ? previewPlainTextForBoard(b.description, 120)
-                  : "";
-              const media = getPreviewMedia(b.attachments, b.description);
+                  : "");
+              const media =
+                b.listPreview?.mediaType === "image" && b.listPreview.imageUrl
+                  ? { type: "image" as const, url: b.listPreview.imageUrl, name: b.title }
+                  : b.listPreview?.mediaType === "video" && b.listPreview.videoUrl
+                    ? { type: "video" as const, url: b.listPreview.videoUrl, name: b.title }
+                    : getPreviewMediaFromAttachmentsClient(b.attachments, b.description);
               const boardThumbRank = media?.type === "image" ? boardCardImageIndex++ : -1;
               const thumbEager = boardThumbRank >= 0 && boardThumbRank < 3;
               const imageSrc =

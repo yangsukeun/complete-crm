@@ -12,7 +12,7 @@ import "./globals.css";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  preload: false,
+  preload: true,
   display: "swap",
 });
 

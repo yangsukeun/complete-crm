@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import { createNotificationWithOptions } from "@/lib/notifications";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -51,6 +52,24 @@ export async function PATCH(
         data: { status: requestedStatus as "TEAM_LEAD_APPROVED" | "REJECTED" },
         include: { user: { select: { name: true, position: true } } },
       });
+
+      if (requestedStatus === "TEAM_LEAD_APPROVED") {
+        const name = updated.user?.name ?? "직원";
+        const execs = await prisma.user.findMany({
+          where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
+          select: { id: true },
+        });
+        for (const u of execs) {
+          await createNotificationWithOptions({
+            userId: u.id,
+            type: "LEAVE_REQUEST",
+            message: `${name}님 휴가 신청이 팀장 1차 승인되었습니다. 연차/근태에서 최종 승인해 주세요.`,
+            link: "/leave",
+            actorId: leave.userId,
+          });
+        }
+      }
+
       return NextResponse.json(updated);
     }
 

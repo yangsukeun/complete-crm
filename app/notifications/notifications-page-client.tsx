@@ -26,6 +26,8 @@ const TYPE_LABELS: Record<string, string> = {
   TASK_BODY_MENTION: "프로젝트 호출",
   CHAT_MESSAGE: "채팅",
   NOTICE_POSTED: "공지",
+  WORK_LOG_SUBMITTED: "업무일지",
+  LEAVE_REQUEST: "휴가",
 };
 
 export function NotificationsPageClient() {

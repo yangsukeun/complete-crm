@@ -19,6 +19,8 @@ const nextConfig: NextConfig = {
       "@mantine/core",
       "@mantine/hooks",
       "date-fns",
+      "recharts",
+      "@xyflow/react",
     ],
   },
   images: {
