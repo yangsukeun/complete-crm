@@ -18,7 +18,13 @@ const DESKTOP_EMBED_LAYOUT_INJECT = `
     min-width: 1200px !important;
     max-width: none !important;
     box-sizing: border-box !important;
-    overflow-x: visible !important;
+    /* 랜딩/복사 HTML이 height:100%/100vh·overflow:hidden 으로 본문 높이가 안 잡히는 경우 대비 */
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    position: relative !important;
   }
   *, *::before, *::after {
     box-sizing: border-box !important;

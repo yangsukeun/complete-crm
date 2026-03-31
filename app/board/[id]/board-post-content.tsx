@@ -85,7 +85,7 @@ function BoardStoredHtmlIframe({ html }: { html: string }) {
         srcDoc={srcDoc}
         className="bg-white"
         minLogicalHeight={400}
-        maxLogicalHeight={3000}
+        maxLogicalHeight={16000}
       />
     </div>
   );

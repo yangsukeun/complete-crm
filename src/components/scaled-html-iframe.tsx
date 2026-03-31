@@ -18,6 +18,7 @@ type Props = {
 
 /**
  * srcDoc HTML은 내부에서 1200px 폭으로 렌더한 뒤, 부모 너비에 맞게 scale.
+ * 복사한 랜딩 페이지 등은 늦게 레이아웃이 잡히므로 ResizeObserver·이미지 load로 높이 재측정.
  */
 export function ScaledHtmlIframe({
   srcDoc,
@@ -30,6 +31,7 @@ export function ScaledHtmlIframe({
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const contentCleanupRef = useRef<(() => void) | null>(null);
 
   const sync = useCallback(() => {
     const outer = outerRef.current;
@@ -39,6 +41,30 @@ export function ScaledHtmlIframe({
     syncIframeScaleLayout(outer, inner, iframe);
   }, []);
 
+  const measureAndSync = useCallback(
+    (iframe: HTMLIFrameElement) => {
+      try {
+        const doc = iframe.contentWindow?.document;
+        if (!doc?.body) return;
+        const body = doc.body;
+        const htmlEl = doc.documentElement;
+        const h = Math.max(
+          body.scrollHeight,
+          body.offsetHeight,
+          htmlEl.scrollHeight,
+          htmlEl.offsetHeight,
+          minLogicalHeight
+        );
+        const finalH = Math.min(Math.max(h + 32, minLogicalHeight), maxLogicalHeight);
+        iframe.style.height = `${finalH}px`;
+      } catch {
+        iframe.style.height = `${Math.max(minLogicalHeight, 400)}px`;
+      }
+      requestAnimationFrame(sync);
+    },
+    [minLogicalHeight, maxLogicalHeight, sync]
+  );
+
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -47,32 +73,45 @@ export function ScaledHtmlIframe({
     return () => ro.disconnect();
   }, [sync]);
 
+  useEffect(() => () => contentCleanupRef.current?.(), []);
+
   const onLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
     const el = e.currentTarget;
+    contentCleanupRef.current?.();
+    contentCleanupRef.current = null;
+
+    measureAndSync(el);
+
     try {
       const doc = el.contentWindow?.document;
       if (!doc?.body) return;
-      const body = doc.body;
-      const htmlEl = doc.documentElement;
-      const prevB = body.style.overflow;
-      const prevH = htmlEl.style.overflow;
-      body.style.overflow = "hidden";
-      htmlEl.style.overflow = "hidden";
-      const h = Math.max(
-        body.scrollHeight,
-        body.offsetHeight,
-        htmlEl.scrollHeight,
-        htmlEl.offsetHeight,
-        minLogicalHeight
-      );
-      body.style.overflow = prevB;
-      htmlEl.style.overflow = prevH;
-      const finalH = Math.min(Math.max(h + 32, minLogicalHeight), maxLogicalHeight);
-      el.style.height = `${finalH}px`;
+
+      let raf = 0;
+      const schedule = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => measureAndSync(el));
+      };
+
+      const ro = new ResizeObserver(schedule);
+      ro.observe(doc.body);
+      ro.observe(doc.documentElement);
+
+      doc.querySelectorAll("img").forEach((img) => {
+        if (!img.complete) img.addEventListener("load", schedule, { once: true });
+      });
+
+      const t1 = window.setTimeout(schedule, 100);
+      const t2 = window.setTimeout(schedule, 600);
+
+      contentCleanupRef.current = () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        cancelAnimationFrame(raf);
+        ro.disconnect();
+      };
     } catch {
-      el.style.height = `${Math.max(minLogicalHeight, 400)}px`;
+      /* 문서 접근 불가 시 무시 */
     }
-    requestAnimationFrame(sync);
   };
 
   return (
