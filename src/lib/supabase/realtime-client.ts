@@ -1,5 +1,28 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 
+function browserAppIsLocalhost(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+}
+
+function supabaseUrlLooksLocalhost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  } catch {
+    return /localhost|127\.0\.0\.1/i.test(url);
+  }
+}
+
+/**
+ * 프로덕션 배포에 .env 로컬 Supabase URL이 남으면 브라우저가 127.0.0.1 로 접속 시도 → 연결 거부·네트워크 오류 폭주.
+ */
+function shouldSkipBrowserRealtime(url: string): boolean {
+  if (typeof window === "undefined") return false;
+  return supabaseUrlLooksLocalhost(url) && !browserAppIsLocalhost();
+}
+
 export type FinanceRealtimeSubscription = { unsubscribe: () => void };
 
 type Singleton = {
@@ -28,6 +51,14 @@ export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !anon) return null;
+  if (shouldSkipBrowserRealtime(url)) {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(
+        "[Supabase realtime] NEXT_PUBLIC_SUPABASE_URL 이 localhost 를 가리킵니다. 배포 도메인에서는 Realtime 을 건너뜁니다. Vercel 환경변수를 프로젝트 Supabase URL 로 맞추세요."
+      );
+    }
+    return null;
+  }
 
   const now = Math.floor(Date.now() / 1000);
 

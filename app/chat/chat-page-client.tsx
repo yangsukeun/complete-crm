@@ -85,6 +85,12 @@ type ScheduleItem = {
 const CHAT_READ_KEY = "chat_read_";
 const DELETE_ALLOWED_MS = 10 * 60 * 1000; // 10분
 
+/** iframe/base 등으로 상대 경로가 어긋나는 경우 방지 (현재 탭 origin 고정) */
+function apiUrl(path: string): string {
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.location.origin).href;
+}
+
 function parseChatMessagesResponse(json: unknown): {
   messages: Message[];
   readAtByUserId: Record<string, string | null>;
@@ -265,7 +271,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       if (sig === lastReadSyncOkSigRef.current || sig === pendingReadSyncSigRef.current) return;
 
       pendingReadSyncSigRef.current = sig;
-      void fetch("/api/chats/read-sync", {
+      void fetch(apiUrl("/api/chats/read-sync"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -287,8 +293,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       if (!silent) setMessageLoading(true);
       try {
         const url = sinceIso
-          ? `/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`
-          : `/api/chats/${chatId}/messages?limit=100&markRead=1`;
+          ? apiUrl(`/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`)
+          : apiUrl(`/api/chats/${chatId}/messages?limit=100&markRead=1`);
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error("Failed");
         const raw = await res.json();
@@ -408,7 +414,9 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     if (!selectedChatId) return;
     const tick = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      void fetch(`/api/chats/${selectedChatId}/messages?readMeta=1`)
+      void fetch(apiUrl(`/api/chats/${selectedChatId}/messages?readMeta=1`), {
+        credentials: "include",
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((raw) => {
           if (!raw) return;
@@ -423,7 +431,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
   useEffect(() => {
     if (modalOpen) {
-      fetch("/api/users/list")
+      fetch(apiUrl("/api/users/list"), { credentials: "include" })
         .then((r: any) => (r.ok ? r.json() : []))
         .then(setUsers)
         .catch(() => setUsers([]));
@@ -434,7 +442,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
   useEffect(() => {
     if (scheduleModalOpen) {
-      fetch("/api/schedules")
+      fetch(apiUrl("/api/schedules"), { credentials: "include" })
         .then((r: any) => (r.ok ? r.json() : []))
         .then(setSchedules)
         .catch(() => setSchedules([]));
@@ -443,7 +451,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
   useEffect(() => {
     if (delegateModalOpen) {
-      fetch("/api/users/list")
+      fetch(apiUrl("/api/users/list"), { credentials: "include" })
         .then((r: any) => (r.ok ? r.json() : []))
         .then((list: User[]) =>
           setDelegateModalUsers(
@@ -456,7 +464,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
   useEffect(() => {
     if (mentionOpen && users.length === 0) {
-      fetch("/api/users/list")
+      fetch(apiUrl("/api/users/list"), { credentials: "include" })
         .then((r: any) => (r.ok ? r.json() : []))
         .then(setUsers)
         .catch(() => setUsers([]));
@@ -470,9 +478,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     }
     setCreating(true);
     try {
-      const res = await fetch("/api/chats", {
+      const res = await fetch(apiUrl("/api/chats"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           userIds: selectedUserIds,
           isGroup: selectedUserIds.length > 1,
@@ -509,12 +518,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       setMessages((prev: Message[]) => [...prev, optimisticMessage]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        const res = await fetch(`/api/chats/${selectedChatId}/messages`, {
+        const res = await fetch(apiUrl(`/api/chats/${selectedChatId}/messages`), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-workspace": "TEAM",
           },
+          credentials: "include",
           body: JSON.stringify({ body: userMessageBody }),
         });
         const data = await res.json();
@@ -546,12 +556,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     }
     setDelegateConfirmLoading(true);
     try {
-      const res = await fetch("/api/ai/delegate-task", {
+      const res = await fetch(apiUrl("/api/ai/delegate-task"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-workspace": "TEAM",
         },
+        credentials: "include",
         body: JSON.stringify({
           confirm: true,
           assigneeUserId: delegateForm.assigneeUserId,
@@ -583,12 +594,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     if (delegateTaskMode && isExecutive) {
       setSending(true);
       try {
-        const res = await fetch("/api/ai/delegate-task", {
+        const res = await fetch(apiUrl("/api/ai/delegate-task"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-workspace": "TEAM",
           },
+          credentials: "include",
           body: JSON.stringify({ text: body }),
         });
         const data = await res.json();
@@ -649,9 +661,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     setSending(true);
     setTimeout(() => messageInputRef.current?.focus(), 0);
     try {
-      const res = await fetch(`/api/chats/${selectedChatId}/messages`, {
+      const res = await fetch(apiUrl(`/api/chats/${selectedChatId}/messages`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ body }),
       });
       const data = await res.json();
@@ -671,7 +684,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const handleDeleteMessage = useCallback(
     async (chatId: string, messageId: string) => {
       try {
-        const res = await fetch(`/api/chats/${chatId}/messages/${messageId}`, { method: "DELETE" });
+        const res = await fetch(apiUrl(`/api/chats/${chatId}/messages/${messageId}`), {
+          method: "DELETE",
+          credentials: "include",
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "삭제 실패");
         setMessages((prev: any) =>
@@ -797,7 +813,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     if (!selectedChatId) return;
     if (!confirm("이 채팅방에서 나가시겠습니까?")) return;
     try {
-      const res = await fetch(`/api/chats/${selectedChatId}`, { method: "DELETE" });
+      const res = await fetch(apiUrl(`/api/chats/${selectedChatId}`), {
+        method: "DELETE",
+        credentials: "include",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "나가기 실패");
       setChats((prev: any) => prev.filter((c: any) => c.id !== selectedChatId));
