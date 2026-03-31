@@ -225,7 +225,14 @@ export function AIAssistFloat() {
       : undefined;
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
+    <div
+      className={cn(
+        "fixed z-40 flex flex-col items-end gap-2",
+        /* 하단 댓글·작성바와 겹치지 않도록 충분한 여유 (문서/게시글 하단 폼 대응) */
+        "bottom-[max(7.5rem,env(safe-area-inset-bottom,0px)+6rem)] right-[max(1rem,env(safe-area-inset-right,0px))]",
+        "sm:bottom-[max(9rem,env(safe-area-inset-bottom,0px)+7rem)] sm:right-6"
+      )}
+    >
       {/* 채팅 패널 — 제미나이 스타일 */}
       {open && (
         <div
