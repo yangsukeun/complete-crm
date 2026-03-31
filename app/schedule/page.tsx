@@ -12,8 +12,22 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Calendar, dateFnsLocalizer, type View } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, startOfDay, endOfDay, isSameDay, startOfMonth, endOfMonth, endOfWeek, addDays, isBefore, isAfter } from "date-fns";
+import { Calendar, dateFnsLocalizer, type View, Navigate } from "react-big-calendar";
+import {
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  startOfDay,
+  endOfDay,
+  isSameDay,
+  startOfMonth,
+  endOfMonth,
+  endOfWeek,
+  addDays,
+  isBefore,
+  isAfter,
+} from "date-fns";
 import { ko } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { ScheduleDetailModal } from "@/components/schedule-detail-modal";
@@ -21,11 +35,19 @@ import { CreateScheduleModal } from "@/components/create-schedule-modal";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, CalendarClock, ListTodo, FileText, CalendarDays, Calendar as CalendarIcon, Layers } from "lucide-react";
-import { formatUserName } from "@/lib/utils";
+import {
+  Plus,
+  CalendarClock,
+  ListTodo,
+  FileText,
+  CalendarDays,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { cn, formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import {
   getKoreanHolidays,
@@ -57,6 +79,8 @@ type ScheduleEvent = {
   isTaskDue?: boolean;
   taskDueOverdue?: boolean;
   taskDueCompleted?: boolean;
+  /** 마감일 원본(yyyy-MM-dd) — D-day 뱃지 */
+  taskDueDate?: string;
 };
 
 function toEvent(
@@ -133,6 +157,7 @@ function tasksToCalendarDueEvents(
       isTaskDue: true,
       taskDueOverdue: overdue,
       taskDueCompleted: t.isCompleted,
+      taskDueDate: t.dueDate,
     };
   });
 }
@@ -160,9 +185,11 @@ function CustomDateHeader({
   drilldownView?: string;
   onDrillDown?: (e: React.MouseEvent) => void;
 }) {
-  const isSat = getDay(date) === 6;
+  const dow = getDay(date);
+  const isSat = dow === 6;
+  const isSun = dow === 0;
   const legal = isLegalHoliday(date);
-  const className = legal ? "rbc-date-cell--legal-holiday" : isSat ? "rbc-date-cell--saturday" : "";
+  const className = legal ? "rbc-date-cell--legal-holiday" : isSun ? "rbc-date-cell--sunday" : isSat ? "rbc-date-cell--saturday" : "";
   const content = <span className={className}>{label}</span>;
   if (drilldownView && onDrillDown) {
     return (
@@ -208,138 +235,86 @@ function createDateCellWrapper(leaveByDate: Record<string, string[]>) {
   };
 }
 
-const NAVIGATE_DATE = "DATE" as const;
-
-type ScheduleToolbarProps = {
-  label: string;
-  date: Date;
-  view: string;
-  views: string[];
-  onNavigate: (action: string, date?: Date) => void;
-  onView: (view: string) => void;
-  localizer: { messages: Record<string, string> };
+const EVENT_PALETTE: Record<CalendarLayerId, { bg: string; light: string; text: string }> = {
+  personal: { bg: "#1a73e8", light: "#e8f0fe", text: "#ffffff" },
+  team: { bg: "#0f9d58", light: "#e6f4ea", text: "#ffffff" },
+  holiday: { bg: "#f4511e", light: "#fce8e6", text: "#ffffff" },
+  google: { bg: "#8430ce", light: "#f3e8fd", text: "#ffffff" },
+  taskDue: { bg: "#e53935", light: "#fce8e6", text: "#ffffff" },
 };
 
-function ScheduleToolbar({ label, date, view, views, onNavigate, onView, localizer }: ScheduleToolbarProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
-  const currentYear = date.getFullYear();
-  const currentMonth = date.getMonth();
-  const yearRange = 5;
-  const startYear = currentYear - Math.floor(yearRange / 2);
-  const endYear = currentYear + Math.floor(yearRange / 2);
+function getDday(dueDate: string) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return { label: "D-Day", color: "#d93025" };
+  if (diff > 0) return { label: `D-${diff}`, color: "#1a73e8" };
+  return { label: `D+${Math.abs(diff)}`, color: "#9e9e9e" };
+}
 
-  const monthOptions = useMemo(() => {
-    const list: { year: number; month: number; label: string }[] = [];
-    for (let y = startYear; y <= endYear; y++) {
-      for (let m = 0; m < 12; m++) {
-        list.push({
-          year: y,
-          month: m,
-          label: format(new Date(y, m, 1), "yyyy년 M월", { locale: ko }),
-        });
-      }
+function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; text: string } {
+  if (event.isTaskDue || (typeof event.id === "string" && event.id.startsWith("task-due"))) {
+    if (event.taskDueOverdue && !event.taskDueCompleted) {
+      return { bg: "#b71c1c", light: "#ffebee", text: "#ffffff" };
     }
-    return list;
-  }, [startYear, endYear]);
+    return EVENT_PALETTE.taskDue;
+  }
+  if (event.calendarId === "holiday" || (typeof event.id === "string" && event.id.startsWith("hol-"))) {
+    return EVENT_PALETTE.holiday;
+  }
+  if (event.calendarId === "google") return EVENT_PALETTE.google;
+  if (event.calendarId === "personal") return EVENT_PALETTE.personal;
+  if (event.calendarId === "team") return EVENT_PALETTE.team;
+  return EVENT_PALETTE.personal;
+}
 
-  const currentIndex = (currentYear - startYear) * 12 + currentMonth;
-
-  useEffect(() => {
-    if (pickerOpen && listRef.current) {
-      const el = listRef.current.querySelector(`[data-index="${currentIndex}"]`);
-      el?.scrollIntoView({ block: "nearest", behavior: "auto" });
-    }
-  }, [pickerOpen, currentIndex]);
-
-  const handleSelectMonth = useCallback(
-    (year: number, month: number) => {
-      onNavigate(NAVIGATE_DATE, new Date(year, month, 1));
-      setPickerOpen(false);
-    },
-    [onNavigate]
-  );
+function ScheduleCalendarEvent({
+  event,
+  title,
+  isAllDay: allDayAccessor,
+}: {
+  event: ScheduleEvent;
+  title: string;
+  isAllDay?: boolean;
+  continuesPrior?: boolean;
+  continuesAfter?: boolean;
+  localizer?: unknown;
+  slotStart?: Date;
+  slotEnd?: Date;
+}) {
+  const pal = paletteForEvent(event);
+  const isAllDay = Boolean(allDayAccessor || event.allDay);
+  const startTime = format(event.start, "HH:mm", { locale: ko });
+  const dday =
+    event.taskDueDate != null && (event.isTaskDue || String(event.id).startsWith("task-due"))
+      ? getDday(event.taskDueDate)
+      : null;
 
   return (
-    <div className="rbc-toolbar flex flex-wrap items-center gap-2">
-      <span className="rbc-btn-group flex gap-1">
-        <button
-          type="button"
-          className="rounded border border-input bg-background px-2 py-1.5 text-sm hover:bg-muted"
-          onClick={() => onNavigate("TODAY")}
-        >
-          {localizer.messages.today}
-        </button>
-        <button
-          type="button"
-          className="rounded border border-input bg-background px-2 py-1.5 text-sm hover:bg-muted"
-          onClick={() => onNavigate("PREV")}
-        >
-          {localizer.messages.previous}
-        </button>
-        <button
-          type="button"
-          className="rounded border border-input bg-background px-2 py-1.5 text-sm hover:bg-muted"
-          onClick={() => onNavigate("NEXT")}
-        >
-          {localizer.messages.next}
-        </button>
-      </span>
-
-      <div className="relative flex-1 flex justify-center">
-        <button
-          type="button"
-          className="rbc-toolbar-label rounded px-3 py-1.5 text-center font-medium hover:bg-muted min-w-[140px]"
-          onClick={() => setPickerOpen((o: any) => !o)}
-          aria-expanded={pickerOpen}
-          aria-haspopup="listbox"
-        >
-          {label}
-        </button>
-        {pickerOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              aria-hidden
-              onClick={() => setPickerOpen(false)}
-            />
-            <div
-              ref={listRef}
-              role="listbox"
-              className="absolute left-1/2 top-full z-50 mt-1 max-h-[280px] w-56 -translate-x-1/2 overflow-y-auto rounded-md border bg-card py-1 shadow-lg"
-            >
-              {monthOptions.map((opt, idx) => (
-                <button
-                  key={`${opt.year}-${opt.month}`}
-                  type="button"
-                  data-index={idx}
-                  role="option"
-                  aria-selected={opt.year === currentYear && opt.month === currentMonth}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-muted ${opt.year === currentYear && opt.month === currentMonth ? "bg-muted font-medium" : ""}`}
-                  onClick={() => handleSelectMonth(opt.year, opt.month)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </>
+    <div
+      className={cn(
+        "schedule-gcal-event-chip",
+        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed"
+      )}
+      style={{
+        background: isAllDay ? pal.bg : pal.light,
+        color: isAllDay ? pal.text : pal.bg,
+        borderLeftColor: !isAllDay ? pal.bg : undefined,
+      }}
+    >
+      <div className="schedule-gcal-event-chip__row">
+        <span className="schedule-gcal-event-chip__title">
+          {!isAllDay && <span className="mr-1 text-[11px] opacity-80">{startTime}</span>}
+          {title}
+        </span>
+        {dday && (
+          <span className="schedule-gcal-dday" style={{ background: dday.color }}>
+            {dday.label}
+          </span>
         )}
       </div>
-
-      {views.length > 1 && (
-        <span className="rbc-btn-group flex gap-1">
-          {views.map((v: any) => (
-            <button
-              type="button"
-              key={v}
-              className={`rounded border px-2 py-1.5 text-sm ${view === v ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-muted"}`}
-              onClick={() => onView(v)}
-            >
-              {localizer.messages[v] ?? v}
-            </button>
-          ))}
-        </span>
-      )}
     </div>
   );
 }
@@ -373,6 +348,12 @@ type LeaveRequestItem = {
 
 type TabId = "schedule" | "tasks" | "diary";
 
+const PAGE_TAB_ITEMS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: "schedule", label: "일정", icon: <CalendarDays className="size-4" /> },
+  { id: "tasks", label: "할일", icon: <ListTodo className="size-4" /> },
+  { id: "diary", label: "Daily Report", icon: <FileText className="size-4" /> },
+];
+
 const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   personal: "내 일정",
   team: "팀/회사 일정",
@@ -380,6 +361,249 @@ const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   google: "Google 캘린더",
   taskDue: "프로젝트 마감",
 };
+
+const CALENDAR_CHIP_COLORS: Record<CalendarLayerId, string> = {
+  personal: EVENT_PALETTE.personal.bg,
+  team: EVENT_PALETTE.team.bg,
+  holiday: EVENT_PALETTE.holiday.bg,
+  google: EVENT_PALETTE.google.bg,
+  taskDue: EVENT_PALETTE.taskDue.bg,
+};
+
+type ScheduleHeaderGoogleProps = {
+  showCalendarNav: boolean;
+  tab: TabId;
+  setTab: (t: TabId) => void;
+  pageTabs: { id: TabId; label: string; icon: React.ReactNode }[];
+  date: Date;
+  view: View;
+  calendarTitle: string;
+  onCalendarNavigate: (action: string, newDate?: Date) => void;
+  onViewChange: (v: View) => void;
+  headerMessages: { today: string; prev: string; next: string; month: string; week: string };
+  googleConnected: boolean;
+  onGoogleDisconnect: () => void | Promise<void>;
+  onGoogleConnect: () => void;
+  onNewSchedule: () => void;
+};
+
+function ScheduleHeaderGoogle({
+  showCalendarNav,
+  tab,
+  setTab,
+  pageTabs,
+  date,
+  view,
+  calendarTitle,
+  onCalendarNavigate,
+  onViewChange,
+  headerMessages,
+  googleConnected,
+  onGoogleDisconnect,
+  onGoogleConnect,
+  onNewSchedule,
+}: ScheduleHeaderGoogleProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const currentYear = date.getFullYear();
+  const currentMonth = date.getMonth();
+  const yearRange = 5;
+  const startYear = currentYear - Math.floor(yearRange / 2);
+  const endYear = currentYear + Math.floor(yearRange / 2);
+
+  const monthOptions = useMemo(() => {
+    const list: { year: number; month: number; label: string }[] = [];
+    for (let y = startYear; y <= endYear; y++) {
+      for (let m = 0; m < 12; m++) {
+        list.push({
+          year: y,
+          month: m,
+          label: format(new Date(y, m, 1), "yyyy년 M월", { locale: ko }),
+        });
+      }
+    }
+    return list;
+  }, [startYear, endYear]);
+
+  const currentIndex = (currentYear - startYear) * 12 + currentMonth;
+
+  useEffect(() => {
+    if (pickerOpen && listRef.current) {
+      const el = listRef.current.querySelector(`[data-index="${currentIndex}"]`);
+      el?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }
+  }, [pickerOpen, currentIndex]);
+
+  const handleSelectMonth = useCallback(
+    (year: number, month: number) => {
+      onCalendarNavigate(Navigate.DATE, new Date(year, month, 1));
+      setPickerOpen(false);
+    },
+    [onCalendarNavigate]
+  );
+
+  return (
+    <header className="sticky top-0 z-20 border-b border-[#e5e7eb] bg-white dark:border-border dark:bg-background">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
+          {showCalendarNav ? (
+            <>
+              <button
+                type="button"
+                className="shrink-0 rounded-full border border-[#e0e0e0] bg-white px-4 py-2 text-sm font-medium text-[#3c4043] transition-colors hover:bg-[#f8f9fa] dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
+                onClick={() => onCalendarNavigate(Navigate.TODAY)}
+              >
+                {headerMessages.today}
+              </button>
+              <div className="flex shrink-0 gap-0.5">
+                <button
+                  type="button"
+                  className="flex size-8 items-center justify-center rounded-full text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-foreground dark:hover:bg-muted"
+                  aria-label={headerMessages.prev}
+                  onClick={() => onCalendarNavigate(Navigate.PREVIOUS)}
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+                <button
+                  type="button"
+                  className="flex size-8 items-center justify-center rounded-full text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-foreground dark:hover:bg-muted"
+                  aria-label={headerMessages.next}
+                  onClick={() => onCalendarNavigate(Navigate.NEXT)}
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+              </div>
+              <div className="relative min-w-0">
+                <button
+                  type="button"
+                  className="schedule-gcal-month-title text-left text-base font-normal leading-tight text-[#3c4043] hover:underline dark:text-foreground md:text-[22px] md:font-normal"
+                  onClick={() => setPickerOpen((o) => !o)}
+                  aria-expanded={pickerOpen}
+                  aria-haspopup="listbox"
+                >
+                  {calendarTitle}
+                </button>
+                {pickerOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setPickerOpen(false)} />
+                    <div
+                      ref={listRef}
+                      role="listbox"
+                      className="absolute left-0 top-full z-50 mt-1 max-h-[280px] w-56 overflow-y-auto rounded-lg border border-[#e0e0e0] bg-card py-1 shadow-lg dark:border-border"
+                    >
+                      {monthOptions.map((opt, idx) => (
+                        <button
+                          key={`${opt.year}-${opt.month}`}
+                          type="button"
+                          data-index={idx}
+                          role="option"
+                          aria-selected={opt.year === currentYear && opt.month === currentMonth}
+                          className={cn(
+                            "w-full px-3 py-2 text-left text-sm hover:bg-muted",
+                            opt.year === currentYear && opt.month === currentMonth && "bg-muted font-medium"
+                          )}
+                          onClick={() => handleSelectMonth(opt.year, opt.month)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="mx-0.5 hidden h-6 w-px shrink-0 bg-[#e0e0e0] dark:bg-border sm:block" />
+              <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#e0e0e0] dark:border-border">
+                <button
+                  type="button"
+                  className={cn(
+                    "schedule-gcal-view-tab-btn px-3 py-2 text-sm font-medium transition-colors",
+                    view === "month"
+                      ? "bg-[#1a73e8] text-white"
+                      : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
+                  )}
+                  onClick={() => onViewChange("month")}
+                >
+                  {headerMessages.month}
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "schedule-gcal-view-tab-btn border-l border-[#e0e0e0] px-3 py-2 text-sm font-medium transition-colors dark:border-border",
+                    view === "week"
+                      ? "bg-[#1a73e8] text-white"
+                      : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
+                  )}
+                  onClick={() => onViewChange("week")}
+                >
+                  {headerMessages.week}
+                </button>
+              </div>
+            </>
+          ) : (
+            <h2 className="schedule-gcal-month-title truncate text-lg font-normal text-[#3c4043] dark:text-foreground md:text-[22px]">
+              {pageTabs.find((x) => x.id === tab)?.label ?? "스케줄"}
+            </h2>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {showCalendarNav && (
+            <>
+              {googleConnected ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
+                  onClick={() => void onGoogleDisconnect()}
+                >
+                  <CalendarIcon className="mr-1.5 size-4" />
+                  <span className="hidden sm:inline">Google · 해제</span>
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
+                  onClick={onGoogleConnect}
+                >
+                  <CalendarIcon className="mr-1.5 size-4" />
+                  <span className="hidden sm:inline">Google 연동</span>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="h-9 shrink-0 bg-[#1a73e8] hover:bg-[#1557b0]"
+                onClick={onNewSchedule}
+              >
+                <Plus className="mr-1.5 size-4" />
+                <span className="hidden sm:inline">새 일정</span>
+              </Button>
+            </>
+          )}
+          <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#e0e0e0] dark:border-border">
+            {pageTabs.map((t, i) => (
+              <button
+                key={t.id}
+                type="button"
+                className={cn(
+                  "schedule-gcal-view-tab-btn flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium transition-colors sm:px-4",
+                  i < pageTabs.length - 1 && "border-r border-[#e0e0e0] dark:border-border",
+                  tab === t.id
+                    ? "bg-[#1a73e8] text-white"
+                    : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/50"
+                )}
+                onClick={() => setTab(t.id)}
+              >
+                {t.icon}
+                <span className="schedule-gcal-view-tab-label">{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
 
 type LeaveApiResponse = { requests?: LeaveRequestItem[] };
 
@@ -721,122 +945,149 @@ export default function SchedulePage() {
     return isSameDay(d, new Date(diaryDate));
   });
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: "schedule", label: "일정", icon: <CalendarDays className="size-4" /> },
-    { id: "tasks", label: "할일", icon: <ListTodo className="size-4" /> },
-    { id: "diary", label: "Daily Report", icon: <FileText className="size-4" /> },
-  ];
+  const calendarTitle = useMemo(() => {
+    if (view === "month") return format(date, "yyyy년 M월", { locale: ko });
+    const ws = startOfWeek(date, { weekStartsOn: 1 });
+    const we = endOfWeek(date, { weekStartsOn: 1 });
+    return `${format(ws, "yyyy.M.d", { locale: ko })} – ${format(we, "yyyy.M.d", { locale: ko })}`;
+  }, [date, view]);
+
+  const handleCalendarNavigate = useCallback(
+    (action: string, newDate?: Date) => {
+      if (action === Navigate.TODAY) {
+        setDate(new Date());
+        return;
+      }
+      if (action === Navigate.DATE && newDate) {
+        setDate(newDate);
+        return;
+      }
+      if (view === "month") {
+        if (action === Navigate.PREVIOUS) setDate(localizer.add(date, -1, "month"));
+        else if (action === Navigate.NEXT) setDate(localizer.add(date, 1, "month"));
+      } else {
+        if (action === Navigate.PREVIOUS) setDate(localizer.add(date, -1, "week"));
+        else if (action === Navigate.NEXT) setDate(localizer.add(date, 1, "week"));
+      }
+    },
+    [date, view, localizer]
+  );
+
+  const headerMessages = useMemo(
+    () => ({
+      today: "오늘",
+      prev: "이전 기간",
+      next: "다음 기간",
+      month: "월",
+      week: "주",
+    }),
+    []
+  );
+
+  const handleGoogleDisconnect = useCallback(async () => {
+    const res = await fetch("/api/integrations/google-calendar", { method: "DELETE" });
+    if (res.ok) {
+      setGoogleEvents([]);
+      void mutateGcal({ connected: false }, { revalidate: false });
+      toast.success("Google 캘린더 연동을 해제했습니다.");
+    }
+  }, [mutateGcal]);
+
+  const handleGoogleConnect = useCallback(() => {
+    window.location.href = "/api/integrations/google-calendar/auth";
+  }, []);
 
   if (schedulesLoading && tab === "schedule") {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-muted-foreground">일정을 불러오는 중...</p>
+      <div className="schedule-gcal-root flex min-h-[60vh] flex-col">
+        <ScheduleHeaderGoogle
+          showCalendarNav={true}
+          tab={tab}
+          setTab={setTab}
+          pageTabs={PAGE_TAB_ITEMS}
+          date={date}
+          view={view}
+          calendarTitle={calendarTitle}
+          onCalendarNavigate={handleCalendarNavigate}
+          onViewChange={setView}
+          headerMessages={headerMessages}
+          googleConnected={googleConnected}
+          onGoogleDisconnect={handleGoogleDisconnect}
+          onGoogleConnect={handleGoogleConnect}
+          onNewSchedule={() => setCreateOpen(true)}
+        />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="text-muted-foreground">일정을 불러오는 중...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 md:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <PageHeadline
-          title="스케줄"
-          description="일정과 할일을 구분해 보고, Daily Report로 자동 정리할 수 있습니다."
-        />
-        {tab === "schedule" && (
-          <div className="flex flex-wrap items-center gap-2">
-            {googleConnected ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const res = await fetch("/api/integrations/google-calendar", { method: "DELETE" });
-                  if (res.ok) {
-                    setGoogleEvents([]);
-                    void mutateGcal({ connected: false }, { revalidate: false });
-                    toast.success("Google 캘린더 연동을 해제했습니다.");
-                  }
-                }}
-              >
-                <CalendarIcon className="mr-1.5 size-4" />
-                Google 연동됨 (해제)
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.location.href = "/api/integrations/google-calendar/auth";
-                }}
-              >
-                <CalendarIcon className="mr-1.5 size-4" />
-                Google 캘린더 연동
-              </Button>
-            )}
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 size-4" />
-              새 일정
-            </Button>
-          </div>
-        )}
-      </div>
+    <div className="schedule-gcal-root flex flex-col">
+      <ScheduleHeaderGoogle
+        showCalendarNav={tab === "schedule"}
+        tab={tab}
+        setTab={setTab}
+        pageTabs={PAGE_TAB_ITEMS}
+        date={date}
+        view={view}
+        calendarTitle={calendarTitle}
+        onCalendarNavigate={handleCalendarNavigate}
+        onViewChange={setView}
+        headerMessages={headerMessages}
+        googleConnected={googleConnected}
+        onGoogleDisconnect={handleGoogleDisconnect}
+        onGoogleConnect={handleGoogleConnect}
+        onNewSchedule={() => setCreateOpen(true)}
+      />
 
-      <div className="flex gap-1 border-b">
-        {tabs.map(({ id, label, icon }) => (
-          <Button
-            key={id}
-            variant={tab === id ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setTab(id)}
-            className="gap-1.5"
-          >
-            {icon}
-            {label}
-          </Button>
-        ))}
-      </div>
+      <div className="flex flex-col gap-4 px-4 pb-6 pt-3 md:px-5">
+        <div className="space-y-1">
+          <PageHeadline
+            title="스케줄"
+            description="일정과 할일을 구분해 보고, Daily Report로 자동 정리할 수 있습니다."
+          />
+          {session?.user?.role &&
+            ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
+              <p className="text-muted-foreground max-w-xl text-sm">
+                팀 휴가·연차 승인·처리는{" "}
+                <Link href="/leave" className="font-medium text-foreground underline underline-offset-4 hover:no-underline">
+                  연차/근태
+                </Link>
+                에서 합니다. 신청 알림은 헤더 알림(
+                <Link href="/notifications" className="underline underline-offset-4 hover:no-underline">
+                  알림함
+                </Link>
+                )에도 쌓입니다.
+              </p>
+            )}
+        </div>
 
       {tab === "schedule" && (
         <>
-          <Card className="border-border shrink-0">
-            <CardHeader className="py-3">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Layers className="size-4" />
-                캘린더 표시 (워크스페이스)
-              </CardTitle>
-              <p className="text-muted-foreground text-xs font-normal">
-                보고 싶은 일정만 체크해서 표시하거나 숨기세요.
-              </p>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-x-6 gap-y-2 pt-0">
-              {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer: CalendarLayerId) => (
-                <label
+          <div className="schedule-gcal-filter-chips -mx-1 px-1">
+            {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer) => {
+              const on = visibleCalendars[layer] !== false;
+              const color = CALENDAR_CHIP_COLORS[layer];
+              return (
+                <button
                   key={layer}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
+                  type="button"
+                  onClick={() => setVisibleCalendar(layer, !on)}
+                  className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95"
+                  style={{
+                    borderColor: color,
+                    background: on ? color : "transparent",
+                    color: on ? "#ffffff" : color,
+                  }}
                 >
-                  <Checkbox
-                    checked={(visibleCalendars as Record<CalendarLayerId, boolean>)[layer] !== false}
-                    onCheckedChange={(checked: unknown) => setVisibleCalendar(layer, checked === true)}
-                  />
-                  <span
-                    className="rbc-calendar-layer-dot"
-                    style={{
-                      backgroundColor:
-                        layer === "personal"
-                          ? "var(--rbc-personal, #3b82f6)"
-                          : layer === "team"
-                            ? "var(--rbc-team, #22c55e)"
-                            : layer === "holiday"
-                              ? "var(--rbc-holiday, #eab308)"
-                              : layer === "taskDue"
-                                ? "var(--rbc-task-due, #ea580c)"
-                                : "var(--rbc-google, #ec4899)",
-                    }}
-                  />
+                  {on ? <span className="text-xs leading-none">✓</span> : null}
                   {CALENDAR_LAYER_LABELS[layer]}
-                </label>
-              ))}
-            </CardContent>
-          </Card>
+                </button>
+              );
+            })}
+          </div>
 
           {invites.length > 0 && (
             <Card>
@@ -885,7 +1136,7 @@ export default function SchedulePage() {
             </Card>
           )}
 
-          <div className="h-[600px] rounded-lg border bg-card">
+          <div className="schedule-gcal-viewport min-h-[520px] h-[min(70vh,900px)] w-full">
             <Calendar
               localizer={localizer}
               events={displayEvents}
@@ -901,10 +1152,11 @@ export default function SchedulePage() {
               selectable
               views={["month", "week"]}
               culture="ko-KR"
+              toolbar={false}
               components={{
                 dateHeader: CustomDateHeader as any,
-                toolbar: ScheduleToolbar as any,
                 dateCellWrapper: createDateCellWrapper(leaveByDate) as any,
+                event: ScheduleCalendarEvent as any,
               } as any}
               dayPropGetter={(d: any) => {
                 const legal = isLegalHoliday(d);
@@ -912,26 +1164,7 @@ export default function SchedulePage() {
                 const cls = legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : "";
                 return cls ? { className: cls } : {};
               }}
-              eventPropGetter={(event: unknown) => {
-                const e = event as ScheduleEvent;
-                if (e.isTaskDue || (typeof e.id === "string" && e.id.startsWith("task-due-"))) {
-                  return {
-                    className:
-                      e.taskDueOverdue && !e.taskDueCompleted
-                        ? "rbc-event--task-due rbc-event--task-due-overdue"
-                        : "rbc-event--task-due",
-                  };
-                }
-                if (e.calendarId === "holiday" || (typeof e.id === "string" && e.id.startsWith("hol-"))) {
-                  return { className: "rbc-event--holiday" };
-                }
-                if (e.calendarId === "google" || (typeof e.id === "string" && e.id.startsWith("google-"))) {
-                  return { className: "rbc-event--google" };
-                }
-                if (e.calendarId === "personal") return { className: "rbc-event--personal" };
-                if (e.calendarId === "team") return { className: "rbc-event--team" };
-                return {};
-              }}
+              eventPropGetter={() => ({})}
               messages={{
                 today: "오늘",
                 previous: "이전",
@@ -1080,6 +1313,7 @@ export default function SchedulePage() {
           </div>
         </div>
       )}
+      </div>
 
       <ScheduleDetailModal
         open={modalOpen}

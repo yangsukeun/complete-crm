@@ -1,81 +1,313 @@
-/* 일정표 툴바: 월/년 클릭 시 리스트 표시 */
-.rbc-toolbar .rbc-toolbar-label:hover {
-  background: var(--muted);
+/* —— Google Calendar 스타일 (react-big-calendar 오버라이드) —— */
+
+.schedule-gcal-root {
+  --gcal-text: #3c4043;
+  --gcal-border: #e5e7eb;
+  --gcal-cell-border: #f1f3f4;
+  --gcal-today-bg: #e8f0fe;
+  --gcal-primary: #1a73e8;
+  --gcal-sun: #d93025;
+  --gcal-sat: #1a73e8;
 }
 
-/* 대한민국 달력: 법정공휴일 빨간색, 토요일 파란색 */
+.dark .schedule-gcal-root {
+  --gcal-text: #e8eaed;
+  --gcal-border: #3c4043;
+  --gcal-cell-border: #3c4043;
+  --gcal-today-bg: rgba(26, 115, 232, 0.22);
+  --gcal-sun: #f28b82;
+  --gcal-sat: #8ab4f8;
+}
 
-/* 날짜 숫자: 법정공휴일 = 빨간색 */
-.rbc-date-cell .rbc-date-cell--legal-holiday,
-.rbc-date-cell--legal-holiday {
-  color: #dc2626 !important; /* red-600 */
+.schedule-gcal-viewport {
+  border: 1px solid var(--gcal-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.dark .schedule-gcal-viewport {
+  background: hsl(var(--card));
+}
+
+.schedule-gcal-viewport .rbc-calendar {
+  font-family: inherit;
+  color: var(--gcal-text);
+}
+
+/* 툴바 숨김 (커스텀 헤더 사용) */
+.schedule-gcal-viewport .rbc-toolbar {
+  display: none;
+}
+
+/* 요일 헤더 */
+.schedule-gcal-viewport .rbc-header {
+  padding: 8px 0;
+  font-size: 12px;
   font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: center;
+  background: #fff;
+  border-bottom: 1px solid var(--gcal-border) !important;
+  color: #70757a;
 }
 
-/* 날짜 숫자: 토요일 = 파란색 */
-.rbc-date-cell .rbc-date-cell--saturday,
-.rbc-date-cell--saturday {
-  color: #2563eb !important; /* blue-600 */
+.dark .schedule-gcal-viewport .rbc-header {
+  background: hsl(var(--card));
+  color: #9aa0a6;
 }
 
-/* 공휴일 이벤트 라벨 (달력 셀 안 표기) */
-.rbc-event--holiday {
-  background: rgba(220, 38, 38, 0.12) !important;
-  border-color: rgba(220, 38, 38, 0.4) !important;
-  color: #b91c1c !important;
-  font-size: 0.75rem;
+.schedule-gcal-viewport .rbc-header + .rbc-header {
+  border-left: 1px solid var(--gcal-cell-border) !important;
 }
 
-.rbc-event--holiday.rbc-event-label {
+/* 월: 첫 열=월 … 마지막=일 — rbc week start 1 → 헤더 순서 월~일 */
+.schedule-gcal-viewport .rbc-month-view .rbc-row.rbc-month-header .rbc-header:nth-child(6) {
+  color: var(--gcal-sat);
+}
+
+.schedule-gcal-viewport .rbc-month-view .rbc-row.rbc-month-header .rbc-header:nth-child(7) {
+  color: var(--gcal-sun);
+}
+
+/* 주간 뷰 헤더(요일) 동일 규칙 */
+.schedule-gcal-viewport .rbc-time-view .rbc-header.rbc-today {
+  color: var(--gcal-primary);
+}
+
+/* 월 그리드 행 */
+.schedule-gcal-viewport .rbc-month-view {
+  border: none;
+}
+
+.schedule-gcal-viewport .rbc-month-row {
+  border-top: 1px solid var(--gcal-cell-border);
+  min-height: 120px;
+}
+
+.schedule-gcal-viewport .rbc-day-bg {
+  border-left: 1px solid var(--gcal-cell-border) !important;
+}
+
+.schedule-gcal-viewport .rbc-day-bg.rbc-today {
+  background: var(--gcal-today-bg) !important;
+}
+
+.schedule-gcal-viewport .rbc-off-range-bg {
+  background: #fafafa !important;
+}
+
+.dark .schedule-gcal-viewport .rbc-off-range-bg {
+  background: hsl(220 15% 12% / 0.5) !important;
+}
+
+.schedule-gcal-viewport .rbc-day-bg:hover {
+  background: #f1f3f4 !important;
+}
+
+.dark .schedule-gcal-viewport .rbc-day-bg:hover {
+  background: hsl(220 10% 20% / 0.6) !important;
+}
+
+.schedule-gcal-viewport .rbc-day-bg.rbc-today:hover {
+  background: var(--gcal-today-bg) !important;
+  filter: brightness(0.97);
+}
+
+/* 날짜 숫자 셀 (+ 커스텀 헤더 링크) */
+.schedule-gcal-viewport .rbc-date-cell {
+  text-align: center;
+  padding: 4px 2px 2px;
+}
+
+.schedule-gcal-viewport .rbc-date-cell .rbc-button-link {
+  width: 28px;
+  height: 28px;
+  margin: 2px auto 4px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 400;
+  padding: 0;
+  color: var(--gcal-text);
+  text-decoration: none;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.schedule-gcal-viewport .rbc-date-cell.rbc-now .rbc-button-link {
+  font-weight: 700;
+  background: var(--gcal-primary);
+  color: #fff;
+}
+
+.schedule-gcal-viewport .rbc-off-range .rbc-button-link {
+  color: #b0b0b0;
+  font-weight: 400;
+}
+
+.dark .schedule-gcal-viewport .rbc-off-range .rbc-button-link {
+  color: #80868b;
+}
+
+/* 토/일 숫자 색 (오늘은 위 원형 스타일 유지) */
+.schedule-gcal-viewport .rbc-date-cell--saturday:not(.rbc-now) .rbc-button-link {
+  color: var(--gcal-sat);
+}
+
+.schedule-gcal-viewport .rbc-date-cell--legal-holiday:not(.rbc-now) .rbc-button-link,
+.schedule-gcal-viewport .rbc-date-cell--sunday:not(.rbc-now) .rbc-button-link {
+  color: var(--gcal-sun);
+}
+
+/* 이벤트 래퍼: 내용이 칩 스타일을 담당 */
+.schedule-gcal-viewport .rbc-event {
+  padding: 0 3px 2px !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.schedule-gcal-viewport .rbc-event:focus {
+  outline: 2px solid var(--gcal-primary);
+  outline-offset: 1px;
+}
+
+.schedule-gcal-viewport .rbc-event-content {
+  width: 100%;
+  padding: 0 !important;
+}
+
+.schedule-gcal-event-chip {
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  font-size: 12px;
   font-weight: 500;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: filter 0.1s ease, box-shadow 0.1s ease;
 }
 
-/* Google 캘린더 연동 이벤트 */
-.rbc-event--google {
-  background: rgba(66, 133, 244, 0.2) !important;
-  border-color: rgba(66, 133, 244, 0.5) !important;
-  color: #1a73e8;
+.schedule-gcal-event-chip:hover {
+  filter: brightness(0.97);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
-/* 내 일정 (퍼스널 워크스페이스) */
-.rbc-event--personal {
-  background: rgba(59, 130, 246, 0.2) !important;
-  border-color: rgba(59, 130, 246, 0.5) !important;
-  color: #1d4ed8;
+.dark .schedule-gcal-event-chip:hover {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-/* 팀/회사 일정 */
-.rbc-event--team {
-  background: rgba(34, 197, 94, 0.2) !important;
-  border-color: rgba(34, 197, 94, 0.5) !important;
-  color: #15803d;
+.schedule-gcal-event-chip--allday {
+  color: #fff !important;
 }
 
-/* 업무 마감일 (캘린더) */
-.rbc-event--task-due {
-  background: rgba(234, 88, 12, 0.18) !important;
-  border-color: rgba(234, 88, 12, 0.55) !important;
-  color: #c2410c !important;
-  font-size: 0.75rem;
-  font-weight: 500;
+.schedule-gcal-event-chip--timed {
+  border-left-width: 3px;
+  border-left-style: solid;
 }
 
-.rbc-event--task-due-overdue {
-  background: rgba(185, 28, 28, 0.22) !important;
-  border-color: rgba(185, 28, 28, 0.65) !important;
-  color: #991b1b !important;
+.schedule-gcal-event-chip__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
 }
 
+.schedule-gcal-event-chip__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-/* 캘린더 레이어 체크박스 옆 색상 점 */
-.rbc-calendar-layer-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+.schedule-gcal-dday {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+  color: #fff;
   flex-shrink: 0;
 }
 
-/* 날짜 셀 래퍼: 휴가자 이름 표시 영역 */
+/* 공휴일 이벤트(시스템) — 칩에서 inline style로 덮음 */
+
+/* 주간 뷰 시간 그리드 */
+.schedule-gcal-viewport .rbc-time-view {
+  border: none;
+}
+
+.schedule-gcal-viewport .rbc-time-header-content {
+  border-left: 1px solid var(--gcal-cell-border);
+}
+
+.schedule-gcal-viewport .rbc-today {
+  background: transparent;
+}
+
+.schedule-gcal-viewport .rbc-current-time-indicator {
+  background-color: var(--gcal-sun);
+}
+
+/* 레거시 클래스 정리 (칩에서 미사용) */
+.rbc-event--holiday,
+.rbc-event--google,
+.rbc-event--personal,
+.rbc-event--team,
+.rbc-event--task-due,
+.rbc-event--task-due-overdue {
+  background: transparent !important;
+  border: none !important;
+  color: inherit !important;
+}
+
+/* 캘린더 필터 칩 가로 스크롤 */
+.schedule-gcal-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--gcal-cell-border);
+}
+
+@media (max-width: 768px) {
+  .schedule-gcal-filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+    margin-bottom: -4px;
+  }
+
+  .schedule-gcal-viewport .rbc-month-row {
+    min-height: 60px;
+  }
+
+  .schedule-gcal-event-chip {
+    font-size: 10px !important;
+    padding: 1px 4px !important;
+  }
+
+  .schedule-gcal-month-title {
+    font-size: 16px !important;
+  }
+
+  .schedule-gcal-view-tab-label {
+    display: none;
+  }
+
+  .schedule-gcal-view-tab-btn {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
+
+/* 날짜 셀 래퍼: 휴가자 이름 */
 .rbc-date-cell-wrapper-inner {
   height: 100%;
   display: flex;
@@ -83,7 +315,6 @@
   min-height: 0;
 }
 
-/* 휴가자 이름: 작게, 파란색 */
 .rbc-date-cell-leave-names {
   margin-top: 2px;
   padding: 0 2px;
