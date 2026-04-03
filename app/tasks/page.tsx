@@ -405,7 +405,8 @@ export default function TasksPage() {
     keepPreviousData: true,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    dedupingInterval: 12_000,
+    // [PERF-auto] 전체 목록(all=1) 재검증 빈도 완화 — 수동 mutate·탭 전환으로 갱신
+    dedupingInterval: 300_000,
   });
 
   const getTaskPageKey = useCallback(

@@ -89,45 +89,83 @@ const FILTER_TABS = [
   { value: "DRAFT", label: "대기" },
 ] as const;
 
+type QuotationsListJson = {
+  items?: Quotation[];
+  total?: number;
+  hasMore?: boolean;
+  error?: string;
+};
+
 export default function QuotationsPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [list, setList] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  /** // [PERF-E] 견적 목록 페이지 크기 */
+  const pageSize = 50;
 
-  const fetchList = useCallback(async () => {
-    try {
-      const url = statusFilter
-        ? `/api/quotations?status=${encodeURIComponent(statusFilter)}`
-        : "/api/quotations";
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(typeof data?.error === "string" ? data.error : "견적서 목록을 불러올 수 없습니다.");
-        setList([]);
-        return;
+  const loadPage = useCallback(
+    async (offset: number, append: boolean) => {
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const qs = new URLSearchParams();
+        if (statusFilter) qs.set("status", statusFilter);
+        qs.set("limit", String(pageSize));
+        qs.set("offset", String(offset));
+        const res = await fetch(`/api/quotations?${qs.toString()}`);
+        const data = (await res.json().catch(() => ({}))) as QuotationsListJson | Quotation[];
+        if (!res.ok) {
+          toast.error(
+            typeof (data as QuotationsListJson)?.error === "string"
+              ? (data as QuotationsListJson).error!
+              : "견적서 목록을 불러올 수 없습니다."
+          );
+          if (!append) setList([]);
+          return;
+        }
+        if (
+          data &&
+          typeof data === "object" &&
+          !Array.isArray(data) &&
+          "error" in data &&
+          data.error
+        ) {
+          toast.error(data.error);
+          if (!append) setList([]);
+          return;
+        }
+        const payload = data as QuotationsListJson;
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        if (append) {
+          setList((prev) => [...prev, ...items]);
+        } else {
+          setList(items);
+        }
+        setHasMore(payload.hasMore === true);
+      } catch {
+        if (!append) setList([]);
+        toast.error("견적서 목록을 불러올 수 없습니다.");
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
       }
-      if (data?.error) {
-        toast.error(data.error);
-        setList([]);
-        return;
-      }
-      setList(Array.isArray(data) ? data : []);
-    } catch {
-      setList([]);
-      toast.error("견적서 목록을 불러올 수 없습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter]);
+    },
+    [statusFilter, pageSize]
+  );
 
   useEffect(() => {
-    if (status === "unauthenticated") return;
-    if (status === "loading") return;
-    setLoading(true);
-    fetchList();
-  }, [status, fetchList]);
+    if (status === "unauthenticated" || status === "loading") return;
+    void loadPage(0, false);
+  }, [status, statusFilter, loadPage]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || loadingMore) return;
+    void loadPage(list.length, true);
+  }, [hasMore, loadingMore, list.length, loadPage]);
 
   const handleStatusChange = useCallback(async (quotationId: string, newStatus: string) => {
     setUpdatingId(quotationId);
@@ -284,6 +322,19 @@ export default function QuotationsPage() {
               ))}
             </TableBody>
           </Table>
+          {hasMore && (
+            <div className="border-t border-slate-200 p-3 text-center dark:border-slate-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={loadingMore}
+                onClick={handleLoadMore}
+              >
+                {loadingMore ? "불러오는 중…" : "더 보기"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

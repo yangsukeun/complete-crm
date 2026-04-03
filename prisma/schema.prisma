@@ -261,6 +261,7 @@ model Account {
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -269,6 +270,7 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -489,6 +491,7 @@ model TaskComment {
   body      String
   createdAt DateTime @default(now())
   @@index([taskId])
+  @@index([userId])
 }
 
 model LeaveRequest {
@@ -762,7 +765,9 @@ model Quotation {
   linkedAsPrimaryFor Project?      @relation("ProjectPrimaryQuote")
   @@index([issuedById])
   @@index([quotationNumber])
-  @@index([status])
+  // 목록 API: status 필터 + issuedAt 내림차순 / 전체 최신순
+  @@index([status, issuedAt(sort: Desc)])
+  @@index([issuedAt(sort: Desc)])
   @@index([projectId])
 }
 

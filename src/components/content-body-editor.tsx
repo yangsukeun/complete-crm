@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
+import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
 import {
   createPastedImageBlock,
   getClipboardImageFile,
@@ -32,6 +33,10 @@ import {
   uploadImageViaApi,
 } from "@/lib/editor-image-upload";
 import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
+import {
+  extractUrlFromPlainPaste,
+  isYoutubePastedUrl,
+} from "@/lib/editor-paste-url-helpers";
 
 const DEBOUNCE_MS = 800;
 
@@ -75,7 +80,55 @@ function BoardContentSlashMenu() {
           } as never);
         },
       };
-      return filterSuggestionItems(combineByGroup(getDefaultReactSlashMenuItems(editor), [htmlItem]), query);
+      const youtubeItem = {
+        title: "YouTube 임베드",
+        subtext: "URL 입력 또는 본문에 주소 한 줄 붙여넣기",
+        aliases: ["youtube", "유튜브", "영상", "video", "embed"],
+        group: "미디어",
+        icon: <span className="text-base leading-none">▶️</span>,
+        onItemClick: () => {
+          const raw =
+            typeof window !== "undefined"
+              ? window.prompt(
+                  "YouTube URL (취소하면 빈 블록만 추가)",
+                  "https://www.youtube.com/watch?v="
+                )
+              : null;
+          if (raw === null) return;
+          const url = raw.trim();
+          insertOrUpdateBlockForSlashMenu(editor, {
+            type: "youtube",
+            props: { url },
+          } as never);
+        },
+      };
+      const linkPreviewItem = {
+        title: "링크 미리보기",
+        subtext: "URL 입력 또는 일반 링크 한 줄 붙여넣기",
+        aliases: ["link", "preview", "url", "링크", "미리보기"],
+        group: "미디어",
+        icon: <span className="text-base leading-none">🔗</span>,
+        onItemClick: () => {
+          const raw =
+            typeof window !== "undefined"
+              ? window.prompt("미리보기할 페이지 URL", "https://")
+              : null;
+          if (raw === null) return;
+          const url = raw.trim();
+          insertOrUpdateBlockForSlashMenu(editor, {
+            type: "linkPreview",
+            props: { url },
+          } as never);
+        },
+      };
+      return filterSuggestionItems(
+        combineByGroup(getDefaultReactSlashMenuItems(editor), [
+          youtubeItem,
+          linkPreviewItem,
+          htmlItem,
+        ]),
+        query
+      );
     },
     [editor]
   );
@@ -124,7 +177,10 @@ export function ContentBodyEditor({
     try {
       const parsed = parseStoredTaskBody(raw);
       if (parsed?.format === "blocks" && Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
-        editor.replaceBlocks(editor.document, parsed.blocks as never);
+        editor.replaceBlocks(
+          editor.document,
+          normalizeBlockNoteBlocksForYoutube(parsed.blocks as unknown[]) as never
+        );
         return;
       }
       const md = parsed?.format === "markdown" ? parsed.markdown : raw;
@@ -182,22 +238,46 @@ export function ContentBodyEditor({
         const dt = e.clipboardData;
         if (!dt) return;
         const imageFile = getClipboardImageFile(dt);
-        if (!imageFile) return;
+        if (imageFile) {
+          e.preventDefault();
+          e.stopPropagation();
+          void toast.promise(insertUploadedImageAtCursor(imageFile), {
+            loading: "이미지 업로드 중…",
+            success: "이미지를 넣었습니다.",
+            error: (err) => ({
+              message: err instanceof Error ? err.message : "이미지 업로드 실패",
+              duration: UPLOAD_TOAST_DURATION_MS,
+            }),
+          });
+          return;
+        }
+
+        if (dt.files && dt.files.length > 0) return;
+
+        const urlText = extractUrlFromPlainPaste(dt.getData("text/plain") ?? "");
+        if (!urlText) return;
+
         e.preventDefault();
         e.stopPropagation();
-        void toast.promise(insertUploadedImageAtCursor(imageFile), {
-          loading: "이미지 업로드 중…",
-          success: "이미지를 넣었습니다.",
-          error: (err) => ({
-            message: err instanceof Error ? err.message : "이미지 업로드 실패",
-            duration: UPLOAD_TOAST_DURATION_MS,
-          }),
-        });
+
+        const block = isYoutubePastedUrl(urlText)
+          ? { type: "youtube" as const, props: { url: urlText } }
+          : { type: "linkPreview" as const, props: { url: urlText } };
+
+        const cur = editor.getTextCursorPosition();
+        const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+        if (!refBlock) return;
+
+        if (isParagraphEffectivelyEmpty(refBlock)) {
+          editor.replaceBlocks([refBlock], [block as never]);
+        } else {
+          editor.insertBlocks([block as never], refBlock, "after");
+        }
       } catch {
         /* ignore */
       }
     },
-    [insertUploadedImageAtCursor]
+    [editor, insertUploadedImageAtCursor]
   );
 
   const handleDropCapture = useCallback(
@@ -267,7 +347,8 @@ export function ContentBodyEditor({
       </div>
       {showHelp && (
         <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-          💡 텍스트 드래그 시 서식 툴바 | <kbd className="rounded border px-1 py-0.5 text-[10px]">/</kbd> 블록 메뉴(HTML 블록 포함) | 이미지 드래그·붙여넣기
+          💡 텍스트 드래그 시 서식 툴바 | <kbd className="rounded border px-1 py-0.5 text-[10px]">/</kbd> 블록(YouTube·링크·HTML) |{" "}
+          <strong>YouTube·일반 URL 한 줄 붙여넣기</strong> 시 임베드·미리보기 자동 삽입 | 이미지 드래그·붙여넣기
         </p>
       )}
     </div>

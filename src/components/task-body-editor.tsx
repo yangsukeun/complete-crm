@@ -29,10 +29,14 @@ import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getYoutubeVideoId } from "@/lib/blocknote-youtube";
+import {
+  extractUrlFromPlainPaste,
+  isYoutubePastedUrl,
+} from "@/lib/editor-paste-url-helpers";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 import { normalizeImageBlocksDriveDisplayUrls } from "@/lib/task-body-drive-images";
+import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
 import {
   createPastedImageBlock,
   getClipboardImageFile,
@@ -58,33 +62,6 @@ const koreanDictionary = {
     checkListItem: "할 일",
   },
 };
-
-function isUrl(s: string): boolean {
-  return /^https?:\/\/\S+$/i.test((s ?? "").trim());
-}
-
-function isYoutubeUrl(s: string): boolean {
-  return /youtube\.com|youtu\.be/i.test(s ?? "") || getYoutubeVideoId(s ?? "") !== null;
-}
-
-/** 붙여넣기 끝의 ),. 등 제거 */
-function stripTrailingJunkFromUrl(url: string): string {
-  return url.replace(/[),.;>\]'"]+$/g, "");
-}
-
-/** 클립보드 텍스트에서 단일 URL 추출 (줄바꿈 앞 첫 줄, 문장 속 URL도 시도) */
-function extractUrlFromPlainPaste(raw: string): string | null {
-  const first = raw.trim().split(/\n/)[0]?.trim() ?? "";
-  if (!first) return null;
-  const cleaned = stripTrailingJunkFromUrl(first);
-  if (isUrl(cleaned)) return cleaned;
-  const m = first.match(/https?:\/\/[^\s<>"']+/i);
-  if (m) {
-    const u = stripTrailingJunkFromUrl(m[0]);
-    if (isUrl(u)) return u;
-  }
-  return null;
-}
 
 function NotionStyleSideMenu() {
   return (
@@ -186,7 +163,7 @@ function TaskSlashMenu() {
   return <SuggestionMenuController triggerCharacter="/" getItems={getItems} />;
 }
 
-type TaskBodyEditorProps = {
+export type TaskBodyEditorProps = {
   taskId: string;
   initialDescription: string | null;
   onSaved: () => void;
@@ -243,8 +220,8 @@ export function TaskBodyEditor({
       try {
         const parsed = parseStoredTaskBody(raw);
         if (parsed?.format === "blocks" && parsed.blocks.length > 0) {
-          const normalized = normalizeImageBlocksDriveDisplayUrls(
-            parsed.blocks as unknown[]
+          const normalized = normalizeBlockNoteBlocksForYoutube(
+            normalizeImageBlocksDriveDisplayUrls(parsed.blocks as unknown[]) as unknown[]
           ) as typeof parsed.blocks;
           editor.replaceBlocks(editor.document, normalized as any);
           loadedForTaskIdRef.current = taskId;
@@ -347,7 +324,7 @@ export function TaskBodyEditor({
         e.preventDefault();
         e.stopPropagation();
 
-        const block = isYoutubeUrl(urlText)
+        const block = isYoutubePastedUrl(urlText)
           ? { type: "youtube" as const, props: { url: urlText } }
           : { type: "linkPreview" as const, props: { url: urlText } };
 

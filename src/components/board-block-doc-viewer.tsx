@@ -5,6 +5,7 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import { taskBodySchema } from "@/lib/task-body-schema";
+import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
 import { uploadImageViaApi } from "@/lib/editor-image-upload";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -37,7 +38,10 @@ export function BoardBlockDocViewer({ blocks }: Props) {
     if (lastSerializedRef.current === serialized) return;
     lastSerializedRef.current = serialized;
     try {
-      editor.replaceBlocks(editor.document, blocks as never);
+      editor.replaceBlocks(
+        editor.document,
+        normalizeBlockNoteBlocksForYoutube(blocks as unknown[]) as never
+      );
     } catch (e) {
       console.error("[BoardBlockDocViewer] replaceBlocks failed", e);
       lastSerializedRef.current = null;
@@ -63,6 +67,19 @@ export function BoardBlockDocViewer({ blocks }: Props) {
           tableHandles={false}
         />
       </BlockNoteMantineShell>
+      <style jsx global>{`
+        .board-bn-readonly .bn-youtube-embed-wrapper iframe {
+          width: 100% !important;
+          max-width: 100%;
+          aspect-ratio: 16 / 9;
+          min-height: 200px;
+          height: auto !important;
+          border: 0;
+        }
+        .board-bn-readonly .bn-link-preview-wrapper img {
+          display: block;
+        }
+      `}</style>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { canUserViewBoardPost } from "@/lib/board-access";
 import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardPostContent } from "./board-post-content";
-import { BoardPostComments } from "./board-post-comments";
+import { BoardCommentsSuspense } from "./board-comments-loader";
 import { BoardPostActions } from "./board-post-actions";
 import { BoardPostRevisionHistory } from "./board-post-revision-history";
 import { ArrowLeft } from "lucide-react";
@@ -28,10 +28,24 @@ export default async function BoardPostPage({
   if (appMode !== "company") redirect("/choose-mode");
 
   const { id } = await params;
-  const post = await prisma.boardPost.findUnique({
-    where: { id },
-    include: { createdBy: { select: { name: true, position: true, role: true } } },
-  });
+  // [PERF-auto] 본문과 개정 이력 병렬 조회
+  const [post, postRevisions] = await Promise.all([
+    prisma.boardPost.findUnique({
+      where: { id },
+      include: { createdBy: { select: { name: true, position: true, role: true } } },
+    }),
+    prisma.boardPostRevision.findMany({
+      where: { boardPostId: id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        userName: true,
+        changedFields: true,
+        legacyPayload: true,
+        createdAt: true,
+      },
+    }),
+  ]);
   if (!post) notFound();
 
   const role = session.user.role ?? "";
@@ -65,18 +79,6 @@ export default async function BoardPostPage({
       : "익명"
     : `${post.createdBy?.name ?? "삭제된 사용자"}${post.createdBy?.position ? ` · ${post.createdBy.position}` : ""}`;
   const canEditPost = session.user.id === post.createdById || isAdmin;
-
-  const postRevisions = await prisma.boardPostRevision.findMany({
-    where: { boardPostId: id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      userName: true,
-      changedFields: true,
-      legacyPayload: true,
-      createdAt: true,
-    },
-  });
 
   const initialHistoryName =
     postAnonymous && role !== "EXECUTIVE" ? "익명" : post.createdBy?.name ?? "삭제된 사용자";
@@ -127,7 +129,12 @@ export default async function BoardPostPage({
         initialAuthorName={initialHistoryName}
         initialCreatedAtIso={post.createdAt.toISOString()}
       />
-      <BoardPostComments postId={id} />
+      <BoardCommentsSuspense
+        postId={id}
+        isAnonymous={post.isAnonymous}
+        category={post.category}
+        viewerRole={role}
+      />
     </div>
   );
 }

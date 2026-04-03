@@ -148,10 +148,18 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
     if (!taskId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
-      if (!res.ok) throw new Error("Failed");
-      const data = await res.json();
-      setTask(data);
+      // [PERF-auto] 상세 페이지와 동일: 메타·댓글 분리 병렬 로드
+      const [mainRes, commentsRes] = await Promise.all([
+        fetch(`/api/tasks/${taskId}?deferComments=1`),
+        fetch(`/api/tasks/${taskId}/comments`),
+      ]);
+      if (!mainRes.ok) throw new Error("Failed");
+      const data = await mainRes.json();
+      const commentsJson = commentsRes.ok ? await commentsRes.json() : [];
+      setTask({
+        ...data,
+        comments: Array.isArray(commentsJson) ? commentsJson : [],
+      });
     } catch {
       setTask(null);
     } finally {

@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useLayoutShared } from "@/components/layout-shared-context";
 import { formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
 
@@ -30,20 +31,30 @@ type NotificationItem = {
 export function NotificationBell() {
   const router = useRouter();
   const { data: session } = useSession();
+  const { notificationUnreadCount: bootstrapUnread } = useLayoutShared();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(() =>
+    typeof bootstrapUnread === "number" ? bootstrapUnread : 0
+  );
   const [loading, setLoading] = useState(false);
 
   const { data: unreadSwr, mutate: mutateUnread } = useSWR<{ count: number }>(
     session?.user?.id ? SWR_KEYS.notificationUnread : null,
     jsonFetcher,
-    { dedupingInterval: 60_000, revalidateOnFocus: true }
+    {
+      // [PERF-auto] layout `SWRConfig.fallback` + Realtime mutate — unread-count 중복 GET 방지
+      dedupingInterval: 300_000,
+      revalidateOnFocus: false,
+      revalidateOnMount: false,
+      revalidateIfStale: false,
+    }
   );
 
   useEffect(() => {
     if (typeof unreadSwr?.count === "number") setUnreadCount(unreadSwr.count);
-  }, [unreadSwr]);
+    else if (typeof bootstrapUnread === "number") setUnreadCount(bootstrapUnread);
+  }, [unreadSwr, bootstrapUnread]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -74,6 +85,7 @@ export function NotificationBell() {
     })();
     return () => {
       cancelled = true;
+      // [PERF-B] 채널 removeChannel 경로 (realtime-client 핸들)
       try {
         rtCh?.unsubscribe();
       } catch {
@@ -187,6 +199,7 @@ export function NotificationBell() {
         <div className="flex items-center justify-between border-t px-3 py-2 text-sm">
           <Link
             href="/notifications"
+            prefetch={false}
             onClick={() => setOpen(false)}
             className="text-primary hover:underline"
           >

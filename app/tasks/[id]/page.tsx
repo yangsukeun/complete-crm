@@ -179,15 +179,24 @@ export default function TaskDetailPage() {
     if (!taskId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
-      if (!res.ok) throw new Error("Failed");
-      const data = await res.json();
-      setTask(data);
+      // [PERF-auto] 본문 메타와 댓글 분리 쿼리 병렬 — 단일 대형 JSON 왕복 완화
+      const [mainRes, commentsRes] = await Promise.all([
+        fetch(`/api/tasks/${taskId}?deferComments=1`),
+        fetch(`/api/tasks/${taskId}/comments`),
+      ]);
+      if (!mainRes.ok) throw new Error("Failed");
+      const data = await mainRes.json();
+      const commentsJson = commentsRes.ok ? await commentsRes.json() : [];
+      const merged = {
+        ...data,
+        comments: Array.isArray(commentsJson) ? commentsJson : [],
+      };
+      setTask(merged);
       const ids =
-        Array.isArray(data.assignees) && data.assignees.length > 0
-          ? data.assignees.map((a: AssigneeUser) => a.id)
-          : data.assignedTo?.id
-            ? [data.assignedTo.id]
+        Array.isArray(merged.assignees) && merged.assignees.length > 0
+          ? merged.assignees.map((a: AssigneeUser) => a.id)
+          : merged.assignedTo?.id
+            ? [merged.assignedTo.id]
             : [];
       setAssigneeDraft(ids);
     } catch {

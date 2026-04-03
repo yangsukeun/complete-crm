@@ -143,9 +143,10 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
     setLinkOpen(true);
     setSelectedQuoteId("");
     try {
-      const res = await fetch("/api/quotations");
-      const list = await res.json().catch(() => []);
-      const arr = Array.isArray(list) ? list : [];
+      // [PERF-E] 선택용 목록은 한 번에 최대 500건
+      const res = await fetch("/api/quotations?limit=500&offset=0");
+      const raw = await res.json().catch(() => ({}));
+      const arr = Array.isArray(raw) ? raw : Array.isArray((raw as { items?: unknown }).items) ? (raw as { items: unknown[] }).items : [];
       setQuotations(
         arr.map((q: { id: string; quotationNumber: string; title: string; finalAmount: number; projectId?: string | null }) => ({
           id: q.id,

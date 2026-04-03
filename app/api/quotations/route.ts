@@ -35,15 +35,32 @@ export async function GET(req: Request) {
       statusFilter && VALID_STATUSES.includes(statusFilter as (typeof VALID_STATUSES)[number])
         ? { status: statusFilter as (typeof VALID_STATUSES)[number] }
         : {};
-    const list = await prisma.quotation.findMany({
-      where,
-      orderBy: { issuedAt: "desc" },
-      include: {
-        issuedBy: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-      },
+
+    // [PERF-E] 목록 페이지네이션 (기본 50건)
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10) || 50));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
+
+    const [total, list] = await Promise.all([
+      prisma.quotation.count({ where }),
+      prisma.quotation.findMany({
+        where,
+        orderBy: { issuedAt: "desc" },
+        skip: offset,
+        take: limit,
+        include: {
+          issuedBy: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true } },
+        },
+      }),
+    ]);
+
+    return NextResponse.json({
+      items: list,
+      total,
+      hasMore: offset + list.length < total,
+      offset,
+      limit,
     });
-    return NextResponse.json(list);
   } catch (e) {
     console.error("[GET /api/quotations]", e);
     return NextResponse.json({ error: toErrorMessage(e).slice(0, 300) });

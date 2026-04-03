@@ -1,11 +1,75 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { createActivityLog } from "@/lib/activity-log";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
 
 const postSchema = z.object({ body: z.string().min(1).max(2000) });
+
+// [PERF-auto] 프로젝트 상세: 본문 JSON과 병렬로 댓글만 가볍게 분리 로드
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id: taskId } = await params;
+    const scope = await getServerWorkspaceScopeFromRequest(req);
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: {
+        deletedAt: true,
+        scope: true,
+        assignedToId: true,
+        createdById: true,
+        assignees: { select: { user: { select: { id: true } } } },
+      },
+    });
+    if (!task || task.deletedAt) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    const taskScope = task.scope ?? "TEAM";
+    if (taskScope !== scope) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isAssignee =
+      task.assignedToId === session.user.id ||
+      task.assignees.some((a) => a.user.id === session.user.id);
+    const isCreator = task.createdById === session.user.id;
+    if (!isAdmin && !isAssignee && !isCreator) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const rows = await prisma.taskComment.findMany({
+      where: { taskId },
+      include: {
+        user: { select: { id: true, name: true, position: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    return NextResponse.json(
+      rows.map((c) => ({
+        id: c.id,
+        body: c.body,
+        createdAt: c.createdAt.toISOString(),
+        user: c.user ?? { id: "", name: null as string | null, position: null as string | null },
+      }))
+    );
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "댓글을 불러올 수 없습니다." },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(
   req: Request,

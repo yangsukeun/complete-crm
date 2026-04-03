@@ -16,3 +16,14 @@ export function startOfDayKst(date: Date): Date {
 export function todayYmdKst(): string {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 }
+
+/** 시·분만, 24시간제 (Asia/Seoul) — 출퇴근 시각 표시용 */
+export function formatKstHm(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}

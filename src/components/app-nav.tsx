@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
+import { jsonFetcher, SWR_KEYS, SWR_LOGO_SETTINGS_KEY } from "@/lib/api-swr";
+import type { LogoSettingsApiPayload } from "@/lib/header-bootstrap";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import {
   Calendar,
@@ -33,6 +34,7 @@ import {
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { useLayoutShared } from "@/components/layout-shared-context";
 import { cn } from "@/lib/utils";
 import { userHasPermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -100,46 +102,41 @@ export function AppNav() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { mutate: swrMutate } = useSWRConfig();
+  const { logoUrl, setLogoUrl } = useLayoutShared();
   const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
   const urlMode = useWorkspaceStore((s: any) => s.urlSearchMode);
-  const [mode, setMode] = useState<"company" | "personal" | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [paymentAlertCount, setPaymentAlertCount] = useState(0);
   const [paymentAlertLabel, setPaymentAlertLabel] = useState<string>("알림");
+  /** [PERF-3차] 모드는 UrlSearchModeBridge·WorkspaceThemeSync·영속 스토어와 정렬 — /api/mode GET 제거 */
   const effectiveMode: "company" | "personal" =
-    urlMode === "MY" ? "personal" : urlMode === "TEAM" ? "company" : mode ?? (currentWorkspace === "MY" ? "personal" : "company");
+    urlMode === "MY"
+      ? "personal"
+      : urlMode === "TEAM"
+        ? "company"
+        : currentWorkspace === "MY"
+          ? "personal"
+          : "company";
 
   useEffect(() => {
     if (!session?.user || pathname === "/login" || pathname === "/choose-mode") return;
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const schedule = (fn: () => void) => {
-      if (cancelled) return;
-      timeoutId = setTimeout(fn, 0);
+    // [PERF-mode-logo] 로고 변경 시에만 1회 네트워크 — SWR 캐시 동기화로 이후 중복 방지
+    const load = async () => {
+      try {
+        const res = await fetch(SWR_LOGO_SETTINGS_KEY);
+        const d: LogoSettingsApiPayload = res.ok
+          ? ((await res.json()) as LogoSettingsApiPayload)
+          : { logoUrl: null };
+        setLogoUrl(d.logoUrl ?? null);
+        await swrMutate(SWR_LOGO_SETTINGS_KEY, d, { revalidate: false });
+      } catch {
+        setLogoUrl(null);
+        await swrMutate(SWR_LOGO_SETTINGS_KEY, { logoUrl: null }, { revalidate: false });
+      }
     };
-    fetch("/api/mode")
-      .then((r: any) => r.json())
-      .then((d: any) => schedule(() => setMode(d?.mode ?? null)))
-      .catch(() => schedule(() => setMode(null)));
-    return () => {
-      cancelled = true;
-      if (timeoutId != null) clearTimeout(timeoutId);
-    };
-  }, [session?.user, pathname, urlMode]);
-
-  useEffect(() => {
-    if (!session?.user || pathname === "/login" || pathname === "/choose-mode") return;
-    const load = () => {
-      fetch("/api/settings/logo")
-        .then((r: any) => (r.ok ? r.json() : { logoUrl: null }))
-        .then((d: any) => setLogoUrl(d?.logoUrl ?? null))
-        .catch(() => setLogoUrl(null));
-    };
-    load();
     window.addEventListener("logo-updated", load);
     return () => window.removeEventListener("logo-updated", load);
-  }, [session?.user, pathname]);
+  }, [session?.user, pathname, setLogoUrl, swrMutate]);
 
   const chatsBadgeEnabled =
     Boolean(session?.user?.id) &&
@@ -293,6 +290,7 @@ export function AppNav() {
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard"
+            prefetch={false}
             className="flex items-center gap-2 font-bold text-gray-900 transition-colors hover:text-violet-600"
           >
             {logoUrl ? (
@@ -320,7 +318,7 @@ export function AppNav() {
         <nav className="hidden flex-1 items-center justify-center gap-1 md:flex">
           {/* 대시보드 단일 버튼 */}
           <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/dashboard" || pathname.startsWith("/dashboard/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-            <Link href="/dashboard" prefetch={true} className="flex items-center gap-1.5">
+            <Link href="/dashboard" prefetch={false} className="flex items-center gap-1.5">
               <LayoutDashboard className="size-4" />
               <span>대시보드</span>
             </Link>
@@ -445,6 +443,7 @@ export function AppNav() {
                     <DropdownMenuItem key={href} asChild>
                       <Link
                         href={href}
+                        prefetch={false}
                         className={cn(
                           "flex items-center gap-2 cursor-pointer transition-colors",
                           isActive && "bg-emerald-50 text-emerald-700"
@@ -491,6 +490,7 @@ export function AppNav() {
                   <DropdownMenuItem key={href} asChild>
                     <Link
                       href={href}
+                      prefetch={false}
                       className={cn(
                         "flex items-center gap-2 cursor-pointer",
                         pathname === href && "bg-violet-50 text-violet-700"
@@ -550,13 +550,13 @@ export function AppNav() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/profile" className="flex items-center gap-2 cursor-pointer">
+                  <Link href="/profile" prefetch={false} className="flex items-center gap-2 cursor-pointer">
                     <User className="size-4" />
                     내 정보
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/my-project" className="flex items-center gap-2 cursor-pointer">
+                  <Link href="/my-project" prefetch={false} className="flex items-center gap-2 cursor-pointer">
                     <FolderKanban className="size-4" />
                     내 프로젝트
                   </Link>
@@ -588,6 +588,7 @@ export function AppNav() {
               <Link
                 key={href}
                 href={href}
+                prefetch={false}
                 className={cn(
                   "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
                   isActive
@@ -618,6 +619,7 @@ export function AppNav() {
           {adminLinks.length > 0 && (
             <Link
               href={adminLinks[0]?.href ?? "/admin"}
+              prefetch={false}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium",
                 pathname.startsWith("/admin")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -12,8 +13,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ContentBodyEditor } from "@/components/content-body-editor";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
+
+// [PERF-C] 게시글 수정 시에만 BlockNote 청크 로드
+const ContentBodyEditor = dynamic(
+  () =>
+    import("@/components/content-body-editor").then((m) => m.ContentBodyEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="min-h-[360px] animate-pulse rounded-md border border-muted bg-muted/40"
+        aria-hidden
+      />
+    ),
+  }
+);
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { FileText, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";

@@ -149,22 +149,35 @@ export default function FinanceRequestsPage() {
 
   useEffect(() => {
     if (!modalOpen) return;
-    fetch("/api/quotations")
-      .then((res: any) => res.json())
-      .then((data: any) => {
-        if (Array.isArray(data)) {
-          setQuotations(
-            data.map((q: { id: string; quotationNumber: string; title: string; finalAmount: number; clientName: string }) => ({
-              id: q.id,
-              quotationNumber: q.quotationNumber,
-              title: q.title,
-              finalAmount: q.finalAmount,
-              clientName: q.clientName,
-            }))
-          );
-        } else {
-          setQuotations([]);
-        }
+    fetch("/api/quotations?limit=500&offset=0")
+      .then((res) => res.json())
+      .then((data: unknown) => {
+        const rows = Array.isArray(data)
+          ? data
+          : data &&
+              typeof data === "object" &&
+              "items" in data &&
+              Array.isArray((data as { items: unknown }).items)
+            ? (data as { items: unknown[] }).items
+            : [];
+        setQuotations(
+          rows.map((q: unknown) => {
+            const row = q as {
+              id: string;
+              quotationNumber: string;
+              title: string;
+              finalAmount: number;
+              clientName: string;
+            };
+            return {
+              id: row.id,
+              quotationNumber: row.quotationNumber,
+              title: row.title,
+              finalAmount: row.finalAmount,
+              clientName: row.clientName,
+            };
+          })
+        );
       })
       .catch(() => setQuotations([]));
   }, [modalOpen]);

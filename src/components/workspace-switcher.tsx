@@ -1,17 +1,23 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { flushSync } from "react-dom";
 import { Building2, Lock } from "lucide-react";
-import { useWorkspaceStore, workspaceToMode, modeToWorkspace, type Workspace } from "@/store/workspace-store";
+import {
+  useWorkspaceStore,
+  workspaceToMode,
+  modeToWorkspace,
+  type Workspace,
+  type WorkspaceState,
+} from "@/store/workspace-store";
 import { cn } from "@/lib/utils";
+import { useLayoutShared } from "@/components/layout-shared-context";
 
 export function WorkspaceSwitcher() {
-  const pathname = usePathname();
   const router = useRouter();
-  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
-  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
+  const currentWorkspace = useWorkspaceStore((s: WorkspaceState) => s.currentWorkspace);
+  const setWorkspace = useWorkspaceStore((s: WorkspaceState) => s.setWorkspace);
 
   const handleClick = useCallback(
     async (workspace: Workspace) => {
@@ -72,11 +78,12 @@ export function WorkspaceSwitcher() {
   );
 }
 
-/** html[data-workspace] 동기화 + 초기 로드 시 쿠키와 스토어 동기화 (`?mode`는 UrlSearchModeBridge → urlSearchMode) */
+/** html[data-workspace] 동기화 — 모드는 layout RSC·LayoutShared(appMode)만 사용, GET /api/mode 없음 [PERF-mode-logo] */
 export function WorkspaceThemeSync() {
-  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
-  const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
-  const urlMode = useWorkspaceStore((s: any) => s.urlSearchMode);
+  const currentWorkspace = useWorkspaceStore((s: WorkspaceState) => s.currentWorkspace);
+  const setWorkspace = useWorkspaceStore((s: WorkspaceState) => s.setWorkspace);
+  const urlMode = useWorkspaceStore((s: WorkspaceState) => s.urlSearchMode);
+  const { appMode } = useLayoutShared();
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -88,22 +95,10 @@ export function WorkspaceThemeSync() {
       setWorkspace(urlMode);
       return;
     }
-    let cancelled = false;
-    const timeoutId = setTimeout(() => {
-      if (cancelled) return;
-      fetch("/api/mode")
-        .then((r: any) => (r.ok ? r.json() : { mode: null }))
-        .then((d: any) => {
-          if (cancelled) return;
-          setWorkspace(modeToWorkspace(d.mode ?? null));
-        })
-        .catch(() => {});
-    }, 0);
-    return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-    };
-  }, [setWorkspace, urlMode]);
+    if (appMode === "company" || appMode === "personal") {
+      setWorkspace(modeToWorkspace(appMode));
+    }
+  }, [setWorkspace, urlMode, appMode]);
 
   return null;
 }

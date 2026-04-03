@@ -1,4 +1,6 @@
+import { cache } from "react";
 import NextAuth from "next-auth";
+import type { Session } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { compare, hash } from "bcryptjs";
@@ -18,16 +20,6 @@ const authSecret =
   process.env.NEXTAUTH_SECRET ??
   process.env.AUTH_SECRET ??
   (process.env.NODE_ENV === "development" ? "dev-secret-change-in-production" : undefined);
-
-/** NextAuth JWT 세션만 사용 (로컬·배포 동일) */
-export async function getAppSession() {
-  try {
-    return await auth();
-  } catch (e) {
-    console.error("[getAppSession]", e);
-    return null;
-  }
-}
 
 /** 레거시 dev_user_id 쿠키명 — 로그아웃 시 정리용 */
 export const DEV_SESSION_COOKIE = "dev_user_id";
@@ -165,3 +157,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
 });
+
+async function getAppSessionImpl(): Promise<Session | null> {
+  try {
+    const s = await auth();
+    return s ?? null;
+  } catch (e) {
+    console.error("[getAppSession]", e);
+    return null;
+  }
+}
+
+/** NextAuth JWT 세션. // [PERF-A] React cache로 동일 요청(RSC·API) 내 중복 auth() 호출 제거 */
+export const getAppSession = cache(getAppSessionImpl);

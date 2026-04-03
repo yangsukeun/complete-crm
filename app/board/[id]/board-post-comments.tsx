@@ -14,19 +14,21 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { MessageCircle, Send, AtSign, Loader2 } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
+import type { BoardCommentDto } from "@/lib/board-comments-serialize";
 
 type User = { id: string; name: string; email?: string; department?: string | null; position?: string | null };
-type Comment = {
-  id: string;
-  body: string;
-  createdAt: string;
-  user: { id: string; name: string | null; position: string | null };
-  mentioned: { id: string; name: string | null }[];
-};
+type Comment = BoardCommentDto;
 
-export function BoardPostComments({ postId }: { postId: string }) {
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(true);
+// [PERF-auto] initialComments: RSC에서 시드 시 클라이언트 GET /comments 1회 생략
+export function BoardPostComments({
+  postId,
+  initialComments,
+}: {
+  postId: string;
+  initialComments?: BoardCommentDto[];
+}) {
+  const [comments, setComments] = useState<Comment[]>(() => initialComments ?? []);
+  const [loading, setLoading] = useState(() => initialComments === undefined);
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
@@ -47,8 +49,13 @@ export function BoardPostComments({ postId }: { postId: string }) {
   }, [postId]);
 
   useEffect(() => {
-    fetchComments();
-  }, [fetchComments]);
+    if (initialComments !== undefined) {
+      setComments(initialComments);
+      setLoading(false);
+      return;
+    }
+    void fetchComments();
+  }, [postId, initialComments, fetchComments]);
 
   useEffect(() => {
     if (mentionOpen && users.length === 0) {

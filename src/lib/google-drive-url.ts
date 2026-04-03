@@ -12,13 +12,14 @@ export function getDriveImageUrl(url: string): string {
 
 /**
  * 구글 드라이브 URL → 리사이즈 썸네일 (목록·카드용)
- * @param size 최대 너비(px), Google Drive thumbnail API sz=w{N}
+ * @param size 최대 너비(px)
  */
 export function getDriveThumbnailUrl(url: string, size = 400): string {
   const id = parseGoogleDriveFileIdFromUrl(url);
   if (!id) return url;
   const w = Math.max(64, Math.min(2000, Math.round(size)));
-  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
+  // [PERF-2차] drive.google.com/thumbnail 는 302 체인이 잦음 → lh3 직링크로 홉 수 축소
+  return `https://lh3.googleusercontent.com/d/${id}=w${w}`;
 }
 
 /** 첨부 다운로드·새 탭 열기: 미리보기(/view) 대신 직접 다운로드 */

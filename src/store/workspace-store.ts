@@ -5,7 +5,7 @@ export type Workspace = "TEAM" | "MY";
 
 const STORAGE_KEY = "crm-workspace";
 
-type WorkspaceState = {
+export type WorkspaceState = {
   currentWorkspace: Workspace;
   setWorkspace: (workspace: Workspace) => void;
   /** `?mode=MY|TEAM` — UrlSearchModeBridge(useSearchParams+Suspense 단일 지점)에서만 갱신. 비영속. */

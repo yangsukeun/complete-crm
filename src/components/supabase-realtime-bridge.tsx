@@ -56,6 +56,7 @@ export function SupabaseRealtimeBridge() {
     return () => {
       cancelled = true;
       if (financeDebounce) clearTimeout(financeDebounce);
+      // [PERF-B] Realtime 핸들에서 removeChannel 기반 정리( supabase-realtime-client )
       try {
         channel?.unsubscribe();
       } catch {

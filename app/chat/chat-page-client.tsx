@@ -294,7 +294,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       try {
         const url = sinceIso
           ? apiUrl(`/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`)
-          : apiUrl(`/api/chats/${chatId}/messages?limit=100&markRead=1`);
+          : apiUrl(`/api/chats/${chatId}/messages?limit=50&markRead=1`);
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error("Failed");
         const raw = await res.json();

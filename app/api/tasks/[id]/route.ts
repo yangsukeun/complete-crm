@@ -44,6 +44,8 @@ export async function GET(
     }
 
     const { id } = await params;
+    // [PERF-auto] deferComments=1: 본문·메타는 먼저 응답, 댓글은 GET /api/tasks/[id]/comments 병렬 로드
+    const deferComments = new URL(req.url).searchParams.get("deferComments") === "1";
     const [scope, task, revisions] = await Promise.all([
       getServerWorkspaceScopeFromRequest(req),
       prisma.task.findUnique({
@@ -105,18 +107,22 @@ export async function GET(
               createdAt: true,
             },
           },
-          comments: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  position: true,
+          ...(deferComments
+            ? {}
+            : {
+                comments: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        position: true,
+                      },
+                    },
+                  },
+                  orderBy: { createdAt: "asc" as const },
                 },
-              },
-            },
-            orderBy: { createdAt: "asc" },
-          },
+              }),
         },
       }),
       prisma.taskRevision.findMany({
@@ -142,8 +148,10 @@ export async function GET(
     if (!isAdmin && !isAssignee && !isCreator) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    const detail = serializeTaskDetail(task as Parameters<typeof serializeTaskDetail>[0]);
     return NextResponse.json({
-      ...serializeTaskDetail(task as Parameters<typeof serializeTaskDetail>[0]),
+      ...detail,
+      ...(deferComments ? { comments: [] } : {}),
       revisions,
     });
   } catch (e) {

@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock } from "lucide-react";
 import { format, addDays } from "date-fns";
-import { startOfDayKst } from "@/lib/date-kst";
+import { startOfDayKst, formatKstHm } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
 import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
@@ -336,7 +336,11 @@ export default async function DashboardPage() {
               직원 관리 →
             </Link>
           </div>
-          <div className="rounded-lg border bg-card p-4">
+          <Link
+            href="/dashboard/today-attendance"
+            prefetch={false}
+            className="block rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          >
             <div className="flex items-center gap-2 text-muted-foreground">
               <ClipboardList className="size-5" />
               <span className="text-sm">금일 출근</span>
@@ -346,12 +350,15 @@ export default async function DashboardPage() {
               {todayAttendances.slice(0, 3).map((a: any) => (
                 <li key={a.id}>
                   {formatUserName(a.user)}
-                  {a.checkIn ? ` ${formatKstTime(a.checkIn)} 출근` : ""}
+                  {a.checkIn ? ` ${formatKstHm(a.checkIn)} 출근` : ""}
                 </li>
               ))}
               {todayAttendances.length > 3 && <li>외 {todayAttendances.length - 3}명</li>}
             </ul>
-          </div>
+            <span className="text-primary mt-2 inline-block text-sm font-medium hover:underline">
+              전체 목록 보기 →
+            </span>
+          </Link>
         </div>
 
         {adminUpcomingSchedules.length > 0 && (
@@ -635,13 +642,3 @@ export default async function DashboardPage() {
   );
 }
 
-function formatKstTime(value: string | Date) {
-  const d = value instanceof Date ? value : new Date(value);
-  // 서버(Vercel)는 기본 UTC일 수 있어 타임존을 명시
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-}

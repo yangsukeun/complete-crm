@@ -25,6 +25,9 @@ function shouldSkipBrowserRealtime(url: string): boolean {
 
 export type FinanceRealtimeSubscription = { unsubscribe: () => void };
 
+// [PERF-B] Realtime 채널 해제 시 removeChannel로 정리 (누수 방지)
+export type RealtimeSubscriptionHandle = { unsubscribe: () => void };
+
 type Singleton = {
   userId: string;
   client: SupabaseClient;
@@ -95,7 +98,7 @@ export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<
 export async function subscribeChatMessagesGlobal(
   sessionUserId: string,
   onEvent: (args: { chatId: string; payload: unknown }) => void
-): Promise<RealtimeChannel | null> {
+): Promise<RealtimeSubscriptionHandle | null> {
   const client = await getSharedSupabaseRealtime(sessionUserId);
   if (!client) return null;
 
@@ -114,13 +117,21 @@ export async function subscribeChatMessagesGlobal(
     )
     .subscribe();
 
-  return channel;
+  return {
+    unsubscribe: () => {
+      try {
+        void client.removeChannel(channel);
+      } catch {
+        /* */
+      }
+    },
+  };
 }
 
 export async function subscribeNotificationsForUser(
   sessionUserId: string,
   onEvent: (payload: unknown) => void
-): Promise<RealtimeChannel | null> {
+): Promise<RealtimeSubscriptionHandle | null> {
   const client = await getSharedSupabaseRealtime(sessionUserId);
   if (!client) return null;
 
@@ -140,7 +151,15 @@ export async function subscribeNotificationsForUser(
     )
     .subscribe();
 
-  return channel;
+  return {
+    unsubscribe: () => {
+      try {
+        void client.removeChannel(channel);
+      } catch {
+        /* */
+      }
+    },
+  };
 }
 
 /**

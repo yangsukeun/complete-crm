@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
+import { getYoutubeVideoId } from "@/lib/blocknote-youtube";
 
 function pickMeta(html: string, prop: string): string | null {
   const re = new RegExp(
@@ -28,6 +29,48 @@ export async function GET(req: Request) {
     if (!url) return NextResponse.json({ error: "url 필요" }, { status: 400 });
     if (!/^https?:\/\//i.test(url)) {
       return NextResponse.json({ error: "http(s) URL만 지원" }, { status: 400 });
+    }
+
+    const ytId = getYoutubeVideoId(url);
+    if (ytId) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const watchUrl = url.includes("youtu.be") || url.includes("youtube.com")
+          ? url.split("&")[0]?.split("#")[0] ?? url
+          : `https://www.youtube.com/watch?v=${ytId}`;
+        const oembed = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watchUrl)}`;
+        const oe = await fetch(oembed, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (oe.ok) {
+          const j = (await oe.json()) as {
+            title?: string;
+            author_name?: string;
+            thumbnail_url?: string;
+          };
+          clearTimeout(timeout);
+          return NextResponse.json({
+            url,
+            title: j.title || `YouTube (${ytId})`,
+            description: j.author_name ? `채널: ${j.author_name}` : "",
+            image: j.thumbnail_url || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+            siteName: "YouTube",
+          });
+        }
+      } catch {
+        /* oEmbed 실패 시 아래 정적 fallback */
+      } finally {
+        clearTimeout(timeout);
+      }
+      return NextResponse.json({
+        url,
+        title: `YouTube 동영상`,
+        description: "",
+        image: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+        siteName: "YouTube",
+      });
     }
 
     const controller = new AbortController();

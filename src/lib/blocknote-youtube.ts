@@ -159,11 +159,18 @@ export const createLinkPreviewBlockSpec = createBlockSpec(
         card.addEventListener("click", () => {
           window.open(url, "_blank", "noopener,noreferrer");
         });
+        const ytIdEarly = getYoutubeVideoId(url);
+        if (ytIdEarly) {
+          title.textContent = "YouTube 동영상";
+          img.src = `https://img.youtube.com/vi/${ytIdEarly}/hqdefault.jpg`;
+          img.classList.remove("hidden");
+          footer.textContent = `YouTube · ${url}`;
+        }
         fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data: any) => {
             if (!data) return;
-            title.textContent = data.title || url;
+            title.textContent = data.title || title.textContent || url;
             desc.textContent = data.description || "";
             footer.textContent = data.siteName ? `${data.siteName} · ${url}` : url;
             if (data.image) {
@@ -172,7 +179,7 @@ export const createLinkPreviewBlockSpec = createBlockSpec(
             }
           })
           .catch(() => {
-            title.textContent = url;
+            if (!ytIdEarly) title.textContent = url;
           });
       }
 

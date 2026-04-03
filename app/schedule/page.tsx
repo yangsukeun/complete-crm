@@ -640,20 +640,17 @@ export default function SchedulePage() {
     [teamRaw]
   );
 
-  const calendarRange = useMemo(() => {
-    const rangeStart = view === "month" ? startOfMonth(date) : startOfWeek(date, { weekStartsOn: 1 });
-    const rangeEnd = view === "month" ? endOfMonth(date) : endOfWeek(date, { weekStartsOn: 1 });
-    return { rangeStart, rangeEnd };
-  }, [view, date]);
-
+  // [PERF-2차] 월/주 단위 키로 SWR 캐시 안정화·중복 요청 감소
   const calendarDueKey =
     session?.user && tab === "schedule"
-      ? `/api/tasks?calendarDue=1&dueAfter=${encodeURIComponent(calendarRange.rangeStart.toISOString())}&dueBefore=${encodeURIComponent(calendarRange.rangeEnd.toISOString())}`
+      ? view === "month"
+        ? `/api/tasks?calendarDue=1&monthKey=${format(date, "yyyy-MM")}`
+        : `/api/tasks?calendarDue=1&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
       : null;
-  const { data: calendarDueRaw = [] } = useSWR(
+  const { data: calendarDueRaw = [], mutate: mutateCalendarDueTasks } = useSWR(
     calendarDueKey,
     jsonFetcher,
-    { dedupingInterval: 15_000, revalidateOnFocus: false }
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
   );
   const taskDueEvents = useMemo(
     () =>
@@ -666,14 +663,26 @@ export default function SchedulePage() {
 
   const schedulesLoading = Boolean(session?.user) && bundleLoading;
 
-  const { data: tasksRaw, mutate: mutateTasks } = useSWR(
-    session?.user ? SWR_KEYS.tasksAll : null,
+  // [PERF-auto] tasks?all=1 — 할일 탭에서만 활성 (isPaused로 탭·하이드레이션 타이밍 이중 방어)
+  const tasksAllKey = session?.user ? SWR_KEYS.tasksAll : null;
+  const diaryTasksKey =
+    session?.user && tab === "diary"
+      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}`
+      : null;
+  const { data: tasksRaw, mutate: mutateTasks } = useSWR(tasksAllKey, jsonFetcher, {
+    dedupingInterval: 300_000,
+    revalidateOnFocus: false,
+    isPaused: () => tab !== "tasks",
+  });
+  const { data: diaryTasksRaw, mutate: mutateDiaryTasks } = useSWR(
+    diaryTasksKey,
     jsonFetcher,
-    { dedupingInterval: 12_000, revalidateOnFocus: false }
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
   );
   const tasks = useMemo((): TaskItem[] => {
-    if (tasksRaw == null) return [];
-    const raw = tasksRaw as unknown[] | { items?: unknown[] };
+    const rawSource = tab === "diary" ? diaryTasksRaw : tab === "tasks" ? tasksRaw : null;
+    if (rawSource == null) return [];
+    const raw = rawSource as unknown[] | { items?: unknown[] };
     const list = (Array.isArray(raw) ? raw : raw.items ?? []) as {
       id: string;
       title: string;
@@ -692,7 +701,7 @@ export default function SchedulePage() {
       assignees: t.assignees,
       assignedTo: t.assignedTo,
     }));
-  }, [tasksRaw]);
+  }, [tab, tasksRaw, diaryTasksRaw]);
 
   const { data: invites = [], mutate: mutateInvites } = useSWR<ScheduleInvite[]>(
     session?.user ? SWR_KEYS.scheduleInvites : null,
@@ -719,7 +728,7 @@ export default function SchedulePage() {
   }, [tab, memoData]);
 
   const { data: gcalStatus, mutate: mutateGcal } = useSWR<{ connected: boolean }>(
-    session?.user ? SWR_KEYS.googleCalendar : null,
+    session?.user && tab === "schedule" ? SWR_KEYS.googleCalendar : null,
     jsonFetcher,
     { dedupingInterval: 60_000, revalidateOnFocus: false }
   );
@@ -736,7 +745,8 @@ export default function SchedulePage() {
   }, [revalidateSchedules]);
 
   useEffect(() => {
-    if (!googleConnected || tab !== "schedule") {
+    // [PERF-2차] Google 캘린더 레이어가 꺼져 있으면 이벤트 API 호출 생략
+    if (!googleConnected || tab !== "schedule" || visibleCalendars.google === false) {
       setGoogleEvents([]);
       return;
     }
@@ -759,7 +769,7 @@ export default function SchedulePage() {
         );
       })
       .catch(() => setGoogleEvents([]));
-  }, [googleConnected, tab, view, date]);
+  }, [googleConnected, tab, view, date, visibleCalendars.google]);
 
   const handleSelectEvent = useCallback(
     (event: ScheduleEvent) => {
@@ -927,10 +937,10 @@ export default function SchedulePage() {
   const eventsOnDay = displayEvents.filter(
     (e: any) => (e.start >= diaryDayStart && e.start <= diaryDayEnd) || (e.end >= diaryDayStart && e.end <= diaryDayEnd) || (e.start <= diaryDayStart && e.end >= diaryDayEnd)
   );
-  const tasksOnDay = tasks.filter((t: any) => {
-    const d = new Date(t.dueDate);
-    return isSameDay(d, new Date(diaryDate));
-  });
+  const tasksOnDay =
+    tab === "diary"
+      ? tasks
+      : tasks.filter((t: TaskItem) => isSameDay(new Date(t.dueDate), new Date(diaryDate)));
 
   const calendarTitle = useMemo(() => {
     if (view === "month") return format(date, "yyyy년 M월", { locale: ko });
@@ -1039,11 +1049,11 @@ export default function SchedulePage() {
             ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
               <p className="text-muted-foreground max-w-xl text-sm">
                 팀 휴가·연차 승인·처리는{" "}
-                <Link href="/leave" className="font-medium text-foreground underline underline-offset-4 hover:no-underline">
+                <Link href="/leave" prefetch={false} className="font-medium text-foreground underline underline-offset-4 hover:no-underline">
                   연차/근태
                 </Link>
                 에서 합니다. 신청 알림은 헤더 알림(
-                <Link href="/notifications" className="underline underline-offset-4 hover:no-underline">
+                <Link href="/notifications" prefetch={false} className="underline underline-offset-4 hover:no-underline">
                   알림함
                 </Link>
                 )에도 쌓입니다.
@@ -1215,7 +1225,7 @@ export default function SchedulePage() {
                 ))}
               </ul>
             )}
-            <Link href="/tasks" className="text-primary mt-3 inline-block text-sm font-medium hover:underline">
+            <Link href="/tasks" prefetch={false} className="text-primary mt-3 inline-block text-sm font-medium hover:underline">
               Projects에서 전체 관리 →
             </Link>
           </CardContent>
@@ -1330,6 +1340,8 @@ export default function SchedulePage() {
         onOpenChange={setCreateTaskOpen}
         onCreated={() => {
           void mutateTasks();
+          void mutateDiaryTasks();
+          void mutateCalendarDueTasks();
           setCreateTaskOpen(false);
         }}
         defaultAssignedToId={session?.user?.id ?? null}

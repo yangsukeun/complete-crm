@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { postUploadFile } from "@/lib/upload-client-validate";
 
-type DocsEditorProps = {
+export type DocsEditorProps = {
   className?: string;
 };
 

@@ -1,3 +1,5 @@
+import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
+
 /**
  * 업무 본문 저장: 마크다운만 쓰면 토글·다열 등 BlockNote 블록 타입이 유지되지 않습니다.
  * 접두 + JSON 으로 블록 트리를 저장하고, 구 데이터는 마크다운으로 그대로 불러옵니다.
@@ -88,7 +90,9 @@ function documentHasStoredContent(blocks: unknown[]): boolean {
 export function serializeTaskBodyForStore(editor: EditorForSerialize): string | null {
   let blocks: unknown[];
   try {
-    blocks = JSON.parse(JSON.stringify(editor.document)) as unknown[];
+    blocks = normalizeBlockNoteBlocksForYoutube(
+      JSON.parse(JSON.stringify(editor.document)) as unknown[]
+    );
   } catch {
     return null;
   }

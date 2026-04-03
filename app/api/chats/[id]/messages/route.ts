@@ -99,7 +99,8 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Number(searchParams.get("limit")) || 100, 200);
+    // [PERF-2차] 초기 로드 기본 50건 — 스크롤 업·since 로 확장
+    const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
     const afterId = searchParams.get("after");
     const sinceIso = searchParams.get("since");
     const readMetaOnly = searchParams.get("readMeta") === "1";
@@ -131,47 +132,68 @@ export async function GET(
     if (sinceIso) {
       const sinceDate = new Date(sinceIso);
       if (!Number.isNaN(sinceDate.getTime())) {
-        const [newMessages] = await Promise.all([
+        const [newMessages, readAtByUserId] = await Promise.all([
           prisma.chatMessage.findMany({
             where: { chatId, createdAt: { gt: sinceDate } },
-            include: { user: { select: messageUserSelect } },
+            select: {
+              id: true,
+              body: true,
+              createdAt: true,
+              isDeleted: true,
+              userId: true,
+              user: { select: messageUserSelect },
+            },
             orderBy: { createdAt: "asc" },
             take: 50,
           }),
-          runMarkRead(),
+          fetchReadAtByUserId(chatId),
         ]);
-        const readAtByUserId = await fetchReadAtByUserId(chatId);
+        await runMarkRead();
         return NextResponse.json({ messages: newMessages, readAtByUserId });
       }
     }
     if (afterId) {
-      const [newMessages] = await Promise.all([
+      const [newMessages, readAtByUserId] = await Promise.all([
         prisma.chatMessage.findMany({
           where: { chatId, id: { gt: afterId } },
-          include: { user: { select: messageUserSelect } },
+          select: {
+            id: true,
+            body: true,
+            createdAt: true,
+            isDeleted: true,
+            userId: true,
+            user: { select: messageUserSelect },
+          },
           orderBy: { createdAt: "asc" },
           take: 50,
         }),
-        runMarkRead(),
+        fetchReadAtByUserId(chatId),
       ]);
-      const readAtByUserId = await fetchReadAtByUserId(chatId);
+      await runMarkRead();
       return NextResponse.json({ messages: newMessages, readAtByUserId });
     }
 
-    const [messages] = await Promise.all([
+    const [messages, readAtByUserId] = await Promise.all([
       (async () => {
         const list = await prisma.chatMessage.findMany({
           where: { chatId },
-          include: { user: { select: messageUserSelect } },
+          select: {
+            id: true,
+            body: true,
+            createdAt: true,
+            isDeleted: true,
+            userId: true,
+            user: { select: messageUserSelect },
+          },
           orderBy: { createdAt: "desc" },
           take: limit,
         });
         list.reverse();
         return list;
       })(),
-      runMarkRead(),
+      fetchReadAtByUserId(chatId),
     ]);
-    const readAtByUserId = await fetchReadAtByUserId(chatId);
+    await runMarkRead();
     return NextResponse.json({ messages, readAtByUserId });
   } catch (e) {
     console.error(e);

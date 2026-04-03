@@ -3,17 +3,12 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canUserViewBoardPost } from "@/lib/board-access";
 import { boardCategoryIsAnonymous } from "@/lib/board-category";
+import {
+  fetchBoardPostCommentsDto,
+  maskBoardCommentUser,
+} from "@/lib/board-comments-serialize";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { z } from "zod";
-
-function maskCommentUser(
-  postAnonymous: boolean,
-  viewerRole: string,
-  user: { id: string; name: string | null; position: string | null }
-) {
-  if (!postAnonymous || viewerRole === "EXECUTIVE") return user;
-  return { id: "anonymous", name: "익명", position: null as string | null };
-}
 
 const postSchema = z.object({
   body: z.string().min(1).max(2000),
@@ -52,53 +47,11 @@ export async function GET(
     }
 
     const postAnonymous = post.isAnonymous || boardCategoryIsAnonymous(post.category);
-
-    const comments = await prisma.boardPostComment.findMany({
-      where: { boardPostId: postId },
-      orderBy: { createdAt: "asc" },
-      include: {
-        user: { select: { id: true, name: true, position: true } },
-      },
+    const payload = await fetchBoardPostCommentsDto(postId, {
+      postAnonymous,
+      viewerRole: role,
     });
-
-    const mentionedIds = comments.flatMap((c) => {
-      try {
-        return JSON.parse(c.mentionedIds || "[]") as string[];
-      } catch {
-        return [];
-      }
-    });
-    const uniqueMentionedIds = [...new Set(mentionedIds)];
-    const mentionedUsers =
-      uniqueMentionedIds.length === 0
-        ? []
-        : await prisma.user.findMany({
-            where: { id: { in: uniqueMentionedIds } },
-            select: { id: true, name: true },
-          });
-    const mentionedMap = Object.fromEntries(mentionedUsers.map((u) => [u.id, u]));
-
-    return NextResponse.json(
-      comments.map((c) => {
-        let mentioned: { id: string; name: string | null }[] = [];
-        try {
-          const ids = JSON.parse(c.mentionedIds || "[]") as string[];
-          mentioned = ids.map((id) => ({
-            id,
-            name: mentionedMap[id]?.name ?? null,
-          }));
-        } catch {
-          // ignore
-        }
-        return {
-          id: c.id,
-          body: c.body,
-          createdAt: c.createdAt.toISOString(),
-          user: maskCommentUser(postAnonymous, role, c.user),
-          mentioned,
-        };
-      })
-    );
+    return NextResponse.json(payload);
   } catch (e) {
     console.error("Board comments GET:", e);
     return NextResponse.json(
@@ -195,7 +148,7 @@ export async function POST(
       id: comment.id,
       body: comment.body,
       createdAt: comment.createdAt.toISOString(),
-      user: maskCommentUser(postAnonymous, role, comment.user),
+      user: maskBoardCommentUser(postAnonymous, role, comment.user),
       mentioned,
     });
   } catch (e) {

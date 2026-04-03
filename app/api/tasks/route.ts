@@ -10,6 +10,7 @@ import {
   type TaskAssigneeUser,
 } from "@/lib/task-assignees";
 import { z } from "zod";
+import { endOfDay, endOfWeek, parse, startOfDay, startOfWeek } from "date-fns";
 
 const createSchema = z.object({
   title: z.string().min(1),
@@ -81,22 +82,54 @@ export async function GET(req: Request) {
         ? { scope: "PERSONAL" as const, OR: taskVisibilityMemberOr(session.user.id) }
         : { scope: "TEAM" as const, ...(isAdmin ? {} : { OR: taskVisibilityMemberOr(session.user.id) }) };
 
-    const baseWhere = { deletedAt: null, ...visibilityWhere };
-
     const { searchParams } = new URL(req.url);
+    // [PERF-auto] CRM 프로젝트 단위 목록: 전체 all=1 대신 projectId+limit로 한정 가능
+    const projectIdParam = searchParams.get("projectId");
+    const projectId =
+      projectIdParam && projectIdParam.trim().length > 0 ? projectIdParam.trim() : null;
+
+    const baseWhere = {
+      deletedAt: null,
+      ...visibilityWhere,
+      ...(projectId ? { projectId } : {}),
+    };
+
     const calendarDue = searchParams.get("calendarDue") === "1";
     const dueAfter = searchParams.get("dueAfter");
     const dueBefore = searchParams.get("dueBefore");
+    const monthKey = searchParams.get("monthKey");
+    const weekKey = searchParams.get("weekKey");
 
-    if (calendarDue && dueAfter && dueBefore) {
+    let calStart: Date | null = null;
+    let calEnd: Date | null = null;
+    if (calendarDue) {
+      if (monthKey && /^\d{4}-\d{2}$/.test(monthKey)) {
+        const [y, mo] = monthKey.split("-").map((x) => parseInt(x, 10));
+        calStart = new Date(y, mo - 1, 1, 0, 0, 0, 0);
+        calEnd = new Date(y, mo, 0, 23, 59, 59, 999);
+      } else if (weekKey && /^\d{4}-\d{2}-\d{2}$/.test(weekKey)) {
+        const anchor = new Date(`${weekKey}T12:00:00`);
+        calStart = startOfWeek(anchor, { weekStartsOn: 1 });
+        calEnd = endOfWeek(anchor, { weekStartsOn: 1 });
+      } else if (dueAfter && dueBefore) {
+        calStart = new Date(dueAfter);
+        calEnd = new Date(dueBefore);
+      }
+    }
+
+    if (
+      calendarDue &&
+      calStart &&
+      calEnd &&
+      !Number.isNaN(calStart.getTime()) &&
+      !Number.isNaN(calEnd.getTime())
+    ) {
+      // [PERF-2차] 캘린더 마감 레이어: 최소 컬럼만 조회
       const scopeFilter = scope === "PERSONAL" ? { scope: "PERSONAL" as const } : { scope: "TEAM" as const };
       const where = {
         deletedAt: null,
         ...scopeFilter,
-        dueDate: {
-          gte: new Date(dueAfter),
-          lte: new Date(dueBefore),
-        },
+        dueDate: { gte: calStart, lte: calEnd },
         OR: [{ assignedToId: session.user.id }, { assignees: { some: { userId: session.user.id } } }],
       };
       const tasks = await prisma.task.findMany({
@@ -107,20 +140,44 @@ export async function GET(req: Request) {
           dueDate: true,
           isCompleted: true,
           status: true,
-          assignedTo: {
-            select: { id: true, name: true, email: true, position: true, image: true },
-          },
-          ...taskListAssigneesInclude,
+          projectId: true,
         },
         orderBy: { dueDate: "asc" },
       });
-      const body = tasks.map((t) => mapListItem(t as unknown as Record<string, unknown>));
-      return NextResponse.json(body);
+      return NextResponse.json(
+        tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          dueDate: t.dueDate.toISOString(),
+          isCompleted: t.isCompleted,
+          status: t.status,
+          projectId: t.projectId,
+        }))
+      );
+    }
+
+    const orderBy = [{ parentId: "asc" as const }, { orderIndex: "asc" as const }, { isCompleted: "asc" as const }, { dueDate: "asc" as const }];
+
+    // [PERF-auto] 일기 탭 등 특정 일 마감만 — tasks?all=1 없이 범위 조회
+    const dueDayParam = searchParams.get("dueDay");
+    if (dueDayParam && /^\d{4}-\d{2}-\d{2}$/.test(dueDayParam)) {
+      const anchor = parse(dueDayParam, "yyyy-MM-dd", new Date());
+      if (!Number.isNaN(anchor.getTime())) {
+        const d0 = startOfDay(anchor);
+        const d1 = endOfDay(anchor);
+        const whereDueDay = { ...baseWhere, dueDate: { gte: d0, lte: d1 } };
+        const tasksDueDay = await prisma.task.findMany({
+          where: whereDueDay,
+          select: listSelect,
+          orderBy,
+        });
+        return NextResponse.json(
+          tasksDueDay.map((t) => mapListItem(t as unknown as Record<string, unknown>))
+        );
+      }
     }
 
     const all = searchParams.get("all") === "1";
-
-    const orderBy = [{ parentId: "asc" as const }, { orderIndex: "asc" as const }, { isCompleted: "asc" as const }, { dueDate: "asc" as const }];
 
     if (all) {
       const tasks = await prisma.task.findMany({

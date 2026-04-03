@@ -386,7 +386,7 @@ export function AIAssistFloat() {
           variant="secondary"
           className="h-14 rounded-full border border-amber-200/80 bg-amber-400 text-amber-950 shadow-lg hover:bg-amber-500 gap-2 px-5 dark:border-amber-700/50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
         >
-          <Link href="/notes" prefetch={true} title="메모장">
+          <Link href="/notes" prefetch={false} title="메모장">
             <StickyNote className="size-5" />
             <span className="font-medium">메모장</span>
           </Link>

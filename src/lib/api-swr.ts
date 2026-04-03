@@ -1,3 +1,7 @@
+// [PERF-mode-logo] 전역 SWR fallback 키와 동일한 문자열 사용
+export const SWR_MODE_KEY = "/api/mode" as const;
+export const SWR_LOGO_SETTINGS_KEY = "/api/settings/logo" as const;
+
 /** SWR용 JSON GET — 동일 URL 요청은 Provider의 dedupingInterval로 합쳐짐 */
 
 export async function jsonFetcher<T = unknown>(url: string): Promise<T> {
@@ -28,6 +32,7 @@ export const SWR_KEYS = {
   notificationUnread: "/api/notifications/unread-count",
   financeAlertsCount: "/api/finance/alerts/count",
   announcements: "/api/announcements",
+  /** 전체 업무 트리(목록·마인드맵 필터용) — 호출처에서 dedupingInterval 300_000 권장 [PERF-auto] */
   tasksAll: "/api/tasks?all=1",
   scheduleInvites: "/api/schedules/invites",
   leave: "/api/leave",

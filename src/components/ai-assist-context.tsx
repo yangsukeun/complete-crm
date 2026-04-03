@@ -16,6 +16,7 @@ type ContextValue = {
 
 const AIAssistContext = createContext<ContextValue | null>(null);
 
+/** // [PERF-F] 경량 Context — 지연 로딩 불필요 */
 export function AIAssistProvider({ children }: { children: React.ReactNode }) {
   const [target, setTarget] = useState<AIAssistTarget | null>(null);
   const register = useCallback((t: AIAssistTarget) => setTarget(() => t), []);
