@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
+import { getCompanyLogoUrl } from "@/lib/header-bootstrap";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
@@ -25,7 +26,7 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
-export const metadata: Metadata = {
+const defaultMetadata: Metadata = {
   title: "COMPLETE CRM",
   description: "주식회사 컴플리트 CRM",
   manifest: "/manifest.json",
@@ -41,13 +42,10 @@ export const metadata: Metadata = {
     description: "주식회사 컴플리트 CRM",
     images: ["/icons/icon-192x192.png"],
   },
+  /* 단일 출처 — /api/branding/favicon 이 DB 로고 또는 public/favicon.ico 바이트를 내려줌 */
   icons: {
-    icon: [
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/favicon.ico", sizes: "48x48" },
-    ],
-    apple: "/apple-touch-icon.png",
+    icon: [{ url: "/api/branding/favicon" }],
+    apple: "/api/branding/favicon",
   },
   themeColor: "#8B5CF6",
   appleWebApp: {
@@ -56,6 +54,25 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
 };
+
+/** 회사 로고(헤더와 동일)가 있으면 OG/Twitter 이미지에 직접 URL — 파비콘은 항상 /api/branding/favicon */
+export async function generateMetadata(): Promise<Metadata> {
+  const logoUrl = (await getCompanyLogoUrl())?.trim();
+  if (!logoUrl) {
+    return defaultMetadata;
+  }
+  return {
+    ...defaultMetadata,
+    openGraph: {
+      ...defaultMetadata.openGraph,
+      images: [{ url: logoUrl, width: 192, height: 192, alt: "COMPLETE CRM" }],
+    },
+    twitter: {
+      ...defaultMetadata.twitter,
+      images: [logoUrl],
+    },
+  };
+}
 
 // layout에서 headers() 사용으로 정적 렌더 불가. 동적 렌더 명시해 빌드/런타임 오류 방지.
 export const dynamic = "force-dynamic";

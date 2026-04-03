@@ -327,9 +327,14 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
         const data = await res.json();
         throw new Error(data.error ?? "등록 실패");
       }
+      const newComment = await res.json();
+      setTask((prev: any) =>
+        prev
+          ? { ...prev, comments: [...prev.comments, newComment] }
+          : null
+      );
       toast.success("댓글이 등록되었습니다.");
       setCommentBody("");
-      fetchTask();
       onUpdate();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "댓글 등록에 실패했습니다.");

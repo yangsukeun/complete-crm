@@ -254,7 +254,7 @@ function getDueUrgency(task: Task): { show: boolean; overdue: boolean; label: st
 type TasksPageResponse = { items: Task[]; total: number; hasMore: boolean };
 
 async function fetchTasksAllJson(url: string): Promise<Task[]> {
-  const r = await fetch(url);
+  const r = await fetch(url, { credentials: "include" }); // [PERF-claude-code] 인증 쿠키 포함
   if (!r.ok) return [];
   const data = await r.json();
   return Array.isArray(data) ? data : [];
@@ -405,6 +405,7 @@ export default function TasksPage() {
     keepPreviousData: true,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
+    revalidateIfStale: false, // [PERF-claude-code] 캐시 존재 시 키 재활성화/리마운트로 재검증 안 함
     // [PERF-auto] 전체 목록(all=1) 재검증 빈도 완화 — 수동 mutate·탭 전환으로 갱신
     dedupingInterval: 300_000,
   });
@@ -935,7 +936,7 @@ export default function TasksPage() {
                           >
                             <Link
                               href={`/tasks/${task.id}`}
-                              prefetch={true}
+                              prefetch={false} // [PERF-claude-code] 카드마다 RSC 프리패치 방지
                               className="block w-full px-3 pt-3 text-left outline-none"
                             >
                               <p

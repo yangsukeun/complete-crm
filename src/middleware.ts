@@ -9,6 +9,9 @@ const NEXTAUTH_COOKIES = [
   "authjs.session-token",
   "__Secure-authjs.session-token",
   "__Host-authjs.session-token",
+  // 일부 환경(커스텀 secret·trustHost)에서 다른 prefix 사용 가능
+  "next-auth.session-token.0",
+  "__Secure-next-auth.session-token.0",
 ];
 
 function isPublic(pathname: string): boolean {
@@ -21,12 +24,33 @@ function isPublic(pathname: string): boolean {
 }
 
 function hasAuthCookie(request: NextRequest): boolean {
+  // 명시적 쿠키 이름 확인
   if (NEXTAUTH_COOKIES.some((name) => request.cookies.get(name)?.value)) return true;
+  // 패턴 매칭 — 환경에 따라 이름이 변형되어도 감지
+  for (const [name, cookie] of request.cookies) {
+    if (!cookie?.value) continue;
+    const n = name.toLowerCase();
+    if (
+      n.includes("session-token") ||
+      n.includes("next-auth") ||
+      n.includes("authjs")
+    ) {
+      return true;
+    }
+  }
   return false;
 }
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  /* 브라우저 기본 /favicon.ico 요청도 DB 로고와 맞춤 (matcher에서 제외돼 있으면 여기까지 오지 않음) */
+  if (pathname === "/favicon.ico") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/api/branding/favicon";
+    return NextResponse.rewrite(url);
+  }
+
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
@@ -48,5 +72,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  /* favicon.ico 포함 — rewrite로 /api/branding/favicon 처리 */
+  matcher: ["/((?!_next/static|_next/image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

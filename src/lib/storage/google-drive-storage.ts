@@ -5,6 +5,10 @@ import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 
 export { parseGoogleDriveFileIdFromUrl };
 
+// [PERF-claude-code] 모듈 단위 JWT 캐시 — 요청마다 RSA sign 방지
+let _cachedAuth: InstanceType<typeof google.auth.JWT> | null = null;
+let _cachedAuthKey = "";
+
 function getServiceAccountCreds(): { client_email: string; private_key: string } {
   const jsonRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (jsonRaw) {
@@ -30,6 +34,23 @@ function getServiceAccountCreds(): { client_email: string; private_key: string }
   throw new Error(
     "Google Drive: GOOGLE_SERVICE_ACCOUNT_JSON 또는 GOOGLE_SERVICE_ACCOUNT_EMAIL+GOOGLE_PRIVATE_KEY를 설정하세요."
   );
+}
+
+// [PERF-claude-code] 동일 자격 증명이면 JWT 인스턴스 재사용 — token refresh는 googleapis가 내부 처리
+function getOrCreateDriveAuth(): InstanceType<typeof google.auth.JWT> {
+  const creds = getServiceAccountCreds();
+  const key = creds.client_email + "|" + creds.private_key.slice(-32);
+  if (_cachedAuth && _cachedAuthKey === key) return _cachedAuth;
+  _cachedAuth = new google.auth.JWT({
+    email: creds.client_email,
+    key: creds.private_key,
+    scopes: [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive",
+    ],
+  });
+  _cachedAuthKey = key;
+  return _cachedAuth;
 }
 
 /**
@@ -65,16 +86,8 @@ export async function deleteFile(fileId: string): Promise<void> {
     supportsAllDrives: true,
   });
   try {
-    const { client_email, private_key } = getServiceAccountCreds();
     /** 공유 드라이브·삭제에서 drive.file만으로 403 나는 경우 대비 (서비스 계정 전용) */
-    const auth = new google.auth.JWT({
-      email: client_email,
-      key: private_key,
-      scopes: [
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive",
-      ],
-    });
+    const auth = getOrCreateDriveAuth();
     const drive = google.drive({ version: "v3", auth });
     await drive.files.delete({
       fileId: id,
@@ -143,15 +156,7 @@ export async function grantDriveAnyoneWithLinkRead(fileId: string): Promise<void
   if (!hasCreds) return;
 
   try {
-    const { client_email, private_key } = getServiceAccountCreds();
-    const auth = new google.auth.JWT({
-      email: client_email,
-      key: private_key,
-      scopes: [
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive",
-      ],
-    });
+    const auth = getOrCreateDriveAuth();
     const drive = google.drive({ version: "v3", auth });
     await drive.permissions.create({
       fileId: id,
@@ -175,15 +180,7 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
     throw new Error("GOOGLE_DRIVE_FOLDER_ID(업로드 대상 폴더 ID)를 설정하세요. 폴더는 서비스 계정에 공유되어 있어야 합니다.");
   }
 
-  const { client_email, private_key } = getServiceAccountCreds();
-  const auth = new google.auth.JWT({
-    email: client_email,
-    key: private_key,
-    scopes: [
-      "https://www.googleapis.com/auth/drive.file",
-      "https://www.googleapis.com/auth/drive",
-    ],
-  });
+  const auth = getOrCreateDriveAuth();
   const drive = google.drive({ version: "v3", auth });
 
   /** 공유 드라이브(Team Drive) 내 폴더가 부모일 때 필수 — 없으면 404/403으로 업로드 실패 */
@@ -204,8 +201,6 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
   if (!fileId) {
     throw new Error("Drive 업로드 후 file id를 받지 못했습니다.");
   }
-
-  await grantDriveAnyoneWithLinkRead(fileId);
 
   const mime = (input.mime || "").toLowerCase();
   const isImage = mime.startsWith("image/");

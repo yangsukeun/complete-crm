@@ -104,7 +104,15 @@ export function NotificationBell() {
 
   const handleClickNotification = useCallback(
     async (n: NotificationItem) => {
-      if (n.link) router.push(n.link);
+      // 채팅 알림은 플로팅 채팅창으로 열기 (페이지 이동 없음)
+      const chatLinkMatch = n.type === "CHAT_MESSAGE" && n.link?.match(/\/chat\/([^/?#]+)/);
+      if (chatLinkMatch) {
+        window.dispatchEvent(
+          new CustomEvent("open-floating-chat", { detail: { chatId: chatLinkMatch[1] } })
+        );
+      } else if (n.link) {
+        router.push(n.link);
+      }
       if (!n.isRead) {
         try {
           await fetch(`/api/notifications/${n.id}/read`, { method: "PATCH" });

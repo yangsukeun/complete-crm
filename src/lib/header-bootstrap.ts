@@ -48,6 +48,27 @@ export function buildSwrLayoutFallback(
 
 type CookieStore = Awaited<ReturnType<typeof cookies>>;
 
+/** 헤더 로고·파비콘 공통 — 세션 없이도 탭 아이콘에 회사 로고 반영 */
+export async function getCompanyLogoUrl(): Promise<string | null> {
+  try {
+    const company = await prisma.companyInfo.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: { logoUrl: true },
+    });
+    return company?.logoUrl ?? null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (
+      msg.includes("Unknown column") ||
+      msg.includes("Unknown field") ||
+      msg.includes("logoUrl")
+    ) {
+      return null;
+    }
+    throw e;
+  }
+}
+
 // [PERF-auto] layout에서 cookies()와 auth() 병렬 시 이미 조회한 CookieStore 전달
 export async function getHeaderBootstrapData(
   sessionUserId: string | undefined,
@@ -64,24 +85,7 @@ export async function getHeaderBootstrapData(
   let logoUrl: string | null = null;
   let notificationUnreadCount: number | null = null;
 
-  try {
-    const company = await prisma.companyInfo.findFirst({
-      orderBy: { updatedAt: "desc" },
-      select: { logoUrl: true },
-    });
-    logoUrl = company?.logoUrl ?? null;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (
-      msg.includes("Unknown column") ||
-      msg.includes("Unknown field") ||
-      msg.includes("logoUrl")
-    ) {
-      logoUrl = null;
-    } else {
-      throw e;
-    }
-  }
+  logoUrl = await getCompanyLogoUrl();
 
   try {
     notificationUnreadCount = await prisma.notification.count({

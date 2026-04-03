@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getAppSession } from "@/auth";
 import { storeUploadedFile, resolveStorageProvider } from "@/lib/storage";
 import {
@@ -175,10 +175,10 @@ export async function POST(req: Request) {
       originalName: file.name,
     });
 
-    /** Drive 업로드 시 링크 공개 읽기(본문 이미지) — storeGoogleDrive와 동일 권한 재시도는 중복 시 무시 */
+    /** Drive 업로드 시 링크 공개 읽기 — after()로 응답 후 실행해 업로드 레이턴시 단축 */
     if (result.provider === "google-drive") {
       const fid = parseGoogleDriveFileIdFromUrl(result.url);
-      if (fid) await grantDriveAnyoneWithLinkRead(fid);
+      if (fid) after(() => grantDriveAnyoneWithLinkRead(fid));
     }
 
     return NextResponse.json({

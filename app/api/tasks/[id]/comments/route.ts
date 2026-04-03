@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
@@ -120,7 +120,6 @@ export async function POST(
       },
       include: { user: { select: { id: true, name: true, position: true } } },
     });
-    await createActivityLog(session.user.id, "COMMENT_ADDED", task.title);
 
     const commentAuthorId = session.user.id;
     const assigneeNotifyIds = [
@@ -132,17 +131,41 @@ export async function POST(
     );
     const uniqueIds = [...new Set(toNotify)];
     const commenterName = session.user.name ?? "누군가";
-    for (const uid of uniqueIds) {
-      await createNotificationWithOptions({
-        userId: uid,
-        type: "COMMENT",
-        message: `'${task.title}' 프로젝트에 ${commenterName}님이 댓글을 달았습니다.`,
-        link: `/tasks/${taskId}`,
-        actorId: session.user.id,
-      });
-    }
+    const taskTitle = task.title;
+    const actorId = session.user.id;
 
-    return NextResponse.json(comment);
+    after(async () => {
+      try {
+        await createActivityLog(commentAuthorId, "COMMENT_ADDED", taskTitle);
+        await Promise.all(
+          uniqueIds.map((uid) =>
+            createNotificationWithOptions({
+              userId: uid,
+              type: "COMMENT",
+              message: `'${taskTitle}' 프로젝트에 ${commenterName}님이 댓글을 달았습니다.`,
+              link: `/tasks/${taskId}`,
+              actorId,
+            })
+          )
+        );
+      } catch (err) {
+        console.error("[comments POST] after():", err);
+      }
+    });
+
+    const payload = {
+      id: comment.id,
+      body: comment.body,
+      createdAt: comment.createdAt.toISOString(),
+      user:
+        comment.user ??
+        ({
+          id: "",
+          name: null as string | null,
+          position: null as string | null,
+        } as const),
+    };
+    return NextResponse.json(payload);
   } catch (e) {
     console.error(e);
     return NextResponse.json(

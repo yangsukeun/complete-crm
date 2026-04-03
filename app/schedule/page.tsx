@@ -672,6 +672,7 @@ export default function SchedulePage() {
   const { data: tasksRaw, mutate: mutateTasks } = useSWR(tasksAllKey, jsonFetcher, {
     dedupingInterval: 300_000,
     revalidateOnFocus: false,
+    revalidateIfStale: false, // [PERF-claude-code] 캐시 존재 시 리마운트로 재검증 안 함
     isPaused: () => tab !== "tasks",
   });
   const { data: diaryTasksRaw, mutate: mutateDiaryTasks } = useSWR(

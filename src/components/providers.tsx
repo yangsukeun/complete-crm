@@ -18,6 +18,11 @@ const AIAssistFloat = dynamic(
   { ssr: false }
 );
 
+const FloatingChatPanel = dynamic(
+  () => import("@/components/floating-chat-panel").then((m) => m.FloatingChatPanel),
+  { ssr: false }
+);
+
 function ProfileMeCacheSync({ userId }: { userId?: string | null }) {
   useEffect(() => {
     if (!userId) clearProfileMeCache();
@@ -64,6 +69,7 @@ export function Providers({
             <WorkspaceThemeSync />
             {children}
             {session?.user && <AIAssistFloat />}
+            {session?.user && <FloatingChatPanel />}
           </AIAssistProvider>
         </LayoutSharedProvider>
       </SWRConfig>

@@ -163,6 +163,51 @@ export async function subscribeNotificationsForUser(
 }
 
 /**
+ * 글로벌 Presence 채널 — 앱에 접속한 사용자 목록을 실시간으로 추적.
+ * onSync: 현재 온라인 userId 배열을 콜백으로 전달.
+ */
+export async function subscribeGlobalPresence(
+  sessionUserId: string,
+  userName: string,
+  onSync: (onlineUserIds: string[]) => void
+): Promise<RealtimeSubscriptionHandle | null> {
+  const client = await getSharedSupabaseRealtime(sessionUserId);
+  if (!client) return null;
+
+  const channel = client.channel("crm-presence-global", {
+    config: { presence: { key: sessionUserId } },
+  });
+
+  const emitSync = () => {
+    const state = channel.presenceState<{ userId: string }>();
+    const ids = Object.values(state)
+      .flatMap((arr) => arr.map((p: { userId: string }) => p.userId))
+      .filter(Boolean);
+    onSync([...new Set(ids)]);
+  };
+
+  channel
+    .on("presence", { event: "sync" }, emitSync)
+    .on("presence", { event: "join" }, emitSync)
+    .on("presence", { event: "leave" }, emitSync)
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({ userId: sessionUserId, name: userName });
+      }
+    });
+
+  return {
+    unsubscribe: () => {
+      try {
+        void client.removeChannel(channel);
+      } catch {
+        /* */
+      }
+    },
+  };
+}
+
+/**
  * 자금관리 네비 뱃지: DB 변경 시 폴링 대신 postgres_changes.
  * TEAM_LEAD → PaymentRequest(PENDING 건수 변동), 그 외 → 본인 PaymentRequestAlert.
  */

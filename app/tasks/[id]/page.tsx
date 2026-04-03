@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import React, { Component, useCallback, useEffect, useState, type ReactNode } from "react";
+import React, { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,11 @@ import {
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import {
+  postUploadFile,
+  UPLOAD_ERROR_MESSAGE,
+  UPLOAD_TOAST_DURATION_MS,
+} from "@/lib/upload-client-validate";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { CreateTaskModal } from "@/components/create-task-modal";
@@ -155,6 +160,9 @@ export default function TaskDetailPage() {
   const [savingAssignees, setSavingAssignees] = useState(false);
   const [pageFullWidth, setPageFullWidth] = useState(true);
   const [revisionOpen, setRevisionOpen] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     try {
       setPageFullWidth(localStorage.getItem(TASK_PAGE_WIDTH_KEY) !== "0");
@@ -260,6 +268,51 @@ export default function TaskDetailPage() {
     }
   };
 
+  const uploadAndAddAttachment = useCallback(
+    async (file: File) => {
+      if (!taskId) return;
+      const data = await postUploadFile(file);
+      const res = await fetch(`/api/tasks/${taskId}/attachments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "FILE",
+          url: data.url ?? "",
+          name: (data.name || file.name) ?? "",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error((err as { error?: string }).error ?? "첨부 추가 실패");
+      }
+    },
+    [taskId]
+  );
+
+  const handleFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!taskId || !files?.length) return;
+      setUploadingFiles(true);
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (!file.size) continue;
+          await uploadAndAddAttachment(file);
+        }
+        toast.success("첨부가 추가되었습니다.");
+        fetchTask();
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : UPLOAD_ERROR_MESSAGE.server, {
+          duration: UPLOAD_TOAST_DURATION_MS,
+        });
+      } finally {
+        setUploadingFiles(false);
+      }
+    },
+    [taskId, uploadAndAddAttachment, fetchTask]
+  );
+
   const handleAddAttachment = async () => {
     if (!taskId || !attachUrl.trim()) {
       toast.error("URL을 입력하세요.");
@@ -328,9 +381,12 @@ export default function TaskDetailPage() {
         const data = await res.json();
         throw new Error(data.error ?? "등록 실패");
       }
+      const newComment = (await res.json()) as TaskDetail["comments"][number];
+      setTask((prev) =>
+        prev ? { ...prev, comments: [...prev.comments, newComment] } : null
+      );
       toast.success("댓글이 등록되었습니다.");
       setCommentBody("");
-      fetchTask();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "댓글 등록에 실패했습니다.");
     } finally {
@@ -609,19 +665,40 @@ export default function TaskDetailPage() {
           </div>
 
           <div className="px-2 py-6">
+                {/* [PERF-claude-code] 파일 업로드 input — hidden, 버튼으로 트리거 */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.hwp,.hwpx,.mp4,.mov,.webm"
+                  onChange={(e: any) => void handleFiles(e.target.files)}
+                />
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Link2 className="size-4" />
                   링크 및 첨부
                 </div>
                 {task.attachments.length === 0 && !showAddAttach ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAddAttach(true)}
-                    className="flex w-full items-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                  >
-                    <Plus className="size-4" />
-                    링크 추가
-                  </button>
+                  <div className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 px-3 py-5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddAttach(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="size-4" />
+                      링크 URL 추가
+                    </button>
+                    <span className="text-muted-foreground text-xs">또는</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingFiles}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploadingFiles ? "업로드 중..." : "파일 선택"}
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {task.attachments.map((a: any) => (
@@ -664,6 +741,14 @@ export default function TaskDetailPage() {
                           />
                         </div>
                         <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingFiles}
+                          >
+                            {uploadingFiles ? "업로드 중..." : "파일 선택"}
+                          </Button>
                           <Button size="sm" onClick={handleAddAttachment} disabled={addingAttach}>
                             추가
                           </Button>
@@ -681,14 +766,25 @@ export default function TaskDetailPage() {
                         </div>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddAttach(true)}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                      >
-                        <Plus className="size-4" />
-                        링크 추가
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddAttach(true)}
+                          className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        >
+                          <Plus className="size-4" />
+                          링크 추가
+                        </button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={uploadingFiles}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          {uploadingFiles ? "업로드 중..." : "파일 선택"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

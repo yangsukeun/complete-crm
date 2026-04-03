@@ -6,6 +6,7 @@ import {
   resetSharedSupabaseRealtime,
   subscribeChatMessagesGlobal,
   subscribeFinanceRealtime,
+  subscribeGlobalPresence,
 } from "@/lib/supabase/realtime-client";
 
 /**
@@ -26,6 +27,7 @@ export function SupabaseRealtimeBridge() {
     let cancelled = false;
     let channel: { unsubscribe: () => void } | null = null;
     let financeRt: { unsubscribe: () => void } | null = null;
+    let presenceRt: { unsubscribe: () => void } | null = null;
     let financeDebounce: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleFinanceRefresh = () => {
@@ -51,6 +53,16 @@ export function SupabaseRealtimeBridge() {
       }
       const fr = await subscribeFinanceRealtime(session.user!.id, role, scheduleFinanceRefresh);
       if (!cancelled && fr) financeRt = fr;
+
+      const userName = (session.user as { name?: string | null })?.name ?? "";
+      const pr = await subscribeGlobalPresence(session.user!.id, userName, (onlineIds) => {
+        if (!cancelled) {
+          window.dispatchEvent(
+            new CustomEvent("chat-presence-update", { detail: { onlineIds } })
+          );
+        }
+      });
+      if (!cancelled && pr) presenceRt = pr;
     })();
 
     return () => {
@@ -64,6 +76,11 @@ export function SupabaseRealtimeBridge() {
       }
       try {
         financeRt?.unsubscribe();
+      } catch {
+        /* */
+      }
+      try {
+        presenceRt?.unsubscribe();
       } catch {
         /* */
       }

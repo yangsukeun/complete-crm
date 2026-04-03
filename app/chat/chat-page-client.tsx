@@ -110,18 +110,19 @@ function parseChatMessagesResponse(json: unknown): {
   return { messages, readAtByUserId };
 }
 
-/** 내 메시지가 채팅 참가자 모두(나 제외)의 lastReadAt 이후로 읽혔는지 */
-function isMessageReadByPeers(
+/** 내 메시지를 읽은 참가자 목록(나 제외) */
+function getReadersOfMessage(
   message: Message,
   myId: string | undefined,
-  readAtByUserId: Record<string, string | null>
-): boolean {
-  if (!myId || message.user.id !== myId || message.isDeleted) return false;
+  readAtByUserId: Record<string, string | null>,
+  participants: { id: string; name: string }[]
+): { id: string; name: string }[] {
+  if (!myId || message.user.id !== myId || message.isDeleted) return [];
   const msgT = new Date(message.createdAt).getTime();
-  if (Number.isNaN(msgT)) return false;
-  const peers = Object.entries(readAtByUserId).filter(([uid]) => uid !== myId);
-  if (peers.length === 0) return false;
-  return peers.every(([, iso]) => {
+  if (Number.isNaN(msgT)) return [];
+  return participants.filter((p) => {
+    if (p.id === myId) return false;
+    const iso = readAtByUserId[p.id];
     if (!iso) return false;
     const t = new Date(iso).getTime();
     return !Number.isNaN(t) && t >= msgT;
@@ -136,6 +137,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [readAtByUserId, setReadAtByUserId] = useState<Record<string, string | null>>({});
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [messageLoading, setMessageLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -157,6 +159,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatsRef = useRef<ChatItem[]>([]);
+  const selectedChatIdRef = useRef<string | null>(null);
   const pendingReadSyncSigRef = useRef("");
   const lastReadSyncOkSigRef = useRef("");
 
@@ -185,6 +188,19 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   useEffect(() => {
     chatsRef.current = chats;
   }, [chats]);
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    const onPresence = (ev: Event) => {
+      const ids = (ev as CustomEvent<{ onlineIds: string[] }>).detail?.onlineIds;
+      if (Array.isArray(ids)) setOnlineUserIds(ids);
+    };
+    window.addEventListener("chat-presence-update", onPresence);
+    return () => window.removeEventListener("chat-presence-update", onPresence);
+  }, []);
 
   const resolveUserFromChats = useCallback((list: ChatItem[], userId: string): Message["user"] => {
     for (const c of list) {
@@ -338,6 +354,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         debounceT = null;
         if (typeof document !== "undefined" && document.visibilityState === "visible") {
           void mutateChats();
+          // [FIX] 현재 열려있는 채팅방의 메시지도 재조회 — Supabase payload.new가 RLS로 비어오면
+          //       chat-realtime 핸들러로는 메시지가 추가되지 않으므로 폴링 방식으로 보완
+          const cid = selectedChatIdRef.current;
+          if (cid) void fetchMessages(cid, true);
         }
       }, 320);
     };
@@ -346,7 +366,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       window.removeEventListener("chat-inbox-refresh", onInbox);
       if (debounceT) clearTimeout(debounceT);
     };
-  }, [mutateChats]);
+  }, [mutateChats, fetchMessages]);
 
   useEffect(() => {
     const onRt = (ev: Event) => {
@@ -741,7 +761,36 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/i.test(file.name);
     setPasteUploading(true);
     try {
-      const { url, name } = await postUploadFile(file);
+      // [PERF-claude-code] 이미지가 2048px 초과하거나 1MB 넘으면 클라이언트에서 리사이즈
+      let uploadFile = file;
+      if (isImage && (file.size > 1024 * 1024 || file.name.match(/\.(jpe?g|png|webp)$/i))) {
+        try {
+          const bmp = await createImageBitmap(file);
+          const MAX_DIM = 2048;
+          let { width, height } = bmp;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext("2d")!.drawImage(bmp, 0, 0, width, height);
+          bmp.close();
+          const outMime = file.type === "image/png" ? "image/png" : "image/jpeg";
+          const quality = outMime === "image/jpeg" ? 0.82 : undefined;
+          const blob = await new Promise<Blob>((res) =>
+            canvas.toBlob((b) => res(b!), outMime, quality)
+          );
+          const ext = outMime === "image/png" ? "png" : "jpg";
+          const baseName = file.name.replace(/\.[^.]+$/, "");
+          uploadFile = new File([blob], `${baseName}.${ext}`, { type: outMime });
+        } catch {
+          // 리사이즈 실패 시 원본 사용
+        }
+      }
+      const { url, name } = await postUploadFile(uploadFile);
       const displayName = name || file.name;
       const append = isImage ? `\n![](${url})` : `\n[${displayName}](${url})`;
       setNewMessage((prev: any) => prev + append);
@@ -779,6 +828,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   );
 
   const selectedChat = chats.find((c: any) => c.id === selectedChatId);
+  const selectedChatParticipants: { id: string; name: string; position?: string | null }[] =
+    selectedChat?.participants ?? [];
   const mentionCandidates = (() => {
     const participants = selectedChat?.participants ?? [];
     const all = [...participants];
@@ -888,10 +939,24 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                       }`}
                     >
                       <span className="flex items-center justify-between gap-2 font-medium">
-                        <span className="truncate">
-                          {chat.isGroup && chat.name
-                            ? chat.name
-                            : chat.participants.map((p: any) => formatUserName(p)).join(", ")}
+                        <span className="flex min-w-0 items-center gap-1.5 truncate">
+                          {(() => {
+                            const peers = (chat.participants as { id: string; name: string }[]).filter(
+                              (p) => p.id !== session?.user?.id
+                            );
+                            const onlineCount = peers.filter((p) => onlineUserIds.includes(p.id)).length;
+                            return onlineCount > 0 ? (
+                              <span
+                                className="size-2 shrink-0 rounded-full bg-green-500"
+                                title={`${onlineCount}명 접속 중`}
+                              />
+                            ) : null;
+                          })()}
+                          <span className="truncate">
+                            {chat.isGroup && chat.name
+                              ? chat.name
+                              : chat.participants.map((p: any) => formatUserName(p)).join(", ")}
+                          </span>
                         </span>
                         {(unreadCounts[chat.id] ?? 0) > 0 && (
                           <span
@@ -924,7 +989,21 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           ) : (
             <>
               <div className="flex items-center justify-between border-b px-4 py-2">
-                <span className="font-medium">{chatTitle}</span>
+                <div className="flex min-w-0 flex-col">
+                  <span className="font-medium">{chatTitle}</span>
+                  {(() => {
+                    const onlinePeers = selectedChatParticipants.filter(
+                      (p) => p.id !== session?.user?.id && onlineUserIds.includes(p.id)
+                    );
+                    if (onlinePeers.length === 0) return null;
+                    return (
+                      <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                        <span className="size-1.5 rounded-full bg-green-500" />
+                        {onlinePeers.map((p) => p.name).join(", ")} 접속 중
+                      </span>
+                    );
+                  })()}
+                </div>
                 <div className="flex items-center gap-2">
                   {!isParticipant && (
                     <span className="text-muted-foreground rounded bg-muted px-2 py-0.5 text-xs">
@@ -964,7 +1043,12 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                         isMine &&
                         !m.isDeleted &&
                         Date.now() - new Date(m.createdAt).getTime() < DELETE_ALLOWED_MS;
-                      const showRead = isMessageReadByPeers(m, session?.user?.id, readAtByUserId);
+                      const readers = getReadersOfMessage(
+                        m,
+                        session?.user?.id,
+                        readAtByUserId,
+                        selectedChatParticipants
+                      );
                       const bubbleBody = m.isDeleted ? (
                         <p className="text-muted-foreground italic text-sm">🚫 삭제된 메시지입니다</p>
                       ) : (
@@ -1043,9 +1127,20 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                                 className={`mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground ${isMine ? "justify-end" : "justify-start"}`}
                               >
                                 <span>{formatKstDateTime(m.createdAt)}</span>
-                                {isMine && showRead && !m.isDeleted && (
-                                  <span className="text-primary font-medium dark:text-sky-300" title="상대가 읽음">
-                                    읽음
+                                {isMine && readers.length > 0 && !m.isDeleted && (
+                                  <span className="flex items-center gap-0.5" title={`읽음: ${readers.map((r) => r.name).join(", ")}`}>
+                                    {readers.slice(0, 4).map((r) => (
+                                      <span
+                                        key={r.id}
+                                        className="flex size-[14px] shrink-0 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground"
+                                        title={`${r.name} 읽음`}
+                                      >
+                                        {r.name.charAt(0)}
+                                      </span>
+                                    ))}
+                                    {readers.length > 4 && (
+                                      <span className="text-[9px] text-muted-foreground">+{readers.length - 4}</span>
+                                    )}
                                   </span>
                                 )}
                               </div>
