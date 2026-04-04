@@ -86,7 +86,7 @@ export function FloatingChatPanel() {
     try {
       const [msgRes, chatRes] = await Promise.all([
         fetch(apiUrl(`/api/chats/${id}/messages?limit=50&markRead=1`), { credentials: "include" }),
-        fetch(apiUrl("/api/chats"), { credentials: "include" }),
+        fetch(apiUrl(`/api/chats/${id}`), { credentials: "include" }),
       ]);
       if (msgRes.ok) {
         const raw = await msgRes.json();
@@ -94,9 +94,8 @@ export function FloatingChatPanel() {
         setMessages(list);
       }
       if (chatRes.ok) {
-        const chats: FCChat[] = await chatRes.json();
-        const found = chats.find((c) => c.id === id);
-        if (found) setChatInfo(found);
+        const info: FCChat = await chatRes.json();
+        setChatInfo(info);
       }
     } catch {
       /* ignore */

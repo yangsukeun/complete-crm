@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef, DragEvent, KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import "./mindmap-toolbar.css";
 import {
@@ -40,7 +40,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Plus, ChevronDown, ChevronRight, Check, X, GripVertical, TreePine, Trash2, Settings2, Palette } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Check, X, GripVertical, TreePine, Trash2, Settings2, Palette, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Types
@@ -293,13 +293,14 @@ function getPriorityBadge(priority: string) {
 
 // Custom Task Node
 function TaskNode({ data, id, selected }: NodeProps) {
-  const { task, onToggleCollapse, onTitleChange, onAddChild, onTaskClick, onTaskHover, nodeStyle } = data as {
+  const { task, onToggleCollapse, onTitleChange, onAddChild, onAddParent, onTaskClick, onTaskHover, nodeStyle } = data as {
     task: TaskData;
     hasChildren: boolean;
     isCollapsed: boolean;
     onToggleCollapse: (id: string) => void;
     onTitleChange: (id: string, title: string) => void;
     onAddChild: (parentId: string) => void;
+    onAddParent: (childId: string) => void;
     onTaskClick: (taskId: string, projectId?: string | null) => void;
     onTaskHover?: (taskId: string) => void;
     nodeStyle: NodeStyle;
@@ -309,7 +310,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
   const [editTitle, setEditTitle] = useState(task.title);
   const [isDropTarget, setIsDropTarget] = useState(false);
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
+  const handleDoubleClick = (e: MouseEvent) => {
     e.stopPropagation();
     setIsEditing(true);
     setEditTitle(task.title);
@@ -461,18 +462,31 @@ function TaskNode({ data, id, selected }: NodeProps) {
         </div>
 
         {/* Actions */}
-        <div className="mt-2 flex items-center gap-1">
+        <div className="mt-2 flex flex-wrap items-center gap-1">
           <Button
             size="sm"
             variant="ghost"
             className="h-6 px-2 text-xs"
-            onClick={(e: any) => {
+            onClick={(e: MouseEvent) => {
               e.stopPropagation();
               onAddChild(task.id);
             }}
           >
             <Plus className="size-3 mr-1" />
             하위 추가
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs"
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              onAddParent(task.id);
+            }}
+            title="선택 노드 위에 새 상위 프로젝트를 끼워 넣습니다"
+          >
+            <ArrowUpFromLine className="size-3 mr-1" />
+            상위 추가
           </Button>
         </div>
       </div>
@@ -568,6 +582,7 @@ function TreeViewInner({
   const [hydrationVersion, setHydrationVersion] = useState(0);
   const [mindmapRemoteLoaded, setMindmapRemoteLoaded] = useState(false);
   const [saveUi, setSaveUi] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isAddingParent, setIsAddingParent] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const quickInputRef = useRef<HTMLInputElement>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -888,6 +903,66 @@ function TreeViewInner({
   }, [deletableSelectedIds, selectedNodeIds.length, onRefresh]);
 
   // Quick create task
+  const handleAddParentNode = useCallback(
+    async (childId: string) => {
+      const child = tasks.find((t) => t.id === childId);
+      if (!child) {
+        toast.error("노드를 찾을 수 없습니다.");
+        return;
+      }
+      const fromInput = quickTitle.trim();
+      const prompted =
+        typeof window !== "undefined" && !fromInput
+          ? window.prompt("상위 노드 제목을 입력하세요", "새 상위 프로젝트")?.trim()
+          : "";
+      const title = fromInput || prompted || "새 상위 프로젝트";
+      if (!title) {
+        toast.error("제목이 필요합니다.");
+        return;
+      }
+
+      setIsAddingParent(true);
+      try {
+        const createRes = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            priority: "MEDIUM",
+            parentId: child.parentId,
+          }),
+        });
+        if (!createRes.ok) throw new Error("상위 노드 생성 실패");
+        const newTask = (await createRes.json()) as { id: string };
+
+        const patchRes = await fetch(`/api/tasks/${childId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ parentId: newTask.id }),
+        });
+        if (!patchRes.ok) throw new Error("하위 연결 실패");
+
+        setStagedRootIds((prev) => {
+          const next = new Set(prev);
+          next.delete(childId);
+          if (child.parentId === null) {
+            next.add(newTask.id);
+          }
+          return next;
+        });
+        if (fromInput) setQuickTitle("");
+        toast.success("상위 노드가 추가되었습니다.");
+        onRefresh();
+      } catch {
+        toast.error("상위 노드 추가에 실패했습니다.");
+      } finally {
+        setIsAddingParent(false);
+      }
+    },
+    [tasks, quickTitle, onRefresh]
+  );
+
   const handleQuickCreate = useCallback(async () => {
     if (!quickTitle.trim()) return;
 
@@ -978,6 +1053,7 @@ function TreeViewInner({
           onToggleCollapse: handleToggleCollapse,
           onTitleChange: handleTitleChange,
           onAddChild: onCreateTask,
+          onAddParent: handleAddParentNode,
           onTaskClick,
           nodeStyle: getNodeStyle(task.id),
         },
@@ -1017,7 +1093,20 @@ function TreeViewInner({
     });
     const mindMapNodes = getMindMapLayout(nodes, allEdges, rootIds);
     return { layoutedNodes: mindMapNodes, layoutedEdges: allEdges };
-  }, [treeTasks, taskLinks, collapsedIds, stagedRootIds, onCreateTask, onTaskClick, onTaskHover, handleToggleCollapse, handleTitleChange, getVisibleTasks, getNodeStyle]);
+  }, [
+    treeTasks,
+    taskLinks,
+    collapsedIds,
+    stagedRootIds,
+    onCreateTask,
+    onTaskClick,
+    onTaskHover,
+    handleToggleCollapse,
+    handleTitleChange,
+    handleAddParentNode,
+    getVisibleTasks,
+    getNodeStyle,
+  ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
@@ -1046,7 +1135,7 @@ function TreeViewInner({
 
   // 노드 드래그 끝났을 때 위치 저장 (자유 배치 유지) + 서버 동기화 예약
   const onNodeDragStop = useCallback(
-    (_e: React.MouseEvent, node: Node) => {
+    (_e: MouseEvent, node: Node) => {
       if (node?.position) {
         savePosition(node.id, node.position.x, node.position.y);
       }
@@ -1247,6 +1336,20 @@ function TreeViewInner({
             <Plus className="mr-1 size-4" />
             추가
           </Button>
+          {selectedNodeIds.length === 1 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mindmap-toolbar-btn shrink-0"
+              disabled={isAddingParent || isCreating}
+              onClick={() => void handleAddParentNode(selectedNodeIds[0]!)}
+              title="빠른 입력란의 제목을 쓰면 그 이름으로 상위 노드를 만듭니다. 비어 있으면 입력 창이 열립니다."
+            >
+              <ArrowUpFromLine className="mr-1 size-4" />
+              상위 노드
+            </Button>
+          )}
         </div>
 
         {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 프로젝트만 */}
@@ -1378,7 +1481,7 @@ function TreeViewInner({
         </div>
 
         <p className="text-muted-foreground hidden max-w-md text-xs lg:block">
-          💡 노드 드래그로 위치 자유 배치 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)
+          💡 노드 드래그로 위치 자유 배치 · 하위/상위 추가 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)
         </p>
     </div>
   );

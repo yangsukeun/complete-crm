@@ -2,6 +2,40 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id: chatId } = await params;
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      select: {
+        id: true,
+        isGroup: true,
+        name: true,
+        participants: {
+          select: { user: { select: { id: true, name: true, position: true } } },
+        },
+      },
+    });
+    if (!chat) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({
+      id: chat.id,
+      isGroup: chat.isGroup,
+      name: chat.name,
+      participants: chat.participants.map((p: { user: { id: string; name: string; position: string | null } }) => p.user),
+    });
+  } catch (e) {
+    console.error("[GET /api/chats/[id]]", e);
+    return NextResponse.json({ error: "Failed" }, { status: 500 });
+  }
+}
+
 /**
  * 외부/확장 CRM 연동 등에서 빈 POST로 방 상태 동기화 시 — 임원·관리자는 비참여 방이면 참가만 추가.
  */

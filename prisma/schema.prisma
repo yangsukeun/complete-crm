@@ -147,6 +147,7 @@ model User {
   preferredAiProvider String?   // AI 비서: gemini | openai | notebook | claude (null이면 서버 기본값)
   oneSignalPlayerId String?     // OneSignal 구독/Player ID (호환·레거시 필드명)
   playerId          String?     // OneSignal Player / subscription ID (푸시 REST include_player_ids)
+  lastActiveAt      DateTime?   // 마지막 접속 시각 (heartbeat — 온라인 여부 판단용)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]

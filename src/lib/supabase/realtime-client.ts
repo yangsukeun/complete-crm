@@ -193,6 +193,9 @@ export async function subscribeGlobalPresence(
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await channel.track({ userId: sessionUserId, name: userName });
+        // track() 직후 presenceState가 아직 비어 있을 수 있으므로 짧은 딜레이 후 한 번 더 emit
+        setTimeout(emitSync, 800);
+        setTimeout(emitSync, 2500);
       }
     });
 

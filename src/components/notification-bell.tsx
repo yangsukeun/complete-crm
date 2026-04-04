@@ -121,6 +121,7 @@ export function NotificationBell() {
           );
           setUnreadCount((c: any) => Math.max(0, c - 1));
           void mutateUnread();
+          window.dispatchEvent(new Event("notification-realtime"));
         } catch {
           // ignore
         }
@@ -137,6 +138,7 @@ export function NotificationBell() {
       setList((prev: NotificationItem[]) => prev.map((x) => ({ ...x, isRead: true })));
       setUnreadCount(0);
       void mutateUnread();
+      window.dispatchEvent(new Event("notification-realtime"));
     } catch {
       // ignore
     }

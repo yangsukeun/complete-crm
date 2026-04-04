@@ -160,6 +160,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatsRef = useRef<ChatItem[]>([]);
   const selectedChatIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<Message[]>([]);
   const pendingReadSyncSigRef = useRef("");
   const lastReadSyncOkSigRef = useRef("");
 
@@ -192,6 +193,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     const onPresence = (ev: Event) => {
@@ -356,8 +361,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           void mutateChats();
           // [FIX] 현재 열려있는 채팅방의 메시지도 재조회 — Supabase payload.new가 RLS로 비어오면
           //       chat-realtime 핸들러로는 메시지가 추가되지 않으므로 폴링 방식으로 보완
+          //       since= 파라미터로 마지막 메시지 이후분만 조회해 속도 최적화
           const cid = selectedChatIdRef.current;
-          if (cid) void fetchMessages(cid, true);
+          if (cid) {
+            const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+            const sinceIso = lastMsg?.createdAt ?? null;
+            void fetchMessages(cid, true, sinceIso);
+          }
         }
       }, 320);
     };

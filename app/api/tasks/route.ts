@@ -83,6 +83,27 @@ export async function GET(req: Request) {
         : { scope: "TEAM" as const, ...(isAdmin ? {} : { OR: taskVisibilityMemberOr(session.user.id) }) };
 
     const { searchParams } = new URL(req.url);
+
+    /** 네비 Projects 배지: 업무(Task) 배정 알림만 (/tasks/ 링크), 일정 초대(/schedule) 제외 */
+    if (searchParams.get("assignedToMe") === "1" && searchParams.get("isNew") === "1") {
+      const count = await prisma.notification.count({
+        where: {
+          userId: session.user.id,
+          isRead: false,
+          type: "ASSIGNED",
+          link: { startsWith: "/tasks/" },
+        },
+      });
+      return NextResponse.json(
+        { count },
+        {
+          headers: {
+            "Cache-Control": "private, max-age=15, stale-while-revalidate=60",
+          },
+        }
+      );
+    }
+
     // [PERF-auto] CRM 프로젝트 단위 목록: 전체 all=1 대신 projectId+limit로 한정 가능
     const projectIdParam = searchParams.get("projectId");
     const projectId =

@@ -21,6 +21,36 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { searchParams } = new URL(req.url);
+
+    /** 스케줄 캘린더: 마감일 없는 브랜드 프로젝트(Task의 project가 아닌 Project 테이블) */
+    if (searchParams.get("noDueDate") === "1") {
+      const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
+      const isMaster = String((session.user as { email?: string }).email ?? "")
+        .trim()
+        .toLowerCase() === masterEmail;
+      const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+      const memberFilter =
+        isAdmin || isMaster ? {} : { users: { some: { id: session.user.id } } };
+      const list = await prisma.project.findMany({
+        where: {
+          deletedAt: null,
+          dueDate: null,
+          ...memberFilter,
+        },
+        select: {
+          id: true,
+          name: true,
+          brand: { select: { id: true, name: true } },
+        },
+        orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
+      });
+      return NextResponse.json(list, {
+        headers: {
+          "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+        },
+      });
+    }
+
     const brandId = searchParams.get("brandId") ?? undefined;
     const includeDeleted = searchParams.get("includeDeleted") === "1";
     const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();

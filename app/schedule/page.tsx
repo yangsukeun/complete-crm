@@ -324,6 +324,12 @@ type TaskItem = {
   assignedTo: { name: string; position?: string | null } | null;
 };
 
+type NoDueBrandProject = {
+  id: string;
+  name: string;
+  brand: { id: string; name: string };
+};
+
 type LeaveRequestItem = {
   id: string;
   type: string;
@@ -651,6 +657,14 @@ export default function SchedulePage() {
     calendarDueKey,
     jsonFetcher,
     { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
+
+  const noDueProjectsKey =
+    session?.user && tab === "schedule" ? "/api/projects?noDueDate=1" : null;
+  const { data: noDeadlineProjects = [] } = useSWR<NoDueBrandProject[]>(
+    noDueProjectsKey,
+    jsonFetcher,
+    { dedupingInterval: 120_000, revalidateOnFocus: true }
   );
   const taskDueEvents = useMemo(
     () =>
@@ -1178,6 +1192,35 @@ export default function SchedulePage() {
               }}
             />
           </div>
+
+          {noDeadlineProjects.length > 0 && (
+            <div className="mt-4 rounded-lg border border-[#e5e7eb] bg-[#fafafa] px-4 py-3 dark:border-border dark:bg-muted/30">
+              <h3 className="mb-2 text-sm font-medium text-[#3c4043] dark:text-foreground">
+                마감일 없는 프로젝트
+              </h3>
+              <p className="text-muted-foreground mb-3 text-xs">
+                브랜드 프로젝트 중 마감일이 비어 있는 항목입니다. 상세는 프로젝트 페이지에서 확인하세요.
+              </p>
+              <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+                {noDeadlineProjects.map((p) => (
+                  <li key={p.id}>
+                    <Link
+                      href={`/projects/${p.id}`}
+                      prefetch={false}
+                      className="flex items-center gap-2 rounded-md px-1 py-1 text-sm text-[#1a73e8] hover:underline dark:text-primary"
+                    >
+                      <span className="size-2 shrink-0 rounded-full bg-blue-400" aria-hidden />
+                      <span className="min-w-0 truncate">
+                        <span className="text-muted-foreground text-xs">{p.brand.name}</span>
+                        {" · "}
+                        {p.name}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
 

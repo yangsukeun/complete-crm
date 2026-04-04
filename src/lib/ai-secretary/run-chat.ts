@@ -1,6 +1,8 @@
 import "server-only";
 
+import { addDays, format } from "date-fns";
 import prisma from "@/lib/prisma";
+import { createTaskWithNotifications } from "@/lib/tasks/create-task";
 import {
   callAiByProvider,
   getClaudeApiKey,
@@ -101,7 +103,64 @@ const SECRETARY_TOOLS = [
       required: ["type", "startDate", "endDate"],
     },
   },
+  {
+    name: "create_project",
+    description:
+      "팀 공유 업무(Projects / Task)를 새로 만듭니다. 사용자가 '프로젝트 만들어줘', 'OO 프로젝트 추가' 등으로 요청하면 이 도구를 사용하세요. (브랜드 견적 프로젝트 테이블과는 별개입니다.)",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "프로젝트(업무) 제목" },
+        description: { type: "string", description: "설명 (선택)" },
+        dueDate: {
+          type: "string",
+          description: "마감일 YYYY-MM-DD (없으면 오늘 기준 7일 후)",
+        },
+        status: {
+          type: "string",
+          enum: ["준비중", "진행중", "완료"],
+          description: "준비중=Todo, 진행중=In progress, 완료=Done",
+        },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "update_project",
+    description:
+      "기존 프로젝트(업무 Task)를 수정합니다. 마감일 변경·제목 변경·진행 상태 변경 요청 시 projectId(업무 ID)를 넣고 변경할 필드만 지정하세요.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "수정할 업무(Task)의 ID" },
+        title: { type: "string", description: "새 제목 (선택)" },
+        dueDate: { type: "string", description: "새 마감일 YYYY-MM-DD (선택)" },
+        status: {
+          type: "string",
+          enum: ["준비중", "진행중", "완료"],
+          description: "상태 (선택)",
+        },
+      },
+      required: ["projectId"],
+    },
+  },
 ] as const;
+
+function mapSecretaryProjectStatus(
+  raw: string | undefined
+): "TODO" | "IN_PROGRESS" | "DONE" | undefined {
+  if (!raw || typeof raw !== "string") return undefined;
+  const s = raw.trim();
+  const map: Record<string, "TODO" | "IN_PROGRESS" | "DONE"> = {
+    준비중: "TODO",
+    진행중: "IN_PROGRESS",
+    완료: "DONE",
+    TODO: "TODO",
+    IN_PROGRESS: "IN_PROGRESS",
+    DONE: "DONE",
+  };
+  return map[s];
+}
 
 const LEAVE_TYPE_DAY_UNITS: Record<string, number> = {
   ANNUAL: 1,
@@ -135,6 +194,9 @@ const SECRETARY_ACTION_KEYWORDS = [
   "근태",
   "연차 신청",
   "휴가 신청",
+  "프로젝트",
+  "마감일",
+  "마감",
 ] as const;
 
 // ─── Tool executor ────────────────────────────────────────────────────────────
@@ -350,6 +412,109 @@ async function executeTool(
       return `✅ 휴가 신청이 등록되었습니다.\n- 유형: ${type}\n- 기간: ${startStr} ~ ${endStr}`;
     }
 
+    if (name === "create_project") {
+      const { title, description, dueDate: dueRaw, status: stRaw } = input as {
+        title: string;
+        description?: string;
+        dueDate?: string;
+        status?: string;
+      };
+      if (!title || !String(title).trim()) {
+        return "도구 실행 실패 (create_project): 제목이 필요합니다.";
+      }
+      let dueIso: string;
+      if (dueRaw && String(dueRaw).trim()) {
+        const t = String(dueRaw).trim();
+        const ymd = t.slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+          dueIso = `${ymd}T12:00:00+09:00`;
+        } else {
+          const dt = new Date(t);
+          dueIso = Number.isNaN(dt.getTime())
+            ? `${format(addDays(new Date(), 7), "yyyy-MM-dd")}T12:00:00+09:00`
+            : dt.toISOString();
+        }
+      } else {
+        dueIso = `${format(addDays(new Date(), 7), "yyyy-MM-dd")}T12:00:00+09:00`;
+      }
+      const status = mapSecretaryProjectStatus(stRaw) ?? "TODO";
+      const task = await createTaskWithNotifications({
+        createdById: userId,
+        scope: "TEAM",
+        data: {
+          title: String(title).trim(),
+          description: description && String(description).trim() ? String(description).trim() : null,
+          dueDate: dueIso,
+          status,
+          assigneeIds: [userId],
+        },
+      });
+      const dueLabel = task.dueDate.toISOString().slice(0, 10);
+      return `✅ 프로젝트(업무)가 생성되었습니다.\n- 제목: ${task.title}\n- ID: ${task.id}\n- 마감: ${dueLabel}`;
+    }
+
+    if (name === "update_project") {
+      const { projectId, title, dueDate: dueRaw, status: stRaw } = input as {
+        projectId: string;
+        title?: string;
+        dueDate?: string;
+        status?: string;
+      };
+      if (!projectId || !String(projectId).trim()) {
+        return "도구 실행 실패 (update_project): projectId가 필요합니다.";
+      }
+      const id = String(projectId).trim();
+      const existing = await prisma.task.findFirst({
+        where: {
+          id,
+          deletedAt: null,
+          OR: [
+            { assignedToId: userId },
+            { createdById: userId },
+            { assignees: { some: { userId } } },
+          ],
+        },
+      });
+      if (!existing) {
+        return "도구 실행 실패 (update_project): 해당 업무를 찾을 수 없거나 수정 권한이 없습니다.";
+      }
+      const data: {
+        title?: string;
+        dueDate?: Date;
+        status?: "TODO" | "IN_PROGRESS" | "DONE";
+        isCompleted?: boolean;
+      } = {};
+      if (title !== undefined && String(title).trim()) {
+        data.title = String(title).trim();
+      }
+      if (dueRaw !== undefined && String(dueRaw).trim()) {
+        const d = String(dueRaw).trim().slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          data.dueDate = new Date(`${d}T12:00:00+09:00`);
+        }
+      }
+      const mapped = mapSecretaryProjectStatus(stRaw);
+      if (mapped) {
+        data.status = mapped;
+        if (mapped === "DONE") data.isCompleted = true;
+        if (mapped !== "DONE" && stRaw !== undefined) data.isCompleted = false;
+      }
+      if (
+        data.title === undefined &&
+        data.dueDate === undefined &&
+        data.status === undefined &&
+        data.isCompleted === undefined
+      ) {
+        return "변경할 내용이 없습니다. title, dueDate, status 중 하나 이상을 지정하세요.";
+      }
+      await prisma.task.update({ where: { id: existing.id }, data });
+      const parts: string[] = [`✅ 프로젝트(업무)가 수정되었습니다.`, `- ID: ${existing.id}`];
+      if (data.title !== undefined) parts.push(`- 제목: ${data.title}`);
+      if (data.dueDate !== undefined) parts.push(`- 마감: ${data.dueDate.toISOString().slice(0, 10)}`);
+      if (data.status !== undefined) parts.push(`- 상태: ${data.status}`);
+      return parts.join("\n");
+    }
+
     return `알 수 없는 도구: ${name}`;
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
@@ -496,7 +661,8 @@ function unwrapOuterPrint(s: string): string {
 }
 
 function extractToolCallFromPythonish(code: string): GeminiExtractedCall | null {
-  const re = /(?:default_api\.)?(create_schedule|create_task|create_leave)\s*\(/gi;
+  const re =
+    /(?:default_api\.)?(create_schedule|create_task|create_leave|create_project|update_project)\s*\(/gi;
   const m = re.exec(code);
   if (!m) return null;
   const name = m[1]!;
@@ -508,7 +674,7 @@ function extractToolCallFromPythonish(code: string): GeminiExtractedCall | null 
 }
 
 function looksLikeGeminiFakeToolText(s: string): boolean {
-  return /tool_code|default_api\.create_|create_schedule\s*\(|create_task\s*\(|create_leave\s*\(|"tool_code"\s*:/i.test(
+  return /tool_code|default_api\.create_|create_schedule\s*\(|create_task\s*\(|create_leave\s*\(|create_project\s*\(|update_project\s*\(|"tool_code"\s*:/i.test(
     s
   );
 }
@@ -953,7 +1119,7 @@ export async function sendSecretaryMessage(params: {
   const rolePrompt = getSecretaryRolePrompt(role);
   const instructionSuffix = isExecutiveLike(role)
     ? "답변은 한국어로 하세요. 위 참고 데이터에 포함된 직원·연락처·업무 정보는 사용자가 물으면 제공하세요. 허용된 범위의 정보 제공을 거부하지 마세요."
-    : "답변은 한국어로 하세요. 일정 등록·업무 생성·휴가(연차/반차) 신청 요청은 반드시 도구를 사용해 즉시 실행하세요. 권한이 없는 정보(연락처·재무 등)만 거부하세요.";
+    : "답변은 한국어로 하세요. 일정 등록·업무 생성·휴가(연차/반차) 신청·프로젝트(팀 업무) 생성/수정 요청은 반드시 도구를 사용해 즉시 실행하세요. 권한이 없는 정보(연락처·재무 등)만 거부하세요.";
   const systemContent = `${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
 
   logAiSecretarySystemPrompt(systemContent, { userId, role, dateKey });

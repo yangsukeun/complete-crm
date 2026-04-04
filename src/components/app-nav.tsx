@@ -197,6 +197,28 @@ export function AppNav() {
     { dedupingInterval: 120_000, revalidateOnFocus: true }
   );
 
+  const tasksBadgeEnabled =
+    Boolean(session?.user?.id) &&
+    pathname !== "/choose-mode" &&
+    pathname !== "/login";
+
+  const userForTasksBadge = session?.user as { role?: string; permissions?: string | null } | undefined;
+  const canTasksForBadge = (() => {
+    try {
+      return userForTasksBadge ? userHasPermission(userForTasksBadge as any, "tasks") : true;
+    } catch {
+      return true;
+    }
+  })();
+
+  const { data: tasksAssignedBadge, mutate: mutateTasksAssignedBadge } = useSWR<{ count: number }>(
+    tasksBadgeEnabled && canTasksForBadge ? SWR_KEYS.tasksAssignedNewCount : null,
+    jsonFetcher,
+    { dedupingInterval: 25_000, revalidateOnFocus: true }
+  );
+
+  const projectAssignBadgeCount = tasksAssignedBadge?.count ?? 0;
+
   useEffect(() => {
     if (!financeBadgeEnabled) {
       setPaymentAlertCount(0);
@@ -215,6 +237,13 @@ export function AppNav() {
     window.addEventListener("finance-alerts-refresh", onFin);
     return () => window.removeEventListener("finance-alerts-refresh", onFin);
   }, [financeBadgeEnabled, mutateFinance]);
+
+  useEffect(() => {
+    if (!tasksBadgeEnabled || !canTasksForBadge) return;
+    const onNotif = () => void mutateTasksAssignedBadge();
+    window.addEventListener("notification-realtime", onNotif);
+    return () => window.removeEventListener("notification-realtime", onNotif);
+  }, [tasksBadgeEnabled, canTasksForBadge, mutateTasksAssignedBadge]);
 
   if (pathname === "/login" || pathname === "/choose-mode") return null;
 
@@ -326,8 +355,15 @@ export function AppNav() {
 
           {can("tasks") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/tasks" || pathname.startsWith("/tasks/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/tasks" prefetch={false} className="flex items-center gap-1.5">
-                <ListTodo className="size-4" />
+              <Link href="/tasks" prefetch={false} className="relative flex items-center gap-1.5">
+                <span className="relative inline-flex">
+                  <ListTodo className="size-4" />
+                  {projectAssignBadgeCount > 0 && (
+                    <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {projectAssignBadgeCount > 99 ? "99+" : projectAssignBadgeCount}
+                    </span>
+                  )}
+                </span>
                 <span>Projects</span>
               </Link>
             </Button>
@@ -346,14 +382,16 @@ export function AppNav() {
           {/* 채팅 - 회사 모드에서만 */}
           {isCompany && can("chat") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/chat" || pathname.startsWith("/chat/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/chat" prefetch={false} className="relative flex items-center gap-1.5">
-                <MessageCircle className="size-4" />
+              <Link href="/chat" prefetch={false} className="flex items-center gap-1.5">
+                <span className="relative inline-flex shrink-0">
+                  <MessageCircle className="size-4" />
+                  {chatUnreadCount > 0 && (
+                    <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                    </span>
+                  )}
+                </span>
                 <span>채팅</span>
-                {chatUnreadCount > 0 && (
-                  <span className="flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                  </span>
-                )}
               </Link>
             </Button>
           )}
@@ -603,8 +641,13 @@ export function AppNav() {
                 <Icon className="size-4" />
                 {label}
                 {href === "/chat" && chatUnreadCount > 0 && (
-                  <span className="ml-1 flex min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white">
+                  <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
                     {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                  </span>
+                )}
+                {href === "/tasks" && projectAssignBadgeCount > 0 && (
+                  <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
+                    {projectAssignBadgeCount > 99 ? "99+" : projectAssignBadgeCount}
                   </span>
                 )}
                 {href === "/finance/requests" && paymentAlertCount > 0 && (
