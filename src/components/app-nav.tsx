@@ -30,6 +30,7 @@ import {
   Image,
   FolderOpen,
   Sparkles,
+  BrainCircuit,
   Trash2,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
@@ -55,6 +56,7 @@ const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboar
   { href: "/board", label: "게시판", icon: FolderOpen, featureKey: "board", companyOnly: true },
   { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true },
   { href: "/ai-secretary", label: "AI 비서", icon: Sparkles },
+  { href: "/ai-hub", label: "AI 허브", icon: BrainCircuit },
 ];
 
 const workGroupLinks: { href: string; label: string; icon: typeof ListTodo; featureKey?: string }[] = [
@@ -409,6 +411,22 @@ export function AppNav() {
             <Link href="/ai-secretary" prefetch={false} className="flex items-center gap-1.5">
               <Sparkles className="size-4" />
               <span>AI 비서</span>
+            </Link>
+          </Button>
+
+          <Button
+            variant="ghost"
+            asChild
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+              pathname === "/ai-hub" || pathname.startsWith("/ai-hub/")
+                ? "bg-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            )}
+          >
+            <Link href="/ai-hub" prefetch={false} className="flex items-center gap-1.5">
+              <BrainCircuit className="size-4" />
+              <span>AI 허브</span>
             </Link>
           </Button>
 

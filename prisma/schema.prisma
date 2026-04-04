@@ -183,8 +183,24 @@ model User {
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
   tasksDeletedByMe      Task[]          @relation("TaskDeletedBy")
   aiSecretaryConversations AiConversation[]
+  aiHubHistories         AiHubHistory[]
   taskMindmapStates      UserTaskMindmapState[]
   @@index([currentProjectId])
+}
+
+// AI 허브: 클라이언트 히스토리/CRM 저장용
+model AiHubHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  agentKey  String
+  agentName String
+  input     String   @db.Text
+  output    String   @db.Text
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_hub_histories")
 }
 
 // Tasks 마인드맵: 노드 좌표·루트 스테이징·접힘·노드 스타일 등 (클라이언트 state 영속화)
