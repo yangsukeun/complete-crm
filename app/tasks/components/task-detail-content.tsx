@@ -78,6 +78,8 @@ export interface TaskDetailContentProps {
 
 export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) {
   const [task, setTask] = useState<TaskDetail | null>(null);
+  const taskRef = useRef<TaskDetail | null>(null);
+  taskRef.current = task;
   const [loading, setLoading] = useState(false);
   const [togglingComplete, setTogglingComplete] = useState(false);
 
@@ -116,10 +118,10 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
 
   const updateTask = useCallback(
     async (data: Record<string, unknown>) => {
-      if (!task) return;
+      if (!taskRef.current) return;
       setSaving(true);
       try {
-        const res = await fetch(`/api/tasks/${task.id}`, {
+        const res = await fetch(`/api/tasks/${taskId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
@@ -135,7 +137,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         setSaving(false);
       }
     },
-    [task, onUpdate]
+    [taskId, onUpdate]
   );
 
   const handleSaveTitle = useCallback(() => {
@@ -168,13 +170,19 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     }
   }, [taskId]);
 
+  const fetchTaskRef = useRef(fetchTask);
+  fetchTaskRef.current = fetchTask;
+
   useEffect(() => {
-    void fetchTask();
-  }, [fetchTask]);
+    void fetchTaskRef.current();
+  }, [taskId]);
 
   const refreshTaskAfterMutation = useCallback(() => {
-    void fetchTask({ soft: true });
-  }, [fetchTask]);
+    void fetchTaskRef.current({ soft: true });
+  }, []);
+
+  /** 본문 자동저장(PATCH) 직후 서버 재조회하지 않음 — 에디터·루프 방지 */
+  const afterBodyAutoSave = useCallback(() => {}, []);
 
   useEffect(() => {
     if (!task) {
@@ -699,7 +707,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         <TaskBodyEditorDynamic
           taskId={task.id}
           initialDescription={task.description}
-          onSaved={refreshTaskAfterMutation}
+          onSaved={afterBodyAutoSave}
         />
       </div>
 

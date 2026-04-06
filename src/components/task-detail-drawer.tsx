@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { TaskDetailContent } from "../../app/tasks/components/task-detail-content";
@@ -13,8 +14,15 @@ type Props = {
 };
 
 export function TaskDetailDrawer({ taskId, onClose, onUpdate, narrow = false }: Props) {
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) onClose();
+    },
+    [onClose]
+  );
+
   return (
-    <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={!!taskId} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
         showCloseButton={true}

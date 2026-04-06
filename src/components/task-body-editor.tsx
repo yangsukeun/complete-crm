@@ -146,7 +146,7 @@ function TaskSlashMenu() {
           />
         ),
         onItemClick: () => {
-          insertOrUpdateBlockForSlashMenu(editor, makeColumnListBlock(n) as any);
+          insertOrUpdateBlockForSlashMenu(editor, makeColumnListBlock(n) as never);
         },
       }));
       return filterSuggestionItems(
@@ -203,7 +203,13 @@ export function TaskBodyEditor({
   onSavedRef.current = onSaved;
 
   useEffect(() => {
+    loadedForTaskIdRef.current = null;
+  }, [taskId]);
+
+  useEffect(() => {
     if (!editor || !taskId) return;
+
+    if (loadedForTaskIdRef.current === taskId) return;
 
     const raw = (initialDescription ?? "").trim();
     if (!raw) {
@@ -211,11 +217,8 @@ export function TaskBodyEditor({
       return;
     }
 
-    // 이미 이 업무 본문을 에디터에 반영했다면 다시 넣지 않음 (Strict Mode·부모 리렌더와 무관하게 사용자 편집 유지)
-    if (loadedForTaskIdRef.current === taskId) return;
-
     // replaceBlocks는 React 렌더/useEffect 동기 구간에서 호출 시 flushSync 경고가 난다.
-    // ref는 apply 성공 후에만 설정해, Strict Mode에서 cleanup이 타이머만 취소하고 "이미 로드됨"으로 잘못 막는 문제를 방지한다.
+    // initialDescription은 deps에 넣지 않음 — 서버 재조회·부모 setTask만으로는 재적용하지 않음(onChange→저장 루프 차단).
     const apply = () => {
       try {
         const parsed = parseStoredTaskBody(raw);
@@ -223,7 +226,7 @@ export function TaskBodyEditor({
           const normalized = normalizeBlockNoteBlocksForYoutube(
             normalizeImageBlocksDriveDisplayUrls(parsed.blocks as unknown[]) as unknown[]
           ) as typeof parsed.blocks;
-          editor.replaceBlocks(editor.document, normalized as any);
+          editor.replaceBlocks(editor.document, normalized as typeof editor.document);
           loadedForTaskIdRef.current = taskId;
           return;
         }
@@ -244,7 +247,8 @@ export function TaskBodyEditor({
     };
     const id = window.setTimeout(apply, 0);
     return () => window.clearTimeout(id);
-  }, [editor, taskId, initialDescription]);
+    // initialDescription은 의도적으로 제외 — taskId·에디터 준비 시점의 스냅샷만 적용
+  }, [editor, taskId]);
 
   const performSave = useCallback(async () => {
     if (!editor) return;
@@ -333,9 +337,9 @@ export function TaskBodyEditor({
         if (!refBlock) return;
 
         if (isParagraphEffectivelyEmpty(refBlock)) {
-          editor.replaceBlocks([refBlock], [block as any]);
+          editor.replaceBlocks([refBlock], [block as never]);
         } else {
-          editor.insertBlocks([block as any], refBlock, "after");
+          editor.insertBlocks([block as never], refBlock, "after");
         }
       } catch {
         // ignore

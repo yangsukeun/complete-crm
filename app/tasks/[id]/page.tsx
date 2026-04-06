@@ -214,10 +214,15 @@ export default function TaskDetailPage() {
     }
   }, [taskId]);
 
+  const fetchTaskRef = useRef(fetchTask);
+  fetchTaskRef.current = fetchTask;
+
   useEffect(() => {
-    if (taskId) fetchTask();
+    if (taskId) void fetchTaskRef.current();
     else setTask(null);
-  }, [taskId, fetchTask]);
+  }, [taskId]);
+
+  const afterBodyAutoSave = useCallback(() => {}, []);
 
   useEffect(() => {
     if (!task?.id || !session?.user?.id) return;
@@ -655,7 +660,11 @@ export default function TaskDetailPage() {
           <div className="border-t border-border/40 px-0 py-8">
             <ClientErrorBoundary>
               {mountEditor ? (
-                <TaskBodyEditorDynamic taskId={task.id} initialDescription={task.description} onSaved={fetchTask} />
+                <TaskBodyEditorDynamic
+                  taskId={task.id}
+                  initialDescription={task.description}
+                  onSaved={afterBodyAutoSave}
+                />
               ) : (
                 <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
                   본문 에디터 로딩 중...

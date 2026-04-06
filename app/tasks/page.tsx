@@ -457,6 +457,7 @@ export default function TasksPage() {
     keepPreviousData: true,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
+    revalidateOnMount: false,
     revalidateIfStale: false, // [PERF-claude-code] 캐시 존재 시 키 재활성화/리마운트로 재검증 안 함
     // [PERF-auto] 전체 목록(all=1) 재검증 빈도 완화 — 수동 mutate·탭 전환으로 갱신
     dedupingInterval: 300_000,
@@ -482,7 +483,8 @@ export default function TasksPage() {
     revalidateFirstPage: true,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    dedupingInterval: 12_000,
+    revalidateOnMount: false,
+    dedupingInterval: 30_000,
   });
 
   const { data: linksData = [], mutate: mutateLinks, isLoading: linksLoading } = useSWR<TaskLink[]>(

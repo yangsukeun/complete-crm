@@ -216,7 +216,12 @@ export function AppNav() {
   const { data: tasksAssignedBadge, mutate: mutateTasksAssignedBadge } = useSWR<{ count: number }>(
     tasksBadgeEnabled && canTasksForBadge ? SWR_KEYS.tasksAssignedNewCount : null,
     jsonFetcher,
-    { dedupingInterval: 25_000, revalidateOnFocus: true }
+    {
+      dedupingInterval: 30_000,
+      revalidateOnFocus: false,
+      revalidateOnMount: false,
+      revalidateIfStale: false,
+    }
   );
 
   const projectAssignBadgeCount = tasksAssignedBadge?.count ?? 0;
