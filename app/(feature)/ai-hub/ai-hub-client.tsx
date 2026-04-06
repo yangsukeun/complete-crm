@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { AGENTS, type Agent, type AgentKey } from "@/lib/ai-hub/agents";
 import type { HistoryItem } from "@/lib/ai-hub/types";
 import { AgentCard } from "@/components/ai-hub/AgentCard";
-import { ResultArea } from "@/components/ai-hub/ResultArea";
+import { ResultArea, type CompareResultsState } from "@/components/ai-hub/ResultArea";
 import { HistoryChips } from "@/components/ai-hub/HistoryChips";
 
 export type { AgentKey, Agent } from "@/lib/ai-hub/agents";
@@ -22,20 +23,16 @@ function autoRoute(input: string): AgentKey {
   return "copy";
 }
 
-function parseCompareHistoryOutput(output: string): {
-  claude: string;
-  gpt: string;
-  gemini: string;
-} | null {
+function parseCompareHistoryOutput(output: string): CompareResultsState | null {
   try {
-    const j = JSON.parse(output) as { claude?: string; gpt?: string; gemini?: string };
-    if (
-      typeof j.claude === "string" &&
-      typeof j.gpt === "string" &&
-      typeof j.gemini === "string"
-    ) {
-      return { claude: j.claude, gpt: j.gpt, gemini: j.gemini };
-    }
+    const j = JSON.parse(output) as {
+      claude?: string | null;
+      gpt?: string;
+      gemini?: string;
+    };
+    if (typeof j.gpt !== "string" || typeof j.gemini !== "string") return null;
+    if (j.claude === null) return { claude: null, gpt: j.gpt, gemini: j.gemini };
+    if (typeof j.claude === "string") return { claude: j.claude, gpt: j.gpt, gemini: j.gemini };
   } catch {
     /* ignore */
   }
@@ -43,16 +40,16 @@ function parseCompareHistoryOutput(output: string): {
 }
 
 export function AiHubClient() {
+  const { data: session } = useSession();
+  const isExecutive =
+    session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
+
   const [selectedAgent, setSelectedAgent] = useState<AgentKey | null>(null);
   const [taskInput, setTaskInput] = useState("");
   const [result, setResult] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [compareResults, setCompareResults] = useState<{
-    claude: string;
-    gpt: string;
-    gemini: string;
-  } | null>(null);
+  const [compareResults, setCompareResults] = useState<CompareResultsState | null>(null);
   const [saveToast, setSaveToast] = useState(false);
 
   const handleSave = useCallback(
@@ -131,7 +128,7 @@ export function AiHubClient() {
         });
         const data = (await res.json()) as {
           error?: string;
-          claude?: string;
+          claude?: string | null;
           gpt?: string;
           gemini?: string;
         };
@@ -140,10 +137,15 @@ export function AiHubClient() {
           toast.error(data.error ?? FALLBACK);
           return;
         }
-        const pack = {
-          claude: data.claude ?? FALLBACK,
-          gpt: data.gpt ?? FALLBACK,
-          gemini: data.gemini ?? FALLBACK,
+        const pack: CompareResultsState = {
+          claude:
+            data.claude === null
+              ? null
+              : typeof data.claude === "string"
+                ? data.claude
+                : FALLBACK,
+          gpt: typeof data.gpt === "string" ? data.gpt : FALLBACK,
+          gemini: typeof data.gemini === "string" ? data.gemini : FALLBACK,
         };
         setCompareResults(pack);
         setResult("");
@@ -321,6 +323,7 @@ export function AiHubClient() {
 
       <ResultArea
         selectedAgent={selectedAgent}
+        isExecutive={isExecutive}
         isLoading={isLoading}
         result={result}
         compareResults={compareResults}

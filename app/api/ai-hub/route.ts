@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import {
-  callAiByProvider,
+  callAnthropic,
+  callGemini,
+  callOpenAI,
   type ChatMessage,
-  type AIProvider,
 } from "@/lib/ai/assist-client";
 import {
   AI_HUB_COMPARE_SYSTEM,
@@ -11,33 +12,51 @@ import {
   isAgentKey,
   type AgentKey,
 } from "@/lib/ai-hub/agents";
+import { getAiHubConfig } from "@/lib/ai-hub/get-ai-config";
 
 export const dynamic = "force-dynamic";
 
 const FALLBACK_MSG = "잠시 후 다시 시도해주세요";
 
-async function safeAi(fn: () => Promise<string>): Promise<string> {
-  try {
-    return await fn();
-  } catch (e) {
-    console.error("[ai-hub]", e);
+function safeAi(fn: () => Promise<string>): Promise<string> {
+  return fn().catch((e: unknown) => {
+    console.error("[ai-hub] 에러:", e instanceof Error ? e.message : String(e));
     return FALLBACK_MSG;
-  }
+  });
 }
 
-function providerForAgentModel(model: string): AIProvider {
+/** 에이전트 model 문자열 → 실제 호출 벤더 */
+function hubProviderForModel(model: string): "claude" | "openai" | "gemini" {
   if (model === "openai" || model === "gpt") return "openai";
   if (model === "gemini") return "gemini";
   return "claude";
 }
 
+async function runSingleHubCall(
+  provider: "claude" | "openai" | "gemini",
+  messagesFull: ChatMessage[],
+  config: ReturnType<typeof getAiHubConfig>
+): Promise<string> {
+  if (provider === "claude") {
+    const k = config.claudeKey;
+    if (!k) throw new Error("Claude API 키가 없습니다.");
+    return callAnthropic(k, messagesFull, {
+      model: config.claudeModel,
+      useParamApiKeyOnly: true,
+    });
+  }
+  if (provider === "openai") {
+    const k = config.openaiKey;
+    if (!k) throw new Error("OPENAI_API_KEY가 없습니다.");
+    return callOpenAI(k, messagesFull, { model: config.openaiModel });
+  }
+  const k = config.geminiKey;
+  if (!k) throw new Error("GEMINI_API_KEY가 없습니다.");
+  return callGemini(k, messagesFull, { model: config.geminiModel });
+}
+
 export async function POST(req: Request) {
   try {
-    const session = await getAppSession();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await req.json()) as {
       type?: string;
       agentKey?: string;
@@ -49,8 +68,24 @@ export async function POST(req: Request) {
     };
 
     const type = typeof body.type === "string" ? body.type : "";
+    const agentKeyRaw = typeof body.agentKey === "string" ? body.agentKey : "";
+    const messageRaw = typeof body.message === "string" ? body.message : "";
+    const message = messageRaw.trim();
 
-    const message = typeof body.message === "string" ? body.message.trim() : "";
+    console.log("[ai-hub] 요청 받음:", {
+      type,
+      agentKey: agentKeyRaw || undefined,
+      message: message ? message.slice(0, 50) : "",
+    });
+
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const role = (session.user as { role?: string }).role;
+    const config = getAiHubConfig(role);
+
     if (!message) {
       return NextResponse.json({ error: "메시지가 비어 있습니다." }, { status: 400 });
     }
@@ -63,16 +98,50 @@ export async function POST(req: Request) {
         { role: "system", content: systemContent },
         { role: "user", content: message },
       ];
-      const [claude, gpt, gemini] = await Promise.all([
-        safeAi(() => callAiByProvider("claude", msgs)),
-        safeAi(() => callAiByProvider("openai", msgs)),
-        safeAi(() => callAiByProvider("gemini", msgs)),
+
+      if (config.isExecutive) {
+        console.log("[ai-hub] AI 호출 시작:", {
+          model: "claude|gpt|gemini",
+          agentKey: agentKeyRaw || "(compare)",
+          isExecutive: config.isExecutive,
+          modelNames: {
+            claude: config.claudeModel,
+            openai: config.openaiModel,
+            gemini: config.geminiModel,
+          },
+        });
+
+        const [claude, gpt, gemini] = await Promise.all([
+          safeAi(() => runSingleHubCall("claude", msgs, config)),
+          safeAi(() => runSingleHubCall("openai", msgs, config)),
+          safeAi(() => runSingleHubCall("gemini", msgs, config)),
+        ]);
+
+        console.log("[ai-hub] AI 응답 완료");
+        return NextResponse.json({ claude, gpt, gemini });
+      }
+
+      console.log("[ai-hub] AI 호출 시작:", {
+        model: "gpt|gemini",
+        agentKey: agentKeyRaw || "(compare)",
+        isExecutive: config.isExecutive,
+        modelNames: { openai: config.openaiModel, gemini: config.geminiModel },
+      });
+
+      const [gpt, gemini] = await Promise.all([
+        safeAi(() => runSingleHubCall("openai", msgs, config)),
+        safeAi(() => runSingleHubCall("gemini", msgs, config)),
       ]);
-      return NextResponse.json({ claude, gpt, gemini });
+
+      console.log("[ai-hub] AI 응답 완료");
+      return NextResponse.json({
+        claude: null,
+        gpt,
+        gemini,
+      });
     }
 
     if (type === "single") {
-      const agentKeyRaw = typeof body.agentKey === "string" ? body.agentKey : "";
       if (!isAgentKey(agentKeyRaw) || agentKeyRaw === "compare") {
         return NextResponse.json({ error: "유효하지 않은 에이전트입니다." }, { status: 400 });
       }
@@ -89,7 +158,7 @@ export async function POST(req: Request) {
       const serverPrompt = agent.systemPrompt.trim();
       const bodyPrompt =
         typeof body.systemPrompt === "string" ? body.systemPrompt.trim() : "";
-      const systemContent = serverPrompt || bodyPrompt;
+      const systemContent = bodyPrompt || serverPrompt;
       if (!systemContent) {
         return NextResponse.json({ error: "시스템 프롬프트가 없습니다." }, { status: 400 });
       }
@@ -99,14 +168,36 @@ export async function POST(req: Request) {
         { role: "user", content: message },
       ];
 
-      const provider = providerForAgentModel(agent.model);
-      const text = await safeAi(() => callAiByProvider(provider, messages));
+      let targetModel = agent.model;
+      if (!config.isExecutive && targetModel === "claude") {
+        targetModel = "gemini";
+      }
+
+      const provider = hubProviderForModel(targetModel);
+      const modelName =
+        provider === "claude"
+          ? config.claudeModel
+          : provider === "openai"
+            ? config.openaiModel
+            : config.geminiModel;
+
+      console.log("[ai-hub] AI 호출 시작:", {
+        model: targetModel,
+        agentKey: agentKeyRaw,
+        isExecutive: config.isExecutive,
+        modelName,
+        provider,
+      });
+
+      const text = await safeAi(() => runSingleHubCall(provider, messages, config));
+
+      console.log("[ai-hub] AI 응답 완료");
       return NextResponse.json({ text });
     }
 
     return NextResponse.json({ error: "알 수 없는 요청 유형입니다." }, { status: 400 });
-  } catch (e) {
-    console.error("[ai-hub] POST", e);
+  } catch (e: unknown) {
+    console.error("[ai-hub] 에러:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: FALLBACK_MSG }, { status: 500 });
   }
 }

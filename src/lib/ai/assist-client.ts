@@ -12,6 +12,21 @@ const NOTEBOOK_LLM_DEFAULT_MODEL = "llama3.2";
 
 export type AIProvider = "gemini" | "openai" | "notebook" | "claude";
 
+/** AI 허브 등: 모델·키 소스 오버라이드 */
+export type AnthropicCallOptions = {
+  model?: string;
+  /** true면 `CLAUDE_API_KEY` 환경변수를 무시하고 인자 `apiKey`만 사용 */
+  useParamApiKeyOnly?: boolean;
+};
+
+export type OpenAIChatOptions = {
+  model?: string;
+};
+
+export type GeminiChatOptions = {
+  model?: string;
+};
+
 /** `.env` 기준 권장: `CLAUDE_API_KEY`. 호환용으로 `ANTHROPIC_API_KEY`도 허용 */
 /** 서버에서만 사용. 우선 `CLAUDE_API_KEY`, 없으면 `ANTHROPIC_API_KEY` */
 export function getClaudeApiKey(): string {
@@ -155,7 +170,11 @@ function parseGeminiApiError(status: number, errText: string): string {
   return `Gemini API 오류 (${status})${short ? `: ${short}` : ""}`;
 }
 
-export async function callGemini(apiKey: string, messages: ChatMessage[]): Promise<string> {
+export async function callGemini(
+  apiKey: string,
+  messages: ChatMessage[],
+  options?: GeminiChatOptions
+): Promise<string> {
   const systemMessage = messages.find((m) => m.role === "system");
   const rest = messages.filter((m) => m.role !== "system");
   const contents = rest.map((m) => ({
@@ -174,9 +193,12 @@ export async function callGemini(apiKey: string, messages: ChatMessage[]): Promi
   }
 
   const envModel = process.env.GEMINI_MODEL?.trim();
-  const tryModels = envModel
-    ? [envModel, ...GEMINI_MODEL_FALLBACKS.filter((m) => m !== envModel)]
-    : [...GEMINI_MODEL_FALLBACKS];
+  const preferred = options?.model?.trim();
+  const tryModels = preferred
+    ? [preferred, ...GEMINI_MODEL_FALLBACKS.filter((m) => m !== preferred)]
+    : envModel
+      ? [envModel, ...GEMINI_MODEL_FALLBACKS.filter((m) => m !== envModel)]
+      : [...GEMINI_MODEL_FALLBACKS];
 
   let lastError = "";
   for (let i = 0; i < tryModels.length; i++) {
@@ -237,7 +259,11 @@ function parseAnthropicApiError(status: number, errText: string): string {
  * Anthropic Messages API (Claude)
  * @see https://docs.anthropic.com/en/api/messages
  */
-export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Promise<string> {
+export async function callAnthropic(
+  apiKey: string,
+  messages: ChatMessage[],
+  options?: AnthropicCallOptions
+): Promise<string> {
   logClaudeEnvForVercel("callAnthropic:entry");
 
   const systemMessage = messages.find((m) => m.role === "system");
@@ -247,7 +273,8 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
     content: m.content,
   }));
 
-  const model = process.env.CLAUDE_MODEL?.trim() || CLAUDE_DEFAULT_MODEL;
+  const model =
+    options?.model?.trim() || process.env.CLAUDE_MODEL?.trim() || CLAUDE_DEFAULT_MODEL;
   const systemPrompt = systemMessage?.content ?? "";
   const maxTokens = getClaudeMaxTokensFromEnv();
   const body: Record<string, unknown> = {
@@ -260,8 +287,10 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
     body.system = systemPrompt;
   }
 
-  /** `CLAUDE_API_KEY` 우선, 없으면 `getClaudeApiKey()`로 넘어온 키(ANTHROPIC_API_KEY 등) */
-  const headerKey = (process.env.CLAUDE_API_KEY ?? "").trim() || apiKey;
+  const paramKey = apiKey.trim();
+  const headerKey = options?.useParamApiKeyOnly
+    ? paramKey
+    : (process.env.CLAUDE_API_KEY ?? "").trim() || paramKey;
 
   try {
     console.log("[AI assist-client][Claude] stage: prepare", {
@@ -270,7 +299,11 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
       max_tokens: maxTokens,
       messagesCount: anthropicMessages.length,
       systemChars: systemPrompt.length,
-      headerKey_source: (process.env.CLAUDE_API_KEY ?? "").trim() ? "CLAUDE_API_KEY" : "param_apiKey",
+      headerKey_source: options?.useParamApiKeyOnly
+        ? "param_only"
+        : (process.env.CLAUDE_API_KEY ?? "").trim()
+          ? "CLAUDE_API_KEY"
+          : "param_apiKey",
       headerKey_masked: maskApiKeyForLog(headerKey),
     });
 
@@ -354,7 +387,13 @@ export async function callAnthropic(apiKey: string, messages: ChatMessage[]): Pr
   }
 }
 
-export async function callOpenAI(apiKey: string, messages: ChatMessage[]): Promise<string> {
+export async function callOpenAI(
+  apiKey: string,
+  messages: ChatMessage[],
+  options?: OpenAIChatOptions
+): Promise<string> {
+  const model =
+    options?.model?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const res = await fetch(OPENAI_API_URL, {
     method: "POST",
     headers: {
@@ -362,7 +401,7 @@ export async function callOpenAI(apiKey: string, messages: ChatMessage[]): Promi
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model,
       messages,
       max_tokens: 1024,
       temperature: 0.3,
