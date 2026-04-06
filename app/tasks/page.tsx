@@ -33,7 +33,7 @@ import {
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, Filter, GitBranch, FileText, List as ListIcon, Trash2, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import {
   addDays,
@@ -95,7 +95,9 @@ const STATUS_LIST = [
 type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 
 const COLUMN_STORAGE_KEY = "tasks-board-visible-columns";
-const PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
+/** 보드/테이블 전환 (스펙: projectViewMode) — 이전 키는 load 시만 fallback */
+const PROJECT_VIEW_MODE_KEY = "projectViewMode";
+const LEGACY_PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
 /** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
 const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
 type ProjectsViewMode = "board" | "table";
@@ -128,8 +130,10 @@ function loadColumnVisibility(): ColumnVisibility {
 function loadProjectsViewMode(): ProjectsViewMode {
   if (typeof window === "undefined") return "board";
   try {
-    const raw = localStorage.getItem(PROJECTS_VIEW_MODE_KEY);
+    const raw = localStorage.getItem(PROJECT_VIEW_MODE_KEY);
     if (raw === "table" || raw === "board") return raw;
+    const legacy = localStorage.getItem(LEGACY_PROJECTS_VIEW_MODE_KEY);
+    if (legacy === "table" || legacy === "board") return legacy;
   } catch {
     /* ignore */
   }
@@ -373,7 +377,7 @@ export default function TasksPage() {
   useEffect(() => {
     if (!projectsViewModeReady) return;
     try {
-      localStorage.setItem(PROJECTS_VIEW_MODE_KEY, projectsViewMode);
+      localStorage.setItem(PROJECT_VIEW_MODE_KEY, projectsViewMode);
     } catch {
       /* ignore */
     }
@@ -704,30 +708,32 @@ export default function TasksPage() {
           </Tabs>
           {view === "list" && projectsViewModeReady ? (
             <div
-              className="flex items-center gap-1 rounded-md border border-gray-200 p-0.5"
+              className="flex items-center rounded-md border border-gray-200"
               role="group"
               aria-label="목록 표시 방식"
             >
-              <Button
+              <button
                 type="button"
-                variant={projectsViewMode === "board" ? "secondary" : "ghost"}
-                size="icon"
-                className="size-8 shrink-0"
                 title="보드 뷰"
                 onClick={() => setProjectsViewMode("board")}
+                className={cn(
+                  "rounded-l-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
+                  projectsViewMode === "board" && "bg-muted text-foreground"
+                )}
               >
                 <LayoutGrid className="size-4" />
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant={projectsViewMode === "table" ? "secondary" : "ghost"}
-                size="icon"
-                className="size-8 shrink-0"
                 title="테이블 뷰"
                 onClick={() => setProjectsViewMode("table")}
+                className={cn(
+                  "rounded-r-md border-l border-gray-200 p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
+                  projectsViewMode === "table" && "bg-muted text-foreground"
+                )}
               >
-                <TableIcon className="size-4" />
-              </Button>
+                <ListTableIcon className="size-4" />
+              </button>
             </div>
           ) : null}
           {view === "mindmap" && (
@@ -1195,8 +1201,8 @@ export default function TasksPage() {
           return isMdUp && view !== "log" ? (
             <SplitView
               className="min-h-[min(85vh,calc(100vh-11rem))] w-full max-w-full"
-              defaultSplit={0.52}
-              detailColumnClassName="max-w-[min(46vw,520px)]"
+              defaultSplit={0.5}
+              fixedHalfSplit
               list={
                 <div className="flex min-h-0 max-h-[min(85vh,calc(100vh-11rem))] flex-col overflow-y-auto pr-1">
                   {inner}

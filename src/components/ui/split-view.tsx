@@ -22,8 +22,10 @@ interface SplitViewProps {
   onClose?: () => void;
   listMinWidth?: number;
   defaultSplit?: number;
+  /** true면 좌·우 각각 화면의 정확히 50%, 구분선 드래그 비활성 */
+  fixedHalfSplit?: boolean;
   className?: string;
-  /** 우측 상세 컬럼에 추가 클래스 (예: max-width로 폭 상한) */
+  /** 우측 상세 컬럼에 추가 클래스 */
   detailColumnClassName?: string;
 }
 
@@ -33,11 +35,16 @@ export function SplitView({
   onClose,
   listMinWidth = 320,
   defaultSplit = 0.4,
+  fixedHalfSplit = false,
   className,
   detailColumnClassName,
 }: SplitViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [splitRatio, setSplitRatio] = useState(defaultSplit);
+
+  useEffect(() => {
+    setSplitRatio(defaultSplit);
+  }, [defaultSplit]);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +128,48 @@ export function SplitView({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">{detail}</div>
+      </div>
+    );
+  }
+
+  if (fixedHalfSplit && detail) {
+    return (
+      <div ref={containerRef} className={cn("relative flex h-full min-h-0 overflow-hidden", className)}>
+        <div
+          style={{ width: "50%" }}
+          className="flex min-h-0 flex-shrink-0 flex-col overflow-auto"
+        >
+          {list}
+        </div>
+        <div className="bg-border w-px flex-shrink-0" role="separator" aria-orientation="vertical" />
+        <div
+          className={cn(
+            "flex min-h-0 w-1/2 min-w-0 flex-shrink-0 flex-col overflow-hidden border-l",
+            detailColumnClassName
+          )}
+        >
+          <div className="flex flex-shrink-0 items-center justify-end gap-1 border-b px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              className="rounded-md p-1.5 transition-colors hover:bg-muted"
+              title="전체 화면으로 확장"
+            >
+              <Maximize2 size={14} className="text-muted-foreground" />
+            </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md p-1.5 transition-colors hover:bg-muted"
+                title="닫기"
+              >
+                <X size={14} className="text-muted-foreground" />
+              </button>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">{detail}</div>
+        </div>
       </div>
     );
   }
