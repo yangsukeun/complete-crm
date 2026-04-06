@@ -55,6 +55,7 @@ export default async function BoardPostPage({
         deletedAt: post.deletedAt,
         workspaceScope: post.workspaceScope,
         createdById: post.createdById,
+        mentionedUserIds: post.mentionedUserIds,
       },
       session.user.id,
       role

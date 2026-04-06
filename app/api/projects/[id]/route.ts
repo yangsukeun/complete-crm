@@ -4,6 +4,9 @@ import prisma from "@/lib/prisma";
 import { userCanAccessProject } from "@/lib/project-access";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
 import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
+import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
+import { parseMentionUserIdsJson, serializeMentionUserIdsJson } from "@/lib/mention-user-ids-json";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -148,7 +151,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (descriptionRaw !== undefined || contentTypeRaw !== undefined) {
       const existing = await prisma.project.findUnique({
         where: { id: projectId },
-        select: { contentType: true },
+        select: { contentType: true, description: true, mentionedUserIds: true },
       });
       const typeForNorm: "text" | "html" =
         contentTypeRaw === "html" || contentTypeRaw === "text"
@@ -157,7 +160,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             ? "html"
             : "text";
 
-      const data: { description?: string | null; contentType?: string } = {};
+      const data: { description?: string | null; contentType?: string; mentionedUserIds?: string } =
+        {};
       if (descriptionRaw !== undefined) {
         try {
           data.description = normalizeBoardDescriptionForStore(descriptionRaw, typeForNorm) || null;
@@ -173,10 +177,36 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         data.contentType = contentTypeRaw;
       }
       if (Object.keys(data).length > 0) {
+        const nextDesc =
+          data.description !== undefined ? data.description : existing?.description ?? "";
+        const mentionIds = extractMentionedUserIdsFromTaskDescription(nextDesc ?? "");
+        const mentionJson = serializeMentionUserIdsJson(mentionIds);
+        data.mentionedUserIds = mentionJson;
+        const prevM = parseMentionUserIdsJson(existing?.mentionedUserIds);
+        const newOnes = mentionIds.filter((x) => !prevM.includes(x));
+
         await prisma.project.update({
           where: { id: projectId },
           data,
         });
+
+        if (newOnes.length > 0) {
+          const editor = await prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { name: true },
+          });
+          const editorName = editor?.name?.trim() || "직원";
+          for (const uid of newOnes) {
+            if (uid === session.user.id) continue;
+            await createNotificationWithOptions({
+              userId: uid,
+              type: "TASK_BODY_MENTION",
+              message: `${editorName}님이 CRM 프로젝트 본문에서 회원님을 호출했습니다.`,
+              link: `/projects/${projectId}`,
+              actorId: session.user.id,
+            });
+          }
+        }
       }
     }
 

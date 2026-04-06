@@ -33,7 +33,8 @@ export type NotificationTypeEnum =
   | "CHAT_MESSAGE"
   | "NOTICE_POSTED"
   | "WORK_LOG_SUBMITTED"
-  | "LEAVE_REQUEST";
+  | "LEAVE_REQUEST"
+  | "PROJECT_COMPLETED";
 export type NotificationPriority = "high" | "medium" | "low";
 
 type CreateNotificationInput = {
@@ -56,6 +57,7 @@ const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriorit
   NOTICE_POSTED: "high",
   WORK_LOG_SUBMITTED: "high",
   LEAVE_REQUEST: "high",
+  PROJECT_COMPLETED: "medium",
 };
 
 /**

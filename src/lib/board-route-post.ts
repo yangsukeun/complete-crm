@@ -3,6 +3,9 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
 import { safeParseAttachments } from "@/lib/board-attachments";
+import { createNotificationWithOptions } from "@/lib/notifications";
+import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
+import { serializeMentionUserIdsJson } from "@/lib/mention-user-ids-json";
 import { z } from "zod";
 
 const categorySchema = z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS"]);
@@ -108,6 +111,10 @@ export async function handleBoardPost(req: Request): Promise<Response> {
         { status: 400 }
       );
     }
+
+    const mentionedIds = extractMentionedUserIdsFromTaskDescription(descNorm);
+    const mentionedUserIds = serializeMentionUserIdsJson(mentionedIds);
+
     let created;
     try {
       created = await prisma.boardPost.create({
@@ -119,6 +126,7 @@ export async function handleBoardPost(req: Request): Promise<Response> {
           isAnonymous: isAnonBoard,
           workspaceScope,
           attachments: JSON.stringify(attachments),
+          mentionedUserIds,
           createdById: session.user.id,
         },
         select: {
@@ -157,6 +165,22 @@ export async function handleBoardPost(req: Request): Promise<Response> {
     }
 
     console.log("[board POST] created id=", created.id);
+
+    const author = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { name: true },
+    });
+    const authorName = author?.name?.trim() || "직원";
+    for (const mentionedUserId of mentionedIds) {
+      if (!mentionedUserId || mentionedUserId === session.user.id) continue;
+      await createNotificationWithOptions({
+        userId: mentionedUserId,
+        type: "BOARD_MENTION",
+        message: `${authorName}님이 자료실 게시글에서 회원님을 태그했습니다.`,
+        link: `/board/${created.id}`,
+        actorId: session.user.id,
+      });
+    }
 
     return NextResponse.json({
       id: created.id,

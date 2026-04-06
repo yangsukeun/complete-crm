@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { parseMentionUserIdsJson } from "@/lib/mention-user-ids-json";
 
 export async function userCanAccessProject(
   userId: string,
@@ -11,9 +12,15 @@ export async function userCanAccessProject(
   const isMaster = String(opts.email ?? "").trim().toLowerCase() === masterEmail;
   if (isExecutive || isMaster) return true;
   if (opts.currentProjectId === projectId) return true;
-  const memberRow = await prisma.project.findFirst({
-    where: { id: projectId, users: { some: { id: userId } } },
-    select: { id: true },
+  const row = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: {
+      id: true,
+      users: { select: { id: true } },
+      mentionedUserIds: true,
+    },
   });
-  return !!memberRow;
+  if (!row) return false;
+  if (row.users.some((u) => u.id === userId)) return true;
+  return parseMentionUserIdsJson(row.mentionedUserIds).includes(userId);
 }

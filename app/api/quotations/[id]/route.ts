@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
+import { notifyProjectCompletedStakeholders } from "@/lib/project-completion-notify";
 
 const VALID_STATUSES = [
   "DRAFT",
@@ -199,6 +200,8 @@ export async function PATCH(
       return NextResponse.json({ error: "견적서 발행자만 수정할 수 있습니다." }, { status: 403 });
     }
 
+    const prevStatus = existing.status;
+
     try {
       await prisma.$transaction(async (tx) => {
         if (projectId !== undefined) {
@@ -220,6 +223,35 @@ export async function PATCH(
         return NextResponse.json({ error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
       throw err;
+    }
+
+    if (
+      status !== undefined &&
+      prevStatus !== "COMPLETED" &&
+      status === "COMPLETED"
+    ) {
+      try {
+        const qSnap = await prisma.quotation.findUnique({
+          where: { id },
+          select: { projectId: true },
+        });
+        let notifyProjectId = qSnap?.projectId ?? null;
+        if (!notifyProjectId) {
+          const byPrimaryQuote = await prisma.project.findFirst({
+            where: { quoteId: id, deletedAt: null },
+            select: { id: true },
+          });
+          notifyProjectId = byPrimaryQuote?.id ?? null;
+        }
+        if (notifyProjectId) {
+          await notifyProjectCompletedStakeholders({
+            projectId: notifyProjectId,
+            actorUserId: session.user.id,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("[PATCH /api/quotations/[id]] project completed notify", notifyErr);
+      }
     }
 
     const quotation = await prisma.quotation.findUnique({

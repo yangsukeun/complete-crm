@@ -33,7 +33,7 @@ import {
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, Filter, GitBranch, FileText, List as ListIcon, Trash2 } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon, Trash2, LayoutGrid, Table as TableIcon } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import {
   addDays,
@@ -52,6 +52,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
+import { SplitView, useIsMdUp } from "@/components/ui/split-view";
+import { TaskDetailContent } from "./components/task-detail-content";
+import { ProjectTableView } from "@/components/project-table-view";
 import dynamic from "next/dynamic";
 
 const TaskTreeView = dynamic(
@@ -92,8 +95,10 @@ const STATUS_LIST = [
 type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 
 const COLUMN_STORAGE_KEY = "tasks-board-visible-columns";
+const PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
 /** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
 const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
+type ProjectsViewMode = "board" | "table";
 type ProjectScopeFilter = "all" | "mine" | "shared";
 
 type ColumnVisibility = Record<TaskStatus, boolean>;
@@ -118,6 +123,17 @@ function loadColumnVisibility(): ColumnVisibility {
   } catch {
     return DEFAULT_COLUMN_VISIBILITY;
   }
+}
+
+function loadProjectsViewMode(): ProjectsViewMode {
+  if (typeof window === "undefined") return "board";
+  try {
+    const raw = localStorage.getItem(PROJECTS_VIEW_MODE_KEY);
+    if (raw === "table" || raw === "board") return raw;
+  } catch {
+    /* ignore */
+  }
+  return "board";
 }
 
 const DUE_FILTER_OPTIONS = [
@@ -326,11 +342,42 @@ export default function TasksPage() {
   const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
   /** 노션식 오른쪽 패널 미리보기 */
   const [peekTaskId, setPeekTaskId] = useState<string | null>(null);
+  /** 데스크톱 split 뷰용 선택 업무 */
+  const [splitPeekTaskId, setSplitPeekTaskId] = useState<string | null>(null);
+  const [projectsViewMode, setProjectsViewMode] = useState<ProjectsViewMode>("board");
+  const [projectsViewModeReady, setProjectsViewModeReady] = useState(false);
+  const isMdUp = useIsMdUp();
+
+  const openTaskPeek = useCallback((taskId: string) => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) {
+      setSplitPeekTaskId(taskId);
+    } else {
+      setPeekTaskId(taskId);
+    }
+  }, []);
 
   /** 마인드맵이 아니면 툴바 포털 DOM 해제 */
   useEffect(() => {
     if (view !== "mindmap") setMindmapToolbarHost(null);
   }, [view]);
+
+  useEffect(() => {
+    if (view === "log") setSplitPeekTaskId(null);
+  }, [view]);
+
+  useEffect(() => {
+    setProjectsViewMode(loadProjectsViewMode());
+    setProjectsViewModeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!projectsViewModeReady) return;
+    try {
+      localStorage.setItem(PROJECTS_VIEW_MODE_KEY, projectsViewMode);
+    } catch {
+      /* ignore */
+    }
+  }, [projectsViewMode, projectsViewModeReady]);
 
   /** 마인드맵·필터·보기 범위 적용 시 전체 목록 필요 (부분 페이지에만 클라이언트 필터를 쓰면 안 됨) */
   const needsFullTaskList =
@@ -472,6 +519,10 @@ export default function TasksPage() {
     void mutateLinks();
   }, [mutateTasksFull, mutateTaskPages, mutateLinks]);
 
+  const onTasksDetailUpdated = useCallback(() => {
+    void refreshTasks();
+  }, [refreshTasks]);
+
   const isTaskDeleteAdmin =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
   const currentUserId = session?.user?.id ?? "";
@@ -545,6 +596,12 @@ export default function TasksPage() {
       return true;
     });
   }, [scopeFilteredTasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
+
+  /** 보드에 노출된 상태 컬럼과 동일하게 테이블에도 반영 */
+  const boardVisibleFilteredTasks = useMemo(
+    () => filteredTasks.filter((t) => columnVisible[getEffectiveStatus(t)]),
+    [filteredTasks, columnVisible]
+  );
 
   const assigneePairs = tasks.flatMap((t: Task) => {
     const list = t.assignees?.length ? t.assignees : t.assignedTo ? [t.assignedTo] : [];
@@ -632,6 +689,34 @@ export default function TasksPage() {
             <TabsContent value="mindmap" className="mt-0" />
             <TabsContent value="log" className="mt-0" />
           </Tabs>
+          {view === "list" && projectsViewModeReady ? (
+            <div
+              className="flex items-center gap-1 rounded-md border border-gray-200 p-0.5"
+              role="group"
+              aria-label="목록 표시 방식"
+            >
+              <Button
+                type="button"
+                variant={projectsViewMode === "board" ? "secondary" : "ghost"}
+                size="icon"
+                className="size-8 shrink-0"
+                title="보드 뷰"
+                onClick={() => setProjectsViewMode("board")}
+              >
+                <LayoutGrid className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant={projectsViewMode === "table" ? "secondary" : "ghost"}
+                size="icon"
+                className="size-8 shrink-0"
+                title="테이블 뷰"
+                onClick={() => setProjectsViewMode("table")}
+              >
+                <TableIcon className="size-4" />
+              </Button>
+            </div>
+          ) : null}
           {view === "mindmap" && (
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground hidden text-xs sm:inline">보기</span>
@@ -774,6 +859,9 @@ export default function TasksPage() {
       </div>
 
       <ViewErrorBoundary key={view}>
+        {(() => {
+          const inner = (
+            <>
         {view === "list" && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-muted/15 px-4 py-3">
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
@@ -844,7 +932,7 @@ export default function TasksPage() {
                 taskLinks={mindmapLinksForView as any}
                 onRefresh={refreshTasks}
                 onTaskClick={(taskId: string) => {
-                  setPeekTaskId(taskId);
+                  openTaskPeek(taskId);
                 }}
                 onTaskHover={(taskId: string) => {
                   const row = mindmapTasks.find((t: { id: string }) => t.id === taskId);
@@ -893,6 +981,23 @@ export default function TasksPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
+          {projectsViewMode === "table" ? (
+            <ProjectTableView
+              tasks={boardVisibleFilteredTasks}
+              getEffectiveStatus={getEffectiveStatus}
+              statusLabel={statusLabel}
+              priorityLabel={priorityLabel}
+              priorityVariant={priorityVariant}
+              onActivateTask={openTaskPeek}
+              canDeleteTask={canDeleteTask}
+              onDeleteTask={(id) => {
+                void handleDeleteTask(id);
+              }}
+              deletingTaskId={deletingTaskId}
+              splitPeekTaskId={splitPeekTaskId}
+              isMdUp={isMdUp}
+            />
+          ) : (
           <div
             className={cn(
               "grid gap-4",
@@ -933,7 +1038,8 @@ export default function TasksPage() {
                             key={task.id}
                             className={cn(
                               "border-border overflow-hidden rounded-lg border border-gray-200/90 bg-card shadow-sm transition-shadow hover:shadow-md",
-                              priorityLeftBarClass(task.priority)
+                              priorityLeftBarClass(task.priority),
+                              splitPeekTaskId === task.id && isMdUp && "ring-2 ring-primary ring-offset-2 ring-offset-background"
                             )}
                           >
                             <Link
@@ -943,7 +1049,7 @@ export default function TasksPage() {
                               onClick={(e) => {
                                 if (!isPlainLeftClick(e)) return;
                                 e.preventDefault();
-                                setPeekTaskId(task.id);
+                                openTaskPeek(task.id);
                               }}
                             >
                               <p
@@ -1055,7 +1161,8 @@ export default function TasksPage() {
               );
             })}
           </div>
-          {hasMoreTasksPaged && (
+          )}
+          {projectsViewMode === "board" && hasMoreTasksPaged ? (
             <div className="flex justify-center">
               <Button
                 type="button"
@@ -1067,9 +1174,32 @@ export default function TasksPage() {
                 더 불러오기 ({tasks.length}/{tasksTotalCount})
               </Button>
             </div>
-          )}
+          ) : null}
           </div>
         )}
+            </>
+          );
+          return isMdUp && view !== "log" ? (
+            <SplitView
+              className="min-h-[min(85vh,calc(100vh-11rem))] w-full max-w-full"
+              defaultSplit={0.52}
+              detailColumnClassName="max-w-[min(46vw,520px)]"
+              list={
+                <div className="flex min-h-0 max-h-[min(85vh,calc(100vh-11rem))] flex-col overflow-y-auto pr-1">
+                  {inner}
+                </div>
+              }
+              detail={
+                splitPeekTaskId ? (
+                  <TaskDetailContent taskId={splitPeekTaskId} onUpdate={onTasksDetailUpdated} />
+                ) : null
+              }
+              onClose={() => setSplitPeekTaskId(null)}
+            />
+          ) : (
+            inner
+          );
+        })()}
       </ViewErrorBoundary>
 
       <CreateTaskModal
@@ -1088,7 +1218,8 @@ export default function TasksPage() {
       <TaskDetailDrawer
         taskId={peekTaskId}
         onClose={() => setPeekTaskId(null)}
-        onUpdate={() => void refreshTasks()}
+        onUpdate={onTasksDetailUpdated}
+        narrow={view === "mindmap"}
       />
     </div>
   );

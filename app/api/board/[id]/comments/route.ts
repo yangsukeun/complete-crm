@@ -38,6 +38,7 @@ export async function GET(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
+          mentionedUserIds: post.mentionedUserIds,
         },
         session.user.id,
         role
@@ -84,6 +85,7 @@ export async function POST(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
+          mentionedUserIds: post.mentionedUserIds,
         },
         session.user.id,
         role

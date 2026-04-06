@@ -7,6 +7,9 @@ import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from
 import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
 import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
+import { createNotificationWithOptions } from "@/lib/notifications";
+import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
+import { parseMentionUserIdsJson, serializeMentionUserIdsJson } from "@/lib/mention-user-ids-json";
 
 export const runtime = "nodejs";
 
@@ -91,6 +94,7 @@ export async function GET(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
+          mentionedUserIds: post.mentionedUserIds,
         },
         session.user.id,
         role
@@ -146,6 +150,7 @@ export async function PATCH(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
+          mentionedUserIds: post.mentionedUserIds,
         },
         session.user.id,
         role
@@ -177,6 +182,7 @@ export async function PATCH(
       isAnonymous?: boolean;
       workspaceScope?: "TEAM" | "PERSONAL";
       attachments?: string;
+      mentionedUserIds?: string;
     } = {};
     let removedAttachmentUrls: string[] = [];
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
@@ -222,6 +228,12 @@ export async function PATCH(
         }))
       );
     }
+
+    const mergedDescription = data.description !== undefined ? data.description : post.description;
+    const mentionIds = extractMentionedUserIdsFromTaskDescription(mergedDescription ?? "");
+    data.mentionedUserIds = serializeMentionUserIdsJson(mentionIds);
+    const prevMentioned = parseMentionUserIdsJson(post.mentionedUserIds);
+    const newlyMentioned = mentionIds.filter((mid) => !prevMentioned.includes(mid));
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: "수정할 필드가 없습니다. 요청 본문을 확인해 주세요." }, { status: 400 });
@@ -272,6 +284,24 @@ export async function PATCH(
 
       return u;
     });
+
+    if (newlyMentioned.length > 0) {
+      const editor = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { name: true },
+      });
+      const editorName = editor?.name?.trim() || "직원";
+      for (const mentionedUserId of newlyMentioned) {
+        if (!mentionedUserId || mentionedUserId === session.user.id) continue;
+        await createNotificationWithOptions({
+          userId: mentionedUserId,
+          type: "BOARD_MENTION",
+          message: `${editorName}님이 자료실 게시글에서 회원님을 태그했습니다.`,
+          link: `/board/${id}`,
+          actorId: session.user.id,
+        });
+      }
+    }
 
     if (removedAttachmentUrls.length > 0) {
       console.log("[board] PATCH: 첨부 제거로 Drive 삭제", {
@@ -341,6 +371,7 @@ export async function DELETE(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
+          mentionedUserIds: post.mentionedUserIds,
         },
         session.user.id,
         role

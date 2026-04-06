@@ -9,6 +9,9 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
+import { SplitView, useIsMdUp } from "@/components/ui/split-view";
+import { ProjectDetailEmbed } from "../../projects/components/project-detail-embed";
+import { cn } from "@/lib/utils";
 
 type Brand = { id: string; name: string };
 type Project = { id: string; name: string; brand: { id: string; name: string } };
@@ -41,7 +44,9 @@ export function AdminProjectsClient() {
 
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [splitPreviewProjectId, setSplitPreviewProjectId] = useState<string | null>(null);
   const [savingAssign, setSavingAssign] = useState(false);
+  const isMdUp = useIsMdUp();
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -76,6 +81,10 @@ export function AdminProjectsClient() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    setSplitPreviewProjectId(null);
+  }, [selectedBrandId]);
 
   const projectsInBrand = useMemo(() => {
     if (!selectedBrandId) return projects;
@@ -160,6 +169,7 @@ export function AdminProjectsClient() {
       if (!res.ok) throw new Error(data.error ?? "삭제 실패");
       toast.success("프로젝트를 삭제 처리했습니다.");
       fetchAll({ silent: true });
+      setSplitPreviewProjectId((prev) => (prev === projectId ? null : prev));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "삭제 실패");
     }
@@ -319,6 +329,51 @@ export function AdminProjectsClient() {
           </p>
           {projectsInBrand.length === 0 ? (
             <p className="text-muted-foreground text-sm">표시할 프로젝트가 없습니다.</p>
+          ) : isMdUp ? (
+            <SplitView
+              className="min-h-[480px] w-full max-w-full"
+              defaultSplit={0.35}
+              list={
+                <div className="flex flex-col gap-2 p-1">
+                  {projectsInBrand.map((p: any) => (
+                    <div
+                      key={p.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSplitPreviewProjectId(p.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSplitPreviewProjectId(p.id);
+                        }
+                      }}
+                      className={cn(
+                        "flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition-colors hover:bg-muted/60",
+                        splitPreviewProjectId === p.id && "border-l-4 border-l-primary bg-primary/5"
+                      )}
+                    >
+                      <div className="text-sm font-medium">{projectLabel(p)}</div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteProject(p.id);
+                        }}
+                      >
+                        삭제
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              }
+              detail={
+                splitPreviewProjectId ? (
+                  <ProjectDetailEmbed projectId={splitPreviewProjectId} />
+                ) : null
+              }
+              onClose={() => setSplitPreviewProjectId(null)}
+            />
           ) : (
             <div className="space-y-2">
               {projectsInBrand.map((p: any) => (

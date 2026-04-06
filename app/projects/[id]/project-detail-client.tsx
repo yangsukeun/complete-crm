@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { ArrowLeft, FileText, Link2, Loader2, Pencil } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
 
 const ContentBodyEditor = dynamic(
@@ -103,7 +104,7 @@ type ProjectPayload = {
   paymentSummary: { quoted: number; paid: number; outstanding: number };
 };
 
-export function ProjectDetailClient({ projectId }: { projectId: string }) {
+export function ProjectDetailClient({ projectId, embed }: { projectId: string; embed?: boolean }) {
   const router = useRouter();
   const [data, setData] = useState<ProjectPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -250,7 +251,7 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
+      <div className={cn("flex items-center justify-center", embed ? "min-h-[200px] py-8" : "min-h-[40vh]")}>
         <p className="text-muted-foreground text-sm">불러오는 중…</p>
       </div>
     );
@@ -258,11 +259,13 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
 
   if (!data) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-6">
+      <div className={cn("flex flex-col items-center justify-center gap-3 p-6", embed ? "min-h-[160px]" : "min-h-[40vh]")}>
         <p className="text-muted-foreground text-sm">프로젝트를 표시할 수 없습니다.</p>
-        <Button variant="outline" asChild>
-          <Link href="/quotations">견적서 목록</Link>
-        </Button>
+        {!embed && (
+          <Button variant="outline" asChild>
+            <Link href="/quotations">견적서 목록</Link>
+          </Button>
+        )}
       </div>
     );
   }
@@ -271,15 +274,22 @@ export function ProjectDetailClient({ projectId }: { projectId: string }) {
   const sum = data.paymentSummary;
 
   return (
-    <div className="flex flex-col gap-8 p-4 md:p-6 max-w-4xl mx-auto">
+    <div
+      className={cn(
+        "flex flex-col gap-8",
+        embed ? "max-w-none gap-6 p-2 md:p-3" : "mx-auto max-w-4xl p-4 md:p-6"
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
-          <Button variant="ghost" size="sm" asChild className="-ml-2">
-            <Link href="/quotations">
-              <ArrowLeft className="mr-2 size-4" />
-              견적서 목록
-            </Link>
-          </Button>
+          {!embed && (
+            <Button variant="ghost" size="sm" asChild className="-ml-2">
+              <Link href="/quotations">
+                <ArrowLeft className="mr-2 size-4" />
+                견적서 목록
+              </Link>
+            </Button>
+          )}
           <PageHeadline
             title={`${data.brand.name} / ${data.name}`}
             description="연결된 견적서와 이체(입금) 요약을 확인합니다."

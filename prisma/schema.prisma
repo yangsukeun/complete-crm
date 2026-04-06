@@ -114,6 +114,7 @@ enum NotificationType {
   NOTICE_POSTED      // 공지 등록
   WORK_LOG_SUBMITTED // 업무일지 제출
   LEAVE_REQUEST      // 휴가 신청·승인 단계 알림
+  PROJECT_COMPLETED  // 연계 견적/프로젝트 완료 처리 알림
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
@@ -253,6 +254,8 @@ model Project {
   /// 프로젝트 본문(게시판과 동일: text | html)
   description String?   @default("")
   contentType String      @default("text") @map("content_type") @db.VarChar(20)
+  /// 본문 등에서 @멘션된 사용자 id — JSON ["userId1", …] (접근 권한·알림용)
+  mentionedUserIds String @default("[]")
   tasks       Task[]
   quotationsLinked Quotation[] @relation("QuotationLinkedProject")
   deletedAt DateTime?
@@ -615,6 +618,8 @@ model BoardPost {
   /// 익명 게시판(ANONYMOUS) 글 — DB에는 createdById 유지, 노출은 API/UI에서 마스킹 (대표만 상세에서 실명 확인)
   isAnonymous Boolean           @default(false)
   attachments String            @default("[]") // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
+  /// 본문에서 @멘션된 사용자 id — JSON ["userId1", …] (PERSONAL 글 접근·알림용)
+  mentionedUserIds String       @default("[]")
   workspaceScope WorkspaceScope @default(TEAM) // PERSONAL: 임원·관리자 개인 자료(직원 목록에서 숨김)
   createdById String
   createdBy   User              @relation(fields: [createdById], references: [id], onDelete: Cascade)

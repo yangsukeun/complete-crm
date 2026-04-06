@@ -721,10 +721,14 @@ function TreeViewInner({
     }, 600);
   }, [runMindmapPersist]);
 
+  /** schedulePersistMindmap은 useReactFlow·getNodes 때문에 참조가 자주 바뀔 수 있음 — deps에 넣으면 매 렌더 effect 재실행·과도한 저장/UI 갱신 */
+  const schedulePersistMindmapRef = useRef(schedulePersistMindmap);
+  schedulePersistMindmapRef.current = schedulePersistMindmap;
+
   useEffect(() => {
     if (!mindmapRemoteLoaded) return;
-    schedulePersistMindmap();
-  }, [stagedRootIds, collapsedIds, nodeStylesMap, canvasBgColor, mindmapRemoteLoaded, schedulePersistMindmap]);
+    schedulePersistMindmapRef.current();
+  }, [stagedRootIds, collapsedIds, nodeStylesMap, canvasBgColor, mindmapRemoteLoaded]);
 
   useEffect(() => {
     return () => {
@@ -1349,7 +1353,7 @@ function TreeViewInner({
   const mindmapToolbar = (
     <div className="mindmap-toolbar flex w-full min-w-0 items-center gap-2">
         {/* Quick Create */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[200px]">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[100px]">
           <Input
             ref={quickInputRef}
             placeholder={selectedNodeIds.length === 1 ? "하위 프로젝트 빠르게 추가..." : "새 프로젝트 빠르게 추가..."}
@@ -1408,7 +1412,7 @@ function TreeViewInner({
               스타일 {selectedNodeIds.length > 0 && `(${selectedNodeIds.length}개)`}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-72" align="end">
+          <PopoverContent className="w-36 max-h-[min(70vh,28rem)] overflow-y-auto sm:w-40" align="end">
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground">
                 선택한 {selectedNodeIds.length}개 노드에 적용됩니다.
