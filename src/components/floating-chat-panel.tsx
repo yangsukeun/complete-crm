@@ -56,6 +56,7 @@ export function FloatingChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatIdRef = useRef<string | null>(null);
+  const inboxRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     chatIdRef.current = chatId;
@@ -104,16 +105,30 @@ export function FloatingChatPanel() {
     }
   }, []);
 
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
+
   useEffect(() => {
     if (!chatId) return;
-    void fetchData(chatId);
-  }, [chatId, fetchData]);
+    void fetchDataRef.current(chatId);
+  }, [chatId]);
+
+  useEffect(() => {
+    return () => {
+      if (inboxRefreshDebounceRef.current) clearTimeout(inboxRefreshDebounceRef.current);
+    };
+  }, []);
 
   // 새 메시지 수신 시 갱신
   useEffect(() => {
     const onRefresh = () => {
       const cid = chatIdRef.current;
-      if (cid && !minimized) void fetchData(cid, true);
+      if (!cid || minimized) return;
+      if (inboxRefreshDebounceRef.current) clearTimeout(inboxRefreshDebounceRef.current);
+      inboxRefreshDebounceRef.current = setTimeout(() => {
+        inboxRefreshDebounceRef.current = null;
+        void fetchDataRef.current(cid, true);
+      }, 1200);
     };
     const onRealtime = (ev: Event) => {
       const ce = ev as CustomEvent<{
@@ -144,7 +159,7 @@ export function FloatingChatPanel() {
       window.removeEventListener("chat-inbox-refresh", onRefresh);
       window.removeEventListener("chat-realtime", onRealtime as EventListener);
     };
-  }, [fetchData, minimized]);
+  }, [minimized]);
 
   // 메시지 추가될 때 하단 스크롤
   useEffect(() => {

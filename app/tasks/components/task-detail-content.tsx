@@ -80,6 +80,10 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const taskRef = useRef<TaskDetail | null>(null);
   taskRef.current = task;
+  const taskIdRef = useRef(taskId);
+  taskIdRef.current = taskId;
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
   const [loading, setLoading] = useState(false);
   const [togglingComplete, setTogglingComplete] = useState(false);
 
@@ -116,29 +120,28 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       .finally(() => setLoadingUsers(false));
   }, [taskId]);
 
-  const updateTask = useCallback(
-    async (data: Record<string, unknown>) => {
-      if (!taskRef.current) return;
-      setSaving(true);
-      try {
-        const res = await fetch(`/api/tasks/${taskId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (!res.ok) throw new Error("수정 실패");
-        const updated = await res.json();
-        setTask((prev) => (prev ? { ...prev, ...updated } : null));
-        toast.success("수정되었습니다.");
-        onUpdate();
-      } catch {
-        toast.error("수정에 실패했습니다.");
-      } finally {
-        setSaving(false);
-      }
-    },
-    [taskId, onUpdate]
-  );
+  const updateTask = useCallback(async (data: Record<string, unknown>) => {
+    if (!taskRef.current) return;
+    const tid = taskIdRef.current;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/tasks/${tid}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("수정 실패");
+      const updated = await res.json();
+      if (taskIdRef.current !== tid) return;
+      setTask((prev) => (prev ? { ...prev, ...updated } : null));
+      toast.success("수정되었습니다.");
+      onUpdateRef.current();
+    } catch {
+      toast.error("수정에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   const handleSaveTitle = useCallback(() => {
     if (editTitle.trim() && editTitle.trim() !== task?.title) {
@@ -147,56 +150,70 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     setIsEditingTitle(false);
   }, [editTitle, task?.title, updateTask]);
 
-  const fetchTask = useCallback(async (options?: { soft?: boolean }) => {
-    const soft = options?.soft === true;
-    // soft: 본문 자동 저장·첨부 후 갱신 — 전체를 스피너로 바꾸지 않음(에디터 언마운트 → replaceBlocks → 재저장 루프 방지)
+  const loadDetailRef = useRef<(opts: { soft: boolean }) => Promise<void>>(async () => {});
+  loadDetailRef.current = async (opts: { soft: boolean }) => {
+    const tid = taskIdRef.current;
+    const soft = opts.soft === true;
     if (!soft) setLoading(true);
     try {
       const [mainRes, commentsRes] = await Promise.all([
-        fetch(`/api/tasks/${taskId}?deferComments=1`),
-        fetch(`/api/tasks/${taskId}/comments`),
+        fetch(`/api/tasks/${tid}?deferComments=1`),
+        fetch(`/api/tasks/${tid}/comments`),
       ]);
       if (!mainRes.ok) throw new Error("Failed");
       const data = await mainRes.json();
       const commentsJson = commentsRes.ok ? await commentsRes.json() : [];
+      if (taskIdRef.current !== tid) return;
       setTask({
         ...data,
         comments: Array.isArray(commentsJson) ? commentsJson : [],
       });
     } catch {
-      if (!soft) setTask(null);
+      if (!soft && taskIdRef.current === tid) setTask(null);
     } finally {
-      if (!soft) setLoading(false);
+      if (!soft && taskIdRef.current === tid) setLoading(false);
     }
-  }, [taskId]);
-
-  const fetchTaskRef = useRef(fetchTask);
-  fetchTaskRef.current = fetchTask;
+  };
 
   useEffect(() => {
-    void fetchTaskRef.current();
+    void loadDetailRef.current({ soft: false });
   }, [taskId]);
 
   const refreshTaskAfterMutation = useCallback(() => {
-    void fetchTaskRef.current({ soft: true });
+    void loadDetailRef.current({ soft: true });
   }, []);
 
   /** 본문 자동저장(PATCH) 직후 서버 재조회하지 않음 — 에디터·루프 방지 */
   const afterBodyAutoSave = useCallback(() => {}, []);
 
+  const assigneeIdsKey =
+    task == null || task.id !== taskId
+      ? ""
+      : [
+          ...(task.assignees?.map((a) => a.id) ?? []),
+          task.assignedTo?.id ?? "",
+        ]
+          .filter(Boolean)
+          .sort()
+          .join("|");
+
   useEffect(() => {
-    if (!task) {
+    const t = taskRef.current;
+    const tid = taskIdRef.current;
+    if (!t || t.id !== tid) {
       setAssigneePickerIds([]);
       return;
     }
     const ids =
-      task.assignees && task.assignees.length > 0
-        ? task.assignees.map((a) => a.id)
-        : task.assignedTo?.id
-          ? [task.assignedTo.id]
+      t.assignees && t.assignees.length > 0
+        ? t.assignees.map((a) => a.id)
+        : t.assignedTo?.id
+          ? [t.assignedTo.id]
           : [];
-    setAssigneePickerIds(ids);
-  }, [task?.id, task?.assignees, task?.assignedTo?.id]);
+    setAssigneePickerIds((prev) =>
+      prev.length === ids.length && ids.every((id, i) => prev[i] === id) ? prev : ids
+    );
+  }, [assigneeIdsKey, taskId]);
 
   useEffect(() => {
     if (!task) {
@@ -247,7 +264,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       });
       if (!res.ok) throw new Error("Failed");
       setTask((prev) => (prev ? { ...prev, isCompleted: !prev.isCompleted } : null));
-      onUpdate();
+      onUpdateRef.current();
     } catch {
       toast.error("완료 상태 변경에 실패했습니다.");
     } finally {
@@ -286,7 +303,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       setAttachName("");
       setShowAddAttach(false);
       refreshTaskAfterMutation();
-      onUpdate();
+      onUpdateRef.current();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "첨부 추가에 실패했습니다.");
     } finally {
@@ -326,7 +343,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         }
         toast.success("첨부가 추가되었습니다.");
         refreshTaskAfterMutation();
-        onUpdate();
+        onUpdateRef.current();
         if (fileInputRef.current) fileInputRef.current.value = "";
       } catch (e) {
         toast.error(e instanceof Error ? e.message : UPLOAD_ERROR_MESSAGE.server, {
@@ -336,7 +353,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         setUploadingFiles(false);
       }
     },
-    [uploadAndAddAttachment, refreshTaskAfterMutation, onUpdate]
+    [uploadAndAddAttachment, refreshTaskAfterMutation]
   );
 
   const handleDrop = useCallback(
@@ -380,7 +397,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       setTask((prev) => (prev ? { ...prev, comments: [...prev.comments, newComment] } : null));
       toast.success("댓글이 등록되었습니다.");
       setCommentBody("");
-      onUpdate();
+      onUpdateRef.current();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "댓글 등록에 실패했습니다.");
     } finally {
@@ -427,7 +444,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                 const result = (await copyTaskToPersonal(task.id)) as { ok?: boolean; error?: string };
                 if (result.ok) {
                   toast.success("개인 프로젝트로 저장되었습니다.");
-                  onUpdate();
+                  onUpdateRef.current();
                 } else {
                   toast.error(result.error ?? "실패");
                 }
@@ -582,9 +599,11 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                   type="datetime-local"
                   defaultValue={format(new Date(task.dueDate), "yyyy-MM-dd'T'HH:mm")}
                   onChange={(e) => {
-                    if (e.target.value) {
-                      updateTask({ dueDate: new Date(e.target.value).toISOString() });
-                    }
+                    if (!e.target.value) return;
+                    const nextMs = new Date(e.target.value).getTime();
+                    const curMs = new Date(task.dueDate).getTime();
+                    if (Number.isFinite(nextMs) && Number.isFinite(curMs) && nextMs === curMs) return;
+                    updateTask({ dueDate: new Date(e.target.value).toISOString() });
                   }}
                   className="h-9"
                 />

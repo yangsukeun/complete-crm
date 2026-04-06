@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -48,14 +48,17 @@ export function BoardPostComments({
     }
   }, [postId]);
 
+  const fetchCommentsRef = useRef(fetchComments);
+  fetchCommentsRef.current = fetchComments;
+
   useEffect(() => {
     if (initialComments !== undefined) {
       setComments(initialComments);
       setLoading(false);
       return;
     }
-    void fetchComments();
-  }, [postId, initialComments, fetchComments]);
+    void fetchCommentsRef.current();
+  }, [postId, initialComments]);
 
   useEffect(() => {
     if (mentionOpen && users.length === 0) {

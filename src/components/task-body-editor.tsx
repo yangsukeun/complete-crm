@@ -198,12 +198,15 @@ export function TaskBodyEditor({
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const loadedForTaskIdRef = useRef<string | null>(null);
+  /** 서버와 동기화된 직렬화 본문 — 동일 스냅샷이면 PATCH 생략(onChange·프리뷰 갱신 루프 방지) */
+  const lastSavedSerializedRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
 
   useEffect(() => {
     loadedForTaskIdRef.current = null;
+    lastSavedSerializedRef.current = null;
   }, [taskId]);
 
   useEffect(() => {
@@ -214,6 +217,11 @@ export function TaskBodyEditor({
     const raw = (initialDescription ?? "").trim();
     if (!raw) {
       loadedForTaskIdRef.current = taskId;
+      try {
+        lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+      } catch {
+        lastSavedSerializedRef.current = null;
+      }
       return;
     }
 
@@ -228,10 +236,22 @@ export function TaskBodyEditor({
           ) as typeof parsed.blocks;
           editor.replaceBlocks(editor.document, normalized as typeof editor.document);
           loadedForTaskIdRef.current = taskId;
+          window.setTimeout(() => {
+            try {
+              lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+            } catch {
+              lastSavedSerializedRef.current = null;
+            }
+          }, 0);
           return;
         }
         if (parsed?.format === "blocks") {
           loadedForTaskIdRef.current = taskId;
+          try {
+            lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+          } catch {
+            lastSavedSerializedRef.current = null;
+          }
           return;
         }
         if (parsed?.format === "markdown") {
@@ -240,6 +260,13 @@ export function TaskBodyEditor({
             editor.replaceBlocks(editor.document, blocks);
           }
           loadedForTaskIdRef.current = taskId;
+          window.setTimeout(() => {
+            try {
+              lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+            } catch {
+              lastSavedSerializedRef.current = null;
+            }
+          }, 0);
         }
       } catch {
         // ignore parse/replace errors
@@ -252,15 +279,23 @@ export function TaskBodyEditor({
 
   const performSave = useCallback(async () => {
     if (!editor) return;
+    let stored: string | null;
+    try {
+      stored = serializeTaskBodyForStore(editor);
+    } catch {
+      return;
+    }
+    if (stored == null) return;
+    if (lastSavedSerializedRef.current === stored) return;
     setSaveStatus("saving");
     try {
-      const stored = serializeTaskBodyForStore(editor);
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description: stored }),
       });
       if (!res.ok) throw new Error("저장 실패");
+      lastSavedSerializedRef.current = stored;
       setSaveStatus("saved");
       onSavedRef.current();
       setTimeout(() => setSaveStatus("idle"), 2000);

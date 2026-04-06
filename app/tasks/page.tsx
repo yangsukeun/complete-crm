@@ -515,14 +515,25 @@ export default function TasksPage() {
 
   const taskLinks = Array.isArray(linksData) ? linksData : [];
 
+  const refreshTasksDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (refreshTasksDebounceRef.current) clearTimeout(refreshTasksDebounceRef.current);
+    };
+  }, []);
+
   const refreshTasks = useCallback(() => {
-    void mutateTasksFull();
-    void mutateTaskPages();
-    void mutateLinks();
+    if (refreshTasksDebounceRef.current) clearTimeout(refreshTasksDebounceRef.current);
+    refreshTasksDebounceRef.current = setTimeout(() => {
+      refreshTasksDebounceRef.current = null;
+      void mutateTasksFull();
+      void mutateTaskPages();
+      void mutateLinks();
+    }, 400);
   }, [mutateTasksFull, mutateTaskPages, mutateLinks]);
 
   const onTasksDetailUpdated = useCallback(() => {
-    void refreshTasks();
+    refreshTasks();
   }, [refreshTasks]);
 
   const isTaskDeleteAdmin =
