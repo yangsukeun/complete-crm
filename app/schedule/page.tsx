@@ -203,6 +203,8 @@ const CALENDAR_LEAVE_LABELS: Record<string, string> = {
   HALF_PM: "오후 반차",
   QUARTER_AM: "오전 반반차",
   QUARTER_PM: "오후 반반차",
+  SICK_PAID: "유급 병가",
+  SICK_UNPAID: "무급 병가",
 };
 
 function calendarLeaveTypeLabel(type: string): string {

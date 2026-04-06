@@ -86,9 +86,17 @@ const SECRETARY_TOOLS = [
       properties: {
         type: {
           type: "string",
-          enum: ["ANNUAL", "HALF_AM", "HALF_PM", "QUARTER_AM", "QUARTER_PM"],
+          enum: [
+            "ANNUAL",
+            "HALF_AM",
+            "HALF_PM",
+            "QUARTER_AM",
+            "QUARTER_PM",
+            "SICK_PAID",
+            "SICK_UNPAID",
+          ],
           description:
-            "ANNUAL=연차(기간), HALF_AM/PM=반차, QUARTER_AM/PM=반반차",
+            "ANNUAL=연차(기간), HALF_AM/PM=반차, QUARTER_AM/PM=반반차, SICK_PAID=유급병가, SICK_UNPAID=무급병가(연차 차감 없음)",
         },
         startDate: {
           type: "string",
@@ -169,6 +177,10 @@ const LEAVE_TYPE_DAY_UNITS: Record<string, number> = {
   QUARTER_AM: 0.25,
   QUARTER_PM: 0.25,
 };
+
+function isSickLeaveTypeSecretary(t: string): boolean {
+  return t === "SICK_PAID" || t === "SICK_UNPAID";
+}
 
 /** 첫 사용자 메시지에 포함 시 도구 호출을 강제(ANY / tool_choice any) */
 const SECRETARY_ACTION_KEYWORDS = [
@@ -331,6 +343,8 @@ async function executeTool(
         "HALF_PM",
         "QUARTER_AM",
         "QUARTER_PM",
+        "SICK_PAID",
+        "SICK_UNPAID",
       ]);
       if (!allowed.has(type)) {
         throw new Error(`지원하지 않는 휴가 유형: ${type}`);
@@ -374,14 +388,14 @@ async function executeTool(
       const remaining = totalAvailable - balance.annualUsed - manualDeduction;
 
       let days = 0;
-      if (type === "ANNUAL") {
+      if (type === "ANNUAL" || isSickLeaveTypeSecretary(type)) {
         const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        days = Math.min(diff, 30);
+        days = Math.min(diff, isSickLeaveTypeSecretary(type) ? 365 : 30);
       } else {
         days = LEAVE_TYPE_DAY_UNITS[type] ?? 0;
       }
 
-      if (days > remaining) {
+      if (!isSickLeaveTypeSecretary(type) && days > remaining) {
         throw new Error(`연차 잔여일(${remaining.toFixed(1)}일)이 부족합니다.`);
       }
 
@@ -393,7 +407,9 @@ async function executeTool(
             | "HALF_AM"
             | "HALF_PM"
             | "QUARTER_AM"
-            | "QUARTER_PM",
+            | "QUARTER_PM"
+            | "SICK_PAID"
+            | "SICK_UNPAID",
           startDate: start,
           endDate: end,
           reason: reason?.trim() ? reason.trim() : null,

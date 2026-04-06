@@ -64,6 +64,9 @@ type TaskDetail = {
   dueDate: string;
   isCompleted: boolean;
   priority: string;
+  isRecurring?: boolean;
+  recurringDays?: string | null;
+  recurringMemo?: string | null;
   scope?: "TEAM" | "PERSONAL";
   project?: { id: string; name: string; brand: { name: string } } | null;
   assignees?: { id: string; name: string; email: string; position?: string | null; image?: string | null }[];
@@ -104,6 +107,10 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
   const [assigneePickerIds, setAssigneePickerIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
+  const [editRecurringDays, setEditRecurringDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [editRecurringMemo, setEditRecurringMemo] = useState("");
 
   // Fetch users for assignee selection
   useEffect(() => {
@@ -187,6 +194,44 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
           : [];
     setAssigneePickerIds(ids);
   }, [task?.id, task?.assignees, task?.assignedTo?.id]);
+
+  useEffect(() => {
+    if (!task) {
+      setEditIsRecurring(false);
+      setEditRecurringDays([1, 2, 3, 4, 5]);
+      setEditRecurringMemo("");
+      return;
+    }
+    setEditIsRecurring(Boolean(task.isRecurring));
+    try {
+      const raw = task.recurringDays ? JSON.parse(task.recurringDays) : null;
+      const arr = Array.isArray(raw) ? raw.map((n: unknown) => Number(n)).filter((n) => n >= 1 && n <= 7) : [];
+      setEditRecurringDays(arr.length > 0 ? [...new Set(arr)].sort((a, b) => a - b) : [1, 2, 3, 4, 5]);
+    } catch {
+      setEditRecurringDays([1, 2, 3, 4, 5]);
+    }
+    setEditRecurringMemo(task.recurringMemo ?? "");
+  }, [task?.id, task?.isRecurring, task?.recurringDays, task?.recurringMemo]);
+
+  const toggleRecurringDay = (day: number) => {
+    setEditRecurringDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
+    );
+  };
+
+  const saveRecurringSettings = () => {
+    if (!editIsRecurring) {
+      void updateTask({
+        isRecurring: false,
+      });
+      return;
+    }
+    void updateTask({
+      isRecurring: true,
+      recurringDays: JSON.stringify(editRecurringDays.length > 0 ? editRecurringDays : [1, 2, 3, 4, 5]),
+      recurringMemo: editRecurringMemo.trim() || null,
+    });
+  };
 
   const handleToggleComplete = async () => {
     if (!task) return;
@@ -592,6 +637,76 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
                       </div>
                     </PopoverContent>
                   </Popover>
+                </div>
+
+                {/* 반복 업무 */}
+                <div className="flex flex-wrap items-start gap-3 text-sm">
+                  <span className="text-muted-foreground w-16 shrink-0 pt-0.5">반복</span>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <button
+                      type="button"
+                      className="rounded-md bg-muted px-2 py-0.5 font-medium hover:bg-violet-100 hover:text-violet-700 transition-colors"
+                      onClick={() => setRecurringOpen((o) => !o)}
+                    >
+                      {task.isRecurring
+                        ? `설정됨 (${editRecurringDays.length}일)`
+                        : "없음"}
+                      <Pencil className="inline-block size-3 ml-1 text-muted-foreground" />
+                    </button>
+                    {recurringOpen && (
+                      <div className="rounded-lg border bg-card p-3 space-y-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={editIsRecurring}
+                            onCheckedChange={(c) => setEditIsRecurring(c === true)}
+                          />
+                          <span>반복 업무로 설정</span>
+                        </label>
+                        {editIsRecurring && (
+                          <>
+                            <div>
+                              <p className="text-muted-foreground text-xs mb-1.5">반복 요일</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {["월", "화", "수", "목", "금", "토", "일"].map((day, i) => {
+                                  const n = i + 1;
+                                  const on = editRecurringDays.includes(n);
+                                  return (
+                                    <button
+                                      key={n}
+                                      type="button"
+                                      onClick={() => toggleRecurringDay(n)}
+                                      className={cn(
+                                        "flex size-8 items-center justify-center rounded-full border text-xs transition-colors",
+                                        on
+                                          ? "border-violet-300 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200"
+                                          : "border-border text-muted-foreground hover:bg-muted/60"
+                                      )}
+                                    >
+                                      {day}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">메모 (선택)</Label>
+                              <Input
+                                className="mt-1 h-9 text-sm"
+                                value={editRecurringMemo}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  setEditRecurringMemo(e.target.value)
+                                }
+                                placeholder="반복 업무 설명"
+                              />
+                            </div>
+                          </>
+                        )}
+                        <Button type="button" size="sm" disabled={saving} onClick={saveRecurringSettings}>
+                          반복 설정 저장
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 지시자 (읽기 전용) */}

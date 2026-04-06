@@ -14,11 +14,23 @@ const leaveTypeDays: Record<string, number> = {
 };
 
 const createSchema = z.object({
-  type: z.enum(["ANNUAL", "HALF_AM", "HALF_PM", "QUARTER_AM", "QUARTER_PM"]),
+  type: z.enum([
+    "ANNUAL",
+    "HALF_AM",
+    "HALF_PM",
+    "QUARTER_AM",
+    "QUARTER_PM",
+    "SICK_PAID",
+    "SICK_UNPAID",
+  ]),
   startDate: z.string(),
   endDate: z.string(),
   reason: z.string().optional(),
 });
+
+function isSickLeaveType(t: string): boolean {
+  return t === "SICK_PAID" || t === "SICK_UNPAID";
+}
 
 export async function GET() {
   try {
@@ -141,14 +153,14 @@ export async function POST(req: Request) {
 
     let days = 0;
     const type = parsed.data.type;
-    if (type === "ANNUAL") {
+    if (type === "ANNUAL" || isSickLeaveType(type)) {
       const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      days = Math.min(diff, 30);
+      days = Math.min(diff, isSickLeaveType(type) ? 365 : 30);
     } else {
       days = leaveTypeDays[type] ?? 0;
     }
 
-    if (days > remaining) {
+    if (!isSickLeaveType(type) && days > remaining) {
       return NextResponse.json(
         { error: `연차 잔여일(${remaining.toFixed(1)}일)이 부족합니다.` },
         { status: 400 }
@@ -158,7 +170,7 @@ export async function POST(req: Request) {
     const leave = await prisma.leaveRequest.create({
       data: {
         userId: session.user.id,
-        type: parsed.data.type as "ANNUAL" | "HALF_AM" | "HALF_PM" | "QUARTER_AM" | "QUARTER_PM",
+        type: parsed.data.type,
         startDate: start,
         endDate: end,
         reason: parsed.data.reason ?? null,

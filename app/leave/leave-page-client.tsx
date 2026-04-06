@@ -30,6 +30,8 @@ const LEAVE_TYPES: { value: string; label: string }[] = [
   { value: "HALF_PM", label: "오후 반차" },
   { value: "QUARTER_AM", label: "오전 반반차" },
   { value: "QUARTER_PM", label: "오후 반반차" },
+  { value: "SICK_PAID", label: "유급 병가" },
+  { value: "SICK_UNPAID", label: "무급 병가" },
 ];
 
 type LeaveRequest = {
@@ -216,7 +218,7 @@ export function LeavePageClient({
         <div className="space-y-2 min-w-0">
           <PageHeadline
             title="연차 / 근태"
-            description="연차·반차·반반차를 신청하고, 출퇴근을 기록하세요."
+            description="연차·반차·병가 등을 신청하고, 출퇴근을 기록하세요."
           />
           {canApprove && (
             <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
@@ -284,6 +286,9 @@ export function LeavePageClient({
           <CardTitle>휴가 신청</CardTitle>
         </CardHeader>
         <CardContent>
+          <p className="text-muted-foreground mb-4 text-xs">
+            유급·무급 병가는 기간(시작~종료)으로 신청하며, 연차 잔여와 무관합니다. 승인되어도 연차 사용일에는 반영되지 않습니다.
+          </p>
           <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>종류</Label>
@@ -311,7 +316,7 @@ export function LeavePageClient({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end">종료일 (연차만 해당)</Label>
+              <Label htmlFor="end">종료일 (연차·유급/무급 병가)</Label>
               <Input
                 id="end"
                 type="date"

@@ -7,7 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { format, addDays, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Loader2, Save, Send, Lock, ChevronLeft, ChevronRight, CalendarSearch } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  Send,
+  Lock,
+  ChevronLeft,
+  ChevronRight,
+  CalendarSearch,
+  Sparkles,
+} from "lucide-react";
 import { AIAssistToolbar } from "@/components/ai-assist-toolbar";
 import { useAIAssistTarget } from "@/components/ai-assist-context";
 import {
@@ -26,6 +35,13 @@ type ActivityItem = {
   timestamp: string;
   ipAddress?: string | null;
 };
+
+function checkMissingRecurringInDraft(draft: string, recurringTitles: string[]) {
+  const missing = recurringTitles.filter((title) => title.trim().length > 0 && !draft.includes(title));
+  if (missing.length > 0) {
+    toast.warning(`누락된 반복 업무가 있어요: ${missing.join(", ")}`);
+  }
+}
 
 function activityLabel(actionType: string): string {
   switch (actionType) {
@@ -49,6 +65,8 @@ export function WorkLogTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pastLogOpen, setPastLogOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
   const contentRef = useRef(content);
   contentRef.current = content;
   const aiCtx = useAIAssistTarget();
@@ -78,6 +96,48 @@ export function WorkLogTab() {
     load(selectedDate);
   }, [selectedDate, load]);
 
+  useEffect(() => {
+    setHasDraft(false);
+  }, [selectedDate]);
+
+  const handleGenerateDraft = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/work-logs/ai-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: selectedDate }),
+      });
+      const data = (await res.json()) as { draft?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? "초안 생성에 실패했습니다.");
+      }
+      if (data.draft) {
+        if (content.trim()) {
+          const ok = confirm("기존 작성 내용이 있습니다. AI 초안으로 교체할까요?");
+          if (!ok) return;
+        }
+        setContent(data.draft);
+        setHasDraft(true);
+        toast.success("AI 초안이 생성됐어요. 수정 후 제출해주세요!");
+
+        const rr = await fetch(`/api/tasks/recurring?date=${encodeURIComponent(selectedDate)}`);
+        if (rr.ok) {
+          const list = (await rr.json()) as { title: string }[];
+          checkMissingRecurringInDraft(
+            data.draft,
+            list.map((t) => t.title)
+          );
+        }
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "초안 생성 중 오류가 발생했어요.");
+      console.error(e);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const goPrevDay = () => setSelectedDate((d) => format(subDays(new Date(d), 1), "yyyy-MM-dd"));
   const goNextDay = () => setSelectedDate((d) => format(addDays(new Date(d), 1), "yyyy-MM-dd"));
   const goToday = () => setSelectedDate(todayStr());
@@ -103,6 +163,22 @@ export function WorkLogTab() {
   const handleSubmit = async () => {
     setSaving(true);
     try {
+      const recurringRes = await fetch(`/api/tasks/recurring?date=${encodeURIComponent(selectedDate)}`);
+      if (recurringRes.ok) {
+        const recurringData = (await recurringRes.json()) as { title: string }[];
+        const recurringTitles = recurringData.map((t) => t.title).filter((t) => t.trim().length > 0);
+        const missing = recurringTitles.filter((title) => !content.includes(title));
+        if (missing.length > 0) {
+          const ok = confirm(
+            `아래 반복 업무가 일지에 없어요.\n\n${missing.join("\n")}\n\n그래도 제출할까요?`
+          );
+          if (!ok) {
+            setSaving(false);
+            return;
+          }
+        }
+      }
+
       const res = await fetch("/api/work-logs", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -186,7 +262,30 @@ export function WorkLogTab() {
             </DialogContent>
           </Dialog>
         </div>
-        <AIAssistToolbar value={content} onChange={setContent} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => void handleGenerateDraft()}
+            disabled={isGenerating}
+            className="text-xs px-3 py-1.5 border border-violet-200 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-50 flex items-center gap-1.5 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200 dark:hover:bg-violet-900/40"
+          >
+            {isGenerating ? (
+              <>
+                <span
+                  className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin inline-block"
+                  aria-hidden
+                />
+                초안 생성 중...
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3.5 shrink-0" />
+                AI 초안 생성
+              </>
+            )}
+          </button>
+          <AIAssistToolbar value={content} onChange={setContent} />
+        </div>
       </div>
       <p className="text-muted-foreground text-sm">
         {format(new Date(selectedDate + "T12:00:00"), "yyyy년 M월 d일 (EEEE)", { locale: ko })} · 출퇴근·활동 기록은 수정할 수 없습니다.
@@ -246,10 +345,18 @@ export function WorkLogTab() {
             New Daily Report
           </Button>
         </div>
+        {hasDraft ? (
+          <p className="text-xs text-violet-700 dark:text-violet-300">
+            AI 초안이 반영되었습니다. 확인·수정 후 저장하거나 제출하세요.
+          </p>
+        ) : null}
         <Textarea
           id="daily-report-body"
           value={content}
-          onChange={(e: any) => setContent(e.target.value)}
+          onChange={(e: any) => {
+            setContent(e.target.value);
+            setHasDraft(false);
+          }}
           onFocus={() =>
             aiCtx?.register({
               getValue: () => contentRef.current,

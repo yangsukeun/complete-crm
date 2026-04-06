@@ -66,6 +66,9 @@ export function CreateTaskModal({
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringDays, setRecurringDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [recurringMemo, setRecurringMemo] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -92,8 +95,17 @@ export function CreateTaskModal({
             ? [defaultAssignedToId]
             : [];
       setAssigneeIds(initial);
+      setIsRecurring(false);
+      setRecurringDays([1, 2, 3, 4, 5]);
+      setRecurringMemo("");
     }
   }, [open, defaultAssignedToId, defaultAssigneeIds]);
+
+  const toggleDay = (day: number) => {
+    setRecurringDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
+    );
+  };
 
   const toggleAssignee = (userId: string) => {
     setAssigneeIds((prev) =>
@@ -121,6 +133,9 @@ export function CreateTaskModal({
           parentId: parentId ?? undefined,
           categoryId: categoryId ?? undefined,
           orderIndex,
+          isRecurring: isRecurring ? true : undefined,
+          recurringDays: isRecurring ? JSON.stringify(recurringDays) : undefined,
+          recurringMemo: isRecurring ? recurringMemo.trim() || null : undefined,
         }),
       });
       if (!res.ok) {
@@ -228,6 +243,48 @@ export function CreateTaskModal({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id="isRecurring"
+                  checked={isRecurring}
+                  onCheckedChange={(c) => setIsRecurring(c === true)}
+                />
+                <Label htmlFor="isRecurring" className="text-sm font-normal cursor-pointer">
+                  반복 업무로 설정
+                </Label>
+              </div>
+              {isRecurring && (
+                <div className="space-y-2 rounded-md border bg-muted/15 p-3">
+                  <p className="text-muted-foreground text-xs">반복 요일 (1=월 … 7=일)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {["월", "화", "수", "목", "금", "토", "일"].map((day, i) => {
+                      const n = i + 1;
+                      const on = recurringDays.includes(n);
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => toggleDay(n)}
+                          className={`flex size-8 items-center justify-center rounded-full border text-xs transition-colors ${
+                            on
+                              ? "border-violet-300 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200"
+                              : "border-border text-muted-foreground hover:bg-muted/60"
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Input
+                    type="text"
+                    placeholder="반복 업무 메모 (선택)"
+                    value={recurringMemo}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRecurringMemo(e.target.value)}
+                    className="text-xs h-9"
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter className="shrink-0 gap-2 border-t bg-background px-6 py-4 [@media(max-height:700px)]:px-5">

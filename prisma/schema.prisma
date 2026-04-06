@@ -45,6 +45,8 @@ enum LeaveType {
   HALF_PM   // 오후 반차
   QUARTER_AM  // 오전 반반차
   QUARTER_PM  // 오후 반반차
+  SICK_PAID   // 유급병가
+  SICK_UNPAID // 무급병가
 }
 
 enum LeaveRequestStatus {
@@ -397,6 +399,12 @@ model Task {
   isCompleted  Boolean        @default(false)
   status       TaskStatus     @default(TODO)
   priority     TaskPriority   @default(MEDIUM)
+  /// 반복 업무 여부
+  isRecurring  Boolean        @default(false)
+  /// 반복 요일 JSON: "[1,2,3,4,5]" (1=월 … 7=일)
+  recurringDays String?
+  /// 반복 업무 설명
+  recurringMemo String?
   projectId    String?
   project      Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parentId     String?

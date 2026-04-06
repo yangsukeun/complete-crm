@@ -24,6 +24,9 @@ export type CreateTaskInput = {
   categoryId?: string | null;
   orderIndex?: number;
   projectId?: string | null;
+  isRecurring?: boolean;
+  recurringDays?: string | null;
+  recurringMemo?: string | null;
 };
 
 const taskInclude = {
@@ -50,6 +53,15 @@ export async function createTaskWithNotifications(params: {
   const ids = normalizeAssigneeIds(data.assigneeIds, data.assignedToId, createdById);
   const primaryAssignee = ids[0] ?? createdById;
 
+  const isRecurring = Boolean(data.isRecurring);
+  const recurringDays =
+    isRecurring && (data.recurringDays == null || data.recurringDays === "")
+      ? "[1,2,3,4,5]"
+      : isRecurring
+        ? data.recurringDays
+        : null;
+  const recurringMemo = isRecurring ? (data.recurringMemo?.trim() ? data.recurringMemo.trim() : null) : null;
+
   const task = await prisma.task.create({
     data: {
       title: data.title,
@@ -64,6 +76,9 @@ export async function createTaskWithNotifications(params: {
       categoryId: data.categoryId ?? null,
       orderIndex: data.orderIndex ?? 0,
       scope: scope === "PERSONAL" ? "PERSONAL" : "TEAM",
+      isRecurring,
+      recurringDays,
+      recurringMemo,
       assignees: {
         create: ids.map((userId) => ({ userId })),
       },

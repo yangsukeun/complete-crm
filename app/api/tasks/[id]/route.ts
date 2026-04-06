@@ -225,6 +225,9 @@ export async function PATCH(
       parentId?: string | null;
       dueDate?: Date;
       priority?: "HIGH" | "MEDIUM" | "LOW";
+      isRecurring?: boolean;
+      recurringDays?: string | null;
+      recurringMemo?: string | null;
     } = {};
     if (typeof body.isCompleted === "boolean") {
       data.isCompleted = body.isCompleted;
@@ -242,6 +245,25 @@ export async function PATCH(
     if ("parentId" in body) data.parentId = body.parentId === null || body.parentId === "" ? null : body.parentId;
     if (typeof body.dueDate === "string") data.dueDate = new Date(body.dueDate);
     if (body.priority === "HIGH" || body.priority === "MEDIUM" || body.priority === "LOW") data.priority = body.priority;
+    if (typeof body.isRecurring === "boolean") {
+      data.isRecurring = body.isRecurring;
+    }
+    const turningOffRecurring = body.isRecurring === false;
+    if (turningOffRecurring) {
+      data.recurringDays = null;
+      data.recurringMemo = null;
+    } else {
+      if ("recurringDays" in body) {
+        if (body.recurringDays === null || body.recurringDays === "") data.recurringDays = null;
+        else if (typeof body.recurringDays === "string") data.recurringDays = body.recurringDays;
+      }
+      if ("recurringMemo" in body) {
+        data.recurringMemo =
+          body.recurringMemo === null || body.recurringMemo === ""
+            ? null
+            : String(body.recurringMemo);
+      }
+    }
 
     // 수정 이력 기록 (누가, 무엇을, 언제)
     const statusLabels: Record<string, string> = { TODO: "할 일", IN_PROGRESS: "진행 중", DONE: "완료" };

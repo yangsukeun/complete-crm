@@ -53,6 +53,9 @@ const createSchema = z.object({
     return Number.isFinite(n) ? n : undefined;
   }, z.number().optional()),
   projectId: optionalIdish,
+  isRecurring: z.boolean().optional(),
+  recurringDays: z.union([z.string(), z.null()]).optional(),
+  recurringMemo: z.union([z.string(), z.null()]).optional(),
 });
 
 const listSelect = {
@@ -69,6 +72,9 @@ const listSelect = {
   scope: true,
   createdById: true,
   projectId: true,
+  isRecurring: true,
+  recurringDays: true,
+  recurringMemo: true,
   assignedTo: {
     select: {
       id: true,
@@ -304,6 +310,9 @@ export async function POST(req: Request) {
         categoryId: parsed.data.categoryId ?? null,
         orderIndex: parsed.data.orderIndex ?? 0,
         projectId: parsed.data.projectId ?? null,
+        isRecurring: parsed.data.isRecurring,
+        recurringDays: parsed.data.recurringDays,
+        recurringMemo: parsed.data.recurringMemo,
       },
     });
 

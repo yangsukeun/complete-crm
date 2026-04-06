@@ -12,6 +12,10 @@ const leaveTypeDays: Record<string, number> = {
   QUARTER_PM: 0.25,
 };
 
+function isSickLeaveType(t: string): boolean {
+  return t === "SICK_PAID" || t === "SICK_UNPAID";
+}
+
 function isTeamLead(role: string | undefined) {
   return role === "TEAM_LEAD";
 }
@@ -82,10 +86,11 @@ export async function PATCH(
         return NextResponse.json({ error: "status는 APPROVED 또는 REJECTED 여야 합니다." }, { status: 400 });
       }
 
-      if (requestedStatus === "APPROVED") {
-        const days = leave.type === "ANNUAL"
-          ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-          : (leaveTypeDays[leave.type] ?? 0);
+      if (requestedStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
+        const days =
+          leave.type === "ANNUAL"
+            ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+            : (leaveTypeDays[leave.type] ?? 0);
         const year = leave.startDate.getFullYear();
         const entitlement = getAnnualLeaveEntitlement(leave.user.joinDate, year);
         await prisma.leaveBalance.upsert({

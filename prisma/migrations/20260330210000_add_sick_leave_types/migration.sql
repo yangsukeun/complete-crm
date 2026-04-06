@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "LeaveType" ADD VALUE 'SICK_PAID';
+ALTER TYPE "LeaveType" ADD VALUE 'SICK_UNPAID';
