@@ -46,6 +46,7 @@ import {
   User,
   Flag,
   Download,
+  FolderKanban,
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
@@ -64,6 +65,7 @@ type TaskDetail = {
   isCompleted: boolean;
   priority: string;
   scope?: "TEAM" | "PERSONAL";
+  project?: { id: string; name: string; brand: { name: string } } | null;
   assignees?: { id: string; name: string; email: string; position?: string | null; image?: string | null }[];
   assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null } | null;
@@ -401,6 +403,19 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate }: Props) {
             </div>
             {/* 노션 스타일: 페이지 상단 여백 + 블록 레이아웃 */}
             <div className="px-10 pt-8 pb-2">
+              {task.project ? (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                  <FolderKanban className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+                  <span className="text-muted-foreground">연결 CRM 프로젝트</span>
+                  <Link
+                    href={`/projects/${task.project.id}`}
+                    prefetch={true}
+                    className="font-medium text-emerald-800 underline-offset-4 hover:underline dark:text-emerald-300"
+                  >
+                    {task.project.brand?.name} / {task.project.name}
+                  </Link>
+                </div>
+              ) : null}
               {/* 상단: 완료 체크 + 아이콘 + 제목 (노션 페이지 타이틀) */}
               <div className="flex items-start gap-3">
                 <Checkbox

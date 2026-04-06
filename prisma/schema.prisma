@@ -190,14 +190,15 @@ model User {
 
 // AI 허브: 클라이언트 히스토리/CRM 저장용
 model AiHubHistory {
-  id        String   @id @default(cuid())
-  userId    String
-  agentKey  String
-  agentName String
-  input     String   @db.Text
-  output    String   @db.Text
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  userId        String
+  agentKey      String
+  agentName     String
+  input         String   @db.Text
+  output        String   @db.Text
+  selectedModel String?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@map("ai_hub_histories")

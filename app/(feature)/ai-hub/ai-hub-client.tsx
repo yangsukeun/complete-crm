@@ -53,26 +53,81 @@ export function AiHubClient() {
     gpt: string;
     gemini: string;
   } | null>(null);
+  const [saveToast, setSaveToast] = useState(false);
+
+  const handleSave = useCallback(
+    async (model: string, content: string) => {
+      if (!content.trim()) return;
+      const agent = selectedAgent;
+      if (!agent) return;
+      try {
+        const res = await fetch("/api/ai-hub/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentKey: agent,
+            agentName: AGENTS.find((a) => a.key === agent)?.name ?? "",
+            input: taskInput,
+            output: content,
+            selectedModel: model,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? "저장 실패");
+        }
+        setHistory((prev) =>
+          [
+            {
+              id: Date.now().toString(),
+              agentKey: agent,
+              agentName: AGENTS.find((a) => a.key === agent)?.name ?? "",
+              input: taskInput,
+              output: content,
+              createdAt: new Date(),
+            },
+            ...prev.slice(0, 9),
+          ]
+        );
+        setSaveToast(true);
+        setTimeout(() => setSaveToast(false), 2000);
+      } catch (e) {
+        console.error("저장 실패:", e);
+        toast.error("저장에 실패했습니다.");
+      }
+    },
+    [selectedAgent, taskInput]
+  );
 
   const handleSubmit = useCallback(async () => {
     const trimmed = taskInput.trim();
     if (!trimmed) return;
 
-    let agent = selectedAgent;
-    if (agent == null) {
-      agent = autoRoute(trimmed);
-      setSelectedAgent(agent);
+    let activeKey = selectedAgent;
+    if (activeKey == null) {
+      activeKey = autoRoute(trimmed);
+      setSelectedAgent(activeKey);
     }
+
+    const agentDef = AGENTS.find((a) => a.key === activeKey);
+    if (!agentDef) return;
+
+    const isCompare = agentDef.model === "all";
 
     setIsLoading(true);
     setCompareResults(null);
 
     try {
-      if (agent === "compare") {
+      if (isCompare) {
         const res = await fetch("/api/ai-hub", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "compare", message: trimmed }),
+          body: JSON.stringify({
+            type: "compare",
+            agentKey: activeKey,
+            message: trimmed,
+            systemPrompt: agentDef.systemPrompt,
+          }),
         });
         const data = (await res.json()) as {
           error?: string;
@@ -92,40 +147,38 @@ export function AiHubClient() {
         };
         setCompareResults(pack);
         setResult("");
-        const agentMeta = AGENTS.find((a) => a.key === "compare")!;
         const compareItem: HistoryItem = {
           id: crypto.randomUUID(),
-          agentKey: "compare",
-          agentName: agentMeta.name,
+          agentKey: activeKey,
+          agentName: agentDef.name,
           input: trimmed,
           output: JSON.stringify(pack),
           createdAt: new Date(),
         };
         setHistory((prev) => [compareItem, ...prev].slice(0, 50));
       } else {
-        const meta = AGENTS.find((a) => a.key === agent)!;
         const res = await fetch("/api/ai-hub", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "single",
-            agentKey: agent,
+            agentKey: activeKey,
             message: trimmed,
-            systemPrompt: meta.systemPrompt,
+            systemPrompt: agentDef.systemPrompt,
           }),
         });
-        const data = (await res.json()) as { error?: string; text?: string };
+        const respData = (await res.json()) as { error?: string; text?: string };
         if (!res.ok) {
-          setResult(data.error ?? FALLBACK);
-          toast.error(data.error ?? FALLBACK);
+          setResult(respData.error ?? FALLBACK);
+          toast.error(respData.error ?? FALLBACK);
           return;
         }
-        const text = data.text ?? FALLBACK;
+        const text = respData.text ?? FALLBACK;
         setResult(text);
         const row: HistoryItem = {
           id: crypto.randomUUID(),
-          agentKey: agent,
-          agentName: meta.name,
+          agentKey: activeKey,
+          agentName: agentDef.name,
           input: trimmed,
           output: text,
           createdAt: new Date(),
@@ -162,26 +215,21 @@ export function AiHubClient() {
     }
     const meta = AGENTS.find((a) => a.key === agent);
     const input = taskInput.trim();
-    let output = result;
-    if (agent === "compare" && compareResults) {
-      output = JSON.stringify(compareResults);
-    } else if (agent === "compare" && result.trim()) {
-      output = result;
-    }
+    const output = result;
     if (!input || !output.trim()) {
       toast.error("저장할 내용이 없습니다.");
       return;
     }
     try {
-      const res = await fetch("/api/ai-hub", {
+      const res = await fetch("/api/ai-hub/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "saveHistory",
           agentKey: agent,
           agentName: meta?.name ?? agent,
           input,
           output,
+          selectedModel: null,
         }),
       });
       if (!res.ok) {
@@ -192,7 +240,7 @@ export function AiHubClient() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "저장에 실패했습니다.");
     }
-  }, [selectedAgent, taskInput, result, compareResults]);
+  }, [selectedAgent, taskInput, result]);
 
   const onMidjourneyOpen = useCallback(async () => {
     if (!result) return;
@@ -205,23 +253,19 @@ export function AiHubClient() {
     }
   }, [result]);
 
-  const onAdoptCompare = useCallback((text: string) => {
-    setCompareResults(null);
-    setResult(text);
-  }, []);
+  const onSaveCompareModel = useCallback(
+    (model: "claude" | "gpt" | "gemini", content: string) => handleSave(model, content),
+    [handleSave]
+  );
 
   const onHistorySelect = useCallback((item: HistoryItem) => {
     setSelectedAgent(item.agentKey);
     setTaskInput(item.input);
-    if (item.agentKey === "compare") {
-      const parsed = parseCompareHistoryOutput(item.output);
-      if (parsed) {
-        setCompareResults(parsed);
-        setResult("");
-      } else {
-        setCompareResults(null);
-        setResult(item.output);
-      }
+    const def = AGENTS.find((a) => a.key === item.agentKey);
+    const parsed = parseCompareHistoryOutput(item.output);
+    if (parsed && def?.model === "all") {
+      setCompareResults(parsed);
+      setResult("");
     } else {
       setCompareResults(null);
       setResult(item.output);
@@ -269,6 +313,12 @@ export function AiHubClient() {
         ))}
       </div>
 
+      {saveToast && (
+        <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs text-emerald-700">
+          CRM에 저장됐어요 ✓
+        </div>
+      )}
+
       <ResultArea
         selectedAgent={selectedAgent}
         isLoading={isLoading}
@@ -277,7 +327,7 @@ export function AiHubClient() {
         onCopy={onCopy}
         onRegenerate={onRegenerate}
         onSaveToCrm={onSaveToCrm}
-        onAdoptCompare={onAdoptCompare}
+        onSaveCompareModel={onSaveCompareModel}
         onMidjourneyOpen={onMidjourneyOpen}
       />
 

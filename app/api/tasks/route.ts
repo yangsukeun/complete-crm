@@ -12,18 +12,47 @@ import {
 import { z } from "zod";
 import { endOfDay, endOfWeek, parse, startOfDay, startOfWeek } from "date-fns";
 
+/** null·비배열·숫자 id 등 클라이언트/직렬화 불일치 시 400 방지 */
+const assigneeIdsInCreate = z.preprocess((val: unknown) => {
+  if (val == null) return undefined;
+  if (!Array.isArray(val)) return undefined;
+  return val
+    .map((x) => (x == null ? "" : String(x)))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}, z.array(z.string()).optional());
+
+/** parentId / projectId / categoryId / assignedToId: null, 숫자, 빈 문자열 정규화 */
+const optionalIdish = z.preprocess((v: unknown) => {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  return String(v);
+}, z.string().nullable().optional());
+
 const createSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional(),
-  dueDate: z.string(),
-  priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional(),
-  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
-  assigneeIds: z.array(z.string()).optional(),
-  assignedToId: z.string().optional(),
-  parentId: z.string().optional(),
-  categoryId: z.string().nullable().optional(),
-  orderIndex: z.number().optional(),
-  projectId: z.string().nullable().optional(),
+  title: z.string().trim().min(1),
+  description: z.union([z.string(), z.null()]).optional(),
+  dueDate: z.string().min(1),
+  priority: z
+    .enum(["HIGH", "MEDIUM", "LOW"])
+    .optional()
+    .nullable()
+    .transform((v) => v ?? undefined),
+  status: z
+    .enum(["TODO", "IN_PROGRESS", "DONE"])
+    .optional()
+    .nullable()
+    .transform((v) => v ?? undefined),
+  assigneeIds: assigneeIdsInCreate,
+  assignedToId: optionalIdish,
+  parentId: optionalIdish,
+  categoryId: optionalIdish,
+  orderIndex: z.preprocess((v: unknown) => {
+    if (v === undefined || v === null) return undefined;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }, z.number().optional()),
+  projectId: optionalIdish,
 });
 
 const listSelect = {
@@ -248,6 +277,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
+      console.error("[tasks POST] validation failed", {
+        issues: parsed.error.issues,
+        flatten: parsed.error.flatten(),
+      });
       return NextResponse.json(
         { error: "입력값이 올바르지 않습니다.", details: parsed.error.flatten() },
         { status: 400 }
@@ -260,12 +293,13 @@ export async function POST(req: Request) {
       scope,
       data: {
         title: parsed.data.title,
-        description: parsed.data.description ?? null,
+        description:
+          parsed.data.description === undefined ? null : parsed.data.description,
         dueDate: parsed.data.dueDate,
         priority: parsed.data.priority ?? "MEDIUM",
         status: parsed.data.status ?? "TODO",
         assigneeIds: parsed.data.assigneeIds,
-        assignedToId: parsed.data.assignedToId,
+        assignedToId: parsed.data.assignedToId ?? undefined,
         parentId: parsed.data.parentId ?? null,
         categoryId: parsed.data.categoryId ?? null,
         orderIndex: parsed.data.orderIndex ?? 0,

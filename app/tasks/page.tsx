@@ -50,6 +50,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { isPlainLeftClick } from "@/lib/peek-navigation";
+import { TaskDetailDrawer } from "@/components/task-detail-drawer";
 import dynamic from "next/dynamic";
 
 const TaskTreeView = dynamic(
@@ -137,6 +139,7 @@ type Task = {
   status?: TaskStatus | null;
   priority: string;
   parentId: string | null;
+  /** 마인드맵 상위 노드 생성 시 하위와 동일 분류 유지 */
   categoryId: string | null;
   orderIndex: number;
   isCollapsed?: boolean;
@@ -321,6 +324,8 @@ export default function TasksPage() {
   const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>("all");
   const projectScopeHydratedRef = useRef(false);
   const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
+  /** 노션식 오른쪽 패널 미리보기 */
+  const [peekTaskId, setPeekTaskId] = useState<string | null>(null);
 
   /** 마인드맵이 아니면 툴바 포털 DOM 해제 */
   useEffect(() => {
@@ -569,6 +574,7 @@ export default function TasksPage() {
       parentId: t.parentId ?? null,
       isCollapsed: !!t.isCollapsed,
       projectId: t.projectId ?? null,
+      categoryId: t.categoryId ?? null,
       assignees: t.assignees,
       assignedTo: t.assignees?.[0] ?? t.assignedTo,
       createdById: t.createdById ?? t.createdBy?.id ?? null,
@@ -603,7 +609,7 @@ export default function TasksPage() {
           description={
             view === "log"
               ? "Record your daily work"
-              : "프로젝트를 목록·Mindmap·Daily Report로 관리합니다."
+              : "프로젝트를 목록·Mindmap·Daily Report로 관리합니다. 카드 클릭 시 오른쪽에서 미리 볼 수 있고, Ctrl·⌘·Shift 클릭은 새 탭으로 열립니다."
           }
         />
         <div className="flex flex-wrap items-center gap-3">
@@ -837,12 +843,8 @@ export default function TasksPage() {
                 tasks={mindmapTasks as any}
                 taskLinks={mindmapLinksForView as any}
                 onRefresh={refreshTasks}
-                onTaskClick={(taskId: string, projectId?: string | null) => {
-                  if (projectId) {
-                    router.push(`/projects/${projectId}`);
-                  } else {
-                    router.push(`/tasks/${taskId}`);
-                  }
+                onTaskClick={(taskId: string) => {
+                  setPeekTaskId(taskId);
                 }}
                 onTaskHover={(taskId: string) => {
                   const row = mindmapTasks.find((t: { id: string }) => t.id === taskId);
@@ -938,6 +940,11 @@ export default function TasksPage() {
                               href={`/tasks/${task.id}`}
                               prefetch={false} // [PERF-claude-code] 카드마다 RSC 프리패치 방지
                               className="block w-full px-3 pt-3 text-left outline-none"
+                              onClick={(e) => {
+                                if (!isPlainLeftClick(e)) return;
+                                e.preventDefault();
+                                setPeekTaskId(task.id);
+                              }}
                             >
                               <p
                                 className={cn(
@@ -1077,6 +1084,11 @@ export default function TasksPage() {
         parentId={createParentId}
         orderIndex={tasksTotalCount}
         defaultAssignedToId={(session?.user as any)?.id ?? null}
+      />
+      <TaskDetailDrawer
+        taskId={peekTaskId}
+        onClose={() => setPeekTaskId(null)}
+        onUpdate={() => void refreshTasks()}
       />
     </div>
   );

@@ -49,6 +49,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
 import { getDriveThumbnailUrl } from "@/lib/google-drive-url";
 import { isUnoptimizedRemoteImageSrc } from "@/lib/remote-image-unoptimized";
+import { isPlainLeftClick } from "@/lib/peek-navigation";
+import { BoardPostPeekSheet } from "@/components/board-post-peek-sheet";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -136,6 +138,7 @@ export function BoardPageClient({
   const [title, setTitle] = useState("");
   const [bodyContent, setBodyContent] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [peekBoardId, setPeekBoardId] = useState<string | null>(null);
 
   const BOARD_PAGE = 20;
 
@@ -461,7 +464,16 @@ export function BoardPageClient({
                   key={`board-${b.id}`}
                   className="overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md"
                 >
-                  <Link href={`/board/${b.id}`} prefetch={false} className="block outline-none">
+                  <Link
+                    href={`/board/${b.id}`}
+                    prefetch={false}
+                    className="block outline-none"
+                    onClick={(e) => {
+                      if (!isPlainLeftClick(e)) return;
+                      e.preventDefault();
+                      setPeekBoardId(b.id);
+                    }}
+                  >
                     {/* 이미지/영상 미리보기 또는 플레이스홀더 */}
                     <div className="relative aspect-video w-full bg-muted">
                       {media?.type === "image" ? (
@@ -593,6 +605,8 @@ export function BoardPageClient({
       </section>
 
       {/* 공지 등록 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
+      <BoardPostPeekSheet postId={peekBoardId} onClose={() => setPeekBoardId(null)} />
+
       <Dialog open={openAnnouncement} onOpenChange={(o: any) => !o && resetAnnouncementForm()}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
           <DialogHeader>

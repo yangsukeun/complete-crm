@@ -29,10 +29,10 @@ export const AGENTS: Agent[] = [
   {
     key: "copy",
     name: "카피라이팅",
-    desc: "SNS, 광고, 상품 설명 문구",
-    model: "claude",
-    badge: "internal",
-    badgeLabel: "CRM 내부 처리",
+    desc: "Claude·GPT·Gemini 3개 비교",
+    model: "all",
+    badge: "both",
+    badgeLabel: "3개 모델 동시",
     color: "bg-violet-50",
     systemPrompt: `당신은 SNS 카피라이팅 전문 AI입니다.
 채널과 상품 정보를 바탕으로 최적화된 카피를 작성하세요.
@@ -44,10 +44,10 @@ export const AGENTS: Agent[] = [
   {
     key: "video",
     name: "영상 스크립트",
-    desc: "유튜브·릴스 대본 작성",
-    model: "claude",
-    badge: "internal",
-    badgeLabel: "CRM 내부 처리",
+    desc: "Claude·GPT·Gemini 3개 비교",
+    model: "all",
+    badge: "both",
+    badgeLabel: "3개 모델 동시",
     color: "bg-amber-50",
     systemPrompt: `당신은 영상 스크립트 전문 작가입니다.
 훅(Hook) → 본론 → CTA 구조로 대본을 작성하세요.

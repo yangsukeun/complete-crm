@@ -55,6 +55,7 @@ type TaskData = {
   parentId: string | null;
   isCollapsed: boolean;
   projectId?: string | null;
+  categoryId?: string | null;
   assignees?: { id: string; name: string; position?: string | null; image?: string | null }[];
   assignedTo: { id: string; name: string; position?: string | null; image?: string | null } | null;
   /** 삭제 권한: 임원/관리자 또는 본인이 생성한 프로젝트만 */
@@ -915,10 +916,37 @@ function TreeViewInner({
         typeof window !== "undefined" && !fromInput
           ? window.prompt("상위 노드 제목을 입력하세요", "새 상위 프로젝트")?.trim()
           : "";
-      const title = fromInput || prompted || "새 상위 프로젝트";
+      const title = (fromInput || prompted || "새 상위 프로젝트").trim();
       if (!title) {
         toast.error("제목이 필요합니다.");
         return;
+      }
+
+      const assigneeIdsFromChild =
+        child.assignees && child.assignees.length > 0
+          ? [...new Set(child.assignees.map((a) => a.id).filter(Boolean))]
+          : child.assignedTo?.id
+            ? [child.assignedTo.id]
+            : undefined;
+
+      const createBody: Record<string, unknown> = {
+        title,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        priority: "MEDIUM",
+      };
+      if (child.parentId != null) createBody.parentId = child.parentId;
+      if (child.projectId != null && child.projectId !== "") {
+        createBody.projectId = child.projectId;
+      }
+      if (child.categoryId != null && child.categoryId !== "") {
+        createBody.categoryId = child.categoryId;
+      }
+      if (assigneeIdsFromChild && assigneeIdsFromChild.length > 0) {
+        createBody.assigneeIds = assigneeIdsFromChild;
+      }
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[mindmap] POST /api/tasks add-parent payload", structuredClone(createBody));
       }
 
       setIsAddingParent(true);
@@ -926,19 +954,28 @@ function TreeViewInner({
         const createRes = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title,
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            priority: "MEDIUM",
-            parentId: child.parentId,
-          }),
+          credentials: "include",
+          body: JSON.stringify(createBody),
         });
-        if (!createRes.ok) throw new Error("상위 노드 생성 실패");
+        if (!createRes.ok) {
+          const errJson = (await createRes.json().catch(() => ({}))) as {
+            error?: string;
+            details?: unknown;
+          };
+          const detailStr =
+            errJson.details && typeof errJson.details === "object"
+              ? JSON.stringify(errJson.details)
+              : "";
+          throw new Error(
+            [errJson.error ?? `HTTP ${createRes.status}`, detailStr].filter(Boolean).join(" ")
+          );
+        }
         const newTask = (await createRes.json()) as { id: string };
 
         const patchRes = await fetch(`/api/tasks/${childId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ parentId: newTask.id }),
         });
         if (!patchRes.ok) throw new Error("하위 연결 실패");
@@ -954,8 +991,8 @@ function TreeViewInner({
         if (fromInput) setQuickTitle("");
         toast.success("상위 노드가 추가되었습니다.");
         onRefresh();
-      } catch {
-        toast.error("상위 노드 추가에 실패했습니다.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "상위 노드 추가에 실패했습니다.");
       } finally {
         setIsAddingParent(false);
       }

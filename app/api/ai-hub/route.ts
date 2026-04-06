@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import prisma from "@/lib/prisma";
 import {
   callAiByProvider,
   type ChatMessage,
@@ -51,34 +50,17 @@ export async function POST(req: Request) {
 
     const type = typeof body.type === "string" ? body.type : "";
 
-    if (type === "saveHistory") {
-      const agentKey = typeof body.agentKey === "string" ? body.agentKey : "";
-      const agentName = typeof body.agentName === "string" ? body.agentName : "";
-      const input = typeof body.input === "string" ? body.input : "";
-      const output = typeof body.output === "string" ? body.output : "";
-      if (!agentKey || !input.trim() || !output.trim()) {
-        return NextResponse.json({ error: "필수 필드가 없습니다." }, { status: 400 });
-      }
-      await prisma.aiHubHistory.create({
-        data: {
-          userId: session.user.id,
-          agentKey,
-          agentName: agentName || agentKey,
-          input,
-          output,
-        },
-      });
-      return NextResponse.json({ ok: true });
-    }
-
     const message = typeof body.message === "string" ? body.message.trim() : "";
     if (!message) {
       return NextResponse.json({ error: "메시지가 비어 있습니다." }, { status: 400 });
     }
 
     if (type === "compare") {
+      const customSystem =
+        typeof body.systemPrompt === "string" ? body.systemPrompt.trim() : "";
+      const systemContent = customSystem || AI_HUB_COMPARE_SYSTEM;
       const msgs: ChatMessage[] = [
-        { role: "system", content: AI_HUB_COMPARE_SYSTEM },
+        { role: "system", content: systemContent },
         { role: "user", content: message },
       ];
       const [claude, gpt, gemini] = await Promise.all([
@@ -97,6 +79,12 @@ export async function POST(req: Request) {
       const agent = getAgentByKey(agentKeyRaw as AgentKey);
       if (!agent) {
         return NextResponse.json({ error: "에이전트를 찾을 수 없습니다." }, { status: 400 });
+      }
+      if (agent.model === "all") {
+        return NextResponse.json(
+          { error: "이 에이전트는 비교 모드로만 요청할 수 있습니다." },
+          { status: 400 }
+        );
       }
       const serverPrompt = agent.systemPrompt.trim();
       const bodyPrompt =
