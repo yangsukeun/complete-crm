@@ -758,7 +758,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
           type="file"
           multiple
           className="hidden"
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.rar,.7z,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.txt,.csv"
           onChange={(e) => handleFiles(e.target.files)}
         />
         <div className="text-muted-foreground mb-3 flex items-center gap-2 text-sm font-medium">

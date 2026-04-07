@@ -46,6 +46,19 @@ const ALLOWED_FILE_TYPES = [
   "application/vnd.hancom.hwp",
   "application/vnd.hancom.hwpx",
   "application/vnd.hancom.hwpml.document",
+  "application/x-hwpml",
+  /** 압축·아카이브 (ZIP은 브라우저/ OS마다 MIME 이 다름) */
+  "application/zip",
+  "application/x-zip-compressed",
+  "multipart/x-zip",
+  "application/x-rar-compressed",
+  "application/vnd.rar",
+  "application/x-7z-compressed",
+  "application/x-compressed",
+  /** 표·데이터 */
+  "text/csv",
+  "application/csv",
+  "text/comma-separated-values",
 ];
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -57,6 +70,7 @@ const ALLOWED_EXTENSIONS = new Set([
   "ppt",
   "pptx",
   "txt",
+  "csv",
   "html",
   "htm",
   "jpg",
@@ -76,6 +90,9 @@ const ALLOWED_EXTENSIONS = new Set([
   "avi",
   "hwp",
   "hwpx",
+  "zip",
+  "rar",
+  "7z",
 ]);
 
 function getExt(mime: string, fileName?: string): string {
@@ -99,7 +116,17 @@ function getExt(mime: string, fileName?: string): string {
     "application/haansofthwp": "hwp",
     "application/vnd.hancom.hwp": "hwp",
     "application/vnd.hancom.hwpx": "hwpx",
-    "application/vnd.hancom.hwpml.document": "hwp",
+    "application/vnd.hancom.hwpml.document": "hwpx",
+    "application/x-hwpml": "hwpx",
+    "application/zip": "zip",
+    "application/x-zip-compressed": "zip",
+    "multipart/x-zip": "zip",
+    "application/x-rar-compressed": "rar",
+    "application/vnd.rar": "rar",
+    "application/x-7z-compressed": "7z",
+    "text/csv": "csv",
+    "application/csv": "csv",
+    "text/comma-separated-values": "csv",
     "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/html": "html",
@@ -137,9 +164,10 @@ export async function POST(req: Request) {
     const mime = (file.type || "").toLowerCase() || "application/octet-stream";
     const extFromName =
       (file.name || "").split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "") || "";
+    /** HWP/ZIP 등은 MIME 이 application/octet-stream 인 경우가 많아 확장자를 우선 신뢰 */
+    const allowedByExt = Boolean(extFromName && ALLOWED_EXTENSIONS.has(extFromName));
     const allowedByMime = ALLOWED_IMAGE_TYPES.includes(mime) || ALLOWED_FILE_TYPES.includes(mime);
-    const allowedByExt = extFromName && ALLOWED_EXTENSIONS.has(extFromName);
-    if (!allowedByMime && !allowedByExt) {
+    if (!allowedByExt && !allowedByMime) {
       return NextResponse.json(
         {
           error:

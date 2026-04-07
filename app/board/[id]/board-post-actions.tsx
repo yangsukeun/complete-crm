@@ -302,7 +302,7 @@ export function BoardPostActions({
                   type="file"
                   className="hidden"
                   multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,video/*,.mp4,.webm,.ogg,.mov,.txt"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.rar,.7z,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.txt,.csv,image/*,video/*,.webm,.ogg"
                   onChange={handleFileSelect}
                 />
                 <Button

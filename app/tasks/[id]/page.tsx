@@ -700,7 +700,7 @@ export default function TaskDetailPage() {
                   type="file"
                   multiple
                   className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.hwp,.hwpx,.mp4,.mov,.webm"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.rar,.7z,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.txt,.csv"
                   onChange={(e: any) => void handleFiles(e.target.files)}
                 />
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
