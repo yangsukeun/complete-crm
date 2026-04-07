@@ -72,9 +72,7 @@ const listSelect = {
   scope: true,
   createdById: true,
   projectId: true,
-  isRecurring: true,
-  recurringDays: true,
-  recurringMemo: true,
+  /** 목록·all=1·페이지네이션: 상세/WorkLog 등은 별도 API에서 로드 (페이로드·Row 폭 축소) */
   assignedTo: {
     select: {
       id: true,

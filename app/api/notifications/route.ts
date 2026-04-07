@@ -14,7 +14,8 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Number(searchParams.get("limit")) || 20, 50);
+    const rawLimit = Number(searchParams.get("limit"));
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20, 1), 50);
     const unreadOnly = searchParams.get("unreadOnly") === "true";
 
     const list = await prisma.notification.findMany({
@@ -22,8 +23,17 @@ export async function GET(req: Request) {
         userId: session.user.id,
         ...(unreadOnly ? { isRead: false } : {}),
       },
-      orderBy: { createdAt: "desc" },
+      /** 미읽음 우선 → 동일 시각대에서는 최신순 */
+      orderBy: [{ isRead: "asc" }, { createdAt: "desc" }],
       take: limit,
+      select: {
+        id: true,
+        type: true,
+        message: true,
+        link: true,
+        isRead: true,
+        createdAt: true,
+      },
     });
 
     return NextResponse.json(

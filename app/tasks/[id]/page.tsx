@@ -201,6 +201,9 @@ export default function TaskDetailPage() {
         const msg = await taskDetailErrorMessage(mainRes);
         setFetchError(msg);
         setTask(null);
+        if (mainRes.status === 404) {
+          router.replace("/tasks");
+        }
         return;
       }
       const data = await mainRes.json();
@@ -223,7 +226,7 @@ export default function TaskDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [taskId, router]);
 
   const fetchTaskRef = useRef(fetchTask);
   fetchTaskRef.current = fetchTask;

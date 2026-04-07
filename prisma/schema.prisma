@@ -443,6 +443,8 @@ model Task {
   @@index([dueDate])
   @@index([scope])
   @@index([deletedAt])
+  // 목록: scope + deletedAt null 필터
+  @@index([scope, deletedAt])
   @@index([projectId])
 }
 
