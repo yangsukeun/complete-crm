@@ -51,6 +51,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
+import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
 import { SplitView, useIsMdUp } from "@/components/ui/split-view";
 import { TaskDetailContent } from "./components/task-detail-content";
@@ -277,14 +278,20 @@ function getDueUrgency(task: Task): { show: boolean; overdue: boolean; label: st
 type TasksPageResponse = { items: Task[]; total: number; hasMore: boolean };
 
 async function fetchTasksAllJson(url: string): Promise<Task[]> {
-  const r = await fetch(url, { credentials: "include" }); // [PERF-claude-code] 인증 쿠키 포함
+  const r = await fetch(url, {
+    credentials: "include",
+    headers: workspaceFetchHeaders(),
+  });
   if (!r.ok) return [];
   const data = await r.json();
   return Array.isArray(data) ? data : [];
 }
 
 async function fetchTasksPageJson(url: string): Promise<TasksPageResponse> {
-  const r = await fetch(url);
+  const r = await fetch(url, {
+    credentials: "include",
+    headers: workspaceFetchHeaders(),
+  });
   if (!r.ok) return { items: [], total: 0, hasMore: false };
   const data = await r.json();
   if (Array.isArray(data)) {
@@ -470,9 +477,8 @@ export default function TasksPage() {
     keepPreviousData: true,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    revalidateOnMount: false,
-    revalidateIfStale: false, // [PERF-claude-code] 캐시 존재 시 키 재활성화/리마운트로 재검증 안 함
-    // [PERF-auto] 전체 목록(all=1) 재검증 빈도 완화 — 수동 mutate·탭 전환으로 갱신
+    // revalidateOnMount: false 는 SWR 2에서 초기 마운트 시 요청을 스킵해 목록이 영영 비어 있을 수 있음
+    revalidateIfStale: false,
     dedupingInterval: 300_000,
   });
 
@@ -496,7 +502,7 @@ export default function TasksPage() {
     revalidateFirstPage: true,
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    revalidateOnMount: false,
+    revalidateOnMount: true,
     dedupingInterval: 30_000,
   });
 
