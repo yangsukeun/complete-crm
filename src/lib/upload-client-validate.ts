@@ -46,6 +46,9 @@ export const UPLOAD_TOAST_DURATION_MS = 5000;
 export const UPLOAD_ERROR_MESSAGE = {
   extension: "지원하지 않는 파일 형식입니다.",
   size: "파일 크기가 100MB를 초과합니다.",
+  /** 서버/프록시 본문 한도(413). 서버는 4MB 초과 시 Drive 저장을 우선하지만, 먼저 요청이 도달해야 함 */
+  payloadTooLarge:
+    "파일이 너무 큽니다. Google Drive에 자동 저장을 시도합니다. 여전히 실패하면 네트워크·플랫폼 한도를 확인하거나 잠시 후 다시 시도해 주세요.",
   server: "업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
 } as const;
 
@@ -115,6 +118,9 @@ export async function getUploadErrorMessageFromResponse(res: Response): Promise<
     raw = typeof data.error === "string" ? data.error : "";
   } catch {
     raw = "";
+  }
+  if (res.status === 413) {
+    return UPLOAD_ERROR_MESSAGE.payloadTooLarge;
   }
   if (res.status === 400) {
     if (/100MB|100\s*MB|이하만|초과합니다/i.test(raw)) return UPLOAD_ERROR_MESSAGE.size;

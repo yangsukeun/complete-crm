@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     const filename = `logo-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const provider = resolveStorageProvider();
+    const provider = resolveStorageProvider(file.size);
     if (provider === "vercel-blob" && !process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
       if (process.env.VERCEL) {
         return NextResponse.json(

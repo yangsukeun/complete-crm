@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     optimizeCss: true,
+    /** Server Actions 본문 한도 (Route Handler는 플랫폼 제한이 별도일 수 있음) */
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
     optimizePackageImports: [
       "lucide-react",
       "@mantine/core",

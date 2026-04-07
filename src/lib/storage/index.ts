@@ -7,12 +7,20 @@ import { mirrorToWebdav, storeWebdav } from "./webdav-storage";
 export type { StorageProviderId, StoreFileInput, StoreFileResult };
 
 /**
- * STORAGE_PROVIDER
- * - auto (기본): 로컬은 BLOB 토큰 있으면 Blob, 없으면 local.
- *   Vercel에서는 Drive(서비스 계정) 설정 시 **Drive 우선**, 다음 WebDAV, 다음 Blob 토큰.
- * - vercel-blob | blob | local | google-drive | drive | webdav | nas
+ * Vercel 등 요청 본문 한도 대비: 이 크기(바이트) 초과 시 Google Drive 업로드 우선(auto 모드).
  */
-export function resolveStorageProvider(): StorageProviderId {
+export const LARGE_FILE_DRIVE_THRESHOLD_BYTES = 4 * 1024 * 1024;
+
+/**
+ * STORAGE_PROVIDER
+ * - auto (기본):
+ *   - 파일이 LARGE_FILE_DRIVE_THRESHOLD_BYTES 초과이고 Drive 설정 가능 → google-drive
+ *   - 그 외: WebDAV → Blob → Drive(폴백) 등 환경별 순서
+ * - vercel-blob | blob | local | google-drive | drive | webdav | nas (명시 시 크기 무관)
+ *
+ * @param fileSizeBytes 업로드 시 바이트 길이 전달 권장
+ */
+export function resolveStorageProvider(fileSizeBytes?: number): StorageProviderId {
   const raw = process.env.STORAGE_PROVIDER?.trim().toLowerCase();
   if (raw && raw !== "auto") {
     if (raw === "google-drive" || raw === "drive") return "google-drive";
@@ -21,8 +29,24 @@ export function resolveStorageProvider(): StorageProviderId {
     if (raw === "local") return "local";
   }
 
-  /** auto: 서비스 계정+폴더 설정 시 어디서나 Drive 우선(통일) */
-  if (canUseGoogleDrive()) return "google-drive";
+  const large =
+    typeof fileSizeBytes === "number" && fileSizeBytes > LARGE_FILE_DRIVE_THRESHOLD_BYTES;
+
+  if (large && canUseGoogleDrive()) {
+    return "google-drive";
+  }
+
+  if (canUseGoogleDrive()) {
+    if (process.env.VERCEL) {
+      if (canUseWebdav()) return "webdav";
+      if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) return "vercel-blob";
+      return "google-drive";
+    }
+    if (process.env.BLOB_READ_WRITE_TOKEN?.trim()) return "vercel-blob";
+    if (canUseWebdav()) return "webdav";
+    if (!process.env.VERCEL) return "local";
+    return "google-drive";
+  }
 
   if (process.env.VERCEL) {
     if (canUseWebdav()) return "webdav";
@@ -63,7 +87,7 @@ const mirrorWebdavEnabled = () =>
   process.env.STORAGE_MIRROR_WEBDAV?.trim()?.toLowerCase() === "true";
 
 export async function storeUploadedFile(input: StoreFileInput): Promise<StoreFileResult> {
-  const provider = resolveStorageProvider();
+  const provider = resolveStorageProvider(input.buffer.byteLength);
 
   if (provider === "local" && process.env.VERCEL) {
     throw new Error("STORAGE_PROVIDER=local은 Vercel(읽기 전용 디스크)에서 사용할 수 없습니다.");

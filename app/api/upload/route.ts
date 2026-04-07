@@ -9,7 +9,7 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Google Drive 등 가벼운 저장 경로 기준 (초과 시 NAS 등 별도 연동 예정) */
+/** 단일 파일 최대 크기 (저장소·Drive API 한도 내) */
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_IMAGE_TYPES = [
   "image/jpeg",
@@ -183,7 +183,7 @@ export async function POST(req: Request) {
     const filename = `u-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${fileExt}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const provider = resolveStorageProvider();
+    const provider = resolveStorageProvider(file.size);
     if (provider === "vercel-blob" && !process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
       if (process.env.VERCEL) {
         return NextResponse.json(
