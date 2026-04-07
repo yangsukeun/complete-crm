@@ -45,6 +45,8 @@ import {
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
+import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
+import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { cn } from "@/lib/utils";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
@@ -85,6 +87,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [togglingComplete, setTogglingComplete] = useState(false);
 
   const [attachType, setAttachType] = useState<"LINK" | "VIDEO" | "FILE">("LINK");
@@ -127,7 +130,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     try {
       const res = await fetch(`/api/tasks/${tid}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("수정 실패");
@@ -154,22 +158,36 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   loadDetailRef.current = async (opts: { soft: boolean }) => {
     const tid = taskIdRef.current;
     const soft = opts.soft === true;
-    if (!soft) setLoading(true);
+    if (!soft) {
+      setLoading(true);
+      setLoadError(null);
+    }
     try {
+      const baseInit: RequestInit = {
+        credentials: "include",
+        headers: workspaceFetchHeaders(),
+      };
       const [mainRes, commentsRes] = await Promise.all([
-        fetch(`/api/tasks/${tid}?deferComments=1`),
-        fetch(`/api/tasks/${tid}/comments`),
+        fetch(`/api/tasks/${tid}?deferComments=1`, baseInit),
+        fetch(`/api/tasks/${tid}/comments`, baseInit),
       ]);
-      if (!mainRes.ok) throw new Error("Failed");
+      if (!mainRes.ok) {
+        const msg = await taskDetailErrorMessage(mainRes);
+        throw new Error(msg);
+      }
       const data = await mainRes.json();
       const commentsJson = commentsRes.ok ? await commentsRes.json() : [];
       if (taskIdRef.current !== tid) return;
+      setLoadError(null);
       setTask({
         ...data,
         comments: Array.isArray(commentsJson) ? commentsJson : [],
       });
-    } catch {
-      if (!soft && taskIdRef.current === tid) setTask(null);
+    } catch (e) {
+      if (!soft && taskIdRef.current === tid) {
+        setTask(null);
+        setLoadError(e instanceof Error ? e.message : "프로젝트를 불러올 수 없습니다.");
+      }
     } finally {
       if (!soft && taskIdRef.current === tid) setLoading(false);
     }
@@ -259,7 +277,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ isCompleted: !task.isCompleted }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -287,7 +306,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     try {
       const res = await fetch(`/api/tasks/${taskId}/attachments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           type: attachType,
           url: attachUrl.trim(),
@@ -316,7 +336,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       const data = await postUploadFile(file);
       const attachRes = await fetch(`/api/tasks/${taskId}/attachments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           type: "FILE",
           url: data.url ?? "",
@@ -386,7 +407,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     try {
       const res = await fetch(`/api/tasks/${taskId}/comments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ body: commentBody.trim() }),
       });
       if (!res.ok) {
@@ -423,8 +445,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
 
   if (!task) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center px-8">
-        <p className="text-muted-foreground text-sm">프로젝트를 불러올 수 없습니다.</p>
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 px-8 text-center">
+        <p className="text-muted-foreground max-w-md text-sm">{loadError ?? "프로젝트를 불러올 수 없습니다."}</p>
       </div>
     );
   }

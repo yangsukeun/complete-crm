@@ -47,6 +47,8 @@ import { CreateTaskModal } from "@/components/create-task-modal";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
+import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
+import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 
 /** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
 const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
@@ -140,6 +142,7 @@ export default function TaskDetailPage() {
   const { data: session } = useSession();
   const taskId = typeof params.id === "string" ? params.id : null;
   const [task, setTask] = useState<TaskDetail | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!taskId);
   const [togglingComplete, setTogglingComplete] = useState(false);
   const [attachType, setAttachType] = useState<"LINK" | "VIDEO" | "FILE">("LINK");
@@ -186,13 +189,20 @@ export default function TaskDetailPage() {
   const fetchTask = useCallback(async () => {
     if (!taskId) return;
     setLoading(true);
+    setFetchError(null);
+    const baseInit = { credentials: "include" as const, headers: workspaceFetchHeaders() };
     try {
-      // [PERF-auto] 본문 메타와 댓글 분리 쿼리 병렬 — 단일 대형 JSON 왕복 완화
+      // [PERF-auto] 본문 메타와 댓글 분리 쿼리 병렬 — x-workspace 로 팀/개인 스코프 일치
       const [mainRes, commentsRes] = await Promise.all([
-        fetch(`/api/tasks/${taskId}?deferComments=1`),
-        fetch(`/api/tasks/${taskId}/comments`),
+        fetch(`/api/tasks/${taskId}?deferComments=1`, baseInit),
+        fetch(`/api/tasks/${taskId}/comments`, baseInit),
       ]);
-      if (!mainRes.ok) throw new Error("Failed");
+      if (!mainRes.ok) {
+        const msg = await taskDetailErrorMessage(mainRes);
+        setFetchError(msg);
+        setTask(null);
+        return;
+      }
       const data = await mainRes.json();
       const commentsJson = commentsRes.ok ? await commentsRes.json() : [];
       const merged = {
@@ -208,6 +218,7 @@ export default function TaskDetailPage() {
             : [];
       setAssigneeDraft(ids);
     } catch {
+      setFetchError("네트워크 오류로 프로젝트를 불러오지 못했습니다.");
       setTask(null);
     } finally {
       setLoading(false);
@@ -261,7 +272,8 @@ export default function TaskDetailPage() {
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ isCompleted: !task.isCompleted }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -279,7 +291,8 @@ export default function TaskDetailPage() {
       const data = await postUploadFile(file);
       const res = await fetch(`/api/tasks/${taskId}/attachments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           type: "FILE",
           url: data.url ?? "",
@@ -333,7 +346,8 @@ export default function TaskDetailPage() {
     try {
       const res = await fetch(`/api/tasks/${taskId}/attachments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ type: attachType, url: attachUrl.trim(), name: attachName.trim() || undefined }),
       });
       if (!res.ok) {
@@ -357,7 +371,11 @@ export default function TaskDetailPage() {
     if (!confirm("이 프로젝트를 삭제(휴지통 이동)할까요?")) return;
     setDeletingTask(true);
     try {
-      const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: workspaceFetchHeaders(),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "삭제 실패");
       toast.success("삭제되었습니다.");
@@ -379,7 +397,8 @@ export default function TaskDetailPage() {
     try {
       const res = await fetch(`/api/tasks/${taskId}/comments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ body: commentBody.trim() }),
       });
       if (!res.ok) {
@@ -413,8 +432,8 @@ export default function TaskDetailPage() {
 
   if (!task) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">프로젝트를 불러올 수 없습니다.</p>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="max-w-md text-foreground">{fetchError ?? "프로젝트를 불러올 수 없습니다."}</p>
         <Button variant="outline" asChild>
           <Link href="/tasks" prefetch={true}>
             <ArrowLeft className="mr-2 size-4" />
@@ -452,7 +471,8 @@ export default function TaskDetailPage() {
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ assigneeIds: assigneeDraft }),
       });
       if (!res.ok) {

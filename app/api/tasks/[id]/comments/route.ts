@@ -32,11 +32,25 @@ export async function GET(
       },
     });
     if (!task || task.deletedAt) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "not_found", message: "존재하지 않거나 삭제된 프로젝트입니다." },
+        { status: 404 }
+      );
     }
     const taskScope = task.scope ?? "TEAM";
     if (taskScope !== scope) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: "workspace_mismatch",
+          message:
+            taskScope === "TEAM"
+              ? "이 프로젝트는 팀(회사) 업무입니다. 회사(팀) 모드로 전환한 뒤 다시 시도해 주세요."
+              : "이 프로젝트는 개인 업무입니다. 개인 모드로 전환한 뒤 다시 시도해 주세요.",
+          taskScope,
+          requestScope: scope,
+        },
+        { status: 403 }
+      );
     }
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     const isAssignee =

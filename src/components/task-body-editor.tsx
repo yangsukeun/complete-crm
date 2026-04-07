@@ -34,6 +34,7 @@ import {
   isYoutubePastedUrl,
 } from "@/lib/editor-paste-url-helpers";
 import { taskBodySchema } from "@/lib/task-body-schema";
+import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 import { normalizeImageBlocksDriveDisplayUrls } from "@/lib/task-body-drive-images";
 import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
@@ -291,7 +292,8 @@ export function TaskBodyEditor({
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ description: stored }),
       });
       if (!res.ok) throw new Error("저장 실패");

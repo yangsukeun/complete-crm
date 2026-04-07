@@ -134,11 +134,25 @@ export async function GET(
       }),
     ]);
     if (!task || (task as { deletedAt?: Date | null }).deletedAt) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "not_found", message: "존재하지 않거나 삭제된 프로젝트입니다." },
+        { status: 404 }
+      );
     }
     const taskScope = (task as { scope?: string }).scope ?? "TEAM";
     if (taskScope !== scope) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: "workspace_mismatch",
+          message:
+            taskScope === "TEAM"
+              ? "이 프로젝트는 팀(회사) 업무입니다. 상단에서 회사(팀) 모드로 전환한 뒤 다시 열어 주세요."
+              : "이 프로젝트는 개인 업무입니다. 개인 모드로 전환한 뒤 다시 열어 주세요.",
+          taskScope,
+          requestScope: scope,
+        },
+        { status: 403 }
+      );
     }
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     const isAssignee =
@@ -183,12 +197,26 @@ export async function PATCH(
       },
     });
     if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "not_found", message: "존재하지 않거나 삭제된 프로젝트입니다." },
+        { status: 404 }
+      );
     }
     const scope = await getServerWorkspaceScopeFromRequest(req);
     const existingScope = (existing as { scope?: string }).scope ?? "TEAM";
     if (existingScope !== scope) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: "workspace_mismatch",
+          message:
+            existingScope === "TEAM"
+              ? "이 프로젝트는 팀(회사) 업무입니다. 회사(팀) 모드에서 수정해 주세요."
+              : "이 프로젝트는 개인 업무입니다. 개인 모드에서 수정해 주세요.",
+          taskScope: existingScope,
+          requestScope: scope,
+        },
+        { status: 403 }
+      );
     }
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";

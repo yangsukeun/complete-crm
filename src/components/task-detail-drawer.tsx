@@ -32,7 +32,7 @@ export function TaskDetailDrawer({ taskId, onClose, onUpdate, narrow = false }: 
           /* Sheet 기본 w-3/4·sm:max-w-xl 덮어씀 — md+ 에서 화면 정확히 절반 */
           narrow
             ? "w-full !max-w-[min(92vw,20rem)] sm:!max-w-md"
-            : "w-full max-w-full md:w-1/2 md:min-w-0 md:!max-w-[50vw]"
+            : "w-full max-w-full md:w-1/2 md:min-w-[400px] md:!max-w-[50vw]"
         )}
       >
         {taskId ? <TaskDetailContent taskId={taskId} onUpdate={onUpdate} /> : null}

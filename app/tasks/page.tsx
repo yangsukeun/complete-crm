@@ -352,6 +352,15 @@ export default function TasksPage() {
   const [projectsViewModeReady, setProjectsViewModeReady] = useState(false);
   const isMdUp = useIsMdUp();
 
+  const setProjectsViewModePersisted = useCallback((mode: ProjectsViewMode) => {
+    setProjectsViewMode(mode);
+    try {
+      localStorage.setItem(PROJECT_VIEW_MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const openTaskPeek = useCallback((taskId: string) => {
     if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) {
       setSplitPeekTaskId(taskId);
@@ -614,12 +623,6 @@ export default function TasksPage() {
     });
   }, [scopeFilteredTasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
 
-  /** 보드에 노출된 상태 컬럼과 동일하게 테이블에도 반영 */
-  const boardVisibleFilteredTasks = useMemo(
-    () => filteredTasks.filter((t) => columnVisible[getEffectiveStatus(t)]),
-    [filteredTasks, columnVisible]
-  );
-
   const assigneePairs = tasks.flatMap((t: Task) => {
     const list = t.assignees?.length ? t.assignees : t.assignedTo ? [t.assignedTo] : [];
     return list.map((a) => [a.id, a] as [string, NonNullable<Task["assignedTo"]>]);
@@ -715,7 +718,7 @@ export default function TasksPage() {
               <button
                 type="button"
                 title="보드 뷰"
-                onClick={() => setProjectsViewMode("board")}
+                onClick={() => setProjectsViewModePersisted("board")}
                 className={cn(
                   "rounded-l-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
                   projectsViewMode === "board" && "bg-muted text-foreground"
@@ -726,7 +729,7 @@ export default function TasksPage() {
               <button
                 type="button"
                 title="테이블 뷰"
-                onClick={() => setProjectsViewMode("table")}
+                onClick={() => setProjectsViewModePersisted("table")}
                 className={cn(
                   "rounded-r-md border-l border-gray-200 p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
                   projectsViewMode === "table" && "bg-muted text-foreground"
@@ -1002,7 +1005,7 @@ export default function TasksPage() {
           <div className="flex flex-col gap-4">
           {projectsViewMode === "table" ? (
             <ProjectTableView
-              tasks={boardVisibleFilteredTasks}
+              tasks={filteredTasks}
               getEffectiveStatus={getEffectiveStatus}
               statusLabel={statusLabel}
               priorityLabel={priorityLabel}
