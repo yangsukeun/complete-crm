@@ -27,6 +27,41 @@ export function assertWebdavPublicBase(): string {
   return base;
 }
 
+/** 공개 URL → WebDAV 상대 경로 (NAS 공개 링크와 PUT 경로 규칙 동일) */
+export function webdavPublicUrlToRelPath(publicUrl: string): string | null {
+  const base = process.env.WEBDAV_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
+  if (!base) return null;
+  const t = publicUrl.trim().split("?")[0]?.split("#")[0] ?? "";
+  if (!t.startsWith(base)) return null;
+  const pathPart = t.slice(base.length).replace(/^\//, "");
+  if (!pathPart) return null;
+  return pathPart.split("/").map((seg) => decodeURIComponent(seg)).join("/");
+}
+
+export async function deleteWebdavFileByPublicUrl(publicUrl: string): Promise<void> {
+  const rel = webdavPublicUrlToRelPath(publicUrl);
+  if (!rel) return;
+  const client = webdavClient();
+  await client.deleteFile(rel);
+}
+
+export async function getWebdavBufferByPublicUrl(publicUrl: string): Promise<Buffer | null> {
+  const rel = webdavPublicUrlToRelPath(publicUrl);
+  if (!rel) return null;
+  const client = webdavClient();
+  const raw = await client.getFileContents(rel, { format: "binary" });
+  if (Buffer.isBuffer(raw)) return raw;
+  if (raw instanceof ArrayBuffer) return Buffer.from(raw);
+  if (raw instanceof Uint8Array) return Buffer.from(raw);
+  if (typeof raw === "string") return Buffer.from(raw, "binary");
+  if (raw && typeof raw === "object" && "data" in raw) {
+    const d = (raw as { data: unknown }).data;
+    if (Buffer.isBuffer(d)) return d;
+    if (d instanceof Uint8Array) return Buffer.from(d);
+  }
+  return null;
+}
+
 export async function storeWebdav(input: StoreFileInput): Promise<StoreFileResult> {
   const client = webdavClient();
   const rel = remotePath(input.filename);

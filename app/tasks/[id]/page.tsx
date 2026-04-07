@@ -41,7 +41,7 @@ import {
   UPLOAD_ERROR_MESSAGE,
   UPLOAD_TOAST_DURATION_MS,
 } from "@/lib/upload-client-validate";
-import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
@@ -734,14 +734,12 @@ export default function TaskDetailPage() {
                 ) : (
                   <div className="space-y-2">
                     {task.attachments.map((a: any) => (
-                      <div key={a.id} className="flex items-center">
-                        <FilePreviewDialog
-                          url={a.url}
-                          name={a.name}
-                          triggerVariant="ghost"
-                          triggerClassName="w-full justify-start rounded-lg border bg-card px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
-                        />
-                      </div>
+                      <TaskAttachmentRow
+                        key={a.id}
+                        taskId={task.id}
+                        attachment={{ id: a.id, url: a.url, name: a.name }}
+                        onRemoved={() => void fetchTask()}
+                      />
                     ))}
                     {showAddAttach ? (
                       <div className="space-y-2 rounded-lg border bg-muted/30 p-3">

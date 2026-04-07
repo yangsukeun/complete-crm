@@ -48,7 +48,7 @@ import { formatUserName } from "@/lib/utils";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { cn } from "@/lib/utils";
-import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 
@@ -789,14 +789,15 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         ) : (
           <div className="space-y-2">
             {task.attachments.map((a) => (
-              <div key={a.id} className="flex items-center">
-                <FilePreviewDialog
-                  url={a.url}
-                  name={a.name}
-                  triggerVariant="ghost"
-                  triggerClassName="w-full justify-start rounded-lg border bg-card px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
-                />
-              </div>
+              <TaskAttachmentRow
+                key={a.id}
+                taskId={task.id}
+                attachment={{ id: a.id, url: a.url, name: a.name }}
+                onRemoved={() => {
+                  refreshTaskAfterMutation();
+                  onUpdateRef.current();
+                }}
+              />
             ))}
             {showAddAttach ? (
               <div className="space-y-2 rounded-lg border bg-muted/30 p-3">

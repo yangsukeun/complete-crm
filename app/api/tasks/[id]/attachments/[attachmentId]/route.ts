@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
+import { tryDeleteRemoteFileByUrl } from "@/lib/storage/delete-remote-upload";
 
 export const runtime = "nodejs";
 
@@ -44,16 +44,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const fid = parseGoogleDriveFileIdFromUrl(att.url);
-    await prisma.taskAttachment.delete({ where: { id: attachmentId } });
-    if (fid) {
-      console.log("[tasks] attachment DELETE → Drive deleteFile", {
-        taskId,
-        attachmentId,
-        fileIdPrefix: fid.slice(0, 12) + "…",
-      });
-      await deleteFile(fid);
+    const url = att.url;
+    try {
+      await tryDeleteRemoteFileByUrl(url);
+    } catch (e) {
+      console.error("[tasks] attachment DELETE storage:", e);
     }
+    await prisma.taskAttachment.delete({ where: { id: attachmentId } });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

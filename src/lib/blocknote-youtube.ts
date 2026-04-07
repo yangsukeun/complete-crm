@@ -1,5 +1,6 @@
 import { createBlockConfig, createBlockSpec, defaultBlockSpecs, defaultProps } from "@blocknote/core";
 import { createHtmlBlockSpec } from "@/lib/blocknote-html-embed";
+import { fetchLinkPreviewCached } from "@/lib/link-preview-client-cache";
 
 /**
  * YouTube 영상 ID 추출 (watch, youtu.be, embed, shorts, music 등)
@@ -166,21 +167,19 @@ export const createLinkPreviewBlockSpec = createBlockSpec(
           img.classList.remove("hidden");
           footer.textContent = `YouTube · ${url}`;
         }
-        fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data: any) => {
-            if (!data) return;
-            title.textContent = data.title || title.textContent || url;
-            desc.textContent = data.description || "";
-            footer.textContent = data.siteName ? `${data.siteName} · ${url}` : url;
-            if (data.image) {
-              img.src = data.image;
-              img.classList.remove("hidden");
-            }
-          })
-          .catch(() => {
+        void fetchLinkPreviewCached(url).then((data) => {
+          if (!data) {
             if (!ytIdEarly) title.textContent = url;
-          });
+            return;
+          }
+          title.textContent = data.title || title.textContent || url;
+          desc.textContent = data.description || "";
+          footer.textContent = data.siteName ? `${data.siteName} · ${url}` : url;
+          if (data.image) {
+            img.src = data.image;
+            img.classList.remove("hidden");
+          }
+        });
       }
 
       wrapper.appendChild(card);
