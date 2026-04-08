@@ -1,14 +1,24 @@
 import { cookies } from "next/headers";
+import { getAppSession } from "@/auth";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 
 export type WorkspaceScope = "TEAM" | "PERSONAL";
 
 /**
- * 서버에서 쿠키(app_mode) 기준 현재 워크스페이스 스코프 반환
+ * 쿠키 app_mode + User.lastAppMode 복구 기준 워크스페이스 스코프
  */
 export async function getServerWorkspaceScope(): Promise<WorkspaceScope> {
   const cookieStore = await cookies();
-  const mode = cookieStore.get("app_mode")?.value;
-  return mode === "personal" ? "PERSONAL" : "TEAM";
+  const session = await getAppSession();
+  let effective: "company" | "personal" | null = null;
+  if (session?.user?.id) {
+    effective = await resolveAppModeForUser(session.user.id, cookieStore);
+  }
+  if (effective == null) {
+    const raw = cookieStore.get("app_mode")?.value;
+    if (raw === "company" || raw === "personal") effective = raw;
+  }
+  return effective === "personal" ? "PERSONAL" : "TEAM";
 }
 
 /**

@@ -1,6 +1,7 @@
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { PageHeadline } from "@/components/page-headline";
 import { AnnouncementsPageClient } from "./announcements-page-client";
 import { canPostAnnouncement } from "@/lib/role-access";
@@ -10,7 +11,7 @@ export default async function AnnouncementsPage() {
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") redirect("/choose-mode");
 
   const role = (session.user as { role?: string }).role ?? "USER";

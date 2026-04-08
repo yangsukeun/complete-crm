@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { canUserViewBoardPost } from "@/lib/board-access";
 import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { PageHeadline } from "@/components/page-headline";
@@ -24,7 +25,7 @@ export default async function BoardPostPage({
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") redirect("/choose-mode");
 
   const { id } = await params;

@@ -1,6 +1,7 @@
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardNewClient } from "../board-new-client";
 
@@ -13,7 +14,7 @@ export default async function BoardNewPage({
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") redirect("/choose-mode");
 
   const { category } = await searchParams;

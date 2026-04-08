@@ -76,10 +76,24 @@ export async function getHeaderBootstrapData(
 ): Promise<HeaderBootstrapData> {
   const store = cookieStore ?? (await cookies());
   const raw = store.get("app_mode")?.value;
-  const appMode = raw === "company" || raw === "personal" ? raw : null;
+  let appMode: "company" | "personal" | null =
+    raw === "company" || raw === "personal" ? raw : null;
 
   if (!sessionUserId) {
     return { appMode, logoUrl: null, notificationUnreadCount: null };
+  }
+
+  if (!appMode) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: sessionUserId },
+        select: { lastAppMode: true },
+      });
+      const m = user?.lastAppMode;
+      if (m === "company" || m === "personal") appMode = m;
+    } catch {
+      /* 마이그레이션 전·DB 오류 시 쿠키만 사용 */
+    }
   }
 
   let logoUrl: string | null = null;

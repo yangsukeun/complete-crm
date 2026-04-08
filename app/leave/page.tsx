@@ -1,6 +1,7 @@
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { LeavePageClient } from "./leave-page-client";
 
 export default async function LeavePage() {
@@ -8,7 +9,7 @@ export default async function LeavePage() {
   if (!session?.user) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") redirect("/choose-mode");
 
   const isTeamLead = session.user.role === "TEAM_LEAD";

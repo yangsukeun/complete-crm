@@ -5,6 +5,7 @@ import { parse, isValid } from "date-fns";
 import { ArrowLeft, ClipboardList } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { startOfDayKst, formatKstHm, todayYmdKst } from "@/lib/date-kst";
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
@@ -39,7 +40,7 @@ export default async function TodayAttendancePage({
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") {
     redirect("/dashboard");
   }

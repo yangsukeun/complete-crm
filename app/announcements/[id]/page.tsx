@@ -1,6 +1,7 @@
 import { getAppSession } from "@/auth";
 import { redirect, notFound } from "next/navigation";
 import { cookies } from "next/headers";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import prisma from "@/lib/prisma";
@@ -25,7 +26,7 @@ export default async function AnnouncementDetailPage({
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") redirect("/choose-mode");
 
   const { id } = await params;

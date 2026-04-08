@@ -8,6 +8,7 @@ import { startOfDayKst, formatKstHm } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
 import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
+import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { formatUserName } from "@/lib/utils";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import {
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
   if (!session?.user?.id) redirect("/login");
 
   const cookieStore = await cookies();
-  const appMode = cookieStore.get("app_mode")?.value;
+  const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company" && appMode !== "personal") {
     redirect("/choose-mode");
   }
