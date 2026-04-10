@@ -488,8 +488,20 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           const row = p.new;
           const id = typeof row?.id === "string" ? row.id : undefined;
           const senderId = typeof row?.userId === "string" ? row.userId : undefined;
+          const chatIdFromPayload = typeof row?.chatId === "string" ? row.chatId : undefined;
+          const bodyFromPayload = typeof row?.body === "string" ? row.body : undefined;
           /* 본인 전송분은 낙관적 UI로 이미 반영됨 */
           if (senderId === sessionUserId) return;
+          /**
+           * REPLICA IDENTITY / RLS / payload 정책에 따라 INSERT payload.new 에 id만 오고
+           * chatId/body 등이 비어있을 수 있다. 이 경우 실시간 본문 반영 대신 API로 보강한다.
+           */
+          if (id && (!chatIdFromPayload || !bodyFromPayload)) {
+            const last = messagesRef.current[messagesRef.current.length - 1];
+            void fetchMessages(roomId, true, last?.createdAt ?? null);
+            void mutateChats();
+            return;
+          }
           if (id && senderId) {
             setMessages((prev: Message[]) => {
               if (prev.some((m) => m.id === id)) return prev;
