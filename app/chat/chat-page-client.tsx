@@ -428,10 +428,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     };
   }, [mutateChats, fetchMessages]);
 
-  /** `/chat` 에서만: 전역 ChatMessage → 플로팅 패널용 `chat-realtime` + 목록용 `chat-inbox-refresh` (pathname 조건 없음) */
+  /** 전역 ChatMessage → 플로팅 패널용 `chat-realtime` + 목록용 `chat-inbox-refresh` (이 클라이언트는 /chat 에서만 마운트) */
   useEffect(() => {
     const userId = session?.user?.id;
-    if (!userId || !isChatPage) return;
+    if (!userId) return;
     if (typeof window === "undefined") return;
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
 
@@ -463,12 +463,12 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         /* */
       }
     };
-  }, [session?.user?.id, isChatPage]);
+  }, [session?.user?.id]);
 
   /** 열린 방만 필터 구독 — 레이아웃·pathname 과 분리, stale 방 이벤트는 ref 로 차단 */
   useEffect(() => {
-    const userId = session?.user?.id;
-    if (!selectedChatId || !userId) return;
+    const sessionUserId = session?.user?.id;
+    if (!selectedChatId || !sessionUserId) return;
     if (typeof window === "undefined") return;
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
 
@@ -477,7 +477,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     let handle: RealtimeSubscriptionHandle | null = null;
 
     void (async () => {
-      const h = await subscribeChatMessagesForChatRoom(userId, roomId, ({ payload }) => {
+      const h = await subscribeChatMessagesForChatRoom(sessionUserId, roomId, ({ payload }) => {
         if (cancelled) return;
         if (selectedChatIdRef.current !== roomId) return;
 
@@ -487,11 +487,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         if (p.eventType === "INSERT") {
           const row = p.new;
           const id = typeof row?.id === "string" ? row.id : undefined;
-          const userId = typeof row?.userId === "string" ? row.userId : undefined;
-          if (id && userId) {
+          const senderId = typeof row?.userId === "string" ? row.userId : undefined;
+          /* 본인 전송분은 낙관적 UI로 이미 반영됨 */
+          if (senderId === sessionUserId) return;
+          if (id && senderId) {
             setMessages((prev: Message[]) => {
               if (prev.some((m) => m.id === id)) return prev;
-              const user = resolveUserFromChats(chatsRef.current, userId);
+              const user = resolveUserFromChats(chatsRef.current, senderId);
               const createdAtRaw = row?.createdAt;
               let createdAt: string;
               if (typeof createdAtRaw === "string") {
@@ -508,6 +510,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
               return [...prev, { id, body, createdAt, isDeleted, user }];
             });
             setTimeout(() => scrollToBottom(), 80);
+            void mutateChats();
           } else {
             const last = messagesRef.current[messagesRef.current.length - 1];
             void fetchMessages(roomId, true, last?.createdAt ?? null);

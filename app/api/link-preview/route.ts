@@ -7,6 +7,8 @@ export const runtime = "nodejs";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7일
 const FETCH_TIMEOUT_MS = 3000;
+/** YouTube oEmbed만 짧게 — 페이지 fetch보다 먼저 응답 */
+const YOUTUBE_OEMBED_TIMEOUT_MS = 2000;
 
 function emptyPreviewJson(url: string) {
   return {
@@ -102,8 +104,9 @@ export async function GET(req: Request) {
 
     const ytId = getYoutubeVideoId(url);
     if (ytId) {
+      const mqThumb = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      const timeout = setTimeout(() => controller.abort(), YOUTUBE_OEMBED_TIMEOUT_MS);
       try {
         const watchUrl = url.includes("youtu.be") || url.includes("youtube.com")
           ? url.split("&")[0]?.split("#")[0] ?? url
@@ -122,14 +125,14 @@ export async function GET(req: Request) {
           clearTimeout(timeout);
           const payload = {
             url,
-            title: j.title || `YouTube (${ytId})`,
-            description: j.author_name ? `채널: ${j.author_name}` : "",
-            image: j.thumbnail_url || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+            title: (j.title || "YouTube 영상").slice(0, 200),
+            description: j.author_name ? `채널: ${j.author_name}`.slice(0, 500) : "",
+            image: j.thumbnail_url || mqThumb,
             siteName: "YouTube",
           };
           await writeCache(url, {
-            title: payload.title.slice(0, 200),
-            description: payload.description.slice(0, 500),
+            title: payload.title,
+            description: payload.description,
             image: payload.image,
             siteName: payload.siteName,
           });
@@ -142,9 +145,9 @@ export async function GET(req: Request) {
       }
       const fallback = {
         url,
-        title: `YouTube 동영상`,
+        title: "YouTube 영상",
         description: "",
-        image: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+        image: mqThumb,
         siteName: "YouTube",
       };
       await writeCache(url, {

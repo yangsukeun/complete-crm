@@ -224,6 +224,11 @@ export function AIAssistFloat() {
       ? (provider ?? execProviderChoices[0])
       : undefined;
 
+  /* 채팅 입력창·하단 UI와 겹침 방지 — /chat 에서는 메모장·AI 비서 FAB 숨김 */
+  if (pathname?.startsWith("/chat")) {
+    return null;
+  }
+
   return (
     <div
       className={cn(

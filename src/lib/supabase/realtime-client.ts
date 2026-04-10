@@ -128,7 +128,7 @@ export async function subscribeChatMessagesGlobal(
   };
 }
 
-/** 열린 채팅방만 — pathname·레이아웃과 무관하게 `ChatPageClient`에서 구독 */
+/** 열린 채팅방만 — pathname·레이아웃과 무관하게 `ChatPageClient`에서 구독 (DB 컬럼은 Prisma/마이그레이션 기준 `chatId`) */
 export async function subscribeChatMessagesForChatRoom(
   sessionUserId: string,
   chatId: string,
@@ -137,12 +137,15 @@ export async function subscribeChatMessagesForChatRoom(
   const client = await getSharedSupabaseRealtime(sessionUserId);
   if (!client) return null;
 
+  const channelName = `crm-chat-room:${sessionUserId}:${chatId}`;
   const channel = client
-    .channel(`crm-chat-room:${sessionUserId}:${chatId}`)
+    .channel(channelName, {
+      config: { presence: { key: sessionUserId } },
+    })
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "INSERT",
         schema: "public",
         table: "ChatMessage",
         filter: `chatId=eq.${chatId}`,
@@ -151,7 +154,24 @@ export async function subscribeChatMessagesForChatRoom(
         onEvent({ chatId, payload });
       }
     )
-    .subscribe();
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "ChatMessage",
+        filter: `chatId=eq.${chatId}`,
+      },
+      (payload) => {
+        onEvent({ chatId, payload });
+      }
+    )
+    .subscribe((status, err) => {
+      if (err) console.error("[RT] 채팅방 구독 오류:", err);
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        console.warn("[RT] 채팅방 구독 상태:", status);
+      }
+    });
 
   return {
     unsubscribe: () => {
