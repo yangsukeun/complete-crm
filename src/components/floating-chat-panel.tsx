@@ -11,6 +11,7 @@ import { ko } from "date-fns/locale";
 import { formatUserName } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
+import { ImageLightbox } from "@/components/chat/image-lightbox";
 
 type FCMessage = {
   id: string;
@@ -52,6 +53,7 @@ export function FloatingChatPanel() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -237,10 +239,11 @@ export function FloatingChatPanel() {
     : "채팅";
 
   return (
-    <div
-      className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-[200] flex flex-col"
-      style={{ width: 360 }}
-    >
+    <>
+      <div
+        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-[200] flex flex-col"
+        style={{ width: 360 }}
+      >
       <div className="flex flex-col rounded-xl border bg-background shadow-2xl overflow-hidden">
         {/* 헤더 */}
         <div className="flex items-center justify-between border-b bg-primary/5 px-3 py-2 gap-2">
@@ -304,15 +307,17 @@ export function FloatingChatPanel() {
                         .map((part, i) => {
                           const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
                           if (imgMatch) {
+                            const src = imgMatch[2];
                             return (
                               <span key={i} className="relative mt-1 block max-h-40 max-w-full">
                                 <Image
-                                  src={imgMatch[2]}
+                                  src={src}
                                   alt={imgMatch[1] || "이미지"}
                                   width={300}
                                   height={160}
                                   unoptimized
-                                  className="max-h-40 max-w-full rounded object-contain"
+                                  className="max-h-40 max-w-full rounded object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => setLightboxSrc(src)}
                                 />
                               </span>
                             );
@@ -388,6 +393,10 @@ export function FloatingChatPanel() {
           </>
         )}
       </div>
-    </div>
+      </div>
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
+    </>
   );
 }

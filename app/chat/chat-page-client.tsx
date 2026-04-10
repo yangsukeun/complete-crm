@@ -49,6 +49,7 @@ import { cn, formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import Image from "next/image";
 import Link from "next/link";
+import { ImageLightbox } from "@/components/chat/image-lightbox";
 import { ChatMessagesSkeleton } from "@/components/detail/detail-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -201,6 +202,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   /** 모바일: 내 메시지 탭 시 삭제 옵션 (hover 없음) */
   const [openMessageActionsId, setOpenMessageActionsId] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatsRef = useRef<ChatItem[]>([]);
@@ -493,6 +495,12 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const roomId = selectedChatId;
     let cancelled = false;
     let handle: RealtimeSubscriptionHandle | null = null;
+    const pollInterval = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (selectedChatIdRef.current !== roomId) return;
+      const last = messagesRef.current[messagesRef.current.length - 1];
+      void fetchMessages(roomId, true, last?.createdAt ?? null);
+    }, 3000);
 
     void (async () => {
       const h = await subscribeChatMessagesForChatRoom(sessionUserId, roomId, ({ payload }) => {
@@ -574,6 +582,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
     return () => {
       cancelled = true;
+      window.clearInterval(pollInterval);
       try {
         handle?.unsubscribe();
       } catch {
@@ -1075,7 +1084,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   };
 
   return (
-    <div className="flex min-h-0 h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] flex-col gap-4 p-4 md:h-[calc(100vh-8rem)] md:max-h-[calc(100vh-8rem)] md:p-6">
+    <>
+      <div className="flex min-h-0 h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] flex-col gap-4 p-4 md:h-[calc(100vh-8rem)] md:max-h-[calc(100vh-8rem)] md:p-6">
       <div
         className={cn(
           "flex flex-wrap items-center justify-between gap-2 shrink-0",
@@ -1292,7 +1302,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                                       width={800}
                                       height={256}
                                       unoptimized
-                                      className="max-h-64 max-w-full rounded object-contain"
+                                      className="max-h-64 max-w-full rounded object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                      onClick={() => setLightboxSrc(src)}
                                     />
                                   </span>
                                 );
@@ -1721,7 +1732,11 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
+    </>
   );
 }
 
