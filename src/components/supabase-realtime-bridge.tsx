@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   resetSharedSupabaseRealtime,
@@ -10,9 +11,12 @@ import {
 } from "@/lib/supabase/realtime-client";
 
 /**
- * 채팅방 목록·헤더 배지용: ChatMessage Realtime → 브라우저 전역 이벤트 (폴링 대체).
+ * 채팅방 목록·채팅 화면: ChatMessage Realtime → 전역 이벤트.
+ * `/chat` 이 아닐 때는 구독하지 않아 게시판 등에서 `/api/chats`·메시지 폴링 연쇄 호출을 막음.
  */
 export function SupabaseRealtimeBridge() {
+  const pathname = usePathname() ?? "";
+  const isChatRoute = pathname.startsWith("/chat");
   const { data: session } = useSession();
   const role = (session?.user as { role?: string } | undefined)?.role ?? "";
 
@@ -39,18 +43,21 @@ export function SupabaseRealtimeBridge() {
     };
 
     void (async () => {
-      const ch = await subscribeChatMessagesGlobal(session.user!.id, ({ chatId, payload }) => {
-        if (cancelled) return;
-        window.dispatchEvent(
-          new CustomEvent("chat-realtime", {
-            detail: { chatId, payload },
-          })
-        );
-        window.dispatchEvent(new Event("chat-inbox-refresh"));
-      });
-      if (!cancelled && ch) {
-        channel = ch;
+      if (isChatRoute) {
+        const ch = await subscribeChatMessagesGlobal(session.user!.id, ({ chatId, payload }) => {
+          if (cancelled) return;
+          window.dispatchEvent(
+            new CustomEvent("chat-realtime", {
+              detail: { chatId, payload },
+            })
+          );
+          window.dispatchEvent(new Event("chat-inbox-refresh"));
+        });
+        if (!cancelled && ch) {
+          channel = ch;
+        }
       }
+
       const fr = await subscribeFinanceRealtime(session.user!.id, role, scheduleFinanceRefresh);
       if (!cancelled && fr) financeRt = fr;
 
@@ -68,7 +75,6 @@ export function SupabaseRealtimeBridge() {
     return () => {
       cancelled = true;
       if (financeDebounce) clearTimeout(financeDebounce);
-      // [PERF-B] Realtime 핸들에서 removeChannel 기반 정리( supabase-realtime-client )
       try {
         channel?.unsubscribe();
       } catch {
@@ -85,7 +91,7 @@ export function SupabaseRealtimeBridge() {
         /* */
       }
     };
-  }, [session?.user?.id, role]);
+  }, [session?.user?.id, role, isChatRoute]);
 
   return null;
 }

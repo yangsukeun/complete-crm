@@ -30,17 +30,38 @@ const ONESIGNAL_REST_API_KEY =
 /** https://api.onesignal.com/notifications — Authorization: Key + REST API Key, Content-Type: application/json */
 const ONESIGNAL_NOTIFICATIONS_URL = "https://api.onesignal.com/notifications";
 
+/** 푸시 클릭 URL — Vercel 기본 도메인보다 운영 도메인(cpcrm.co.kr) 우선 */
+function publicAppOriginForPush(): string {
+  const candidates = [
+    process.env.NEXT_PUBLIC_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXTAUTH_URL,
+    process.env.AUTH_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//i, "")}` : "",
+  ];
+  for (const raw of candidates) {
+    const s = raw?.replace(/\/$/, "").trim();
+    if (s) return s;
+  }
+  return "https://cpcrm.co.kr";
+}
+
 function absoluteUrlForPush(href: string | undefined): string | undefined {
   if (!href?.trim()) return undefined;
   const h = href.trim();
-  if (/^https?:\/\//i.test(h)) return h;
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//i, "")}` : "") ||
-    process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
-    "";
-  if (!base) return h.startsWith("/") ? h : `/${h}`;
+  if (/^https?:\/\//i.test(h)) {
+    try {
+      const u = new URL(h);
+      if (u.hostname.endsWith(".vercel.app")) {
+        return `${publicAppOriginForPush()}${u.pathname}${u.search}${u.hash}`;
+      }
+    } catch {
+      /* keep h */
+    }
+    return h;
+  }
+  const base = publicAppOriginForPush();
   return `${base}${h.startsWith("/") ? h : `/${h}`}`;
 }
 

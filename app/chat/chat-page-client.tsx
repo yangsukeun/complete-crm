@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -131,6 +131,8 @@ function getReadersOfMessage(
 
 export function ChatPageClient({ initialChatId = null }: { initialChatId?: string | null }) {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const isChatPage = pathname.startsWith("/chat");
   const { data: session } = useSession();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,10 +221,14 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     data: swrChatList,
     mutate: mutateChats,
     isLoading: swrChatsLoading,
-  } = useSWR<ChatItem[]>(session?.user?.id ? SWR_KEYS.chatsList : null, jsonFetcher, {
-    dedupingInterval: 8000,
-    keepPreviousData: true,
-  });
+  } = useSWR<ChatItem[]>(
+    session?.user?.id && isChatPage ? SWR_KEYS.chatsList : null,
+    jsonFetcher,
+    {
+      dedupingInterval: 8000,
+      keepPreviousData: true,
+    }
+  );
 
   useEffect(() => {
     if (swrChatsLoading && swrChatList === undefined) return;
@@ -387,24 +393,44 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       const chatId = ce.detail?.chatId;
       const payload = ce.detail?.payload;
       if (!chatId || chatId !== selectedChatId || !payload) return;
-      if (payload.eventType === "INSERT" && payload.new) {
+
+      if (payload.eventType === "INSERT") {
         const row = payload.new as {
-          id: string;
-          body: string;
-          userId: string;
-          createdAt: string;
+          id?: string;
+          body?: string;
+          userId?: string;
+          createdAt?: string;
           isDeleted?: boolean;
-        };
-        setMessages((prev: Message[]) => {
-          if (prev.some((m) => m.id === row.id)) return prev;
-          const user = resolveUserFromChats(chatsRef.current, row.userId);
-          const createdAt =
-            typeof row.createdAt === "string" ? row.createdAt : new Date(row.createdAt).toISOString();
-          return [
-            ...prev,
-            { id: row.id, body: row.body, createdAt, isDeleted: row.isDeleted, user },
-          ];
-        });
+        } | null;
+        if (row?.id && row.userId) {
+          setMessages((prev: Message[]) => {
+            if (prev.some((m) => m.id === row.id)) return prev;
+            const user = resolveUserFromChats(chatsRef.current, row.userId!);
+            const createdAt =
+              typeof row.createdAt === "string"
+                ? row.createdAt
+                : row.createdAt != null
+                  ? new Date(row.createdAt as string | number | Date).toISOString()
+                  : new Date().toISOString();
+            return [
+              ...prev,
+              {
+                id: row.id!,
+                body: row.body ?? "",
+                createdAt,
+                isDeleted: row.isDeleted,
+                user,
+              },
+            ];
+          });
+          setTimeout(() => scrollToBottom(), 80);
+          void mutateChats();
+        } else {
+          /* RLS 등으로 payload.new 가 비면 즉시 API로 보강 */
+          const last = messagesRef.current[messagesRef.current.length - 1];
+          void fetchMessages(chatId, true, last?.createdAt ?? null);
+          void mutateChats();
+        }
       }
       if (payload.eventType === "UPDATE" && payload.new) {
         const row = payload.new as { id: string; body?: string; isDeleted?: boolean };
@@ -419,7 +445,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     };
     window.addEventListener("chat-realtime", onRt as EventListener);
     return () => window.removeEventListener("chat-realtime", onRt as EventListener);
-  }, [selectedChatId, resolveUserFromChats]);
+  }, [selectedChatId, resolveUserFromChats, fetchMessages, mutateChats, scrollToBottom]);
 
   useEffect(() => {
     if (selectedChatId) {

@@ -16,9 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
+function safeInternalCallbackUrl(raw: string | null): string {
+  if (!raw || typeof raw !== "string") return "/choose-mode";
+  if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")) return raw;
+  return "/choose-mode";
+}
+
 function LoginFormInner() {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/choose-mode";
+  const callbackUrl = safeInternalCallbackUrl(searchParams.get("callbackUrl"));
   const urlError = searchParams.get("error");
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string>("");

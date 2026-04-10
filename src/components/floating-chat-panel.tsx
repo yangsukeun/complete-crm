@@ -113,6 +113,17 @@ export function FloatingChatPanel() {
     void fetchDataRef.current(chatId);
   }, [chatId]);
 
+  /** 전역 ChatMessage Realtime은 `/chat` 에서만 켜짐 — 플로팅만 열린 상태(게시판 등)에서는 주기 갱신 */
+  useEffect(() => {
+    if (!chatId || pathname.startsWith("/chat")) return;
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      void fetchDataRef.current(chatId, true);
+    };
+    const id = window.setInterval(tick, 12_000);
+    return () => clearInterval(id);
+  }, [chatId, pathname]);
+
   useEffect(() => {
     return () => {
       if (inboxRefreshDebounceRef.current) clearTimeout(inboxRefreshDebounceRef.current);
