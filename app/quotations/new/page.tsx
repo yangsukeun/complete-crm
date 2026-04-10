@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ function formatYMD(d: Date) {
 
 type FormOption = { id: string; name: string; items: QuotationItemInput[] };
 
-export default function NewQuotationPage() {
+function NewQuotationPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const formIdFromUrl = searchParams.get("formId");
@@ -414,5 +414,13 @@ export default function NewQuotationPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function NewQuotationPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewQuotationPageInner />
+    </Suspense>
   );
 }

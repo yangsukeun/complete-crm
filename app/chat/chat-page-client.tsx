@@ -497,10 +497,24 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     let handle: RealtimeSubscriptionHandle | null = null;
     const pollInterval = window.setInterval(async () => {
       if (selectedChatIdRef.current !== roomId) return;
-      const last = messagesRef.current[messagesRef.current.length - 1];
+      if (cancelled) return;
       try {
-        await fetchMessages(roomId, true, last?.createdAt ?? null);
-        await mutateChats();
+        const res = await fetch(apiUrl(`/api/chats/${roomId}/messages?limit=50&markRead=1`), {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const raw = await res.json();
+        const { messages: fetched } = parseChatMessagesResponse(raw);
+
+        setMessages((prev) => {
+          const existing = new Set(prev.map((m) => m.id));
+          const newOnes = fetched.filter((m) => !existing.has(m.id));
+          if (newOnes.length === 0) return prev;
+          setTimeout(() => scrollToBottom(), 80);
+          return [...prev, ...newOnes];
+        });
+
+        void mutateChats();
       } catch {
         /* 폴링 실패 무시 */
       }

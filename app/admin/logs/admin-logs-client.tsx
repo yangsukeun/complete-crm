@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { formatKstHm, todayYmdKst } from "@/lib/date-kst";
@@ -36,7 +36,7 @@ type Employee = {
   role: string;
 };
 
-export function AdminLogsClient({ employees }: { employees: Employee[] }) {
+function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
   const searchParams = useSearchParams();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [dateStr, setDateStr] = useState(() => todayYmdKst());
@@ -183,5 +183,13 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
         )}
       </div>
     </div>
+  );
+}
+
+export function AdminLogsClient({ employees }: { employees: Employee[] }) {
+  return (
+    <Suspense fallback={null}>
+      <AdminLogsClientInner employees={employees} />
+    </Suspense>
   );
 }

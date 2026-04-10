@@ -29,7 +29,7 @@ function oneSignalSkipInitReason(): string | null {
   }
 
   const host = window.location.hostname;
-  const allowed = ["cpcrm.co.kr", "www.cpcrm.co.kr", "localhost"];
+  const allowed = ["cpcrm.co.kr", "www.cpcrm.co.kr", "localhost", "127.0.0.1"];
   if (!allowed.some((d) => host.includes(d))) {
     return `현재 ${host} — 허용 도메인이 아니므로 OneSignal 초기화를 건너뜁니다.`;
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { EVENT_PALETTE, type CalendarLayerId } from "@/lib/schedule-colors";
@@ -619,7 +619,7 @@ function ScheduleHeaderGoogle({
 
 type LeaveApiResponse = { requests?: LeaveRequestItem[] };
 
-export default function SchedulePage() {
+function SchedulePageInner() {
   const [tab, setTab] = useState<TabId>("schedule");
   const [view, setView] = useState<View>("month");
   const [date, setDate] = useState(new Date());
@@ -1414,5 +1414,13 @@ export default function SchedulePage() {
         defaultAssignedToId={session?.user?.id ?? null}
       />
     </div>
+  );
+}
+
+export default function SchedulePage() {
+  return (
+    <Suspense fallback={null}>
+      <SchedulePageInner />
+    </Suspense>
   );
 }

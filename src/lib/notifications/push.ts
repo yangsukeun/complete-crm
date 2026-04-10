@@ -32,21 +32,19 @@ const ONESIGNAL_NOTIFICATIONS_URL = "https://api.onesignal.com/notifications";
 
 /** 푸시 클릭 URL — Vercel 기본 도메인보다 운영 도메인(cpcrm.co.kr) 우선 */
 function publicAppOriginForPush(): string {
-  const candidates = [
-    process.env.NEXT_PUBLIC_URL,
-    process.env.NEXT_PUBLIC_SITE_URL,
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.NEXTAUTH_URL,
-    process.env.AUTH_URL,
-  ];
-  for (const raw of candidates) {
-    const s = raw?.replace(/\/$/, "").trim();
-    if (!s) continue;
-    if (s.includes("vercel.app")) continue;
-    return s;
-  }
+  const envUrl = (
+    process.env.NEXT_PUBLIC_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.AUTH_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/$/, "");
 
-  return "https://cpcrm.co.kr";
+  if (!envUrl || envUrl.includes("vercel.app")) return "https://cpcrm.co.kr";
+  return envUrl;
 }
 
 function absoluteUrlForPush(href: string | undefined): string | undefined {
