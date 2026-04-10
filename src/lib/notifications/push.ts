@@ -2,6 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
+import { appendPushNotificationSourceQuery } from "@/lib/notifications/push-source";
 
 type PushPriority = "high" | "medium" | "low";
 
@@ -105,7 +106,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       console.error("[OneSignal push] DB 조회 실패 → external_id만 사용", dbErr);
     }
 
-    const launchUrl = absoluteUrlForPush(payload.url);
+    const launchUrl = absoluteUrlForPush(appendPushNotificationSourceQuery(payload.url));
 
     for (const sid of subscriptionIds) {
       console.log(`[Push] sending to subscriptionId: ${sid}`);

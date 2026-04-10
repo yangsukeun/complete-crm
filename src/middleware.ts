@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PATHS = ["/login", "/signup", "/api/auth"];
 const NEXTAUTH_COOKIES = [
@@ -41,7 +42,7 @@ function hasAuthCookie(request: NextRequest): boolean {
   return false;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   /* 브라우저 기본 /favicon.ico 요청도 DB 로고와 맞춤 (matcher에서 제외돼 있으면 여기까지 오지 않음) */
@@ -63,11 +64,30 @@ export function middleware(request: NextRequest) {
   if (isPublic(pathname)) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
+
+  /** JWT 디코드 — 쿠키 이름 변형·__Host- 등으로 hasAuthCookie만으로는 놓치는 세션 보강 (푸시 딥링크 등) */
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (secret) {
+    try {
+      const token = await getToken({
+        req: request,
+        secret,
+        secureCookie: process.env.NODE_ENV === "production",
+      });
+      if (token) {
+        return NextResponse.next({ request: { headers: requestHeaders } });
+      }
+    } catch {
+      /* 쿠키 없음·만료 등 → 아래 폴백 */
+    }
+  }
+
   if (hasAuthCookie(request)) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
   const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("callbackUrl", pathname);
+  const returnTo = `${pathname}${request.nextUrl.search}`;
+  loginUrl.searchParams.set("callbackUrl", returnTo);
   return NextResponse.redirect(loginUrl);
 }
 

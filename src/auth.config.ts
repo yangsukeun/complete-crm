@@ -10,7 +10,19 @@ export const authConfig: NextAuthConfig = {
       const path = request.nextUrl.pathname;
       const isLogin = path.startsWith("/login");
       const isSignup = path.startsWith("/signup");
-      if (isLogin) return isLoggedIn ? Response.redirect(new URL("/dashboard", request.nextUrl)) : true;
+      if (isLogin) {
+        if (!isLoggedIn) return true;
+        const raw = request.nextUrl.searchParams.get("callbackUrl");
+        if (
+          typeof raw === "string" &&
+          raw.startsWith("/") &&
+          !raw.startsWith("//") &&
+          !raw.includes("://")
+        ) {
+          return Response.redirect(new URL(raw, request.nextUrl));
+        }
+        return Response.redirect(new URL("/dashboard", request.nextUrl));
+      }
       if (isSignup) return true; // 숨겨진 초기 관리자 가입용 (비로그인 허용)
       return isLoggedIn ? true : false;
     },

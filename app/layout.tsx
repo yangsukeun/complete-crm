@@ -7,6 +7,7 @@ import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { buildSwrLayoutFallback, getHeaderBootstrapData } from "@/lib/header-bootstrap";
 import { AppNavClient } from "@/components/app-nav-client";
+import { NotificationEntryBanner } from "@/components/notification-entry-banner";
 /* OneSignal: src/components/providers.tsx 안의 <OneSignalBridge /> — 클라이언트에서 init + login(User.id). _app.tsx 없음(App Router). */
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -129,7 +130,10 @@ export default async function RootLayout({
           swrLayoutFallback={swrLayoutFallback}
         >
           <AppNavClient />
-          <main>{children}</main>
+          <main>
+            <NotificationEntryBanner />
+            {children}
+          </main>
           <Toaster richColors position="top-center" />
         </Providers>
       </body>

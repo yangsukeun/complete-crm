@@ -11,7 +11,11 @@ export default async function LoginPage({
   const session = await auth();
   if (session?.user) {
     const params = await searchParams;
-    const dest = params.callbackUrl?.startsWith("/") ? params.callbackUrl : "/choose-mode";
+    const raw = params.callbackUrl;
+    const dest =
+      typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")
+        ? raw
+        : "/choose-mode";
     redirect(dest);
   }
   return <LoginForm />;
