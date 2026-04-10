@@ -128,6 +128,42 @@ export async function subscribeChatMessagesGlobal(
   };
 }
 
+/** 열린 채팅방만 — pathname·레이아웃과 무관하게 `ChatPageClient`에서 구독 */
+export async function subscribeChatMessagesForChatRoom(
+  sessionUserId: string,
+  chatId: string,
+  onEvent: (args: { chatId: string; payload: unknown }) => void
+): Promise<RealtimeSubscriptionHandle | null> {
+  const client = await getSharedSupabaseRealtime(sessionUserId);
+  if (!client) return null;
+
+  const channel = client
+    .channel(`crm-chat-room:${sessionUserId}:${chatId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "ChatMessage",
+        filter: `chatId=eq.${chatId}`,
+      },
+      (payload) => {
+        onEvent({ chatId, payload });
+      }
+    )
+    .subscribe();
+
+  return {
+    unsubscribe: () => {
+      try {
+        void client.removeChannel(channel);
+      } catch {
+        /* */
+      }
+    },
+  };
+}
+
 export async function subscribeNotificationsForUser(
   sessionUserId: string,
   onEvent: (payload: unknown) => void

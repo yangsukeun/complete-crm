@@ -51,6 +51,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { ChatMessagesSkeleton } from "@/components/detail/detail-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  subscribeChatMessagesForChatRoom,
+  subscribeChatMessagesGlobal,
+} from "@/lib/supabase/realtime-client";
+import type { RealtimeSubscriptionHandle } from "@/lib/supabase/realtime-client";
 
 type User = {
   id: string;
@@ -75,6 +80,18 @@ type Message = {
   isSystem?: boolean;
   user: { id: string; name: string; position?: string | null };
 };
+
+/** Supabase `postgres_changes` 페이로드 (필드만 사용) */
+type ChatMessagePgPayload = {
+  eventType?: string;
+  new?: Record<string, unknown> | null;
+  old?: Record<string, unknown> | null;
+};
+
+function parseChatMessagePgPayload(raw: unknown): ChatMessagePgPayload | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as ChatMessagePgPayload;
+}
 
 type DelegateParsed = {
   assigneeUserId: string | null;
@@ -397,68 +414,126 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     };
   }, [mutateChats, fetchMessages]);
 
+  /** `/chat` 에서만: 전역 ChatMessage → 플로팅 패널용 `chat-realtime` + 목록용 `chat-inbox-refresh` (pathname 조건 없음) */
   useEffect(() => {
-    const onRt = (ev: Event) => {
-      const ce = ev as CustomEvent<{
-        chatId: string;
-        payload: { eventType?: string; new?: Record<string, unknown>; old?: Record<string, unknown> };
-      }>;
-      const chatId = ce.detail?.chatId;
-      const payload = ce.detail?.payload;
-      if (!chatId || chatId !== selectedChatId || !payload) return;
+    const userId = session?.user?.id;
+    if (!userId || !isChatPage) return;
+    if (typeof window === "undefined") return;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
 
-      if (payload.eventType === "INSERT") {
-        const row = payload.new as {
-          id?: string;
-          body?: string;
-          userId?: string;
-          createdAt?: string;
-          isDeleted?: boolean;
-        } | null;
-        if (row?.id && row.userId) {
-          setMessages((prev: Message[]) => {
-            if (prev.some((m) => m.id === row.id)) return prev;
-            const user = resolveUserFromChats(chatsRef.current, row.userId!);
-            const createdAt =
-              typeof row.createdAt === "string"
-                ? row.createdAt
-                : row.createdAt != null
-                  ? new Date(row.createdAt as string | number | Date).toISOString()
-                  : new Date().toISOString();
-            return [
-              ...prev,
-              {
-                id: row.id!,
-                body: row.body ?? "",
-                createdAt,
-                isDeleted: row.isDeleted,
-                user,
-              },
-            ];
-          });
-          setTimeout(() => scrollToBottom(), 80);
-          void mutateChats();
-        } else {
-          /* RLS 등으로 payload.new 가 비면 즉시 API로 보강 */
-          const last = messagesRef.current[messagesRef.current.length - 1];
-          void fetchMessages(chatId, true, last?.createdAt ?? null);
-          void mutateChats();
-        }
-      }
-      if (payload.eventType === "UPDATE" && payload.new) {
-        const row = payload.new as { id: string; body?: string; isDeleted?: boolean };
-        setMessages((prev: Message[]) =>
-          prev.map((m) =>
-            m.id === row.id
-              ? { ...m, body: row.body ?? m.body, isDeleted: row.isDeleted ?? m.isDeleted }
-              : m
-          )
+    let cancelled = false;
+    let handle: RealtimeSubscriptionHandle | null = null;
+
+    void (async () => {
+      const h = await subscribeChatMessagesGlobal(userId, ({ chatId, payload }) => {
+        if (cancelled) return;
+        window.dispatchEvent(
+          new CustomEvent("chat-realtime", {
+            detail: { chatId, payload },
+          })
         );
+        window.dispatchEvent(new Event("chat-inbox-refresh"));
+      });
+      if (cancelled) {
+        h?.unsubscribe();
+      } else {
+        handle = h;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        handle?.unsubscribe();
+      } catch {
+        /* */
       }
     };
-    window.addEventListener("chat-realtime", onRt as EventListener);
-    return () => window.removeEventListener("chat-realtime", onRt as EventListener);
-  }, [selectedChatId, resolveUserFromChats, fetchMessages, mutateChats, scrollToBottom]);
+  }, [session?.user?.id, isChatPage]);
+
+  /** 열린 방만 필터 구독 — 레이아웃·pathname 과 분리, stale 방 이벤트는 ref 로 차단 */
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!selectedChatId || !userId) return;
+    if (typeof window === "undefined") return;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+
+    const roomId = selectedChatId;
+    let cancelled = false;
+    let handle: RealtimeSubscriptionHandle | null = null;
+
+    void (async () => {
+      const h = await subscribeChatMessagesForChatRoom(userId, roomId, ({ payload }) => {
+        if (cancelled) return;
+        if (selectedChatIdRef.current !== roomId) return;
+
+        const p = parseChatMessagePgPayload(payload);
+        if (!p) return;
+
+        if (p.eventType === "INSERT") {
+          const row = p.new;
+          const id = typeof row?.id === "string" ? row.id : undefined;
+          const userId = typeof row?.userId === "string" ? row.userId : undefined;
+          if (id && userId) {
+            setMessages((prev: Message[]) => {
+              if (prev.some((m) => m.id === id)) return prev;
+              const user = resolveUserFromChats(chatsRef.current, userId);
+              const createdAtRaw = row?.createdAt;
+              let createdAt: string;
+              if (typeof createdAtRaw === "string") {
+                createdAt = createdAtRaw;
+              } else if (typeof createdAtRaw === "number") {
+                createdAt = new Date(createdAtRaw).toISOString();
+              } else if (createdAtRaw instanceof Date) {
+                createdAt = createdAtRaw.toISOString();
+              } else {
+                createdAt = new Date().toISOString();
+              }
+              const body = typeof row?.body === "string" ? row.body : "";
+              const isDeleted = typeof row?.isDeleted === "boolean" ? row.isDeleted : undefined;
+              return [...prev, { id, body, createdAt, isDeleted, user }];
+            });
+            setTimeout(() => scrollToBottom(), 80);
+          } else {
+            const last = messagesRef.current[messagesRef.current.length - 1];
+            void fetchMessages(roomId, true, last?.createdAt ?? null);
+            void mutateChats();
+          }
+        }
+        if (p.eventType === "UPDATE" && p.new) {
+          const row = p.new as { id?: unknown; body?: unknown; isDeleted?: unknown };
+          const mid = typeof row.id === "string" ? row.id : null;
+          if (!mid) return;
+          setMessages((prev: Message[]) =>
+            prev.map((m) =>
+              m.id === mid
+                ? {
+                    ...m,
+                    body: typeof row.body === "string" ? row.body : m.body,
+                    isDeleted:
+                      typeof row.isDeleted === "boolean" ? row.isDeleted : m.isDeleted,
+                  }
+                : m
+            )
+          );
+        }
+      });
+      if (cancelled) {
+        h?.unsubscribe();
+      } else {
+        handle = h;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        handle?.unsubscribe();
+      } catch {
+        /* */
+      }
+    };
+  }, [selectedChatId, session?.user?.id, fetchMessages, mutateChats, resolveUserFromChats, scrollToBottom]);
 
   useEffect(() => {
     setOpenMessageActionsId(null);

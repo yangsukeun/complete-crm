@@ -113,7 +113,7 @@ export function FloatingChatPanel() {
     void fetchDataRef.current(chatId);
   }, [chatId]);
 
-  /** 전역 ChatMessage Realtime은 `/chat` 에서만 켜짐 — 플로팅만 열린 상태(게시판 등)에서는 주기 갱신 */
+  /** ChatMessage Realtime 은 `ChatPageClient` 마운트 시에만 — 플로팅만 열린 상태에서는 주기 갱신 */
   useEffect(() => {
     if (!chatId || pathname.startsWith("/chat")) return;
     const tick = () => {
