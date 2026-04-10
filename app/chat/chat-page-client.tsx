@@ -428,6 +428,22 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     };
   }, [mutateChats, fetchMessages]);
 
+  /** 탭 복귀 시: 끊겼을 수 있는 Realtime 보완 + 놓친 메시지 즉시 동기화 */
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      const cid = selectedChatIdRef.current;
+      if (cid) {
+        const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+        void fetchMessages(cid, true, lastMsg?.createdAt ?? null);
+      }
+      void mutateChats();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [fetchMessages, mutateChats]);
+
   /** 전역 ChatMessage → 플로팅 패널용 `chat-realtime` + 목록용 `chat-inbox-refresh` (이 클라이언트는 /chat 에서만 마운트) */
   useEffect(() => {
     const userId = session?.user?.id;

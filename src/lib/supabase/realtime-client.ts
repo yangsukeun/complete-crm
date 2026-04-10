@@ -150,12 +150,31 @@ export async function subscribeChatMessagesForChatRoom(
   chatId: string,
   onEvent: (args: { payload: RealtimePostgresChangesPayload<Record<string, unknown>> }) => void
 ): Promise<RealtimeSubscriptionHandle> {
-  const client = await getSharedSupabaseRealtime(userId);
-  if (!client) {
-    return { unsubscribe: () => {} };
-  }
+  // 채팅방 전용 독립 클라이언트(공유 클라이언트 채널 충돌/끊김 영향 최소화)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (!url || !anon) return { unsubscribe: () => {} };
+  if (shouldSkipBrowserRealtime(url)) return { unsubscribe: () => {} };
 
-  const channelName = `chat-room-${chatId}-${Date.now()}`;
+  // NextAuth 사용자 JWT를 Realtime auth로 설정 (RLS 대응)
+  const res = await fetch("/api/supabase/realtime-token", { credentials: "include" });
+  if (!res.ok) return { unsubscribe: () => {} };
+  const body = (await res.json()) as { accessToken?: string };
+  if (!body.accessToken) return { unsubscribe: () => {} };
+
+  const client = createClient(url, anon, {
+    global: { headers: { Authorization: `Bearer ${body.accessToken}` } },
+    realtime: {
+      params: { eventsPerSecond: 10 },
+      heartbeatIntervalMs: 15000,
+      reconnectAfterMs: (tries) => {
+        return [1000, 2000, 5000, 10000][tries - 1] || 10000;
+      },
+    },
+  });
+  await client.realtime.setAuth(body.accessToken);
+
+  const channelName = `chat-room-${chatId}-${userId}`;
 
   const channel = client
     .channel(channelName)
