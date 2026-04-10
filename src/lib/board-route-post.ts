@@ -5,7 +5,6 @@ import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
 import { safeParseAttachments } from "@/lib/board-attachments";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
-import { serializeMentionUserIdsJson } from "@/lib/mention-user-ids-json";
 import { z } from "zod";
 
 const categorySchema = z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS", "MEETING"]);
@@ -113,7 +112,6 @@ export async function handleBoardPost(req: Request): Promise<Response> {
     }
 
     const mentionedIds = extractMentionedUserIdsFromTaskDescription(descNorm);
-    const mentionedUserIds = serializeMentionUserIdsJson(mentionedIds);
 
     let created;
     try {
@@ -126,7 +124,6 @@ export async function handleBoardPost(req: Request): Promise<Response> {
           isAnonymous: isAnonBoard,
           workspaceScope,
           attachments: JSON.stringify(attachments),
-          mentionedUserIds,
           createdById: session.user.id,
         },
         select: {
@@ -171,16 +168,7 @@ export async function handleBoardPost(req: Request): Promise<Response> {
       select: { name: true },
     });
     const authorName = author?.name?.trim() || "직원";
-    for (const mentionedUserId of mentionedIds) {
-      if (!mentionedUserId || mentionedUserId === session.user.id) continue;
-      await createNotificationWithOptions({
-        userId: mentionedUserId,
-        type: "BOARD_MENTION",
-        message: `${authorName}님이 자료실 게시글에서 회원님을 태그했습니다.`,
-        link: `/board/${created.id}`,
-        actorId: session.user.id,
-      });
-    }
+    // NOTE: mentionedUserIds 컬럼이 일부 DB에 없을 수 있어, 글 본문 멘션 알림은 임시 비활성화
 
     return NextResponse.json({
       id: created.id,

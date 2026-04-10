@@ -28,7 +28,18 @@ export async function GET(
 
     const { id: postId } = await params;
     const role = (session.user as { role?: string }).role ?? "";
-    const post = await prisma.boardPost.findUnique({ where: { id: postId } });
+    const post = await prisma.boardPost.findUnique({
+      where: { id: postId },
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        isAnonymous: true,
+        workspaceScope: true,
+        createdById: true,
+        deletedAt: true,
+      },
+    });
     if (!post) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -38,7 +49,7 @@ export async function GET(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
-          mentionedUserIds: post.mentionedUserIds,
+          mentionedUserIds: null,
         },
         session.user.id,
         role
@@ -75,7 +86,18 @@ export async function POST(
 
     const { id: postId } = await params;
     const role = (session.user as { role?: string }).role ?? "";
-    const post = await prisma.boardPost.findUnique({ where: { id: postId } });
+    const post = await prisma.boardPost.findUnique({
+      where: { id: postId },
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        isAnonymous: true,
+        workspaceScope: true,
+        createdById: true,
+        deletedAt: true,
+      },
+    });
     if (!post) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -85,7 +107,7 @@ export async function POST(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
-          mentionedUserIds: post.mentionedUserIds,
+          mentionedUserIds: null,
         },
         session.user.id,
         role

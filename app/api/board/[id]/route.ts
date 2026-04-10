@@ -9,7 +9,6 @@ import { z } from "zod";
 import { normalizeBoardDescriptionForStore } from "@/lib/board-body";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
-import { parseMentionUserIdsJson, serializeMentionUserIdsJson } from "@/lib/mention-user-ids-json";
 
 export const runtime = "nodejs";
 
@@ -82,7 +81,21 @@ export async function GET(
     const role = (session.user as { role?: string }).role ?? "";
     const post = await prisma.boardPost.findUnique({
       where: { id },
-      include: { createdBy: { select: { name: true, position: true, role: true } } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        contentType: true,
+        category: true,
+        isAnonymous: true,
+        workspaceScope: true,
+        attachments: true,
+        createdAt: true,
+        createdById: true,
+        deletedAt: true,
+        // mentionedUserIds: 일부 DB에 컬럼이 없어 select 제외
+        createdBy: { select: { name: true, position: true, role: true } },
+      },
     });
     if (!post) {
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
@@ -94,7 +107,7 @@ export async function GET(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
-          mentionedUserIds: post.mentionedUserIds,
+          mentionedUserIds: null,
         },
         session.user.id,
         role
@@ -137,7 +150,22 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const post = await prisma.boardPost.findUnique({ where: { id } });
+    const post = await prisma.boardPost.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        contentType: true,
+        category: true,
+        isAnonymous: true,
+        workspaceScope: true,
+        attachments: true,
+        createdAt: true,
+        createdById: true,
+        deletedAt: true,
+      },
+    });
     if (!post) {
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
@@ -150,7 +178,7 @@ export async function PATCH(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
-          mentionedUserIds: post.mentionedUserIds,
+          mentionedUserIds: null,
         },
         session.user.id,
         role
@@ -182,7 +210,6 @@ export async function PATCH(
       isAnonymous?: boolean;
       workspaceScope?: "TEAM" | "PERSONAL";
       attachments?: string;
-      mentionedUserIds?: string;
     } = {};
     let removedAttachmentUrls: string[] = [];
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
@@ -229,11 +256,11 @@ export async function PATCH(
       );
     }
 
-    const mergedDescription = data.description !== undefined ? data.description : post.description;
-    const mentionIds = extractMentionedUserIdsFromTaskDescription(mergedDescription ?? "");
-    data.mentionedUserIds = serializeMentionUserIdsJson(mentionIds);
-    const prevMentioned = parseMentionUserIdsJson(post.mentionedUserIds);
-    const newlyMentioned = mentionIds.filter((mid) => !prevMentioned.includes(mid));
+    // NOTE: mentionedUserIds 컬럼이 일부 DB에 없을 수 있어, 본문 멘션 저장/알림은 임시 비활성화
+    void extractMentionedUserIdsFromTaskDescription(
+      (data.description !== undefined ? data.description : post.description) ?? ""
+    );
+    const newlyMentioned: string[] = [];
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: "수정할 필드가 없습니다. 요청 본문을 확인해 주세요." }, { status: 400 });
@@ -285,23 +312,7 @@ export async function PATCH(
       return u;
     });
 
-    if (newlyMentioned.length > 0) {
-      const editor = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { name: true },
-      });
-      const editorName = editor?.name?.trim() || "직원";
-      for (const mentionedUserId of newlyMentioned) {
-        if (!mentionedUserId || mentionedUserId === session.user.id) continue;
-        await createNotificationWithOptions({
-          userId: mentionedUserId,
-          type: "BOARD_MENTION",
-          message: `${editorName}님이 자료실 게시글에서 회원님을 태그했습니다.`,
-          link: `/board/${id}`,
-          actorId: session.user.id,
-        });
-      }
-    }
+    // mentionedUserIds 기반 멘션 알림은 임시 비활성화
 
     if (removedAttachmentUrls.length > 0) {
       console.log("[board] PATCH: 첨부 제거로 Drive 삭제", {
@@ -358,7 +369,22 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const post = await prisma.boardPost.findUnique({ where: { id } });
+    const post = await prisma.boardPost.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        contentType: true,
+        category: true,
+        isAnonymous: true,
+        workspaceScope: true,
+        attachments: true,
+        createdAt: true,
+        createdById: true,
+        deletedAt: true,
+      },
+    });
     if (!post) {
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
@@ -371,7 +397,7 @@ export async function DELETE(
           deletedAt: post.deletedAt,
           workspaceScope: post.workspaceScope,
           createdById: post.createdById,
-          mentionedUserIds: post.mentionedUserIds,
+          mentionedUserIds: null,
         },
         session.user.id,
         role

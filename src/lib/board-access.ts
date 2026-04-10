@@ -15,7 +15,11 @@ export function boardVisibilityWhere(userId: string, role: string): Prisma.Board
     OR: [
       { workspaceScope: "TEAM" },
       { createdById: userId, workspaceScope: "PERSONAL" },
-      { mentionedUserIds: { contains: userId } },
+      /**
+       * NOTE: 일부 배포 DB에서 `BoardPost.mentionedUserIds` 컬럼이 아직 없을 수 있어,
+       *       목록 where 조건에서 해당 컬럼을 참조하면 즉시 500(P2022)이 납니다.
+       *       컬럼 추가 마이그레이션이 완료되면 이 조건을 복구하세요.
+       */
     ],
   };
 }
@@ -34,7 +38,6 @@ export function canUserViewBoardPost(
   const isExec = role === "EXECUTIVE" || role === "ADMIN";
   if (isExec) return true;
   if (post.workspaceScope === "TEAM") return true;
-  const mentioned = parseMentionUserIdsJson(post.mentionedUserIds);
-  if (mentioned.includes(userId)) return true;
+  // 위와 동일한 이유로 mentionedUserIds 기반 접근 제어는 임시 비활성화
   return post.createdById === userId;
 }
