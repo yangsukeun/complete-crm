@@ -38,12 +38,14 @@ function publicAppOriginForPush(): string {
     process.env.NEXT_PUBLIC_APP_URL,
     process.env.NEXTAUTH_URL,
     process.env.AUTH_URL,
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//i, "")}` : "",
   ];
   for (const raw of candidates) {
     const s = raw?.replace(/\/$/, "").trim();
-    if (s) return s;
+    if (!s) continue;
+    if (s.includes("vercel.app")) continue;
+    return s;
   }
+
   return "https://cpcrm.co.kr";
 }
 

@@ -181,12 +181,28 @@ function CustomDateHeader({
   drilldownView?: string;
   onDrillDown?: (e: React.MouseEvent) => void;
 }) {
+  const isToday = isSameDay(date, new Date());
   const dow = getDay(date);
   const isSat = dow === 6;
   const isSun = dow === 0;
   const legal = isLegalHoliday(date);
   const className = legal ? "rbc-date-cell--legal-holiday" : isSun ? "rbc-date-cell--sunday" : isSat ? "rbc-date-cell--saturday" : "";
-  const content = <span className={className}>{label}</span>;
+  const content = (
+    <div
+      className={cn(
+        "relative inline-flex items-center justify-center w-6 h-6 rounded-full text-sm",
+        className,
+        isToday ? "bg-blue-600 text-white font-bold" : ""
+      )}
+    >
+      {label}
+      {isToday && (
+        <span className="absolute -top-2 -right-2 text-[9px] font-semibold text-blue-500">
+          TODAY
+        </span>
+      )}
+    </div>
+  );
   if (drilldownView && onDrillDown) {
     return (
       <button type="button" className="rbc-button-link" onClick={onDrillDown}>
@@ -1176,7 +1192,11 @@ export default function SchedulePage() {
               dayPropGetter={(d: any) => {
                 const legal = isLegalHoliday(d);
                 const sat = getDay(d) === 6;
-                const cls = legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : "";
+                const isToday = isSameDay(d as Date, new Date());
+                const cls = cn(
+                  legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : "",
+                  isToday && "bg-blue-50 dark:bg-blue-950/20"
+                );
                 return cls ? { className: cls } : {};
               }}
               eventPropGetter={() => ({})}

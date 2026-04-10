@@ -29,6 +29,10 @@ function oneSignalSkipInitReason(): string | null {
   }
 
   const host = window.location.hostname;
+  const allowed = ["cpcrm.co.kr", "www.cpcrm.co.kr", "localhost"];
+  if (!allowed.some((d) => host.includes(d))) {
+    return `현재 ${host} — 허용 도메인이 아니므로 OneSignal 초기화를 건너뜁니다.`;
+  }
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "[::1]";
   if (isLocal) {
     return "localhost — OneSignal 사이트 URL이 프로덕션만이면 SDK가 거부합니다. 로컬에서 쓰려면 대시보드에 http://localhost:3000(포트 포함)을 허용 출처로 추가하거나, NEXT_PUBLIC_ONESIGNAL_ENABLE_ON_LOCALHOST=1 을 설정하세요.";

@@ -495,11 +495,15 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const roomId = selectedChatId;
     let cancelled = false;
     let handle: RealtimeSubscriptionHandle | null = null;
-    const pollInterval = window.setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    const pollInterval = window.setInterval(async () => {
       if (selectedChatIdRef.current !== roomId) return;
       const last = messagesRef.current[messagesRef.current.length - 1];
-      void fetchMessages(roomId, true, last?.createdAt ?? null);
+      try {
+        await fetchMessages(roomId, true, last?.createdAt ?? null);
+        await mutateChats();
+      } catch {
+        /* 폴링 실패 무시 */
+      }
     }, 3000);
 
     void (async () => {
@@ -589,7 +593,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         /* */
       }
     };
-  }, [selectedChatId, session?.user?.id, fetchMessages, mutateChats, resolveUserFromChats, scrollToBottom]);
+  }, [selectedChatId, session?.user?.id]);
 
   useEffect(() => {
     setOpenMessageActionsId(null);
