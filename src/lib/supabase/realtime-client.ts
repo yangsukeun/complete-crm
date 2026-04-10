@@ -169,7 +169,11 @@ export async function subscribeChatMessagesForChatRoom(
       (payload) => {
         const row = chatMessageRow(payload);
         const rowChatId = (row?.chatId as string | undefined) ?? undefined;
-        if (rowChatId !== chatId) return;
+        /**
+         * 일부 환경에서 payload.new/old 에 chatId 가 비어올 수 있음(REPLICA IDENTITY/RLS 등).
+         * 이 경우 방 필터링이 불가능하므로 이벤트는 통과시키고, ChatPageClient 쪽에서 fetch 폴백 처리.
+         */
+        if (rowChatId && rowChatId !== chatId) return;
         onEvent({
           payload: payload as RealtimePostgresChangesPayload<Record<string, unknown>>,
         });
