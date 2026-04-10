@@ -116,8 +116,8 @@ export async function subscribeChatMessagesGlobal(
         const chatId =
           (payload.new as { chatId?: string } | null)?.chatId ??
           (payload.old as { chatId?: string } | null)?.chatId;
-        if (!chatId) return;
-        onEvent({ chatId, payload });
+        // chatId가 비어오는 경우에도 최소한 inbox refresh 트리거를 위해 콜백은 호출한다.
+        onEvent({ chatId: chatId ?? "", payload });
       }
     )
     .subscribe();

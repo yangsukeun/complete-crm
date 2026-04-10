@@ -91,7 +91,6 @@ export async function handleBoardPost(req: Request): Promise<Response> {
       name: (a.name && a.name.trim()) || "링크",
     }));
 
-    const isAnonBoard = parsed.data.category === "ANONYMOUS";
     const workspaceScope =
       parsed.data.category === "FREE" || parsed.data.category === "ANONYMOUS"
         ? "TEAM"
@@ -121,7 +120,6 @@ export async function handleBoardPost(req: Request): Promise<Response> {
           description: descNorm || null,
           contentType: parsed.data.contentType === "html" ? "html" : "text",
           category: parsed.data.category,
-          isAnonymous: isAnonBoard,
           workspaceScope,
           attachments: JSON.stringify(attachments),
           createdById: session.user.id,

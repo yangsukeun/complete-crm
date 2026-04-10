@@ -441,11 +441,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     void (async () => {
       const h = await subscribeChatMessagesGlobal(userId, ({ chatId, payload }) => {
         if (cancelled) return;
-        window.dispatchEvent(
-          new CustomEvent("chat-realtime", {
-            detail: { chatId, payload },
-          })
-        );
+        if (chatId) {
+          window.dispatchEvent(
+            new CustomEvent("chat-realtime", {
+              detail: { chatId, payload },
+            })
+          );
+        }
         window.dispatchEvent(new Event("chat-inbox-refresh"));
       });
       if (cancelled) {

@@ -87,7 +87,6 @@ export async function GET(
         description: true,
         contentType: true,
         category: true,
-        isAnonymous: true,
         workspaceScope: true,
         attachments: true,
         createdAt: true,
@@ -116,7 +115,7 @@ export async function GET(
       return NextResponse.json({ error: "해당 자료를 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const anon = post.isAnonymous || boardCategoryIsAnonymous(post.category);
+    const anon = boardCategoryIsAnonymous(post.category);
     const isExec = role === "EXECUTIVE";
 
     return NextResponse.json({
@@ -158,7 +157,6 @@ export async function PATCH(
         description: true,
         contentType: true,
         category: true,
-        isAnonymous: true,
         workspaceScope: true,
         attachments: true,
         createdAt: true,
@@ -238,7 +236,6 @@ export async function PATCH(
     }
     if (parsed.data.category !== undefined) {
       data.category = parsed.data.category;
-      data.isAnonymous = parsed.data.category === "ANONYMOUS";
       if (parsed.data.category === "FREE" || parsed.data.category === "ANONYMOUS") {
         data.workspaceScope = "TEAM";
       }
@@ -287,7 +284,6 @@ export async function PATCH(
           description: true,
           contentType: true,
           category: true,
-          isAnonymous: true,
           workspaceScope: true,
           attachments: true,
           createdAt: true,
@@ -331,7 +327,7 @@ export async function PATCH(
       ...updated,
       createdAt: updated.createdAt.toISOString(),
       attachments: safeParseBoardAttachments(updated.attachments),
-      isAnonymous: updated.isAnonymous,
+      isAnonymous: boardCategoryIsAnonymous(updated.category),
     });
   } catch (e) {
     console.error("Board PATCH:", e);
@@ -377,7 +373,6 @@ export async function DELETE(
         description: true,
         contentType: true,
         category: true,
-        isAnonymous: true,
         workspaceScope: true,
         attachments: true,
         createdAt: true,

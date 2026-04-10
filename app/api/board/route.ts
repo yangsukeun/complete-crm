@@ -86,7 +86,6 @@ async function boardGetHandler(req: Request) {
       id: true,
       title: true,
       category: true,
-      isAnonymous: true,
       workspaceScope: true,
       contentType: true,
       description: true,
@@ -100,7 +99,6 @@ async function boardGetHandler(req: Request) {
       id: string;
       title: string;
       category: string;
-      isAnonymous: boolean;
       workspaceScope: string;
       contentType: string;
       description: string | null;
@@ -109,7 +107,7 @@ async function boardGetHandler(req: Request) {
       createdById: string;
       createdBy: { name: string; position: string | null } | null;
     }) => {
-      const anon = p.isAnonymous || boardCategoryIsAnonymous(p.category);
+      const anon = boardCategoryIsAnonymous(p.category);
       const listPreview = buildBoardListPreview(p.description, p.contentType, p.attachments);
       return {
         id: p.id,

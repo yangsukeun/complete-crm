@@ -83,7 +83,7 @@ export default async function BoardPostPage({
   const attachments = safeParseAttachments(post.attachments);
 
   const isAdmin = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
-  const postAnonymous = post.isAnonymous || boardCategoryIsAnonymous(post.category);
+  const postAnonymous = boardCategoryIsAnonymous(post.category);
   const authorForHeadline = postAnonymous
     ? role === "EXECUTIVE"
       ? `익명 (실제: ${post.createdBy?.name ?? "삭제된 사용자"})`
@@ -142,7 +142,7 @@ export default async function BoardPostPage({
       />
       <BoardCommentsSuspense
         postId={id}
-        isAnonymous={post.isAnonymous}
+        isAnonymous={postAnonymous}
         category={post.category}
         viewerRole={role}
       />
