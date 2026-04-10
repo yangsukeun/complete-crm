@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { canUserViewBoardPost } from "@/lib/board-access";
 import { boardCategoryIsAnonymous } from "@/lib/board-category";
+import { safeParseAttachments } from "@/lib/board-attachments";
 import { PageHeadline } from "@/components/page-headline";
 import { BoardPostContent } from "./board-post-content";
 import { BoardCommentsSuspense } from "./board-comments-loader";
@@ -33,7 +34,21 @@ export default async function BoardPostPage({
   const [post, postRevisions] = await Promise.all([
     prisma.boardPost.findUnique({
       where: { id },
-      include: { createdBy: { select: { name: true, position: true, role: true } } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        contentType: true,
+        category: true,
+        isAnonymous: true,
+        workspaceScope: true,
+        attachments: true,
+        createdAt: true,
+        createdById: true,
+        deletedAt: true,
+        // mentionedUserIds: 일부 DB에 컬럼이 없어 select 제외
+        createdBy: { select: { name: true, position: true, role: true } },
+      },
     }),
     prisma.boardPostRevision.findMany({
       where: { boardPostId: id },
@@ -56,7 +71,7 @@ export default async function BoardPostPage({
         deletedAt: post.deletedAt,
         workspaceScope: post.workspaceScope,
         createdById: post.createdById,
-        mentionedUserIds: post.mentionedUserIds,
+        mentionedUserIds: null,
       },
       session.user.id,
       role
@@ -65,13 +80,7 @@ export default async function BoardPostPage({
     notFound();
   }
 
-  const attachments = (() => {
-    try {
-      return JSON.parse(post.attachments || "[]") as { url: string; name: string }[];
-    } catch {
-      return [];
-    }
-  })();
+  const attachments = safeParseAttachments(post.attachments);
 
   const isAdmin = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
   const postAnonymous = post.isAnonymous || boardCategoryIsAnonymous(post.category);
