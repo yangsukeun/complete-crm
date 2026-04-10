@@ -161,6 +161,20 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const pathname = usePathname() ?? "";
   const isChatPage = pathname.startsWith("/chat");
   const { data: session } = useSession();
+
+  /** URL `/chat/[id]` 와 선택 방 동기화 — 같은 페이지 트리에서 `initialChatId`만 바뀌면 useState 가 갱신되지 않아 구독이 옛 방에 남는 문제 방지 */
+  useEffect(() => {
+    const p = pathname.replace(/\/$/, "") || "/";
+    if (p === "/chat") {
+      setSelectedChatId(null);
+      return;
+    }
+    const m = /^\/chat\/([^/]+)$/.exec(p);
+    const idFromUrl = m?.[1];
+    if (idFromUrl) {
+      setSelectedChatId((prev) => (prev === idFromUrl ? prev : idFromUrl));
+    }
+  }, [pathname]);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
