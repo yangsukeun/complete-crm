@@ -6,7 +6,7 @@ import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activit
 import { createNotificationWithOptions, createTaskBodyMentionNotification } from "@/lib/notifications";
 import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
 import { syncTaskMentionsForTask } from "@/lib/task-mention-sync";
-import { format } from "date-fns";
+import { todayYmdKst } from "@/lib/date-kst";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 import { serializeAssigneesFromRows, taskAssigneeUserSelect } from "@/lib/task-assignees";
@@ -456,7 +456,7 @@ export async function PATCH(
     if (data.status && data.status !== existing.status) {
       void appendWorkLogOnceForTaskStatus({
         userId: session.user.id,
-        dateStr: format(new Date(), "yyyy-MM-dd"),
+        dateStr: todayYmdKst(),
         taskId: existing.id,
         taskTitle: existing.title,
         status: data.status,

@@ -5,7 +5,7 @@ import { extractTaskStatusMarkers, getOrCreateDailyWorkLog, stripTaskStatusMarke
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { userHasPermission } from "@/lib/permissions";
 import { assertCanViewOthersDailyWorkLog } from "@/lib/work-log-access";
-import { format } from "date-fns";
+import { todayYmdKst } from "@/lib/date-kst";
 
 /**
  * GET: 오늘(또는 date 파라미터)의 업무일지 조회. 없으면 ActivityLog 기반으로 자동 생성 후 반환.
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const dateStr = searchParams.get("date") ?? format(new Date(), "yyyy-MM-dd");
+    const dateStr = searchParams.get("date") ?? todayYmdKst();
     const targetUserId = searchParams.get("userId") ?? null;
 
     const isExecutive = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
@@ -80,7 +80,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const dateStr = body.date ?? format(new Date(), "yyyy-MM-dd");
+    const dateStr = body.date ?? todayYmdKst();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return NextResponse.json({ error: "날짜 형식이 올바르지 않습니다." }, { status: 400 });
     }

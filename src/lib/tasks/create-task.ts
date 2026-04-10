@@ -1,5 +1,5 @@
-import { format } from "date-fns";
 import prisma from "@/lib/prisma";
+import { todayYmdKst } from "@/lib/date-kst";
 import type { Prisma, TaskPriority, TaskStatus } from "@prisma/client";
 import type { WorkspaceScope } from "@/lib/workspace";
 import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
@@ -98,7 +98,7 @@ export async function createTaskWithNotifications(params: {
 
   void appendWorkLogOnceForTaskStatus({
     userId: createdById,
-    dateStr: format(new Date(), "yyyy-MM-dd"),
+    dateStr: todayYmdKst(),
     taskId: task.id,
     taskTitle: task.title,
     status: (task.status as "TODO" | "IN_PROGRESS" | "DONE") ?? "TODO",

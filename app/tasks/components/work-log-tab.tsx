@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { format, addDays, subDays } from "date-fns";
+import { formatKstHm, todayYmdKst } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
 import {
   Loader2,
@@ -27,7 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const todayStr = () => format(new Date(), "yyyy-MM-dd");
+const todayStr = () => todayYmdKst();
 
 type ActivityItem = {
   actionType: string;
@@ -310,7 +311,7 @@ export function WorkLogTab() {
           </p>
           <ul className="font-mono text-sm">
             {activities.map((a, i) => {
-              const time = format(new Date(a.timestamp), "HH:mm");
+              const time = formatKstHm(a.timestamp);
               const label = activityLabel(a.actionType);
               const ipText =
                 (a.actionType === "CHECK_IN" || a.actionType === "CHECK_OUT") && a.ipAddress

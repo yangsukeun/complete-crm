@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
+import { formatKstHm, todayYmdKst } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
 import { CalendarIcon, Loader2, Lock, User } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,7 +39,7 @@ type Employee = {
 export function AdminLogsClient({ employees }: { employees: Employee[] }) {
   const searchParams = useSearchParams();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [dateStr, setDateStr] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [dateStr, setDateStr] = useState(() => todayYmdKst());
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [content, setContent] = useState("");
   const [status, setStatus] = useState("");
@@ -140,7 +141,7 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
           <div>
             <div className="border-border mb-4 flex flex-wrap items-center justify-between gap-2 border-b pb-3">
               <h3 className="font-medium">
-                {selectedEmployee?.name} · {format(new Date(dateStr + "T00:00:00"), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
+                {selectedEmployee?.name} · {format(new Date(`${dateStr}T12:00:00+09:00`), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
               </h3>
               {status && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
@@ -156,7 +157,7 @@ export function AdminLogsClient({ employees }: { employees: Employee[] }) {
                 </p>
                 <ul className="font-mono text-sm">
                   {activities.map((a: any, i: any) => {
-                    const time = format(new Date(a.timestamp), "HH:mm");
+                    const time = formatKstHm(a.timestamp);
                     const label = activityLabel(a.actionType);
                     const ipText =
                       (a.actionType === "CHECK_IN" || a.actionType === "CHECK_OUT") && a.ipAddress

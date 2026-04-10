@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { EVENT_PALETTE, type CalendarLayerId } from "@/lib/schedule-colors";
+import { todayYmdKst } from "@/lib/date-kst";
 
 export type { CalendarLayerId };
 import Link from "next/link";
@@ -606,7 +607,7 @@ export default function SchedulePage() {
   const [tab, setTab] = useState<TabId>("schedule");
   const [view, setView] = useState<View>("month");
   const [date, setDate] = useState(new Date());
-  const [diaryDate, setDiaryDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [diaryDate, setDiaryDate] = useState(() => todayYmdKst());
   const [memoContent, setMemoContent] = useState("");
   const [memoSaving, setMemoSaving] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);

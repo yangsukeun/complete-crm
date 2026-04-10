@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { kstDateBoundsUtc } from "@/lib/date-kst";
 
 /**
  * 관리자(EXECUTIVE, ADMIN) 전용 접속 로그 조회
@@ -38,9 +39,7 @@ export async function GET(req: Request) {
 
     if (userId) where.userId = userId;
     if (dateStr) {
-      const dayStart = new Date(dateStr + "T00:00:00");
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
+      const { start: dayStart, end: dayEnd } = kstDateBoundsUtc(dateStr);
       where.loggedInAt = { gte: dayStart, lt: dayEnd };
     }
 

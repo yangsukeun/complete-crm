@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { createActivityLog } from "@/lib/activity-log";
-import { startOfDayKst } from "@/lib/date-kst";
+import { kstYmdToUtcDayStart, startOfDayKst } from "@/lib/date-kst";
 import prisma from "@/lib/prisma";
 
 function getClientIp(req: Request): string | null {
@@ -18,9 +18,8 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const dateStr = searchParams.get("date"); // YYYY-MM-DD
-    const today = dateStr ? new Date(dateStr + "T00:00:00") : new Date();
-    const dateStart = startOfDayKst(today);
+    const dateStr = searchParams.get("date"); // YYYY-MM-DD (한국 달력)
+    const dateStart = dateStr ? kstYmdToUtcDayStart(dateStr) : startOfDayKst(new Date());
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
 

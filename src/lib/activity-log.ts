@@ -1,5 +1,5 @@
-import { format, subDays } from "date-fns";
 import prisma from "@/lib/prisma";
+import { formatKstHm, kstDateBoundsUtc, previousKstYmd } from "@/lib/date-kst";
 
 export type ActivityActionType = "TASK_CREATED" | "TASK_COMPLETED" | "COMMENT_ADDED" | "SCHEDULE_CREATED" | "LOGIN" | "CHECK_IN" | "CHECK_OUT";
 
@@ -55,7 +55,7 @@ export async function appendWorkLogOnceForTaskStatus(params: {
   }
 
   const statusLabel = formatStatusLabel(params.status);
-  const time = format(new Date(), "HH:mm");
+  const time = formatKstHm(new Date());
   const line = `- [${time}] '${params.taskTitle || "(제목 없음)"}' → ${statusLabel} 이동\n`;
 
   try {
@@ -135,7 +135,7 @@ function formatActivitiesAsMarkdown(
   activities: ActivityForDisplay[]
 ): string {
   const lines = activities.map((a: any) => {
-    const time = format(new Date(a.timestamp), "HH:mm");
+    const time = formatKstHm(a.timestamp);
     const label =
       a.actionType === "TASK_CREATED"
         ? "업무 생성"
@@ -169,9 +169,7 @@ export async function getActivitiesForDate(
   dateStr: string
 ): Promise<ActivityForDisplay[]> {
   if (!(prisma as { activityLog?: unknown }).activityLog) return [];
-  const dayStart = new Date(dateStr + "T00:00:00");
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  const { start: dayStart, end: dayEnd } = kstDateBoundsUtc(dateStr);
   const list = await prisma.activityLog.findMany({
     where: {
       userId,
@@ -260,7 +258,7 @@ export async function getOrCreateDailyWorkLog(
   });
 
   if (!log) {
-    const prevDate = format(subDays(new Date(dateStr + "T12:00:00"), 1), "yyyy-MM-dd");
+    const prevDate = previousKstYmd(dateStr);
     const prevLog = await prisma.dailyWorkLog.findUnique({
       where: { userId_date: { userId, date: prevDate } },
       select: { content: true },
