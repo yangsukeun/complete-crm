@@ -12,7 +12,8 @@ import {
 
 /**
  * 채팅방 목록·채팅 화면: ChatMessage Realtime → 전역 이벤트.
- * `/chat` 이 아닐 때는 구독하지 않아 게시판 등에서 `/api/chats`·메시지 폴링 연쇄 호출을 막음.
+ * `/chat`, `/chat/[id]` 모두 `pathname.startsWith("/chat")` 이므로 방 안에서도 구독 유지됨.
+ * `/chat` 이 아닐 때는 구독하지 않아 게시판 등에서 `/api/chats` 연쇄 호출을 막음.
  */
 export function SupabaseRealtimeBridge() {
   const pathname = usePathname() ?? "";
@@ -53,7 +54,13 @@ export function SupabaseRealtimeBridge() {
           );
           window.dispatchEvent(new Event("chat-inbox-refresh"));
         });
-        if (!cancelled && ch) {
+        if (cancelled) {
+          try {
+            ch?.unsubscribe();
+          } catch {
+            /* */
+          }
+        } else if (ch) {
           channel = ch;
         }
       }

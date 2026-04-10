@@ -2,25 +2,19 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { SupabaseRealtimeBridge } from "@/components/supabase-realtime-bridge";
 
 const OneSignalBridge = dynamic(
   () => import("@/components/one-signal-bridge").then((m) => ({ default: m.OneSignalBridge })),
   { ssr: false }
 );
 
-const SupabaseRealtimeBridge = dynamic(
-  () =>
-    import("@/components/supabase-realtime-bridge").then((m) => ({
-      default: m.SupabaseRealtimeBridge,
-    })),
-  { ssr: false }
-);
-
 /**
- * 첫 페인트·hydration 이후 브라우저 여유 시점에 실시간/푸시 초기화 → 메인 스레드·네트워크 경합 완화.
+ * Supabase Realtime(채팅·자금·presence)은 hydration 직후 즉시 마운트 — idle 지연 시 채팅방에서 수 초간 구독 없음.
+ * OneSignal만 requestIdleCallback 으로 늦춰 메인 스레드·푸시 초기화 경합을 완화.
  */
 export function DeferredRealtimeBridges({ userId }: { userId?: string | null }) {
-  const [ready, setReady] = useState(false);
+  const [oneSignalReady, setOneSignalReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,7 +22,7 @@ export function DeferredRealtimeBridges({ userId }: { userId?: string | null }) 
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const arm = () => {
-      if (!cancelled) setReady(true);
+      if (!cancelled) setOneSignalReady(true);
     };
 
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
@@ -46,12 +40,10 @@ export function DeferredRealtimeBridges({ userId }: { userId?: string | null }) 
     };
   }, []);
 
-  if (!ready) return null;
-
   return (
     <>
-      <OneSignalBridge userId={userId} />
       <SupabaseRealtimeBridge />
+      {oneSignalReady ? <OneSignalBridge userId={userId} /> : null}
     </>
   );
 }
