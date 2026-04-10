@@ -22,6 +22,7 @@
     "analyze": "cross-env ANALYZE=true node scripts/prisma-with-env.cjs generate && cross-env ANALYZE=true next build --webpack"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.87.0",
     "@auth/prisma-adapter": "^2.11.1",
     "@blocknote/core": "^0.46.2",
     "@blocknote/mantine": "^0.46.2",

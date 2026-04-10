@@ -109,7 +109,7 @@ export default async function BoardPostPage({
           initialDescription={post.description ?? ""}
           initialContentType={post.contentType ?? "text"}
           initialCategory={
-            post.category as "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS"
+            post.category as "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS" | "MEETING"
           }
           initialAttachments={attachments}
         />

@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileText, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, Sparkles, Trash2 } from "lucide-react";
 import type { BoardCategory } from "@/lib/board-category";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,8 @@ const ContentBodyEditor = dynamic(
 type AttachmentItem = { url: string; name: string };
 
 function parseCategory(raw: string | undefined): BoardCategory {
-  if (raw === "COMPANY" || raw === "TRAINING" || raw === "FREE" || raw === "ANONYMOUS") return raw;
+  if (raw === "COMPANY" || raw === "TRAINING" || raw === "FREE" || raw === "ANONYMOUS" || raw === "MEETING")
+    return raw;
   return "COMPANY";
 }
 
@@ -51,10 +52,54 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
   const [htmlContent, setHtmlContent] = useState("");
   const [category, setCategory] = useState<BoardCategory>(defaultCat);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [rawNote, setRawNote] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [urlLink, setUrlLink] = useState("");
   const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const meetingTemplateAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (category !== "MEETING") {
+      meetingTemplateAppliedRef.current = false;
+      return;
+    }
+    if (meetingTemplateAppliedRef.current) return;
+    if (bodyContent.trim() || htmlContent.trim()) return;
+
+    const today = new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .format(new Date())
+      .replaceAll(". ", "년 ")
+      .replaceAll(".", "일")
+      .replace("년", "년 ")
+      .replace("월", "월 ");
+
+    const template = `
+## 회의 정보
+- 일시: ${today}
+- 장소:
+- 참석자:
+
+## 안건
+
+## 논의 내용
+
+## 결정 사항
+
+## 액션 아이템
+- [ ] 담당자:  / 기한:
+    `.trim();
+
+    setEditorMode("text");
+    setBodyContent(template);
+    setHtmlContent("");
+    meetingTemplateAppliedRef.current = true;
+  }, [category, bodyContent, htmlContent]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,6 +216,7 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
             <option value="TRAINING">교육자료</option>
             <option value="FREE">자유게시판</option>
             <option value="ANONYMOUS">익명게시판</option>
+            <option value="MEETING">회의록</option>
           </select>
           {category === "ANONYMOUS" && (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
@@ -181,6 +227,63 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
         </div>
         <div className="space-y-2">
           <Label>설명</Label>
+          {category === "MEETING" && (
+            <div className="mb-2 rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-900/40 dark:bg-purple-950/30">
+              <p className="mb-2 text-sm font-medium text-purple-800 dark:text-purple-200">
+                AI 회의록 자동 정리
+              </p>
+              <p className="mb-3 text-xs text-purple-600 dark:text-purple-300">
+                미팅에서 나눈 대화/메모를 붙여넣으면 AI가 회의록 형태로 정리해 드립니다.
+              </p>
+              <textarea
+                value={rawNote}
+                onChange={(e) => setRawNote(e.target.value)}
+                placeholder="미팅 내용을 여기에 붙여넣으세요..."
+                className="h-32 w-full resize-none rounded-md border bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 dark:bg-slate-950"
+              />
+              <Button
+                type="button"
+                onClick={async () => {
+                  if (!rawNote.trim()) return;
+                  setAiLoading(true);
+                  try {
+                    const res = await fetch("/api/meeting/summarize", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ content: rawNote }),
+                    });
+                    const data = (await res.json()) as { summary?: string; error?: string };
+                    if (!res.ok) throw new Error(data.error ?? "AI 정리에 실패했습니다.");
+                    if (data.summary) {
+                      setEditorMode("text");
+                      setBodyContent(data.summary);
+                      setHtmlContent("");
+                      setRawNote("");
+                      toast.success("AI가 회의록을 정리했어요!");
+                    }
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "정리 중 오류가 발생했어요");
+                  } finally {
+                    setAiLoading(false);
+                  }
+                }}
+                disabled={aiLoading || !rawNote.trim()}
+                className="mt-2 gap-2 bg-purple-600 text-white hover:bg-purple-700"
+              >
+                {aiLoading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    AI 정리 중...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-4" />
+                    AI로 회의록 정리하기
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
           <HtmlEditorModeTabs
             editorMode={editorMode}
             setEditorMode={setEditorMode}

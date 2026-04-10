@@ -48,6 +48,7 @@ const NOTE_CATEGORY_LABEL: Record<BoardCategory, string> = {
   TRAINING: "교육자료",
   FREE: "자유게시판",
   ANONYMOUS: "익명게시판",
+  MEETING: "회의록",
 };
 
 type PatchBody = {

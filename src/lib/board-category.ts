@@ -1,5 +1,5 @@
 /** 게시판 구분 (API·DB category 문자열과 동일) */
-export const BOARD_CATEGORIES = ["COMPANY", "TRAINING", "FREE", "ANONYMOUS"] as const;
+export const BOARD_CATEGORIES = ["COMPANY", "TRAINING", "FREE", "ANONYMOUS", "MEETING"] as const;
 export type BoardCategory = (typeof BOARD_CATEGORIES)[number];
 
 export function isBoardCategory(value: string): value is BoardCategory {

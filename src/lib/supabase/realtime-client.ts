@@ -1,4 +1,9 @@
-import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type RealtimeChannel,
+  type RealtimePostgresChangesPayload,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 
 function browserAppIsLocalhost(): boolean {
   if (typeof window === "undefined") return false;
@@ -128,54 +133,54 @@ export async function subscribeChatMessagesGlobal(
   };
 }
 
-function chatMessageRowChatId(payload: { new?: unknown; old?: unknown }): string | undefined {
-  const n = payload.new as { chatId?: string } | null | undefined;
-  const o = payload.old as { chatId?: string } | null | undefined;
-  return n?.chatId ?? o?.chatId;
+function chatMessageRow(payload: {
+  new?: unknown;
+  old?: unknown;
+}): Record<string, unknown> | null {
+  const n = payload.new as Record<string, unknown> | null | undefined;
+  if (n && typeof n === "object") return n;
+  const o = payload.old as Record<string, unknown> | null | undefined;
+  if (o && typeof o === "object") return o;
+  return null;
 }
 
-/** 열린 채팅방만 — Realtime filter 는 camelCase(chatId)에서 불안정해 제거하고, 클라이언트에서 chatId 매칭 */
+/** 채팅방 구독 — Supabase Realtime filter(camleCase chatId) 이슈를 우회해 filter 없이 수신 후 클라이언트에서 필터링 */
 export async function subscribeChatMessagesForChatRoom(
-  sessionUserId: string,
+  userId: string,
   chatId: string,
-  onEvent: (args: { chatId: string; payload: unknown }) => void
-): Promise<RealtimeSubscriptionHandle | null> {
-  const client = await getSharedSupabaseRealtime(sessionUserId);
-  if (!client) return null;
+  onEvent: (args: { payload: RealtimePostgresChangesPayload<Record<string, unknown>> }) => void
+): Promise<RealtimeSubscriptionHandle> {
+  const client = await getSharedSupabaseRealtime(userId);
+  if (!client) {
+    return { unsubscribe: () => {} };
+  }
 
   const channelName = `chat-room-${chatId}-${Date.now()}`;
+
   const channel = client
-    .channel(channelName, {
-      config: { presence: { key: sessionUserId } },
-    })
+    .channel(channelName)
     .on(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "ChatMessage",
       },
       (payload) => {
-        if (chatMessageRowChatId(payload) !== chatId) return;
-        onEvent({ chatId, payload });
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "UPDATE",
-        schema: "public",
-        table: "ChatMessage",
-      },
-      (payload) => {
-        if (chatMessageRowChatId(payload) !== chatId) return;
-        onEvent({ chatId, payload });
+        const row = chatMessageRow(payload);
+        const rowChatId = (row?.chatId as string | undefined) ?? undefined;
+        if (rowChatId !== chatId) return;
+        onEvent({
+          payload: payload as RealtimePostgresChangesPayload<Record<string, unknown>>,
+        });
       }
     )
     .subscribe((status, err) => {
-      if (err) console.error("[RT] 채팅방 구독 오류:", err);
+      if (err) {
+        console.error("[RT] 채팅방 구독 오류:", chatId, err);
+      }
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        console.warn("[RT] 채팅방 구독 상태:", status);
+        console.warn("[RT] 채팅방 구독 상태:", chatId, status);
       }
     });
 

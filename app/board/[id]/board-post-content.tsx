@@ -13,7 +13,7 @@ import { parseStoredTaskBody } from "@/lib/task-body-description";
 import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
 import { ScaledHtmlIframe } from "@/components/scaled-html-iframe";
-import { FileText, GraduationCap, Building2, MessageSquare, Ghost } from "lucide-react";
+import { FileText, GraduationCap, Building2, MessageSquare, Ghost, ClipboardList } from "lucide-react";
 
 /**
  * BlockNote 내부 Suspense와 next/dynamic 조합 시 하이드레이션에서 React #419가 날 수 있어,
@@ -133,6 +133,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   TRAINING: "교육자료",
   FREE: "자유게시판",
   ANONYMOUS: "익명게시판",
+  MEETING: "회의록",
 };
 
 export type BoardPostAttachmentItem = { url: string; name: string };
@@ -179,6 +180,8 @@ export function BoardPostContent({
             <MessageSquare className="size-3.5" />
           ) : category === "ANONYMOUS" ? (
             <Ghost className="size-3.5" />
+          ) : category === "MEETING" ? (
+            <ClipboardList className="size-3.5" />
           ) : (
             <Building2 className="size-3.5" />
           )}

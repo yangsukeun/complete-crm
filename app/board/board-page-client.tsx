@@ -16,6 +16,7 @@ import {
   Megaphone,
   MessageSquare,
   Ghost,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +58,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   TRAINING: "교육자료",
   FREE: "자유게시판",
   ANONYMOUS: "익명게시판",
+  MEETING: "회의록",
 };
 
 type AttachmentItem = { url: string; name: string };
@@ -143,7 +145,9 @@ export function BoardPageClient({
   const BOARD_PAGE = 20;
 
   const boardCategoryQuery = (f: string) =>
-    f === "COMPANY" || f === "TRAINING" || f === "FREE" || f === "ANONYMOUS" ? f : undefined;
+    f === "COMPANY" || f === "TRAINING" || f === "FREE" || f === "ANONYMOUS" || f === "MEETING"
+      ? f
+      : undefined;
 
   const fetchBoardPage = async (offset: number, category?: string) => {
     const params = new URLSearchParams({
@@ -231,14 +235,19 @@ export function BoardPageClient({
       filter === "COMPANY" ||
       filter === "TRAINING" ||
       filter === "FREE" ||
-      filter === "ANONYMOUS"
+      filter === "ANONYMOUS" ||
+      filter === "MEETING"
     )
       return merged.filter((x: any) => x.type === "BOARD" && x.data.category === filter);
     return merged;
   })();
 
   const newBoardHref =
-    filter === "COMPANY" || filter === "TRAINING" || filter === "FREE" || filter === "ANONYMOUS"
+    filter === "COMPANY" ||
+    filter === "TRAINING" ||
+    filter === "FREE" ||
+    filter === "ANONYMOUS" ||
+    filter === "MEETING"
       ? `/board/new?category=${encodeURIComponent(filter)}`
       : "/board/new";
 
@@ -346,6 +355,15 @@ export function BoardPageClient({
           >
             <Ghost className="size-4" />
             익명게시판
+          </Button>
+          <Button
+            variant={filter === "MEETING" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter("MEETING")}
+            className="gap-1"
+          >
+            <ClipboardList className="size-4" />
+            회의록
           </Button>
         </div>
         <div className="flex items-center gap-2">
@@ -505,6 +523,8 @@ export function BoardPageClient({
                             <MessageSquare className="size-12 opacity-50" />
                           ) : b.category === "ANONYMOUS" ? (
                             <Ghost className="size-12 opacity-50" />
+                          ) : b.category === "MEETING" ? (
+                            <ClipboardList className="size-12 opacity-50" />
                           ) : (
                             <FolderOpen className="size-12 opacity-50" />
                           )}

@@ -8,7 +8,7 @@ import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-u
 import { serializeMentionUserIdsJson } from "@/lib/mention-user-ids-json";
 import { z } from "zod";
 
-const categorySchema = z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS"]);
+const categorySchema = z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS", "MEETING"]);
 const workspaceScopeSchema = z.enum(["TEAM", "PERSONAL"]);
 
 const createSchema = z.object({

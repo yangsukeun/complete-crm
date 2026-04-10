@@ -40,7 +40,7 @@ import {
 
 type AttachmentItem = { url: string; name: string };
 
-type BoardEditCategory = "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS";
+type BoardEditCategory = "COMPANY" | "TRAINING" | "FREE" | "ANONYMOUS" | "MEETING";
 
 /** PATCH/DELETE가 HTML(에러 페이지·502 등)을 돌려줄 때 res.json() 대비 */
 async function readBoardMutationJson(res: Response): Promise<{ error?: string; message?: string }> {
@@ -269,6 +269,7 @@ export function BoardPostActions({
                 <option value="TRAINING">교육자료</option>
                 <option value="FREE">자유게시판</option>
                 <option value="ANONYMOUS">익명게시판</option>
+                <option value="MEETING">회의록</option>
               </select>
               {category === "ANONYMOUS" && (
                 <p className="text-muted-foreground text-xs">
