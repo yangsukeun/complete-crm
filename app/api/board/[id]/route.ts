@@ -33,7 +33,7 @@ const updateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(50000).optional(),
   contentType: z.enum(["text", "html"]).optional(),
-  category: z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS"]).optional(),
+  category: z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS", "MEETING"]).optional(),
   attachments: z.array(z.object({ url: z.string().min(1), name: z.string().optional() })).max(20).optional(),
 });
 
@@ -114,7 +114,7 @@ export async function GET(
       category: post.category,
       isAnonymous: anon,
       workspaceScope: post.workspaceScope,
-      attachments: JSON.parse(post.attachments || "[]") as { url: string; name: string }[],
+      attachments: safeParseBoardAttachments(post.attachments),
       createdAt: post.createdAt.toISOString(),
       createdById: anon && !isExec ? null : post.createdById,
       createdByName: anon ? "익명" : post.createdBy?.name ?? "삭제된 사용자",
