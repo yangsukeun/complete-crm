@@ -7,7 +7,8 @@ type Preview = {
   siteName?: string;
 };
 
-const TTL_MS = 3_600_000;
+/** 서버 DB 캐시(7일)와 함께 쓰는 클라이언트 중복 요청 방지 */
+const TTL_MS = 3_600_000; // 1시간
 const store = new Map<string, { at: number; data: Preview | null }>();
 const inflight = new Map<string, Promise<Preview | null>>();
 

@@ -167,19 +167,35 @@ export const createLinkPreviewBlockSpec = createBlockSpec(
           img.classList.remove("hidden");
           footer.textContent = `YouTube · ${url}`;
         }
-        void fetchLinkPreviewCached(url).then((data) => {
-          if (!data) {
-            if (!ytIdEarly) title.textContent = url;
-            return;
-          }
-          title.textContent = data.title || title.textContent || url;
-          desc.textContent = data.description || "";
-          footer.textContent = data.siteName ? `${data.siteName} · ${url}` : url;
-          if (data.image) {
-            img.src = data.image;
-            img.classList.remove("hidden");
-          }
-        });
+        const runFetch = () => {
+          void fetchLinkPreviewCached(url).then((data) => {
+            if (!data) {
+              if (!ytIdEarly) title.textContent = url;
+              return;
+            }
+            title.textContent = data.title || title.textContent || url;
+            desc.textContent = data.description || "";
+            footer.textContent = data.siteName ? `${data.siteName} · ${url}` : url;
+            if (data.image) {
+              img.src = data.image;
+              img.classList.remove("hidden");
+            }
+          });
+        };
+        if (typeof IntersectionObserver === "undefined") {
+          runFetch();
+        } else {
+          const io = new IntersectionObserver(
+            (entries) => {
+              if (entries.some((e) => e.isIntersecting)) {
+                io.disconnect();
+                runFetch();
+              }
+            },
+            { rootMargin: "100px", threshold: 0 }
+          );
+          io.observe(wrapper);
+        }
       }
 
       wrapper.appendChild(card);

@@ -729,6 +729,20 @@ model DailyWorkLog {
   @@index([date])
 }
 
+// 링크 미리보기 API 캐시 (게시판 등 동일 URL 반복 fetch 방지)
+model LinkPreviewCache {
+  id          String   @id @default(cuid())
+  url         String   @unique
+  title       String?
+  description String?
+  image       String?
+  siteName    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([url])
+}
+
 model Vendor {
   id            String   @id @default(cuid())
   name          String   // 업체명
