@@ -34,8 +34,18 @@ import {
 } from "@/lib/upload-client-validate";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Calendar, ClipboardList, ImagePlus, MessageCircle, Plus, Search, Send, Trash2 } from "lucide-react";
-import { formatUserName } from "@/lib/utils";
+import {
+  Calendar,
+  ChevronLeft,
+  ClipboardList,
+  ImagePlus,
+  MessageCircle,
+  Plus,
+  Search,
+  Send,
+  Trash2,
+} from "lucide-react";
+import { cn, formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import Image from "next/image";
 import Link from "next/link";
@@ -158,6 +168,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
+  /** 모바일: 내 메시지 탭 시 삭제 옵션 (hover 없음) */
+  const [openMessageActionsId, setOpenMessageActionsId] = useState<string | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatsRef = useRef<ChatItem[]>([]);
@@ -227,6 +239,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     {
       dedupingInterval: 8000,
       keepPreviousData: true,
+      revalidateOnFocus: true,
     }
   );
 
@@ -448,6 +461,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [selectedChatId, resolveUserFromChats, fetchMessages, mutateChats, scrollToBottom]);
 
   useEffect(() => {
+    setOpenMessageActionsId(null);
     if (selectedChatId) {
       fetchMessages(selectedChatId);
       setUnreadCounts((counts: any) => {
@@ -467,6 +481,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [selectedChatId, fetchMessages]);
 
   useEffect(() => {
+    if (!openMessageActionsId) return;
+    const onDoc = () => setOpenMessageActionsId(null);
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [openMessageActionsId]);
+
+  useEffect(() => {
     if (!selectedChatId) return;
     const tick = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
@@ -484,6 +505,20 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const id = window.setInterval(tick, 24_000);
     return () => window.clearInterval(id);
   }, [selectedChatId]);
+
+  /** 탭 복귀 시 최신 메시지 보강(실시간 이벤트 놓침·모바일 백그라운드) */
+  useEffect(() => {
+    if (!selectedChatId) return;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      const cid = selectedChatIdRef.current;
+      if (!cid) return;
+      const last = messagesRef.current[messagesRef.current.length - 1];
+      void fetchMessages(cid, true, last?.createdAt ?? null);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [selectedChatId, fetchMessages]);
 
   useEffect(() => {
     if (modalOpen) {
@@ -746,6 +781,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "삭제 실패");
+        setOpenMessageActionsId(null);
         setMessages((prev: any) =>
           prev.map((m: any) => (m.id === messageId ? { ...m, isDeleted: true } : m))
         );
@@ -917,8 +953,13 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col gap-4 p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex min-h-0 h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] flex-col gap-4 p-4 md:h-[calc(100vh-8rem)] md:max-h-[calc(100vh-8rem)] md:p-6">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-2 shrink-0",
+          selectedChatId && "max-sm:hidden"
+        )}
+      >
         <PageHeadline
           title="채팅"
           description="직원과 1:1 또는 그룹 대화를 나누고, 일정 초대·이미지 공유를 할 수 있습니다."
@@ -929,9 +970,14 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
         </Button>
       </div>
 
-      <div className="grid flex-1 gap-4 overflow-hidden sm:grid-cols-[280px_1fr]">
-        <Card className="flex flex-col overflow-hidden">
-          <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden sm:grid-cols-[280px_1fr]">
+        <Card
+          className={cn(
+            "flex min-h-0 flex-col overflow-hidden",
+            selectedChatId && "hidden sm:flex"
+          )}
+        >
+          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
             {!loading && (
               <div className="border-b p-2">
                 <div className="relative">
@@ -1017,15 +1063,34 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           </CardContent>
         </Card>
 
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Card
+          className={cn(
+            "flex min-h-0 flex-1 flex-col overflow-hidden",
+            !selectedChatId && "hidden sm:flex"
+          )}
+        >
           {!selectedChatId ? (
-            <CardContent className="flex flex-1 items-center justify-center text-muted-foreground">
+            <CardContent className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
               왼쪽에서 대화를 선택하거나 새 대화를 시작하세요.
             </CardContent>
           ) : (
             <>
-              <div className="flex items-center justify-between border-b px-4 py-2">
-                <div className="flex min-w-0 flex-col">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b px-2 py-2 sm:px-4">
+                <div className="flex min-w-0 flex-1 items-start gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="mt-0.5 size-9 shrink-0 sm:hidden"
+                    aria-label="대화 목록으로"
+                    onClick={() => {
+                      setSelectedChatId(null);
+                      router.push("/chat");
+                    }}
+                  >
+                    <ChevronLeft className="size-5" />
+                  </Button>
+                  <div className="flex min-w-0 flex-col">
                   <span className="font-medium">{chatTitle}</span>
                   {(() => {
                     const onlinePeers = selectedChatParticipants.filter(
@@ -1039,8 +1104,9 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                       </span>
                     );
                   })()}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   {!isParticipant && (
                     <span className="text-muted-foreground rounded bg-muted px-2 py-0.5 text-xs">
                       관리자 보기 전용
@@ -1126,10 +1192,18 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                             })}
                         </p>
                       );
+                      const toggleMobileMessageActions = (e: React.MouseEvent) => {
+                        if (!canDelete || !isMine) return;
+                        if (typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches) return;
+                        if ((e.target as HTMLElement).closest("a")) return;
+                        e.stopPropagation();
+                        setOpenMessageActionsId((id) => (id === m.id ? null : m.id));
+                      };
+
                       return (
                         <div
                           key={m.id}
-                          className={`group flex w-full min-w-0 ${isMine ? "justify-end" : "justify-start"}`}
+                          className={`group flex w-full min-w-0 touch-manipulation ${isMine ? "justify-end" : "justify-start"}`}
                         >
                           <div
                             className={`flex max-w-[min(85%,520px)] min-w-0 flex-col gap-1 ${isMine ? "items-end" : "items-start"}`}
@@ -1140,46 +1214,92 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                               </span>
                             )}
                             <div
-                              className={`relative w-full rounded-2xl border px-3 py-2 shadow-sm ${
-                                isMine
-                                  ? "rounded-tr-sm border-amber-300 bg-amber-100 text-foreground dark:border-amber-800 dark:bg-amber-950/55 dark:text-amber-50"
-                                  : "rounded-tl-sm border-sky-300 bg-sky-100 text-foreground dark:border-sky-800 dark:bg-sky-950/55 dark:text-sky-50"
-                              }`}
-                            >
-                              {canDelete && selectedChatId && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="absolute right-0.5 top-0.5 size-7 opacity-70 hover:opacity-100"
-                                  title="메시지 삭제 (10분 이내)"
-                                  onClick={() => handleDeleteMessage(selectedChatId, m.id)}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
+                              className={cn(
+                                "relative max-w-full",
+                                isMine ? "inline-block self-end" : "w-full"
                               )}
-                              {bubbleBody}
+                            >
                               <div
-                                className={`mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground ${isMine ? "justify-end" : "justify-start"}`}
-                              >
-                                <span>{formatKstDateTime(m.createdAt)}</span>
-                                {isMine && readers.length > 0 && !m.isDeleted && (
-                                  <span className="flex items-center gap-0.5" title={`읽음: ${readers.map((r) => r.name).join(", ")}`}>
-                                    {readers.slice(0, 4).map((r) => (
-                                      <span
-                                        key={r.id}
-                                        className="flex size-[14px] shrink-0 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground"
-                                        title={`${r.name} 읽음`}
-                                      >
-                                        {r.name.charAt(0)}
-                                      </span>
-                                    ))}
-                                    {readers.length > 4 && (
-                                      <span className="text-[9px] text-muted-foreground">+{readers.length - 4}</span>
-                                    )}
-                                  </span>
+                                className={cn(
+                                  "w-full rounded-2xl border px-3 py-2 shadow-sm",
+                                  isMine
+                                    ? "rounded-tr-sm border-amber-300 bg-amber-100 text-foreground dark:border-amber-800 dark:bg-amber-950/55 dark:text-amber-50"
+                                    : "rounded-tl-sm border-sky-300 bg-sky-100 text-foreground dark:border-sky-800 dark:bg-sky-950/55 dark:text-sky-50",
+                                  canDelete && isMine && "max-sm:cursor-pointer max-sm:active:opacity-90"
                                 )}
+                                onClick={toggleMobileMessageActions}
+                                onContextMenu={(e) => {
+                                  if (!canDelete || !isMine) return;
+                                  if (typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches)
+                                    return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setOpenMessageActionsId(m.id);
+                                }}
+                              >
+                                {bubbleBody}
+                                <div
+                                  className={`mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground ${isMine ? "justify-end" : "justify-start"}`}
+                                >
+                                  <span>{formatKstDateTime(m.createdAt)}</span>
+                                  {isMine && readers.length > 0 && !m.isDeleted && (
+                                    <span
+                                      className="flex items-center gap-0.5"
+                                      title={`읽음: ${readers.map((r) => r.name).join(", ")}`}
+                                    >
+                                      {readers.slice(0, 4).map((r) => (
+                                        <span
+                                          key={r.id}
+                                          className="flex size-[14px] shrink-0 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground"
+                                          title={`${r.name} 읽음`}
+                                        >
+                                          {r.name.charAt(0)}
+                                        </span>
+                                      ))}
+                                      {readers.length > 4 && (
+                                        <span className="text-[9px] text-muted-foreground">+{readers.length - 4}</span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
+
+                              {canDelete && selectedChatId && (
+                                <>
+                                  {/* 데스크톱: 말풍선 아래 전용 줄(레이아웃 공간 확보) — hover 시에만 버튼 표시 */}
+                                  <div className="mt-1 hidden h-7 w-full items-center justify-end sm:flex">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      title="메시지 삭제 (10분 이내)"
+                                      className="h-7 gap-1 border-destructive/30 px-2 text-xs text-destructive opacity-0 transition-opacity duration-200 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleDeleteMessage(selectedChatId, m.id);
+                                      }}
+                                    >
+                                      <Trash2 className="size-3.5 shrink-0" />
+                                      삭제
+                                    </Button>
+                                  </div>
+                                  {openMessageActionsId === m.id && (
+                                    <div className="mt-1 flex w-full justify-end sm:hidden">
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void handleDeleteMessage(selectedChatId, m.id);
+                                        }}
+                                      >
+                                        삭제
+                                      </Button>
+                                    </div>
+                                  )}
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
