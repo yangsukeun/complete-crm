@@ -21,10 +21,13 @@ type AnnouncementItem = {
 export function DashboardAnnouncements({
   canCreate: _canCreate,
   fallbackData,
+  nowMs,
 }: {
   canCreate: boolean;
   /** 서버에서 prefetch 한 공지 — 첫 페인트 시 로딩 스피너 없음 */
   fallbackData: AnnouncementItem[];
+  /** SSR/Hydration 불일치 방지용 기준 시각(ms) */
+  nowMs: number;
 }) {
   const { data: list = fallbackData, isLoading: loading } = useSWR<AnnouncementItem[]>(
     SWR_KEYS.announcements,
@@ -38,8 +41,7 @@ export function DashboardAnnouncements({
 
   const isNew = (createdAt: string) => {
     const created = new Date(createdAt).getTime();
-    const now = Date.now();
-    return now - created < NEW_ANNOUNCEMENT_HOURS * 60 * 60 * 1000;
+    return nowMs - created < NEW_ANNOUNCEMENT_HOURS * 60 * 60 * 1000;
   };
 
   return (

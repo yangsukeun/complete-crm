@@ -36,6 +36,9 @@ export default async function DashboardPage() {
   const session = await authWithTimeout();
   if (!session?.user?.id) redirect("/login");
 
+  // Hydration 불일치 방지: 클라이언트 컴포넌트(Date.now 등) 기준 시각을 SSR에서 고정 전달
+  const nowMs = Date.now();
+
   const cookieStore = await cookies();
   const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company" && appMode !== "personal") {
@@ -267,7 +270,11 @@ export default async function DashboardPage() {
         </div>
 
         <section>
-          <DashboardAnnouncements canCreate={canCreateAnnouncement} fallbackData={announcementsFallback} />
+          <DashboardAnnouncements
+            canCreate={canCreateAnnouncement}
+            fallbackData={announcementsFallback}
+            nowMs={nowMs}
+          />
         </section>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -490,6 +497,7 @@ export default async function DashboardPage() {
         <DashboardAnnouncements
           canCreate={canCreateAnnouncement}
           fallbackData={announcementsFallbackUser}
+          nowMs={nowMs}
         />
       </section>
 

@@ -150,31 +150,11 @@ export async function subscribeChatMessagesForChatRoom(
   chatId: string,
   onEvent: (args: { payload: RealtimePostgresChangesPayload<Record<string, unknown>> }) => void
 ): Promise<RealtimeSubscriptionHandle> {
-  // 채팅방 전용 독립 클라이언트(공유 클라이언트 채널 충돌/끊김 영향 최소화)
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!url || !anon) return { unsubscribe: () => {} };
-  if (shouldSkipBrowserRealtime(url)) return { unsubscribe: () => {} };
+  // 공유 클라이언트 사용 (JWT 인증 유지)
+  const client = await getSharedSupabaseRealtime(userId);
+  if (!client) return { unsubscribe: () => {} };
 
-  // NextAuth 사용자 JWT를 Realtime auth로 설정 (RLS 대응)
-  const res = await fetch("/api/supabase/realtime-token", { credentials: "include" });
-  if (!res.ok) return { unsubscribe: () => {} };
-  const body = (await res.json()) as { accessToken?: string };
-  if (!body.accessToken) return { unsubscribe: () => {} };
-
-  const client = createClient(url, anon, {
-    global: { headers: { Authorization: `Bearer ${body.accessToken}` } },
-    realtime: {
-      params: { eventsPerSecond: 10 },
-      heartbeatIntervalMs: 15000,
-      reconnectAfterMs: (tries) => {
-        return [1000, 2000, 5000, 10000][tries - 1] || 10000;
-      },
-    },
-  });
-  await client.realtime.setAuth(body.accessToken);
-
-  const channelName = `chat-room-${chatId}-${userId}`;
+  const channelName = `room-${chatId}-${userId}-${Date.now()}`;
 
   const channel = client
     .channel(channelName)
@@ -199,8 +179,11 @@ export async function subscribeChatMessagesForChatRoom(
       }
     )
     .subscribe((status, err) => {
+      if (status === "SUBSCRIBED") {
+        console.log("[RT] 채팅방 구독 성공:", chatId);
+      }
       if (err) {
-        console.error("[RT] 채팅방 구독 오류:", chatId, err);
+        console.error("[RT] 채팅방 구독 오류:", err);
       }
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
         console.warn("[RT] 채팅방 구독 상태:", chatId, status);
