@@ -128,7 +128,13 @@ export async function subscribeChatMessagesGlobal(
   };
 }
 
-/** 열린 채팅방만 — pathname·레이아웃과 무관하게 `ChatPageClient`에서 구독 (DB 컬럼은 Prisma/마이그레이션 기준 `chatId`) */
+function chatMessageRowChatId(payload: { new?: unknown; old?: unknown }): string | undefined {
+  const n = payload.new as { chatId?: string } | null | undefined;
+  const o = payload.old as { chatId?: string } | null | undefined;
+  return n?.chatId ?? o?.chatId;
+}
+
+/** 열린 채팅방만 — Realtime filter 는 camelCase(chatId)에서 불안정해 제거하고, 클라이언트에서 chatId 매칭 */
 export async function subscribeChatMessagesForChatRoom(
   sessionUserId: string,
   chatId: string,
@@ -137,7 +143,7 @@ export async function subscribeChatMessagesForChatRoom(
   const client = await getSharedSupabaseRealtime(sessionUserId);
   if (!client) return null;
 
-  const channelName = `crm-chat-room:${sessionUserId}:${chatId}`;
+  const channelName = `chat-room-${chatId}-${Date.now()}`;
   const channel = client
     .channel(channelName, {
       config: { presence: { key: sessionUserId } },
@@ -148,9 +154,9 @@ export async function subscribeChatMessagesForChatRoom(
         event: "INSERT",
         schema: "public",
         table: "ChatMessage",
-        filter: `chatId=eq.${chatId}`,
       },
       (payload) => {
+        if (chatMessageRowChatId(payload) !== chatId) return;
         onEvent({ chatId, payload });
       }
     )
@@ -160,9 +166,9 @@ export async function subscribeChatMessagesForChatRoom(
         event: "UPDATE",
         schema: "public",
         table: "ChatMessage",
-        filter: `chatId=eq.${chatId}`,
       },
       (payload) => {
+        if (chatMessageRowChatId(payload) !== chatId) return;
         onEvent({ chatId, payload });
       }
     )
