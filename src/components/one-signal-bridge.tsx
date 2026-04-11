@@ -11,6 +11,11 @@ function clientDebug(): boolean {
   );
 }
 
+/** 프로덕션 콘솔 노이즈 방지 — 상세 원샷 디버그는 env=1 일 때만 */
+function verboseOsDebug(): boolean {
+  return typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEBUG_ONESIGNAL === "1";
+}
+
 function logClient(step: string, payload?: Record<string, unknown>) {
   if (clientDebug()) {
     console.log(`[OneSignal client] ${step}`, payload ?? "");
@@ -59,21 +64,23 @@ function oneSignalSkipInitReason(): string | null {
   return null;
 }
 
-/** Web v16: REST/DB용 ID는 Push 구독 ID 우선 (PushSubscription.id / getId). getUserId 미사용. */
+/** Web v16: REST `include_subscription_ids` 는 구독 레코드 id. id 가 비면 token(푸시 엔드포인트) 폴백 시도. */
 async function resolveIdsForBackend(): Promise<{
   subscriptionId: string | null;
   onesignalUserId: string | null;
 }> {
-  const rawSub = OneSignal.User?.PushSubscription?.id;
+  const sub = OneSignal.User?.PushSubscription;
+  const rawId = sub?.id;
+  const rawToken = sub?.token;
   let subscriptionId =
-    typeof rawSub === "string" && rawSub.trim()
-      ? rawSub.trim()
-      : rawSub != null && String(rawSub).trim()
-        ? String(rawSub).trim()
+    typeof rawId === "string" && rawId.trim()
+      ? rawId.trim()
+      : rawId != null && String(rawId).trim()
+        ? String(rawId).trim()
         : null;
 
   try {
-    const Sub = OneSignal.User?.PushSubscription as unknown as {
+    const Sub = sub as unknown as {
       getId?: () => Promise<string | undefined>;
       getSubscriptionId?: () => Promise<string | undefined>;
     };
@@ -89,7 +96,30 @@ async function resolveIdsForBackend(): Promise<{
     /* */
   }
 
+  if (!subscriptionId) {
+    const tok =
+      typeof rawToken === "string" && rawToken.trim()
+        ? rawToken.trim()
+        : rawToken != null && String(rawToken).trim()
+          ? String(rawToken).trim()
+          : null;
+    if (tok && tok.length >= 8) {
+      subscriptionId = tok;
+    }
+  }
+
   const onesignalUserId = OneSignal.User?.onesignalId?.trim() || null;
+
+  if (verboseOsDebug()) {
+    console.log("[OS DEBUG] resolveIdsForBackend", {
+      pushId: subscriptionId ? `${subscriptionId.slice(0, 8)}…(len=${subscriptionId.length})` : null,
+      optedIn: sub?.optedIn ?? null,
+      hasRawId: Boolean(rawId),
+      hasRawToken: Boolean(rawToken),
+      onesignalUserId: onesignalUserId ? `${onesignalUserId.slice(0, 8)}…` : null,
+    });
+  }
+
   return { subscriptionId, onesignalUserId };
 }
 
@@ -257,6 +287,29 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           return null;
         });
 
+        let registerSaved = false;
+        if (regRes) {
+          const regJson = (await regRes.json().catch(() => null)) as {
+            ok?: boolean;
+            skipped?: boolean;
+            reason?: string;
+            error?: string;
+          } | null;
+          if (verboseOsDebug()) {
+            console.log("[OS DEBUG] onesignal-register 응답", {
+              httpOk: regRes.ok,
+              status: regRes.status,
+              body: regJson,
+            });
+          }
+          if (regRes.ok && regJson?.ok === true && !regJson?.skipped) {
+            registerSaved = true;
+          }
+          if (!regRes.ok && clientDebug()) {
+            console.warn("[OneSignal] register HTTP 실패", regRes.status, regJson);
+          }
+        }
+
         const patchRes = await fetch("/api/profile/me", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -269,7 +322,7 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         if (clientDebug() && patchRes && !patchRes.ok) {
           console.warn("[OneSignal] PATCH /api/profile/me", patchRes.status, await patchRes.text().catch(() => ""));
         }
-        if (regRes?.ok) {
+        if (registerSaved) {
           lastRegisteredKeyRef.current = registerKey;
           clearProfileMeCache();
         }
@@ -296,6 +349,7 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           } catch {
             /* ignore */
           }
+          await new Promise((r) => setTimeout(r, 400));
           void reportStateOnce("login-initial", true);
           setTimeout(() => void reportStateOnce("login-deferred", false), 3500);
           for (const ms of [6000, 12_000, 20_000] as const) {
@@ -304,6 +358,13 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           try {
             OneSignal.User?.PushSubscription?.addEventListener?.("change", () => {
               scheduleRegister("PushSubscription.change");
+            });
+          } catch {
+            /* ignore */
+          }
+          try {
+            OneSignal.User?.addEventListener?.("change", () => {
+              scheduleRegister("User.change");
             });
           } catch {
             /* ignore */
