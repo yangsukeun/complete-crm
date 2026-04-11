@@ -269,7 +269,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     }
     if (typeof recipients === "number" && recipients === 0) {
       console.warn(
-        "[OneSignal push] recipients 0 → 구독 ID·external_id·클라이언트 OneSignal.login(User.id), 권한, allowed origin 확인."
+        "[OneSignal push] recipients 0 → DB 구독 ID·external_id 폴백·알림 권한·allowed origin 확인."
       );
     }
   } catch (e) {

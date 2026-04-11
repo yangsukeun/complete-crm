@@ -9,7 +9,7 @@ import { authWithTimeout } from "@/lib/auth-safe";
 import { buildSwrLayoutFallback, getHeaderBootstrapData } from "@/lib/header-bootstrap";
 import { AppNavClient } from "@/components/app-nav-client";
 import { NotificationEntryBanner } from "@/components/notification-entry-banner";
-/* OneSignal: src/components/providers.tsx 안의 <OneSignalBridge /> — 클라이언트에서 init + login(User.id). _app.tsx 없음(App Router). */
+/* OneSignal: src/components/providers.tsx 안의 <OneSignalBridge /> — 클라이언트에서 init + 구독 ID 서버 등록. _app.tsx 없음(App Router). */
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -121,7 +121,7 @@ export default async function RootLayout({
   const swrLayoutFallback = buildSwrLayoutFallback(headerBootstrap, session?.user?.id);
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${typeof geistSans?.variable === "string" ? geistSans.variable : ""} ${typeof geistMono?.variable === "string" ? geistMono.variable : ""} antialiased`}
       >
@@ -130,7 +130,9 @@ export default async function RootLayout({
           headerBootstrap={headerBootstrap}
           swrLayoutFallback={swrLayoutFallback}
         >
-          <AppNavClient />
+          <Suspense fallback={null}>
+            <AppNavClient />
+          </Suspense>
           <main>
             <Suspense fallback={null}>
               <NotificationEntryBanner />

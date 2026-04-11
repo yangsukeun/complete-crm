@@ -23,6 +23,11 @@ function logClient(step: string, payload?: Record<string, unknown>) {
   }
 }
 
+/** SDK 타이밍 완화(권한·구독 ID 준비 대기) */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
  * OneSignal 웹 SDK는 대시보드의 사이트 URL과 브라우저 origin이 맞지 않으면
  * `Can only be used on: https://…` 형태로 초기화를 거부합니다.
@@ -126,8 +131,9 @@ async function resolveIdsForBackend(): Promise<{
 }
 
 /**
- * 브라우저에서 OneSignal을 한 번 초기화하고, 로그인 시 external_id(User.id)와 맞춥니다.
- * 서버 푸시(`include_aliases.external_id`)와 동일한 값이어야 합니다.
+ * 브라우저에서 OneSignal을 한 번 초기화하고, 로그인 시 Push 구독 ID를 서버에 등록합니다.
+ * `OneSignal.login(User.id)` 는 LoginManager 미준비 시 TypeError 가 나는 SDK 버전이 있어 호출하지 않습니다.
+ * 푸시 발송은 DB에 저장된 구독 ID(`include_subscription_ids`)를 우선 사용합니다.
  *
  * 연결 위치: app/layout.tsx → Providers (`src/components/providers.tsx`) 안에서 마운트됨. (_app.tsx 없음, App Router)
  */
@@ -353,9 +359,8 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
       try {
         if (userId) {
           lastRegisteredKeyRef.current = null;
-          logClient("③ login 호출 전", { userId });
-          await OneSignal.login(userId);
-          logClient("④ login 완료 (external_id = User.id)", { userId });
+          logClient("③ 로그인 세션 — 구독 등록 경로 (login 미사용)", { userId });
+          await sleep(500);
           try {
             await OneSignal.Notifications?.requestPermission?.();
           } catch (permErr) {
@@ -366,11 +371,15 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           } catch {
             /* ignore */
           }
-          await new Promise((r) => setTimeout(r, 400));
-          void reportStateOnce("login-initial", true);
-          setTimeout(() => void reportStateOnce("login-deferred", false), 3500);
+          await sleep(400);
+          const { subscriptionId: earlySub } = await resolveIdsForBackend();
+          if (earlySub && clientDebug()) {
+            console.log("[OneSignal] 구독 ID:", earlySub);
+          }
+          void reportStateOnce("session-initial", true);
+          setTimeout(() => void reportStateOnce("session-deferred", false), 3500);
           for (const ms of [6000, 12_000, 20_000] as const) {
-            setTimeout(() => void reportStateOnce(`login-retry-${ms}ms`, false), ms);
+            setTimeout(() => void reportStateOnce(`session-retry-${ms}ms`, false), ms);
           }
           try {
             OneSignal.User?.PushSubscription?.addEventListener?.("change", () => {
@@ -389,10 +398,18 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         } else {
           lastRegisteredKeyRef.current = null;
           logClient("③ logout (비로그인)");
-          await OneSignal.logout();
+          try {
+            await OneSignal.logout();
+          } catch (e) {
+            if (process.env.NODE_ENV === "development") {
+              console.debug("[OneSignal] logout 실패:", e);
+            }
+          }
         }
       } catch (e) {
-        console.error("[OneSignal] login/logout 실패:", e);
+        if (process.env.NODE_ENV === "development") {
+          console.debug("[OneSignal] login/logout 흐름 예외:", e);
+        }
       }
     });
 
