@@ -25,6 +25,14 @@ export function DeferredRealtimeBridges({ userId }: { userId?: string | null }) 
       if (!cancelled) setOneSignalReady(true);
     };
 
+    /** 로그인 세션이 있으면 푸시 init·구독 준비를 기다리지 않고 즉시 마운트(토큰 등록 타이밍 문제 방지) */
+    if (userId) {
+      arm();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
       idleHandle = window.requestIdleCallback(arm, { timeout: 2800 });
     } else {
@@ -38,7 +46,7 @@ export function DeferredRealtimeBridges({ userId }: { userId?: string | null }) 
       }
       if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     };
-  }, []);
+  }, [userId]);
 
   return (
     <>

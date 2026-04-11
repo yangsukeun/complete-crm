@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import OneSignal from "react-onesignal";
-import { clearProfileMeCache } from "@/lib/profile-me-client";
 import { originsEquivalentForSiteUrl } from "@/lib/onesignal/origin-match";
 
 function clientDebug(): boolean {
@@ -71,76 +70,16 @@ function oneSignalSkipInitReason(): string | null {
   return null;
 }
 
-/** Web v16: REST `include_subscription_ids` 는 구독 레코드 id. id 가 비면 token(푸시 엔드포인트) 폴백 시도. */
-async function resolveIdsForBackend(): Promise<{
-  subscriptionId: string | null;
-  onesignalUserId: string | null;
-}> {
-  const sub = OneSignal.User?.PushSubscription;
-  const rawId = sub?.id;
-  const rawToken = sub?.token;
-  let subscriptionId =
-    typeof rawId === "string" && rawId.trim()
-      ? rawId.trim()
-      : rawId != null && String(rawId).trim()
-        ? String(rawId).trim()
-        : null;
-
-  try {
-    const Sub = sub as unknown as {
-      getId?: () => Promise<string | undefined>;
-      getSubscriptionId?: () => Promise<string | undefined>;
-    };
-    if (!subscriptionId && typeof Sub?.getId === "function") {
-      const v = await Sub.getId().catch(() => undefined);
-      subscriptionId = v?.trim() || null;
-    }
-    if (!subscriptionId && typeof Sub?.getSubscriptionId === "function") {
-      const v = await Sub.getSubscriptionId().catch(() => undefined);
-      subscriptionId = v?.trim() || null;
-    }
-  } catch {
-    /* */
-  }
-
-  if (!subscriptionId) {
-    const tok =
-      typeof rawToken === "string" && rawToken.trim()
-        ? rawToken.trim()
-        : rawToken != null && String(rawToken).trim()
-          ? String(rawToken).trim()
-          : null;
-    if (tok && tok.length >= 8) {
-      subscriptionId = tok;
-    }
-  }
-
-  const onesignalUserId = OneSignal.User?.onesignalId?.trim() || null;
-
-  if (verboseOsDebug()) {
-    console.log("[OS DEBUG] resolveIdsForBackend", {
-      pushId: subscriptionId ? `${subscriptionId.slice(0, 8)}…(len=${subscriptionId.length})` : null,
-      optedIn: sub?.optedIn ?? null,
-      hasRawId: Boolean(rawId),
-      hasRawToken: Boolean(rawToken),
-      onesignalUserId: onesignalUserId ? `${onesignalUserId.slice(0, 8)}…` : null,
-    });
-  }
-
-  return { subscriptionId, onesignalUserId };
-}
-
 /**
- * 브라우저에서 OneSignal을 한 번 초기화하고, 로그인 시 Push 구독 ID를 서버에 등록합니다.
+ * 브라우저에서 OneSignal을 한 번 초기화하고, 로그인 시 알림 권한·optIn 을 처리합니다.
  * `OneSignal.login(User.id)` 는 LoginManager 미준비 시 TypeError 가 나는 SDK 버전이 있어 호출하지 않습니다.
  * 푸시 발송은 DB에 저장된 구독 ID(`include_subscription_ids`)를 우선 사용합니다.
+ * 구독 ID 서버 등록은 `OneSignalPushTokenRegister`(providers)에서 수행합니다.
  *
  * 연결 위치: app/layout.tsx → Providers (`src/components/providers.tsx`) 안에서 마운트됨. (_app.tsx 없음, App Router)
  */
 export function OneSignalBridge({ userId }: { userId?: string | null }) {
   const initPromiseRef = useRef<Promise<void> | null>(null);
-  /** 동일 사용자·구독 ID로 register/PATCH 중복 방지 */
-  const lastRegisteredKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
@@ -248,118 +187,12 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
     if (!appId || !initPromiseRef.current) return;
 
     let cancelled = false;
-    let debounceRegister: ReturnType<typeof setTimeout> | null = null;
-
-    let reportStateOnce: (reason: string, force: boolean) => Promise<void>;
-
-    const scheduleRegister = (reason: string) => {
-      if (debounceRegister) clearTimeout(debounceRegister);
-      debounceRegister = setTimeout(() => {
-        debounceRegister = null;
-        void reportStateOnce(reason, false);
-      }, 2000);
-    };
-
-    reportStateOnce = async (reason: string, force: boolean) => {
-      if (cancelled) return;
-      try {
-        const ext = OneSignal.User?.externalId ?? null;
-        const optedIn = OneSignal.User?.PushSubscription?.optedIn ?? null;
-        const { subscriptionId: subId, onesignalUserId: oneId } = await resolveIdsForBackend();
-        /** DB·푸시는 기기마다 다른 Push 구독 ID만 저장. onesignalUserId 는 계정 단위로 동일해 다기기가 1개로 합쳐짐 */
-        const playerForDb = subId?.trim() || null;
-        const registerKey = `${userId ?? ""}|${playerForDb ?? ""}`;
-        if (!playerForDb || !userId) {
-          logClient(`⑧ Push 구독 ID 대기 (${reason})`, {
-            optedIn,
-            expectUserId: Boolean(userId),
-            hasSubscriptionId: Boolean(subId),
-            hasOnesignalUserId: Boolean(oneId),
-          });
-          if (userId) scheduleRegister(`retry-no-subscription:${reason}`);
-          return;
-        }
-        if (!force && lastRegisteredKeyRef.current === registerKey) {
-          logClient("⑧ register 스킵 (이미 동일 키)", { reason });
-          return;
-        }
-
-        logClient(`⑧ 구독·Player ID (${reason})`, {
-          subscriptionId: subId,
-          onesignalUserId: oneId,
-          playerForDb,
-        });
-        if (process.env.NODE_ENV === "production") {
-          console.log("[OneSignal CRM bridge]", reason, {
-            hasSubscriptionId: Boolean(subId),
-            hasOnesignalUserId: Boolean(oneId),
-          });
-        }
-
-        const regRes = await fetch("/api/user/onesignal-register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            subscriptionId: subId ?? "",
-            onesignalUserId: oneId ?? "",
-            externalId: ext ?? "",
-          }),
-        }).catch((e) => {
-          console.error("[OneSignal] register API 실패", e);
-          return null;
-        });
-
-        let registerSaved = false;
-        if (regRes) {
-          const regJson = (await regRes.json().catch(() => null)) as {
-            ok?: boolean;
-            skipped?: boolean;
-            reason?: string;
-            error?: string;
-          } | null;
-          if (verboseOsDebug()) {
-            console.log("[OS DEBUG] onesignal-register 응답", {
-              httpOk: regRes.ok,
-              status: regRes.status,
-              body: regJson,
-            });
-          }
-          if (regRes.ok && regJson?.ok === true && !regJson?.skipped) {
-            registerSaved = true;
-          }
-          if (!regRes.ok && clientDebug()) {
-            console.warn("[OneSignal] register HTTP 실패", regRes.status, regJson);
-          }
-        }
-
-        const patchRes = await fetch("/api/profile/me", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ playerId: playerForDb, oneSignalPlayerId: playerForDb }),
-        }).catch((e) => {
-          console.error("[OneSignal] profile playerId PATCH 실패", e);
-          return null;
-        });
-        if (clientDebug() && patchRes && !patchRes.ok) {
-          console.warn("[OneSignal] PATCH /api/profile/me", patchRes.status, await patchRes.text().catch(() => ""));
-        }
-        if (registerSaved) {
-          lastRegisteredKeyRef.current = registerKey;
-          clearProfileMeCache();
-        }
-      } catch (e) {
-        console.error("[OneSignal] reportState 실패", e);
-      }
-    };
 
     void initPromiseRef.current.then(async () => {
       if (cancelled) return;
       try {
         if (userId) {
-          lastRegisteredKeyRef.current = null;
-          logClient("③ 로그인 세션 — 구독 등록 경로 (login 미사용)", { userId });
+          logClient("③ 로그인 세션 — 권한·optIn (토큰 등록은 OneSignalPushTokenRegister)", { userId });
           await sleep(500);
           try {
             await OneSignal.Notifications?.requestPermission?.();
@@ -371,32 +204,7 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           } catch {
             /* ignore */
           }
-          await sleep(400);
-          const { subscriptionId: earlySub } = await resolveIdsForBackend();
-          if (earlySub && clientDebug()) {
-            console.log("[OneSignal] 구독 ID:", earlySub);
-          }
-          void reportStateOnce("session-initial", true);
-          setTimeout(() => void reportStateOnce("session-deferred", false), 3500);
-          for (const ms of [6000, 12_000, 20_000] as const) {
-            setTimeout(() => void reportStateOnce(`session-retry-${ms}ms`, false), ms);
-          }
-          try {
-            OneSignal.User?.PushSubscription?.addEventListener?.("change", () => {
-              scheduleRegister("PushSubscription.change");
-            });
-          } catch {
-            /* ignore */
-          }
-          try {
-            OneSignal.User?.addEventListener?.("change", () => {
-              scheduleRegister("User.change");
-            });
-          } catch {
-            /* ignore */
-          }
         } else {
-          lastRegisteredKeyRef.current = null;
           logClient("③ logout (비로그인)");
           try {
             await OneSignal.logout();
@@ -408,14 +216,13 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         }
       } catch (e) {
         if (process.env.NODE_ENV === "development") {
-          console.debug("[OneSignal] login/logout 흐름 예외:", e);
+          console.debug("[OneSignal] 세션 흐름 예외:", e);
         }
       }
     });
 
     return () => {
       cancelled = true;
-      if (debounceRegister) clearTimeout(debounceRegister);
     };
   }, [userId]);
 

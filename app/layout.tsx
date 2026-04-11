@@ -9,7 +9,7 @@ import { authWithTimeout } from "@/lib/auth-safe";
 import { buildSwrLayoutFallback, getHeaderBootstrapData } from "@/lib/header-bootstrap";
 import { AppNavClient } from "@/components/app-nav-client";
 import { NotificationEntryBanner } from "@/components/notification-entry-banner";
-/* OneSignal: src/components/providers.tsx 안의 <OneSignalBridge /> — 클라이언트에서 init + 구독 ID 서버 등록. _app.tsx 없음(App Router). */
+/* OneSignal: init·권한은 DeferredRealtimeBridges의 OneSignalBridge, 구독 ID 등록은 providers의 OneSignalPushTokenRegister. */
 import { Providers } from "@/components/providers";
 import "./globals.css";
 

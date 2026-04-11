@@ -11,6 +11,7 @@ import { UrlSearchModeBridge } from "@/components/url-search-mode-bridge";
 import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
 import { LayoutSharedProvider } from "@/components/layout-shared-context";
+import { OneSignalPushTokenRegister } from "@/components/one-signal-push-token-register";
 import type { HeaderBootstrapData, SwrLayoutFallback } from "@/lib/header-bootstrap";
 
 const AIAssistFloat = dynamic(
@@ -63,6 +64,7 @@ export function Providers({
       >
         <LayoutSharedProvider initial={headerBootstrap}>
           <ProfileMeCacheSync userId={session?.user?.id} />
+          <OneSignalPushTokenRegister />
           <DeferredRealtimeBridges userId={session?.user?.id} />
           <AIAssistProvider>
             <UrlSearchModeBridge />
