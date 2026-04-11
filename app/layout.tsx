@@ -44,10 +44,10 @@ const defaultMetadata: Metadata = {
     description: "주식회사 컴플리트 CRM",
     images: ["/icons/icon-192x192.png"],
   },
-  /* 단일 출처 — /api/branding/favicon 이 DB 로고 또는 public/favicon.ico 바이트를 내려줌 */
+  /* 탭 파비콘: favicon API / iOS·PWA 큰 아이콘: PNG 리사이즈(이니셜만 나오는 것 방지) */
   icons: {
     icon: [{ url: "/api/branding/favicon" }],
-    apple: "/api/branding/favicon",
+    apple: [{ url: "/api/branding/pwa-icon?size=180", sizes: "180x180", type: "image/png" }],
   },
   themeColor: "#8B5CF6",
   appleWebApp: {
