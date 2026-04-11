@@ -134,7 +134,8 @@ export async function GET(
       if (!Number.isNaN(sinceDate.getTime())) {
         const [newMessages, readAtByUserId] = await Promise.all([
           prisma.chatMessage.findMany({
-            where: { chatId, createdAt: { gt: sinceDate } },
+            /* gt만 쓰면 동일 createdAt(ms)의 연속 메시지가 누락될 수 있어 gte + 클라이언트 id 중복 제거 */
+            where: { chatId, createdAt: { gte: sinceDate } },
             select: {
               id: true,
               body: true,

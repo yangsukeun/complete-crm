@@ -362,34 +362,25 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [swrChatList, swrChatsLoading, session?.user?.id]);
 
   const fetchMessages = useCallback(
-    async (chatId: string, silent?: boolean, sinceIso?: string | null) => {
+    async (chatId: string, silent = false, sinceIso: string | null = null) => {
       if (!silent) setMessageLoading(true);
       try {
         const url = sinceIso
-          ? apiUrl(`/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}`)
+          ? apiUrl(`/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}&limit=50`)
           : apiUrl(`/api/chats/${chatId}/messages?limit=50&markRead=1`);
         const res = await fetch(url, { credentials: "include" });
-        if (!res.ok) throw new Error("Failed");
+        if (!res.ok) return;
         const raw = await res.json();
         const { messages: list, readAtByUserId: readMap } = parseChatMessagesResponse(raw);
         if (Object.keys(readMap).length > 0) {
           setReadAtByUserId(readMap);
         }
-        if (silent && sinceIso) {
-          if (list.length === 0) return;
+        if (sinceIso) {
           setMessages((prev: Message[]) => {
             const existingIds = new Set(prev.map((m: Message) => m.id));
             const toAdd = list.filter((m: Message) => !existingIds.has(m.id));
             if (toAdd.length === 0) return prev;
             return [...prev, ...toAdd];
-          });
-        } else if (silent) {
-          setMessages((prev: Message[]) => {
-            if (prev.length !== list.length) return list;
-            if (list.length === 0) return prev;
-            if (prev[0]?.id !== list[0]?.id || prev[prev.length - 1]?.id !== list[list.length - 1]?.id)
-              return list;
-            return prev;
           });
         } else {
           setMessages(list);
@@ -402,6 +393,30 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     },
     []
   );
+
+  const fetchMessagesRef = useRef(fetchMessages);
+  useEffect(() => {
+    fetchMessagesRef.current = fetchMessages;
+  }, [fetchMessages]);
+
+  const mutateChatsRef = useRef(mutateChats);
+  useEffect(() => {
+    mutateChatsRef.current = mutateChats;
+  }, [mutateChats]);
+
+  /** 3초 폴링: 즉시 1회(최근 50) + 이후 since 증분 — Realtime 누락 시에도 수신 보장 */
+  useEffect(() => {
+    if (!selectedChatId) return;
+    if (typeof window === "undefined") return;
+    const cid = selectedChatId;
+    void fetchMessagesRef.current(cid, true, null);
+    const pollInterval = window.setInterval(() => {
+      const last = messagesRef.current[messagesRef.current.length - 1];
+      void fetchMessagesRef.current(cid, true, last?.createdAt ?? null);
+      void mutateChatsRef.current();
+    }, 3000);
+    return () => window.clearInterval(pollInterval);
+  }, [selectedChatId]);
 
   useEffect(() => {
     let debounceT: ReturnType<typeof setTimeout> | null = null;
@@ -485,7 +500,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     };
   }, [session?.user?.id]);
 
-  /** 열린 방만 필터 구독 — 레이아웃·pathname 과 분리, stale 방 이벤트는 ref 로 차단 */
+  /** 열린 방만 postgres_changes 구독 — 폴링은 별도 useEffect */
   useEffect(() => {
     const sessionUserId = session?.user?.id;
     if (!selectedChatId || !sessionUserId) return;
@@ -495,35 +510,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const roomId = selectedChatId;
     let cancelled = false;
     let handle: RealtimeSubscriptionHandle | null = null;
-    const pollInterval = window.setInterval(async () => {
-      if (selectedChatIdRef.current !== roomId) return;
-      if (cancelled) return;
-      try {
-        const res = await fetch(apiUrl(`/api/chats/${roomId}/messages?limit=50&markRead=1`), {
-          credentials: "include",
-        });
-        if (!res.ok) return;
-        const raw = await res.json();
-        const { messages: fetched } = parseChatMessagesResponse(raw);
-
-        setMessages((prev) => {
-          const existing = new Set(prev.map((m) => m.id));
-          const newOnes = fetched.filter((m) => !existing.has(m.id));
-          if (newOnes.length === 0) return prev;
-          setTimeout(() => scrollToBottom(), 80);
-          return [...prev, ...newOnes];
-        });
-
-        void mutateChats();
-      } catch {
-        /* 폴링 실패 무시 */
-      }
-    }, 3000);
 
     void (async () => {
       const h = await subscribeChatMessagesForChatRoom(sessionUserId, roomId, ({ payload }) => {
         if (cancelled) return;
-        if (selectedChatIdRef.current !== roomId) return;
 
         const p = parseChatMessagePgPayload(payload);
         if (!p) return;
@@ -542,8 +532,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
            */
           if (id && (!chatIdFromPayload || !bodyFromPayload)) {
             const last = messagesRef.current[messagesRef.current.length - 1];
-            void fetchMessages(roomId, true, last?.createdAt ?? null);
-            void mutateChats();
+            void fetchMessagesRef.current(roomId, true, last?.createdAt ?? null);
+            void mutateChatsRef.current();
             return;
           }
           if (id && senderId) {
@@ -566,11 +556,11 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
               return [...prev, { id, body, createdAt, isDeleted, user }];
             });
             setTimeout(() => scrollToBottom(), 80);
-            void mutateChats();
+            void mutateChatsRef.current();
           } else {
             const last = messagesRef.current[messagesRef.current.length - 1];
-            void fetchMessages(roomId, true, last?.createdAt ?? null);
-            void mutateChats();
+            void fetchMessagesRef.current(roomId, true, last?.createdAt ?? null);
+            void mutateChatsRef.current();
           }
         }
         if (p.eventType === "UPDATE" && p.new) {
@@ -600,7 +590,6 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
 
     return () => {
       cancelled = true;
-      window.clearInterval(pollInterval);
       try {
         handle?.unsubscribe();
       } catch {
@@ -654,20 +643,6 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     const id = window.setInterval(tick, 24_000);
     return () => window.clearInterval(id);
   }, [selectedChatId]);
-
-  /** 탭 복귀 시 최신 메시지 보강(실시간 이벤트 놓침·모바일 백그라운드) */
-  useEffect(() => {
-    if (!selectedChatId) return;
-    const onVis = () => {
-      if (document.visibilityState !== "visible") return;
-      const cid = selectedChatIdRef.current;
-      if (!cid) return;
-      const last = messagesRef.current[messagesRef.current.length - 1];
-      void fetchMessages(cid, true, last?.createdAt ?? null);
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [selectedChatId, fetchMessages]);
 
   useEffect(() => {
     if (modalOpen) {
