@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { cookies, headers } from "next/headers";
 import { getCompanyLogoUrl } from "@/lib/header-bootstrap";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -131,7 +132,9 @@ export default async function RootLayout({
         >
           <AppNavClient />
           <main>
-            <NotificationEntryBanner />
+            <Suspense fallback={null}>
+              <NotificationEntryBanner />
+            </Suspense>
             {children}
           </main>
           <Toaster richColors position="top-center" />

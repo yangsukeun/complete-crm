@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import OneSignal from "react-onesignal";
 import { clearProfileMeCache } from "@/lib/profile-me-client";
+import { originsEquivalentForSiteUrl } from "@/lib/onesignal/origin-match";
 
 function clientDebug(): boolean {
   return (
@@ -53,9 +54,10 @@ function oneSignalSkipInitReason(): string | null {
   if (!configured) return null;
 
   try {
-    const expected = new URL(configured).origin;
-    if (window.location.origin !== expected) {
-      return `현재 ${window.location.origin} — 허용 프로덕션 출처는 ${expected} 입니다. Vercel 프리뷰·스테이징이면 대시보드에 해당 출처를 추가하거나, 이 환경에서는 NEXT_PUBLIC_ONESIGNAL_APP_ID 를 비워 주세요.`;
+    const expectedOrigin = new URL(configured).origin;
+    const current = window.location.origin;
+    if (!originsEquivalentForSiteUrl(current, expectedOrigin)) {
+      return `현재 ${current} — 설정 출처는 ${expectedOrigin} 입니다(www/apex는 동일 사이트로 봄). Vercel 프리뷰 등이면 대시보드에 해당 출처를 추가하거나 NEXT_PUBLIC_ONESIGNAL_APP_ID 를 비워 주세요.`;
     }
   } catch {
     return null;
@@ -155,7 +157,7 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
     if (!initPromiseRef.current) {
       const safariWebId = process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID?.trim();
 
-      initPromiseRef.current = OneSignal.init({
+      const initObject: Parameters<typeof OneSignal.init>[0] = {
         appId,
         ...(safariWebId ? { safari_web_id: safariWebId } : {}),
         serviceWorkerPath: "/OneSignalSDKWorker.js",
@@ -197,8 +199,22 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
             ],
           },
         },
-      })
-        .then(() => {
+      };
+
+      if (verboseOsDebug()) {
+        console.log("[OS DEBUG] OneSignal.init 설정", {
+          appIdTail: String(appId).slice(-8),
+          safariWebId: safariWebId ? `${safariWebId.slice(0, 6)}…` : null,
+          allowLocalhostAsSecureOrigin: initObject.allowLocalhostAsSecureOrigin,
+          serviceWorkerPath: initObject.serviceWorkerPath,
+          serviceWorkerScope: initObject.serviceWorkerParam?.scope ?? null,
+          origin: typeof window !== "undefined" ? window.location.origin : null,
+        });
+      }
+
+      initPromiseRef.current = (async () => {
+        try {
+          await OneSignal.init(initObject);
           if (clientDebug() && OneSignal.Debug?.setLogLevel) {
             try {
               OneSignal.Debug.setLogLevel("debug");
@@ -207,16 +223,17 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
             }
           }
           logClient("② init 완료", { serviceWorker: "/OneSignalSDKWorker.js" });
-        })
-        .catch((err) => {
-          const msg = typeof err === "string" ? err : String(err?.message ?? err);
+        } catch (err: unknown) {
+          const msg = typeof err === "string" ? err : String((err as Error)?.message ?? err);
           if (msg.includes("already initialized")) {
             logClient("② init 이미 됨 (already initialized)");
-            return undefined;
+            return;
           }
-          console.error("[OneSignal] init 실패:", err);
-          throw err;
-        });
+          if (process.env.NODE_ENV === "development") {
+            console.debug("[OneSignal] init 실패:", err);
+          }
+        }
+      })();
     }
   }, []);
 
