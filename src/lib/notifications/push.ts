@@ -48,10 +48,6 @@ function publicAppOriginForPush(): string {
   return envUrl;
 }
 
-function sleepPush(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 function absoluteUrlForPush(href: string | undefined): string | undefined {
   if (!href?.trim()) return undefined;
   const h = href.trim();
@@ -99,9 +95,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       oneSignalPlayerId: string | null;
       playerId?: string | null;
       playerIds?: string[] | null;
-      lastActiveAt: Date | null;
     };
-    let presenceRows: Row[] = [];
     try {
 
       function subscriptionIdsFromRow(r: Row): string[] {
@@ -124,7 +118,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       try {
         rows = await prisma.user.findMany({
           where: { id: { in: externalIds } },
-          select: { id: true, playerIds: true, oneSignalPlayerId: true, playerId: true, lastActiveAt: true },
+          select: { id: true, playerIds: true, oneSignalPlayerId: true, playerId: true },
         });
       } catch (firstErr) {
         const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
@@ -135,7 +129,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
           try {
             rows = await prisma.user.findMany({
               where: { id: { in: externalIds } },
-              select: { id: true, oneSignalPlayerId: true, playerId: true, lastActiveAt: true },
+              select: { id: true, oneSignalPlayerId: true, playerId: true },
             });
             rows = rows.map((r) => ({ ...r, playerIds: [] }));
           } catch (secondErr) {
@@ -146,7 +140,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
               });
               rows = await prisma.user.findMany({
                 where: { id: { in: externalIds } },
-                select: { id: true, oneSignalPlayerId: true, lastActiveAt: true },
+                select: { id: true, oneSignalPlayerId: true },
               });
               rows = rows.map((r) => ({ ...r, playerId: null, playerIds: [] }));
             } else {
@@ -159,7 +153,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
           });
           rows = await prisma.user.findMany({
             where: { id: { in: externalIds } },
-            select: { id: true, oneSignalPlayerId: true, lastActiveAt: true },
+            select: { id: true, oneSignalPlayerId: true },
           });
           rows = rows.map((r) => ({ ...r, playerId: null, playerIds: [] }));
         } else {
@@ -182,7 +176,6 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         }
       }
       subscriptionIds = [...all];
-      presenceRows = rows;
     } catch (dbErr) {
       console.error("[OneSignal push] DB 조회 실패 → external_id만 사용", dbErr);
     }
@@ -227,15 +220,9 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     };
     if (launchUrl) baseBody.web_url = launchUrl;
 
-    const STALE_PRESENCE_MS = 3 * 60 * 1000;
     const singleRecipient = externalIds.length === 1;
-    const row0 = singleRecipient ? presenceRows.find((r) => r.id === externalIds[0]) : undefined;
-    const lastAt = row0?.lastActiveAt ?? null;
-    const likelyAwayFromCrm =
-      singleRecipient && (!lastAt || Date.now() - new Date(lastAt).getTime() > STALE_PRESENCE_MS);
-
-    const webPushTopicForSingle =
-      singleRecipient && subscriptionIds.length > 0
+    const webPushTopic =
+      singleRecipient
         ? `crm-${externalIds[0]}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
         : undefined;
 
@@ -284,30 +271,26 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       return typeof recipients === "number" ? recipients : 0;
     }
 
-    if (subscriptionIds.length > 0) {
-      const body1: Record<string, unknown> = { ...baseBody, include_subscription_ids: subscriptionIds };
-      if (webPushTopicForSingle) body1.web_push_topic = webPushTopicForSingle;
-      const r1 = await postOneSignal(body1);
-      if (r1 === 0) {
-        const body2: Record<string, unknown> = {
-          ...baseBody,
-          include_aliases: { external_id: externalIds },
-        };
-        if (webPushTopicForSingle) body2.web_push_topic = webPushTopicForSingle;
-        console.log("[OneSignal push] 구독 ID 발송 수신 0 → external_id 재시도");
-        await postOneSignal(body2);
-      } else if (likelyAwayFromCrm && webPushTopicForSingle) {
-        await sleepPush(2200);
-        const body3: Record<string, unknown> = {
-          ...baseBody,
-          include_aliases: { external_id: externalIds },
-          web_push_topic: webPushTopicForSingle,
-        };
-        console.log("[OneSignal push] CRM 포그라운드 3분 초과 → external_id 추가 발송(다른 기기)");
-        await postOneSignal(body3);
-      }
-    } else {
-      await postOneSignal({ ...baseBody, include_aliases: { external_id: externalIds } });
+    /**
+     * ① external_id(CRM user id) 우선 — OneSignal.login/Transfer 로 묶인 모든 구독(모바일·DB 미등록 기기 포함).
+     * 예전에는 DB 구독 ID만 먼저 보내 수신자>0 이면 모바일용 external_id 2차를 생략해 휴대폰이 빠지는 경우가 있었음.
+     * ② 수신 0일 때만 DB의 include_subscription_ids 폴백(레거시·미로그인 구독).
+     */
+    const extBody: Record<string, unknown> = {
+      ...baseBody,
+      include_aliases: { external_id: externalIds },
+    };
+    if (webPushTopic) extBody.web_push_topic = webPushTopic;
+    const rExt = await postOneSignal(extBody);
+
+    if (rExt <= 0 && subscriptionIds.length > 0) {
+      console.log("[OneSignal push] external_id 수신 0 또는 실패 → DB 구독 ID 폴백");
+      const subBody: Record<string, unknown> = {
+        ...baseBody,
+        include_subscription_ids: subscriptionIds,
+      };
+      if (webPushTopic) subBody.web_push_topic = webPushTopic;
+      await postOneSignal(subBody);
     }
   } catch (e) {
     console.error("[OneSignal push] 예외 (로그만, 호출 API 500 전파 안 함)", {
