@@ -175,9 +175,8 @@ export function AppNav() {
       if (debounceT) clearTimeout(debounceT);
       debounceT = setTimeout(() => {
         debounceT = null;
-        if (typeof document !== "undefined" && document.visibilityState === "visible") {
-          void swrMutate(SWR_KEYS.chatsList);
-        }
+        /** 백그라운드 탭에서도 캐시 갱신 — 포그라운드로 돌아올 때 목록이 오래된 채로 남는 문제 방지 */
+        void swrMutate(SWR_KEYS.chatsList);
       }, 400);
     };
     const onRead = () => void swrMutate(SWR_KEYS.chatsList);

@@ -421,17 +421,15 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       if (debounceT) clearTimeout(debounceT);
       debounceT = setTimeout(() => {
         debounceT = null;
-        if (typeof document !== "undefined" && document.visibilityState === "visible") {
-          void mutateChats();
-          // [FIX] 현재 열려있는 채팅방의 메시지도 재조회 — Supabase payload.new가 RLS로 비어오면
-          //       chat-realtime 핸들러로는 메시지가 추가되지 않으므로 폴링 방식으로 보완
-          //       since= 파라미터로 마지막 메시지 이후분만 조회해 속도 최적화
-          const cid = selectedChatIdRef.current;
-          if (cid) {
-            const lastMsg = messagesRef.current[messagesRef.current.length - 1];
-            const sinceIso = lastMsg?.createdAt ?? null;
-            void fetchMessages(cid, true, sinceIso);
-          }
+        /** 다른 탭·창이 위에 있어도(visibility hidden) 수신 반영 — 다기기·멀티탭 동기화 */
+        void mutateChats();
+        // [FIX] 현재 열려있는 채팅방의 메시지도 재조회 — Supabase payload.new가 RLS로 비어오면
+        //       chat-realtime 핸들러로는 메시지가 추가되지 않으므로 폴링 방식으로 보완
+        const cid = selectedChatIdRef.current;
+        if (cid) {
+          const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+          const sinceIso = lastMsg?.createdAt ?? null;
+          void fetchMessages(cid, true, sinceIso);
         }
       }, 320);
     };

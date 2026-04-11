@@ -120,7 +120,18 @@ export async function subscribeChatMessagesGlobal(
         onEvent({ chatId: chatId ?? "", payload });
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (err && typeof console !== "undefined" && console.warn) {
+        console.warn("[RT] ChatMessage 전역 구독 오류:", err);
+      }
+      if (
+        (status === "CHANNEL_ERROR" || status === "TIMED_OUT") &&
+        typeof console !== "undefined" &&
+        console.warn
+      ) {
+        console.warn("[RT] ChatMessage 전역 구독 상태:", status);
+      }
+    });
 
   return {
     unsubscribe: () => {
