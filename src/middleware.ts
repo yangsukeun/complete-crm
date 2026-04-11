@@ -45,9 +45,11 @@ function hasAuthCookie(request: NextRequest): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  /** 예전 캐시·북마크의 /manifest.json → Next 동적 웹 매니페스트 */
+  /** 예전 PWA·캐시가 /manifest.json 을 요청하면 웹 매니페스트로 보냄(304로 구버전 고착 방지) */
   if (pathname === "/manifest.json") {
-    return NextResponse.redirect(new URL("/manifest.webmanifest", request.url), 308);
+    const res = NextResponse.redirect(new URL("/manifest.webmanifest", request.url), 308);
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res;
   }
 
   /* 브라우저 기본 /favicon.ico 요청도 DB 로고와 맞춤 (matcher에서 제외돼 있으면 여기까지 오지 않음) */

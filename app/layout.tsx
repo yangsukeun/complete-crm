@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { cookies, headers } from "next/headers";
 import { getCompanyLogoUrl } from "@/lib/header-bootstrap";
@@ -49,12 +49,15 @@ const defaultMetadata: Metadata = {
     icon: [{ url: "/api/branding/favicon" }],
     apple: [{ url: "/api/branding/pwa-icon?size=180", sizes: "180x180", type: "image/png" }],
   },
-  themeColor: "#8B5CF6",
   appleWebApp: {
     capable: true,
     title: "COMPLETE CRM",
     statusBarStyle: "default",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#8B5CF6",
 };
 
 /** 회사 로고(헤더와 동일)가 있으면 OG/Twitter 이미지에 직접 URL — 파비콘은 항상 /api/branding/favicon */
