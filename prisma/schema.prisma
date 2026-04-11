@@ -149,7 +149,9 @@ model User {
   badgePreset   String?   // 헤더 뱃지/아바타 스타일: default | violet | amber | emerald | blue
   preferredAiProvider String?   // AI 비서: gemini | openai | notebook | claude (null이면 서버 기본값)
   oneSignalPlayerId String?     // OneSignal 구독/Player ID (호환·레거시 필드명)
-  playerId          String?     // OneSignal Player / subscription ID (푸시 REST include_player_ids)
+  playerId          String?     // OneSignal Player / subscription ID (마지막 등록 기기 — 레거시·디버그)
+  /// 등록된 모든 기기의 구독 ID (웹 푸시 등). 발송 시 include_subscription_ids 에 병합 사용
+  playerIds         String[]    @default([])
   lastActiveAt      DateTime?   // 마지막 접속 시각 (heartbeat — 온라인 여부 판단용)
   /// 회사/개인 모드 선호 — 다른 PC·쿠키 없을 때 복구 (app_mode 쿠키와 동기화)
   lastAppMode   String?

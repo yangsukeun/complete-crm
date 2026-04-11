@@ -90,16 +90,63 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
 
     let subscriptionIds: string[] = [];
     try {
-      type Row = { id: string; oneSignalPlayerId: string | null; playerId?: string | null };
+      type Row = {
+        id: string;
+        oneSignalPlayerId: string | null;
+        playerId?: string | null;
+        playerIds?: string[] | null;
+      };
+
+      function subscriptionIdsFromRow(r: Row): string[] {
+        const set = new Set<string>();
+        const add = (s: string | null | undefined) => {
+          const t = s?.trim();
+          if (t && t.length > 8) set.add(t);
+        };
+        if (Array.isArray(r.playerIds)) {
+          for (const x of r.playerIds) {
+            if (typeof x === "string") add(x);
+          }
+        }
+        add(r.playerId);
+        add(r.oneSignalPlayerId);
+        return [...set];
+      }
+
       let rows: Row[];
       try {
         rows = await prisma.user.findMany({
           where: { id: { in: externalIds } },
-          select: { id: true, oneSignalPlayerId: true, playerId: true },
+          select: { id: true, playerIds: true, oneSignalPlayerId: true, playerId: true },
         });
       } catch (firstErr) {
         const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-        if (/playerId|Unknown column|does not exist/i.test(msg)) {
+        if (/playerIds|Unknown column|does not exist|Unknown field/i.test(msg)) {
+          console.warn("[OneSignal push] ② playerIds 컬럼 없음 → playerId/oneSignalPlayerId만 조회", {
+            message: msg.slice(0, 200),
+          });
+          try {
+            rows = await prisma.user.findMany({
+              where: { id: { in: externalIds } },
+              select: { id: true, oneSignalPlayerId: true, playerId: true },
+            });
+            rows = rows.map((r) => ({ ...r, playerIds: [] }));
+          } catch (secondErr) {
+            const msg2 = secondErr instanceof Error ? secondErr.message : String(secondErr);
+            if (/playerId|Unknown column|does not exist/i.test(msg2)) {
+              console.warn("[OneSignal push] ② playerId 컬럼 없음 → oneSignalPlayerId만 조회", {
+                message: msg2.slice(0, 200),
+              });
+              rows = await prisma.user.findMany({
+                where: { id: { in: externalIds } },
+                select: { id: true, oneSignalPlayerId: true },
+              });
+              rows = rows.map((r) => ({ ...r, playerId: null, playerIds: [] }));
+            } else {
+              throw secondErr;
+            }
+          }
+        } else if (/playerId|Unknown column|does not exist/i.test(msg)) {
           console.warn("[OneSignal push] ② playerId 컬럼 없음 → oneSignalPlayerId만 조회", {
             message: msg.slice(0, 200),
           });
@@ -107,7 +154,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
             where: { id: { in: externalIds } },
             select: { id: true, oneSignalPlayerId: true },
           });
-          rows = rows.map((r) => ({ ...r, playerId: null }));
+          rows = rows.map((r) => ({ ...r, playerId: null, playerIds: [] }));
         } else {
           throw firstErr;
         }
@@ -116,13 +163,18 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         rowCount: rows.length,
         ids: rows.map((r) => ({
           userId: r.id,
-          hasPlayerId: Boolean(r.playerId?.trim()),
-          hasLegacyField: Boolean(r.oneSignalPlayerId?.trim()),
+          subscriptionCount: subscriptionIdsFromRow(r).length,
+          hasLegacyPlayerId: Boolean(r.playerId?.trim()),
+          hasLegacyOneSignal: Boolean(r.oneSignalPlayerId?.trim()),
         })),
       });
-      subscriptionIds = rows
-        .map((r) => (r.playerId?.trim() || r.oneSignalPlayerId?.trim()) ?? "")
-        .filter((s): s is string => Boolean(s && s.length > 8));
+      const all = new Set<string>();
+      for (const r of rows) {
+        for (const sid of subscriptionIdsFromRow(r)) {
+          all.add(sid);
+        }
+      }
+      subscriptionIds = [...all];
     } catch (dbErr) {
       console.error("[OneSignal push] DB 조회 실패 → external_id만 사용", dbErr);
     }

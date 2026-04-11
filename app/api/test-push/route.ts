@@ -16,29 +16,59 @@ function missingOneSignalEnvVars(): string[] {
   return missing;
 }
 
-async function resolveSubscriptionId(userId: string): Promise<string | null> {
-  type Row = { oneSignalPlayerId: string | null; playerId?: string | null };
+async function resolveSubscriptionIds(userId: string): Promise<string[]> {
+  type Row = { oneSignalPlayerId: string | null; playerId?: string | null; playerIds?: string[] | null };
   let row: Row | null;
   try {
     row = await prisma.user.findUnique({
       where: { id: userId },
-      select: { oneSignalPlayerId: true, playerId: true },
+      select: { playerIds: true, oneSignalPlayerId: true, playerId: true },
     });
   } catch (firstErr) {
     const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-    if (/playerId|Unknown column|does not exist/i.test(msg)) {
+    if (/playerIds|Unknown column|does not exist|Unknown field/i.test(msg)) {
+      try {
+        row = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { oneSignalPlayerId: true, playerId: true },
+        });
+        row = row ? { ...row, playerIds: [] } : null;
+      } catch (secondErr) {
+        const msg2 = secondErr instanceof Error ? secondErr.message : String(secondErr);
+        if (/playerId|Unknown column|does not exist/i.test(msg2)) {
+          row = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { oneSignalPlayerId: true },
+          });
+          row = row ? { ...row, playerId: null, playerIds: [] } : null;
+        } else {
+          throw secondErr;
+        }
+      }
+    } else if (/playerId|Unknown column|does not exist/i.test(msg)) {
       row = await prisma.user.findUnique({
         where: { id: userId },
         select: { oneSignalPlayerId: true },
       });
-      row = row ? { ...row, playerId: null } : null;
+      row = row ? { ...row, playerId: null, playerIds: [] } : null;
     } else {
       throw firstErr;
     }
   }
-  if (!row) return null;
-  const sid = (row.playerId?.trim() || row.oneSignalPlayerId?.trim()) ?? "";
-  return sid.length > 8 ? sid : null;
+  if (!row) return [];
+  const set = new Set<string>();
+  const add = (s: string | null | undefined) => {
+    const t = s?.trim();
+    if (t && t.length > 8) set.add(t);
+  };
+  if (Array.isArray(row.playerIds)) {
+    for (const x of row.playerIds) {
+      if (typeof x === "string") add(x);
+    }
+  }
+  add(row.playerId);
+  add(row.oneSignalPlayerId);
+  return [...set];
 }
 
 /**
@@ -71,14 +101,14 @@ async function handleTestPush() {
     const restKey =
       process.env.ONESIGNAL_REST_API_KEY?.trim() || process.env.ONE_SIGNAL_REST_API_KEY!.trim();
 
-    const subscriptionId = await resolveSubscriptionId(session.user.id);
-    if (!subscriptionId) {
+    const subscriptionIds = await resolveSubscriptionIds(session.user.id);
+    if (subscriptionIds.length === 0) {
       return NextResponse.json(
         {
           ok: false,
           sent: false,
           error:
-            "DB에 OneSignal 구독 ID가 없습니다. 브라우저에서 푸시 허용 후 앱이 playerId/oneSignalPlayerId를 저장했는지 확인하세요.",
+            "DB에 OneSignal 구독 ID가 없습니다. 브라우저에서 푸시 허용 후 앱이 playerIds/playerId를 저장했는지 확인하세요.",
           userId: session.user.id,
         },
         { status: 400 }
@@ -89,12 +119,12 @@ async function handleTestPush() {
       userId: session.user.id,
       auth: "Key <REST_API_KEY>",
     });
-    console.log(`[Push] sending to subscriptionId: ${subscriptionId}`);
+    console.log(`[Push] sending to subscriptionIds (${subscriptionIds.length}):`, subscriptionIds);
 
     const body = {
       app_id: appId,
       target_channel: "push" as const,
-      include_subscription_ids: [subscriptionId],
+      include_subscription_ids: subscriptionIds,
       contents: { en: "테스트 알림입니다", ko: "테스트 알림입니다" },
       headings: { en: "COMPLETE CRM", ko: "COMPLETE CRM" },
     };
@@ -127,7 +157,9 @@ async function handleTestPush() {
       sent,
       status: res.status,
       userId: session.user.id,
-      subscriptionIdPreview: `${subscriptionId.slice(0, 6)}…`,
+      subscriptionCount: subscriptionIds.length,
+      subscriptionIdPreview:
+        subscriptionIds[0] != null ? `${subscriptionIds[0].slice(0, 6)}…` : null,
       oneSignal: parsed ?? { raw: text.slice(0, 500) },
       env: {
         hasNextPublicAppId: true,

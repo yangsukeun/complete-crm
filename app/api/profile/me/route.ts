@@ -215,6 +215,7 @@ async function userUpdateWithSchemaFallback(
       }
       if (unknownish && keys.length > 1) {
         const dropOrder = [
+          "playerIds",
           "playerId",
           "oneSignalPlayerId",
           "badgePreset",
