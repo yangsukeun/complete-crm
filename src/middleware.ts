@@ -18,7 +18,7 @@ const NEXTAUTH_COOKIES = [
 function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/api/")) return true;
   // PWA manifest / 푸시 SW — 인증 없이 원본(JSON·JS)이 나가야 함 (리다이렉트 시 콘솔 Manifest·worker 오류)
-  if (pathname === "/manifest.json") return true;
+  if (pathname === "/manifest.json" || pathname === "/manifest.webmanifest") return true;
   if (pathname === "/OneSignalSDKWorker.js" || pathname === "/OneSignalSDKUpdaterWorker.js") return true;
   if (pathname.startsWith("/push/onesignal/")) return true;
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
@@ -44,6 +44,11 @@ function hasAuthCookie(request: NextRequest): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  /** 예전 캐시·북마크의 /manifest.json → Next 동적 웹 매니페스트 */
+  if (pathname === "/manifest.json") {
+    return NextResponse.redirect(new URL("/manifest.webmanifest", request.url), 308);
+  }
 
   /* 브라우저 기본 /favicon.ico 요청도 DB 로고와 맞춤 (matcher에서 제외돼 있으면 여기까지 오지 않음) */
   if (pathname === "/favicon.ico") {

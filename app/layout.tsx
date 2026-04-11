@@ -31,7 +31,7 @@ const geistMono = Geist_Mono({
 const defaultMetadata: Metadata = {
   title: "COMPLETE CRM",
   description: "주식회사 컴플리트 CRM",
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   // [PERF-2차] 존재하지 않는 og 경로(404) 방지 — manifest와 동일 아이콘 사용
   openGraph: {
     title: "COMPLETE CRM",
