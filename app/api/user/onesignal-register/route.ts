@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
+import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
- * 발송 시 REST는 include_aliases.external_id 와 DB에 저장된 구독 ID(include_subscription_ids)를 함께 사용합니다.
+ * 발송 시 `include_subscription_ids`(DB) 우선, 없으면 `include_aliases.external_id`.
+ * SDK `login()` 미사용 시 anonymous 구독이 남을 수 있어, 저장 직후 Transfer API로 external_id 를 연결합니다.
  */
 export async function POST(req: Request) {
   try {
@@ -47,7 +49,20 @@ export async function POST(req: Request) {
     await saveOneSignalIdsToUser(session.user.id, store);
     console.log("[OneSignal register API] ⑦ DB 반영 완료", { userId: session.user.id });
 
-    return NextResponse.json({ ok: true, savedSubscriptionId: true });
+    const link = await transferOneSignalSubscriptionToExternalId(store, session.user.id);
+    if (!link.ok) {
+      console.warn("[OneSignal register API] external_id 연결(Transfer) 실패 — 푸시는 DB 구독 ID로만 시도됨", {
+        userId: session.user.id,
+        status: link.status,
+        detail: link.detail?.slice(0, 200),
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      savedSubscriptionId: true,
+      oneSignalExternalLinked: link.ok,
+    });
   } catch (e) {
     console.error("[OneSignal register API] 예외 (500 원인 확인)", e);
     const detail = e instanceof Error ? e.message : String(e);

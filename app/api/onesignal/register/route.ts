@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
+import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
 
 /**
  * 별칭 엔드포인트: `/api/user/onesignal-register` 와 동일 목적.
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
         select: { playerIds: true },
       });
       if (user?.playerIds?.includes(playerId)) {
+        void transferOneSignalSubscriptionToExternalId(playerId, session.user.id);
         return NextResponse.json({ ok: true, alreadyRegistered: true });
       }
     } catch {
@@ -40,7 +42,8 @@ export async function POST(req: Request) {
     }
 
     await saveOneSignalIdsToUser(session.user.id, playerId);
-    return NextResponse.json({ ok: true });
+    const link = await transferOneSignalSubscriptionToExternalId(playerId, session.user.id);
+    return NextResponse.json({ ok: true, oneSignalExternalLinked: link.ok });
   } catch (e) {
     console.error("[onesignal/register]", e);
     return NextResponse.json({ error: "저장 실패" }, { status: 500 });
