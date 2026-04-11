@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
+
 const APP_ID = process.env.ONESIGNAL_APP_ID || process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 const REST_KEY =
   process.env.ONESIGNAL_REST_API_KEY?.trim() ||
@@ -16,7 +18,7 @@ export async function transferOneSignalSubscriptionToExternalId(
 ): Promise<{ ok: boolean; status?: number; detail?: string }> {
   const sub = subscriptionId.trim();
   const ext = externalId.trim();
-  if (!APP_ID?.trim() || !REST_KEY || !sub || sub.length < 8 || !ext) {
+  if (!APP_ID?.trim() || !REST_KEY || !sub || !isLikelyOneSignalSubscriptionId(sub) || !ext) {
     return { ok: false, detail: "missing_app_id_key_or_ids" };
   }
 

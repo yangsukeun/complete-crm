@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
+import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
@@ -43,6 +44,15 @@ export async function POST(req: Request) {
         skipped: true,
         reason: "subscription_id_required",
         hint: "PushSubscription.id(구독 ID)가 준비된 뒤에 다시 호출하세요. onesignalUserId 만으로는 저장하지 않습니다.",
+      });
+    }
+
+    if (!isLikelyOneSignalSubscriptionId(store)) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "invalid_subscription_id_format",
+        hint: "구독 ID는 OneSignal이 부여한 UUID 형식이어야 합니다. 푸시 토큰 문자열은 구독 ID가 아닙니다. 잠시 후 SDK에서 id가 채워지면 자동으로 재시도됩니다.",
       });
     }
 

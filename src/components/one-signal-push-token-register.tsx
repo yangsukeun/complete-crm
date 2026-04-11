@@ -2,20 +2,24 @@
 
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef } from "react";
+import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { clearProfileMeCache } from "@/lib/profile-me-client";
 
 type OneSignalDefault = typeof import("react-onesignal")["default"];
 
-type WindowWithDeferred = Window & {
-  OneSignalDeferred?: Array<(oneSignal: unknown) => void | Promise<void>>;
-};
+/** react-onesignal 래퍼는 window.OneSignal 게터를 쓰지만, 네이티브 객체에만 있는 비동기 API가 있을 수 있어 우선 조회합니다. */
+function getNativePushSubscription(): unknown {
+  if (typeof window === "undefined") return undefined;
+  const w = window as Window & { OneSignal?: { User?: { PushSubscription?: unknown } } };
+  return w.OneSignal?.User?.PushSubscription;
+}
 
 async function resolveSubscriptionId(OS: OneSignalDefault): Promise<{
   subscriptionId: string | null;
   onesignalUserId: string | null;
   externalId: string | null;
 }> {
-  const sub = OS.User?.PushSubscription;
+  const sub = (getNativePushSubscription() as typeof OS.User.PushSubscription | undefined) ?? OS.User?.PushSubscription;
   const rawId = sub?.id;
   let subscriptionId =
     typeof rawId === "string" && rawId.trim()
@@ -41,15 +45,8 @@ async function resolveSubscriptionId(OS: OneSignalDefault): Promise<{
     /* */
   }
 
-  if (!subscriptionId) {
-    const rawToken = sub?.token;
-    const tok =
-      typeof rawToken === "string" && rawToken.trim()
-        ? rawToken.trim()
-        : rawToken != null && String(rawToken).trim()
-          ? String(rawToken).trim()
-          : null;
-    if (tok && tok.length >= 8) subscriptionId = tok;
+  if (subscriptionId && !isLikelyOneSignalSubscriptionId(subscriptionId)) {
+    subscriptionId = null;
   }
 
   const onesignalUserId = OS.User?.onesignalId?.trim() || null;
@@ -81,14 +78,7 @@ export function OneSignalPushTokenRegister() {
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       console.log("[TOKEN] 등록 결과(/api/user/onesignal-register):", { ok: res.ok, data });
 
-      const ok = res.ok && data?.ok === true && data?.skipped !== true;
-      if (ok) {
-        await fetch("/api/profile/me", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ playerId: subscriptionId, oneSignalPlayerId: subscriptionId }),
-        }).catch(() => null);
+      if (res.ok && data?.ok === true && data?.skipped !== true) {
         clearProfileMeCache();
       }
 
@@ -106,42 +96,23 @@ export function OneSignalPushTokenRegister() {
 
   const tryDeferredAndReact = useCallback(
     async (userId: string) => {
-      const w = window as WindowWithDeferred;
-      w.OneSignalDeferred = w.OneSignalDeferred ?? [];
-      const deferred = w.OneSignalDeferred;
-      if (Array.isArray(deferred)) {
-        console.log("[TOKEN] OneSignalDeferred 있음 (큐 길이:", deferred.length, ")");
-        deferred.push(async (os: unknown) => {
-          console.log("[TOKEN] Deferred 콜백 os:", os);
-          const o = os as {
-            User?: { PushSubscription?: { id?: string }; onesignalId?: string; externalId?: string };
-          };
-          const id = o?.User?.PushSubscription?.id;
-          console.log("[TOKEN] 구독 ID(Deferred):", id);
-          if (typeof id === "string" && id.trim().length >= 8) {
-            await registerWithIds(
-              userId,
-              id.trim(),
-              o.User?.onesignalId?.trim() ?? null,
-              o.User?.externalId?.trim() ?? null
-            );
-          }
-        });
-      }
-
       const OneSignal = (await import("react-onesignal")).default;
+
       let subscriptionId: string | null = null;
       let onesignalUserId: string | null = null;
       let externalId: string | null = null;
-      for (let i = 0; i < 24; i++) {
+      /** optIn·권한 후 id가 늦게 채워지는 경우가 많아 v16 권장 대기 시간을 넉넉히 둠 */
+      const maxAttempts = 60;
+      const intervalMs = 500;
+      for (let i = 0; i < maxAttempts; i++) {
         const ids = await resolveSubscriptionId(OneSignal);
         subscriptionId = ids.subscriptionId;
         onesignalUserId = ids.onesignalUserId;
         externalId = ids.externalId;
         if (subscriptionId) break;
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, intervalMs));
       }
-      console.log("[TOKEN] 구독 ID(react-onesignal):", subscriptionId);
+      console.log("[TOKEN] 구독 ID(폴링 종료):", subscriptionId ?? "(없음)");
       if (!subscriptionId) return;
       await registerWithIds(userId, subscriptionId, onesignalUserId, externalId);
     },

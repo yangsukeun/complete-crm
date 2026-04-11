@@ -1,6 +1,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
+import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { isOneSignalServerDebug } from "@/lib/onesignal-debug";
 import { appendPushNotificationSourceQuery } from "@/lib/notifications/push-source";
 
@@ -101,7 +102,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         const set = new Set<string>();
         const add = (s: string | null | undefined) => {
           const t = s?.trim();
-          if (t && t.length > 8) set.add(t);
+          if (t && isLikelyOneSignalSubscriptionId(t)) set.add(t);
         };
         if (Array.isArray(r.playerIds)) {
           for (const x of r.playerIds) {

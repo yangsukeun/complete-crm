@@ -1,6 +1,7 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
+import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 
 /** OneSignal subscription id 최소 길이 (너무 짧은 값은 저장하지 않음) */
 const SUB_MIN_LEN = 8;
@@ -9,6 +10,13 @@ const MAX_DEVICE_IDS = 30;
 function normalizeId(s: string | null | undefined): string | null {
   const t = s?.trim();
   if (!t || t.length < SUB_MIN_LEN) return null;
+  return t;
+}
+
+/** 신규 저장 값만 UUID 형식 허용 (토큰을 구독 ID로 오인 저장 방지) */
+function normalizeIncomingSubscriptionId(s: string | null | undefined): string | null {
+  const t = s?.trim();
+  if (!t || !isLikelyOneSignalSubscriptionId(t)) return null;
   return t;
 }
 
@@ -76,7 +84,7 @@ async function loadUserPushRow(userId: string): Promise<UserPushRow> {
  * 레거시 oneSignalPlayerId / playerId 는 마지막 등록 구독으로 유지.
  */
 export async function saveOneSignalIdsToUser(userId: string, store: string | null): Promise<void> {
-  const value = normalizeId(store);
+  const value = normalizeIncomingSubscriptionId(store);
   if (value === null) return;
 
   const logFail = (step: string, err: unknown) =>
