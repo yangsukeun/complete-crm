@@ -103,7 +103,8 @@ export default function HrPage() {
   const [todayAll, setTodayAll] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
-  const [now, setNow] = useState(new Date());
+  /** SSR 시각 ≠ 클라이언트 시각이면 시계 텍스트 하이드레이션 불일치 → 마운트 후에만 갱신 */
+  const [now, setNow] = useState<Date | null>(null);
 
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
 
@@ -158,6 +159,7 @@ export default function HrPage() {
   }, [isAdmin, session?.user?.id, todayAll]);
 
   useEffect(() => {
+    setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -196,7 +198,7 @@ export default function HrPage() {
   const canPunchIn = !todayRecord;
 
   const workMinutes =
-    todayRecord?.startTime && isWorking
+    todayRecord?.startTime && isWorking && now
       ? diffMinutes(new Date(todayRecord.startTime), now)
       : todayRecord?.startTime && todayRecord?.endTime
         ? diffMinutes(new Date(todayRecord.startTime), new Date(todayRecord.endTime))
@@ -371,7 +373,7 @@ export default function HrPage() {
                   <div className="space-y-1">
                     <p className="text-slate-400 text-sm">현재 시각</p>
                     <p className="text-xl font-mono text-slate-100">
-                      {now.toLocaleTimeString("ko-KR", { hour12: false })}
+                      {now ? now.toLocaleTimeString("ko-KR", { hour12: false }) : "—"}
                     </p>
                     <p className="text-slate-400 text-sm mt-2">오늘 근무 시간</p>
                     <p className="text-lg font-mono text-cyan-300">

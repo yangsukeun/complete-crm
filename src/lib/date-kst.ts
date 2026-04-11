@@ -2,6 +2,23 @@ import { startOfDay } from "date-fns";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
+const KST_WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"] as const;
+
+/**
+ * ISO/Date 시각을 KST 기준 `M/d (요일) HH:mm` 문자열로 (서버 TZ·브라우저 TZ와 무관, 하이드레이션 안전).
+ */
+export function formatKstMdEeeHm(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const kst = new Date(d.getTime() + KST_OFFSET_MS);
+  const m = kst.getUTCMonth() + 1;
+  const day = kst.getUTCDate();
+  const wd = KST_WEEKDAY_LABEL[kst.getUTCDay()] ?? "";
+  const h = String(kst.getUTCHours()).padStart(2, "0");
+  const min = String(kst.getUTCMinutes()).padStart(2, "0");
+  return `${m}/${day} (${wd}) ${h}:${min}`;
+}
+
 /**
  * 한국 시간(KST) 기준 해당 날짜의 00:00:00을 UTC Date로 반환.
  * 출퇴근 등 "오늘" 기준 조회 시 서버 타임존과 무관하게 동일한 날짜를 쓰기 위함.

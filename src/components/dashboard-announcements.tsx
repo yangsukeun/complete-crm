@@ -4,8 +4,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { Megaphone, Loader2 } from "lucide-react";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
+import { formatKstMdEeeHm } from "@/lib/date-kst";
 
 const NEW_ANNOUNCEMENT_HOURS = 72; // 3일 이내 공지는 "새 공지"로 표시
 
@@ -98,9 +97,7 @@ export function DashboardAnnouncements({
                       )}
                     </div>
                     <span className="text-muted-foreground text-sm shrink-0">
-                      {format(new Date(a.createdAt), "M/d (EEE) HH:mm", {
-                        locale: ko,
-                      })}
+                      {formatKstMdEeeHm(a.createdAt)}
                     </span>
                   </div>
                   <p className="text-muted-foreground mt-1 line-clamp-2 whitespace-pre-wrap break-words text-sm">
