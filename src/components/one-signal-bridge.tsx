@@ -197,16 +197,33 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
     let cancelled = false;
     let debounceRegister: ReturnType<typeof setTimeout> | null = null;
 
-    const reportStateOnce = async (reason: string, force: boolean) => {
+    let reportStateOnce: (reason: string, force: boolean) => Promise<void>;
+
+    const scheduleRegister = (reason: string) => {
+      if (debounceRegister) clearTimeout(debounceRegister);
+      debounceRegister = setTimeout(() => {
+        debounceRegister = null;
+        void reportStateOnce(reason, false);
+      }, 2000);
+    };
+
+    reportStateOnce = async (reason: string, force: boolean) => {
       if (cancelled) return;
       try {
         const ext = OneSignal.User?.externalId ?? null;
         const optedIn = OneSignal.User?.PushSubscription?.optedIn ?? null;
         const { subscriptionId: subId, onesignalUserId: oneId } = await resolveIdsForBackend();
-        const playerForDb = (subId || oneId)?.trim() || null;
+        /** DB·푸시는 기기마다 다른 Push 구독 ID만 저장. onesignalUserId 는 계정 단위로 동일해 다기기가 1개로 합쳐짐 */
+        const playerForDb = subId?.trim() || null;
         const registerKey = `${userId ?? ""}|${playerForDb ?? ""}`;
         if (!playerForDb || !userId) {
-          logClient(`⑧ 구독 대기 (${reason})`, { optedIn, expectUserId: Boolean(userId) });
+          logClient(`⑧ Push 구독 ID 대기 (${reason})`, {
+            optedIn,
+            expectUserId: Boolean(userId),
+            hasSubscriptionId: Boolean(subId),
+            hasOnesignalUserId: Boolean(oneId),
+          });
+          if (userId) scheduleRegister(`retry-no-subscription:${reason}`);
           return;
         }
         if (!force && lastRegisteredKeyRef.current === registerKey) {
@@ -226,19 +243,24 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           });
         }
 
-        await fetch("/api/user/onesignal-register", {
+        const regRes = await fetch("/api/user/onesignal-register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             subscriptionId: subId ?? "",
             onesignalUserId: oneId ?? "",
             externalId: ext ?? "",
           }),
-        }).catch((e) => console.error("[OneSignal] register API 실패", e));
+        }).catch((e) => {
+          console.error("[OneSignal] register API 실패", e);
+          return null;
+        });
 
         const patchRes = await fetch("/api/profile/me", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ playerId: playerForDb, oneSignalPlayerId: playerForDb }),
         }).catch((e) => {
           console.error("[OneSignal] profile playerId PATCH 실패", e);
@@ -247,21 +269,13 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         if (clientDebug() && patchRes && !patchRes.ok) {
           console.warn("[OneSignal] PATCH /api/profile/me", patchRes.status, await patchRes.text().catch(() => ""));
         }
-        if (patchRes?.ok) {
+        if (regRes?.ok) {
           lastRegisteredKeyRef.current = registerKey;
           clearProfileMeCache();
         }
       } catch (e) {
         console.error("[OneSignal] reportState 실패", e);
       }
-    };
-
-    const scheduleRegister = (reason: string) => {
-      if (debounceRegister) clearTimeout(debounceRegister);
-      debounceRegister = setTimeout(() => {
-        debounceRegister = null;
-        void reportStateOnce(reason, false);
-      }, 2000);
     };
 
     void initPromiseRef.current.then(async () => {
@@ -284,6 +298,9 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           }
           void reportStateOnce("login-initial", true);
           setTimeout(() => void reportStateOnce("login-deferred", false), 3500);
+          for (const ms of [6000, 12_000, 20_000] as const) {
+            setTimeout(() => void reportStateOnce(`login-retry-${ms}ms`, false), ms);
+          }
           try {
             OneSignal.User?.PushSubscription?.addEventListener?.("change", () => {
               scheduleRegister("PushSubscription.change");

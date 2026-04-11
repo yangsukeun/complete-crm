@@ -24,22 +24,30 @@ export async function POST(req: Request) {
       typeof body.onesignalUserId === "string" ? body.onesignalUserId.trim() : "";
     const externalIdReport = typeof body.externalId === "string" ? body.externalId.trim() : "";
 
-    const store = subscriptionId || onesignalUserId || null;
+    /** 기기별로 달라야 하는 값은 Push 구독 ID뿐. onesignalUserId 는 유저 단위라 여러 기기에 동일 → playerIds 가 1개로만 남는 원인 */
+    const store = subscriptionId || null;
 
     console.log("[OneSignal register API] ⑥ DB 저장 요청", {
       userId: session.user.id,
       subscriptionId: subscriptionId || "(없음)",
-      onesignalUserId: onesignalUserId || "(없음)",
+      onesignalUserId: onesignalUserId || "(없음, DB 미저장)",
       externalIdReport: externalIdReport || "(없음)",
       storeLen: store?.length ?? 0,
     });
 
-    if (store) {
-      await saveOneSignalIdsToUser(session.user.id, store);
-      console.log("[OneSignal register API] ⑦ DB 반영 완료", { userId: session.user.id });
+    if (!store) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "subscription_id_required",
+        hint: "PushSubscription.id(구독 ID)가 준비된 뒤에 다시 호출하세요. onesignalUserId 만으로는 저장하지 않습니다.",
+      });
     }
 
-    return NextResponse.json({ ok: true });
+    await saveOneSignalIdsToUser(session.user.id, store);
+    console.log("[OneSignal register API] ⑦ DB 반영 완료", { userId: session.user.id });
+
+    return NextResponse.json({ ok: true, savedSubscriptionId: true });
   } catch (e) {
     console.error("[OneSignal register API] 예외 (500 원인 확인)", e);
     const detail = e instanceof Error ? e.message : String(e);

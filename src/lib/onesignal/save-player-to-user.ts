@@ -72,17 +72,39 @@ async function loadUserPushRow(userId: string): Promise<UserPushRow> {
 
 /**
  * OneSignal 구독 ID를 User에 누적 저장 (다기기).
- * playerIds 에 중복 없이 병합하고, 레거시 oneSignalPlayerId / playerId 는 마지막 등록 값으로 유지.
+ * PostgreSQL 에서는 동시에 다른 기기가 등록해도 덮어쓰지 않도록 raw 로 playerIds 에 idempotent append.
+ * 레거시 oneSignalPlayerId / playerId 는 마지막 등록 구독으로 유지.
  */
 export async function saveOneSignalIdsToUser(userId: string, store: string | null): Promise<void> {
   const value = normalizeId(store);
   if (value === null) return;
 
-  const row = await loadUserPushRow(userId);
-  const merged = mergeSubscriptionIds(row.playerIds, row.playerId, row.oneSignalPlayerId, value);
-
   const logFail = (step: string, err: unknown) =>
     console.warn(`[OneSignal savePlayer] ${step}`, err instanceof Error ? err.message : String(err));
+
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "User" SET
+        "playerIds" = CASE
+          WHEN $1::text = ANY(COALESCE("playerIds", ARRAY[]::text[])) THEN COALESCE("playerIds", ARRAY[]::text[])
+          ELSE array_append(COALESCE("playerIds", ARRAY[]::text[]), $1::text)
+        END,
+        "playerId" = $1,
+        "oneSignalPlayerId" = $1
+      WHERE "id" = $2`,
+      value,
+      userId
+    );
+    return;
+  } catch (eRaw) {
+    const msg = eRaw instanceof Error ? eRaw.message : String(eRaw);
+    if (!/playerIds|column|does not exist|syntax error/i.test(msg)) {
+      logFail("raw playerIds append 실패 → Prisma 병합 시도", eRaw);
+    }
+  }
+
+  const row = await loadUserPushRow(userId);
+  const merged = mergeSubscriptionIds(row.playerIds, row.playerId, row.oneSignalPlayerId, value);
 
   try {
     await prisma.user.update({
