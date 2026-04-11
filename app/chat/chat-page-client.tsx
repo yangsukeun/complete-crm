@@ -52,10 +52,7 @@ import Link from "next/link";
 import { ImageLightbox } from "@/components/chat/image-lightbox";
 import { ChatMessagesSkeleton } from "@/components/detail/detail-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  subscribeChatMessagesForChatRoom,
-  subscribeChatMessagesGlobal,
-} from "@/lib/supabase/realtime-client";
+import { subscribeChatMessagesForChatRoom } from "@/lib/supabase/realtime-client";
 import type { RealtimeSubscriptionHandle } from "@/lib/supabase/realtime-client";
 
 type User = {
@@ -461,44 +458,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [fetchMessages, mutateChats]);
 
-  /** 전역 ChatMessage → 플로팅 패널용 `chat-realtime` + 목록용 `chat-inbox-refresh` (이 클라이언트는 /chat 에서만 마운트) */
-  useEffect(() => {
-    const userId = session?.user?.id;
-    if (!userId) return;
-    if (typeof window === "undefined") return;
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-
-    let cancelled = false;
-    let handle: RealtimeSubscriptionHandle | null = null;
-
-    void (async () => {
-      const h = await subscribeChatMessagesGlobal(userId, ({ chatId, payload }) => {
-        if (cancelled) return;
-        if (chatId) {
-          window.dispatchEvent(
-            new CustomEvent("chat-realtime", {
-              detail: { chatId, payload },
-            })
-          );
-        }
-        window.dispatchEvent(new Event("chat-inbox-refresh"));
-      });
-      if (cancelled) {
-        h?.unsubscribe();
-      } else {
-        handle = h;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      try {
-        handle?.unsubscribe();
-      } catch {
-        /* */
-      }
-    };
-  }, [session?.user?.id]);
+  /** 전역 ChatMessage 구독은 `SupabaseRealtimeBridge`(layout)에서 처리 — 모든 경로에서 인박스 갱신 */
 
   /** 열린 방만 postgres_changes 구독 — 폴링은 별도 useEffect */
   useEffect(() => {

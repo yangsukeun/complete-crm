@@ -4,13 +4,16 @@ import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import {
   resetSharedSupabaseRealtime,
+  subscribeChatMessagesGlobal,
   subscribeFinanceRealtime,
   subscribeGlobalPresence,
 } from "@/lib/supabase/realtime-client";
+import type { RealtimeSubscriptionHandle } from "@/lib/supabase/realtime-client";
 
 /**
- * ChatMessage Realtime 은 `ChatPageClient`에서 구독(전역 인박스 + 방 단위).
- * 여기서는 자금·presence 만 처리해 pathname 과 무관하게 항상 동일하게 동작.
+ * ChatMessage 전역 구독: 모든 로그인 화면에서 `chat-inbox-refresh` / `chat-realtime` 발행.
+ * (이전에는 `/chat` 에서만 구독해 다른 PC·모바일·다른 탭에서 채팅 알림이 안 오는 문제가 있었음.)
+ * 방 단위 구독은 계속 `ChatPageClient`에서 처리.
  */
 export function SupabaseRealtimeBridge() {
   const { data: session } = useSession();
@@ -27,6 +30,7 @@ export function SupabaseRealtimeBridge() {
     let cancelled = false;
     let financeRt: { unsubscribe: () => void } | null = null;
     let presenceRt: { unsubscribe: () => void } | null = null;
+    let chatGlobalRt: RealtimeSubscriptionHandle | null = null;
     let financeDebounce: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleFinanceRefresh = () => {
@@ -50,6 +54,19 @@ export function SupabaseRealtimeBridge() {
         }
       });
       if (!cancelled && pr) presenceRt = pr;
+
+      const cg = await subscribeChatMessagesGlobal(session.user!.id, ({ chatId, payload }) => {
+        if (cancelled) return;
+        if (chatId) {
+          window.dispatchEvent(
+            new CustomEvent("chat-realtime", {
+              detail: { chatId, payload },
+            })
+          );
+        }
+        window.dispatchEvent(new Event("chat-inbox-refresh"));
+      });
+      if (!cancelled && cg) chatGlobalRt = cg;
     })();
 
     return () => {
@@ -62,6 +79,11 @@ export function SupabaseRealtimeBridge() {
       }
       try {
         presenceRt?.unsubscribe();
+      } catch {
+        /* */
+      }
+      try {
+        chatGlobalRt?.unsubscribe();
       } catch {
         /* */
       }
