@@ -48,6 +48,10 @@ function publicAppOriginForPush(): string {
   return envUrl;
 }
 
+function sleepPush(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function absoluteUrlForPush(href: string | undefined): string | undefined {
   if (!href?.trim()) return undefined;
   const h = href.trim();
@@ -90,13 +94,15 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     const externalIds = payload.userIds.map((id) => String(id));
 
     let subscriptionIds: string[] = [];
+    type Row = {
+      id: string;
+      oneSignalPlayerId: string | null;
+      playerId?: string | null;
+      playerIds?: string[] | null;
+      lastActiveAt: Date | null;
+    };
+    let presenceRows: Row[] = [];
     try {
-      type Row = {
-        id: string;
-        oneSignalPlayerId: string | null;
-        playerId?: string | null;
-        playerIds?: string[] | null;
-      };
 
       function subscriptionIdsFromRow(r: Row): string[] {
         const set = new Set<string>();
@@ -118,7 +124,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       try {
         rows = await prisma.user.findMany({
           where: { id: { in: externalIds } },
-          select: { id: true, playerIds: true, oneSignalPlayerId: true, playerId: true },
+          select: { id: true, playerIds: true, oneSignalPlayerId: true, playerId: true, lastActiveAt: true },
         });
       } catch (firstErr) {
         const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
@@ -129,7 +135,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
           try {
             rows = await prisma.user.findMany({
               where: { id: { in: externalIds } },
-              select: { id: true, oneSignalPlayerId: true, playerId: true },
+              select: { id: true, oneSignalPlayerId: true, playerId: true, lastActiveAt: true },
             });
             rows = rows.map((r) => ({ ...r, playerIds: [] }));
           } catch (secondErr) {
@@ -140,7 +146,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
               });
               rows = await prisma.user.findMany({
                 where: { id: { in: externalIds } },
-                select: { id: true, oneSignalPlayerId: true },
+                select: { id: true, oneSignalPlayerId: true, lastActiveAt: true },
               });
               rows = rows.map((r) => ({ ...r, playerId: null, playerIds: [] }));
             } else {
@@ -153,7 +159,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
           });
           rows = await prisma.user.findMany({
             where: { id: { in: externalIds } },
-            select: { id: true, oneSignalPlayerId: true },
+            select: { id: true, oneSignalPlayerId: true, lastActiveAt: true },
           });
           rows = rows.map((r) => ({ ...r, playerId: null, playerIds: [] }));
         } else {
@@ -176,6 +182,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         }
       }
       subscriptionIds = [...all];
+      presenceRows = rows;
     } catch (dbErr) {
       console.error("[OneSignal push] DB 조회 실패 → external_id만 사용", dbErr);
     }
@@ -210,8 +217,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     const data = payload.data ?? {};
     const pri = payload.priority === "high" ? 10 : 5;
 
-    /** 요청당 타겟 방식 하나만 사용 (문서: aliases와 subscription_id 혼합 금지). */
-    const body: Record<string, unknown> = {
+    const baseBody: Record<string, unknown> = {
       app_id: ONESIGNAL_APP_ID,
       target_channel: "push",
       headings,
@@ -219,59 +225,89 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       data,
       priority: pri,
     };
-    if (launchUrl) body.web_url = launchUrl;
+    if (launchUrl) baseBody.web_url = launchUrl;
+
+    const STALE_PRESENCE_MS = 3 * 60 * 1000;
+    const singleRecipient = externalIds.length === 1;
+    const row0 = singleRecipient ? presenceRows.find((r) => r.id === externalIds[0]) : undefined;
+    const lastAt = row0?.lastActiveAt ?? null;
+    const likelyAwayFromCrm =
+      singleRecipient && (!lastAt || Date.now() - new Date(lastAt).getTime() > STALE_PRESENCE_MS);
+
+    const webPushTopicForSingle =
+      singleRecipient && subscriptionIds.length > 0
+        ? `crm-${externalIds[0]}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
+        : undefined;
+
+    async function postOneSignal(body: Record<string, unknown>): Promise<number> {
+      const res = await fetch(ONESIGNAL_NOTIFICATIONS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        parsed = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        parsed = null;
+      }
+      if (!res.ok) {
+        console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
+        console.error("[OneSignal push] ④ HTTP 실패", {
+          status: res.status,
+          bodySnippet: text.slice(0, 800),
+          parsedErrors: parsed && typeof parsed === "object" ? (parsed as { errors?: unknown }).errors : null,
+        });
+        return -1;
+      }
+      console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
+      const recipients = parsed?.recipients;
+      console.log("[OneSignal push] ⑤ 응답 OK (api.onesignal.com)", {
+        id: parsed?.id,
+        recipients,
+        errors: parsed?.errors ?? null,
+        bodyPreview: dbg ? (parsed ?? text.slice(0, 300)) : undefined,
+      });
+      const errors = parsed?.errors;
+      if (errors !== undefined && errors !== null) {
+        console.warn("[OneSignal push] API errors 필드 (수신 0일 수 있음)", errors);
+      }
+      if (typeof recipients === "number" && recipients === 0) {
+        console.warn(
+          "[OneSignal push] recipients 0 → DB 구독 ID·external_id 폴백·알림 권한·allowed origin 확인."
+        );
+      }
+      return typeof recipients === "number" ? recipients : 0;
+    }
 
     if (subscriptionIds.length > 0) {
-      body.include_subscription_ids = subscriptionIds;
+      const body1: Record<string, unknown> = { ...baseBody, include_subscription_ids: subscriptionIds };
+      if (webPushTopicForSingle) body1.web_push_topic = webPushTopicForSingle;
+      const r1 = await postOneSignal(body1);
+      if (r1 === 0) {
+        const body2: Record<string, unknown> = {
+          ...baseBody,
+          include_aliases: { external_id: externalIds },
+        };
+        if (webPushTopicForSingle) body2.web_push_topic = webPushTopicForSingle;
+        console.log("[OneSignal push] 구독 ID 발송 수신 0 → external_id 재시도");
+        await postOneSignal(body2);
+      } else if (likelyAwayFromCrm && webPushTopicForSingle) {
+        await sleepPush(2200);
+        const body3: Record<string, unknown> = {
+          ...baseBody,
+          include_aliases: { external_id: externalIds },
+          web_push_topic: webPushTopicForSingle,
+        };
+        console.log("[OneSignal push] CRM 포그라운드 3분 초과 → external_id 추가 발송(다른 기기)");
+        await postOneSignal(body3);
+      }
     } else {
-      body.include_aliases = { external_id: externalIds };
-    }
-
-    const res = await fetch(ONESIGNAL_NOTIFICATIONS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    const text = await res.text();
-    let parsed: Record<string, unknown> | null = null;
-    try {
-      parsed = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      parsed = null;
-    }
-
-    if (!res.ok) {
-      console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
-      console.error("[OneSignal push] ④ HTTP 실패", {
-        status: res.status,
-        bodySnippet: text.slice(0, 800),
-        parsedErrors: parsed && typeof parsed === "object" ? (parsed as { errors?: unknown }).errors : null,
-      });
-      return;
-    }
-
-    console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
-
-    console.log("[OneSignal push] ⑤ 응답 OK (api.onesignal.com)", {
-      id: parsed?.id,
-      recipients: parsed?.recipients,
-      errors: parsed?.errors ?? null,
-      bodyPreview: dbg ? (parsed ?? text.slice(0, 300)) : undefined,
-    });
-
-    const errors = parsed?.errors;
-    const recipients = parsed?.recipients;
-    if (errors !== undefined && errors !== null) {
-      console.warn("[OneSignal push] API errors 필드 (수신 0일 수 있음)", errors);
-    }
-    if (typeof recipients === "number" && recipients === 0) {
-      console.warn(
-        "[OneSignal push] recipients 0 → DB 구독 ID·external_id 폴백·알림 권한·allowed origin 확인."
-      );
+      await postOneSignal({ ...baseBody, include_aliases: { external_id: externalIds } });
     }
   } catch (e) {
     console.error("[OneSignal push] 예외 (로그만, 호출 API 500 전파 안 함)", {

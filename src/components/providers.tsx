@@ -12,6 +12,7 @@ import { WorkspaceThemeSync } from "@/components/workspace-switcher";
 import { AIAssistProvider } from "@/components/ai-assist-context";
 import { LayoutSharedProvider } from "@/components/layout-shared-context";
 import { OneSignalPushTokenRegister } from "@/components/one-signal-push-token-register";
+import { PresenceHeartbeat } from "@/components/presence-heartbeat";
 import type { HeaderBootstrapData, SwrLayoutFallback } from "@/lib/header-bootstrap";
 
 const AIAssistFloat = dynamic(
@@ -64,6 +65,7 @@ export function Providers({
       >
         <LayoutSharedProvider initial={headerBootstrap}>
           <ProfileMeCacheSync userId={session?.user?.id} />
+          <PresenceHeartbeat />
           <OneSignalPushTokenRegister />
           <DeferredRealtimeBridges userId={session?.user?.id} />
           <AIAssistProvider>

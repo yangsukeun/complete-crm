@@ -72,7 +72,7 @@ function oneSignalSkipInitReason(): string | null {
 
 /**
  * 브라우저에서 OneSignal을 한 번 초기화하고, 로그인 시 알림 권한·optIn 을 처리합니다.
- * `OneSignal.login(User.id)` 는 LoginManager 미준비 시 TypeError 가 나는 SDK 버전이 있어 호출하지 않습니다.
+ * `OneSignal.login(User.id)` 는 일부 환경에서 예외가 날 수 있어 try/catch·타임아웃으로만 호출합니다(다기기·external_id 정렬).
  * 푸시 발송은 DB에 저장된 구독 ID(`include_subscription_ids`)를 우선 사용합니다.
  * 구독 ID 서버 등록은 `OneSignalPushTokenRegister`(providers)에서 수행합니다.
  *
@@ -203,6 +203,23 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
             await OneSignal.User?.PushSubscription?.optIn?.();
           } catch {
             /* ignore */
+          }
+          await sleep(600);
+          try {
+            const loginFn = (OneSignal as { login?: (externalId: string) => Promise<void> }).login;
+            if (typeof loginFn === "function") {
+              await Promise.race([
+                loginFn.call(OneSignal, userId),
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("login-timeout")), 8000)),
+              ]).catch(() => {
+                /* SDK 버전별 무시 */
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("crm-onesignal-session-ready", { detail: { userId } }));
           }
         } else {
           logClient("③ logout (비로그인)");

@@ -130,12 +130,23 @@ export function OneSignalPushTokenRegister() {
 
     console.log("[TOKEN] useEffect 실행됨", { userId });
 
-    const timer = setTimeout(() => {
-      console.log("[TOKEN] 타이머 실행");
+    const onSessionReady = (ev: Event) => {
+      const d = (ev as CustomEvent<{ userId?: string }>).detail;
+      if (d?.userId !== userId) return;
+      console.log("[TOKEN] crm-onesignal-session-ready → 등록 시도");
       void tryDeferredAndReact(userId).catch((e) => console.error("[TOKEN] 에러:", e));
-    }, 5000);
+    };
+    window.addEventListener("crm-onesignal-session-ready", onSessionReady);
 
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      console.log("[TOKEN] 백업 타이머(이벤트 없을 때 등록 시도)");
+      void tryDeferredAndReact(userId).catch((e) => console.error("[TOKEN] 에러:", e));
+    }, 8000);
+
+    return () => {
+      window.removeEventListener("crm-onesignal-session-ready", onSessionReady);
+      clearTimeout(timer);
+    };
   }, [session?.user?.id, status, tryDeferredAndReact]);
 
   /** 구독 변경 시 재등록 */
@@ -162,7 +173,7 @@ export function OneSignalPushTokenRegister() {
               if (!ids.subscriptionId) return;
               await registerWithIds(uid, ids.subscriptionId, ids.onesignalUserId, ids.externalId);
             })();
-          }, 2000);
+          }, 600);
         };
         subObj?.addEventListener?.("change", onChange);
         changeCleanupRef.current = () => {
@@ -174,7 +185,7 @@ export function OneSignalPushTokenRegister() {
       }
     };
 
-    const t = setTimeout(() => void armListener(), 6000);
+    const t = setTimeout(() => void armListener(), 0);
     return () => {
       cancelled = true;
       clearTimeout(t);
