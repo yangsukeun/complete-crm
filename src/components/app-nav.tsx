@@ -25,7 +25,6 @@ import {
   Layers,
   Settings,
   ChevronDown,
-  Command,
   Megaphone,
   Image,
   FolderOpen,
@@ -338,9 +337,14 @@ export function AppNav() {
                 unoptimized
               />
             ) : (
-              <div className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm">
-                <Command className="size-4" />
-              </div>
+              <NextImage
+                src="/icons/icon-192x192.png"
+                alt="COMPLETE CRM"
+                width={32}
+                height={32}
+                className="size-8 shrink-0 rounded-lg object-contain shadow-sm"
+                priority
+              />
             )}
             <span className="hidden sm:inline">COMPLETE CRM</span>
             {!logoUrl && (

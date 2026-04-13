@@ -57,7 +57,7 @@ const defaultMetadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#8B5CF6",
+  themeColor: "#6D28D9",
 };
 
 /** 회사 로고(헤더와 동일)가 있으면 OG/Twitter 이미지에 직접 URL — 파비콘은 항상 /api/branding/favicon */

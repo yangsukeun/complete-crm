@@ -31,21 +31,38 @@ const ONESIGNAL_REST_API_KEY =
 /** https://api.onesignal.com/notifications — Authorization: Key + REST API Key, Content-Type: application/json */
 const ONESIGNAL_NOTIFICATIONS_URL = "https://api.onesignal.com/notifications";
 
-/** 푸시 클릭 URL — Vercel 기본 도메인보다 운영 도메인(cpcrm.co.kr) 우선 */
+/**
+ * 푸시 클릭·아이콘 절대 URL의 origin.
+ * - Vercel 기본 도메인(vercel.app)은 제외하고, 없으면 운영 www 도메인으로 폴백.
+ * - `NEXT_PUBLIC_PUSH_ORIGIN`을 Vercel Production에 두면(예: https://www.cpcrm.co.kr) 미리보기·VERCEL_URL 혼선을 줄일 수 있음.
+ */
 function publicAppOriginForPush(): string {
-  const envUrl = (
-    process.env.NEXT_PUBLIC_URL ||
-    process.env.NEXTAUTH_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.AUTH_URL ||
-    ""
-  )
-    .trim()
-    .replace(/\/$/, "");
+  const vercelHost = process.env.VERCEL_URL?.trim();
+  const fromVercel = vercelHost ? `https://${vercelHost.replace(/^https?:\/\//i, "")}` : "";
 
-  if (!envUrl || envUrl.includes("vercel.app")) return "https://cpcrm.co.kr";
-  return envUrl;
+  const candidates = [
+    process.env.NEXT_PUBLIC_PUSH_ORIGIN,
+    process.env.NEXT_PUBLIC_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXTAUTH_URL,
+    process.env.AUTH_URL,
+    fromVercel,
+  ];
+
+  for (const raw of candidates) {
+    const envUrl = (raw ?? "").trim().replace(/\/$/, "");
+    if (!envUrl || envUrl.includes("vercel.app")) continue;
+    try {
+      const u = new URL(envUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+      return u.origin;
+    } catch {
+      /* 다음 후보 */
+    }
+  }
+
+  return "https://www.cpcrm.co.kr";
 }
 
 function absoluteUrlForPush(href: string | undefined): string | undefined {
@@ -219,6 +236,15 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       priority: pri,
     };
     if (launchUrl) baseBody.web_url = launchUrl;
+    const pushOrigin = publicAppOriginForPush();
+    try {
+      const icon = new URL("/api/branding/pwa-icon?size=192", pushOrigin);
+      if (icon.protocol === "https:" || icon.hostname === "localhost") {
+        baseBody.chrome_web_icon = icon.href;
+      }
+    } catch {
+      /* 아이콘 생략 */
+    }
 
     const singleRecipient = externalIds.length === 1;
     const webPushTopic =
@@ -226,7 +252,17 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         ? `crm-${externalIds[0]}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
         : undefined;
 
-    async function postOneSignal(body: Record<string, unknown>): Promise<number> {
+    function hasInvalidExternalAliases(errors: unknown): boolean {
+      if (!errors || typeof errors !== "object") return false;
+      const inv = (errors as Record<string, unknown>).invalid_aliases;
+      if (!inv || typeof inv !== "object") return false;
+      const ext = (inv as Record<string, unknown>).external_id;
+      return Array.isArray(ext) && ext.length > 0;
+    }
+
+    type PostPushResult = { recipients: number; invalidExternalAliases: boolean };
+
+    async function postOneSignal(body: Record<string, unknown>): Promise<PostPushResult> {
       const res = await fetch(ONESIGNAL_NOTIFICATIONS_URL, {
         method: "POST",
         headers: {
@@ -249,48 +285,70 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
           bodySnippet: text.slice(0, 800),
           parsedErrors: parsed && typeof parsed === "object" ? (parsed as { errors?: unknown }).errors : null,
         });
-        return -1;
+        return { recipients: -1, invalidExternalAliases: false };
       }
       console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
       const recipients = parsed?.recipients;
+      const errors = parsed?.errors;
+      const invalidExternalAliases = hasInvalidExternalAliases(errors);
       console.log("[OneSignal push] ⑤ 응답 OK (api.onesignal.com)", {
         id: parsed?.id,
         recipients,
-        errors: parsed?.errors ?? null,
+        errors: errors ?? null,
+        invalidExternalAliases,
         bodyPreview: dbg ? (parsed ?? text.slice(0, 300)) : undefined,
       });
-      const errors = parsed?.errors;
       if (errors !== undefined && errors !== null) {
-        console.warn("[OneSignal push] API errors 필드 (수신 0일 수 있음)", errors);
+        console.warn("[OneSignal push] API errors 필드", errors);
+      }
+      if (invalidExternalAliases) {
+        console.warn(
+          "[OneSignal push] invalid_aliases.external_id → OneSignal에 해당 external_id가 없거나 잘못됨(login/Transfer 필요). DB 구독 ID 병행 발송이 있으면 그 경로로 보완됩니다."
+        );
       }
       if (typeof recipients === "number" && recipients === 0) {
         console.warn(
-          "[OneSignal push] recipients 0 → DB 구독 ID·external_id 폴백·알림 권한·allowed origin 확인."
+          "[OneSignal push] recipients 0 → DB 구독 ID·알림 권한·allowed origin 확인."
         );
       }
-      return typeof recipients === "number" ? recipients : 0;
+      const r = typeof recipients === "number" ? recipients : 0;
+      return { recipients: r, invalidExternalAliases };
     }
 
     /**
-     * ① external_id(CRM user id) 우선 — OneSignal.login/Transfer 로 묶인 모든 구독(모바일·DB 미등록 기기 포함).
-     * 예전에는 DB 구독 ID만 먼저 보내 수신자>0 이면 모바일용 external_id 2차를 생략해 휴대폰이 빠지는 경우가 있었음.
-     * ② 수신 0일 때만 DB의 include_subscription_ids 폴백(레거시·미로그인 구독).
+     * external_id(include_aliases)와 DB 구독 ID(include_subscription_ids)를 항상 병행 발송.
+     * (이전: external만 성공 시 recipients≥1이면 구독 폴백 미실행 → 모바일 등 미연동 기기 누락)
+     * 동일 기기가 두 경로 모두에 잡히면 알림이 중복될 수 있음(수용·또는 OS/OneSignal이 일부 흡수).
      */
     const extBody: Record<string, unknown> = {
       ...baseBody,
       include_aliases: { external_id: externalIds },
     };
     if (webPushTopic) extBody.web_push_topic = webPushTopic;
-    const rExt = await postOneSignal(extBody);
 
-    if (rExt <= 0 && subscriptionIds.length > 0) {
-      console.log("[OneSignal push] external_id 수신 0 또는 실패 → DB 구독 ID 폴백");
-      const subBody: Record<string, unknown> = {
-        ...baseBody,
-        include_subscription_ids: subscriptionIds,
-      };
-      if (webPushTopic) subBody.web_push_topic = webPushTopic;
-      await postOneSignal(subBody);
+    const subBody: Record<string, unknown> = {
+      ...baseBody,
+      include_subscription_ids: subscriptionIds,
+    };
+    if (webPushTopic) subBody.web_push_topic = webPushTopic;
+
+    const parallel: Promise<PostPushResult>[] = [postOneSignal(extBody)];
+    if (subscriptionIds.length > 0) {
+      parallel.push(postOneSignal(subBody));
+    }
+
+    const [ext, sub] = await Promise.all(parallel);
+
+    console.log("[OneSignal push] ⑥ 병행 발송 요약", {
+      external_id_recipients: ext.recipients,
+      external_id_invalid_aliases: ext.invalidExternalAliases,
+      subscription_path_sent: subscriptionIds.length > 0,
+      subscription_ids_count: subscriptionIds.length,
+      subscription_id_recipients: sub?.recipients ?? null,
+    });
+
+    if (subscriptionIds.length > 0 && sub && sub.recipients <= 0 && !sub.invalidExternalAliases) {
+      console.warn("[OneSignal push] 구독 ID 경로 수신 0 — 기기에서 알림 허용·구독 등록 확인");
     }
   } catch (e) {
     console.error("[OneSignal push] 예외 (로그만, 호출 API 500 전파 안 함)", {

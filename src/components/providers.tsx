@@ -68,6 +68,7 @@ export function Providers({
           <ProfileMeCacheSync userId={session?.user?.id} />
           <PresenceHeartbeat />
           <MobileWebPushHintBanner />
+          {/* OneSignal 구독 ID 서버 등록. 모바일 진단: NEXT_PUBLIC_DEBUG_TOKEN_MOBILE=1 또는 NEXT_PUBLIC_DEBUG_ONESIGNAL=1 */}
           <OneSignalPushTokenRegister />
           <DeferredRealtimeBridges userId={session?.user?.id} />
           <AIAssistProvider>
