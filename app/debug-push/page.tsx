@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 
 /** OneSignal Deferred 콜백용 최소 타입 (디버그 전용) */
 type OneSignalDebugOs = {
-  Notifications?: { permission?: boolean | string };
+  Notifications?: {
+    permission?: boolean | string;
+    requestPermission?: () => Promise<unknown>;
+  };
   User?: {
     PushSubscription?: { optedIn?: boolean; id?: string | null };
   };
@@ -57,6 +60,38 @@ export default function DebugPush() {
     return () => clearTimeout(t);
   }, []);
 
+  const requestPermissionAndRegister = async () => {
+    log("버튼 클릭됨");
+    const w = window as WindowWithDeferred;
+    if (!w.OneSignalDeferred) {
+      log("OneSignalDeferred 없음");
+      return;
+    }
+    w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
+      log("권한 요청 시작");
+      try {
+        const result = await os.Notifications?.requestPermission?.();
+        log("권한 요청 결과: " + String(result ?? "(반환 없음)"));
+        await new Promise((r) => setTimeout(r, 2000));
+        const id = os.User?.PushSubscription?.id;
+        log("구독ID: " + (id || "없음"));
+        if (id) {
+          const res = await fetch("/api/user/onesignal-register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ subscriptionId: id }),
+          });
+          const data = await res.json().catch(() => ({}));
+          log("등록: " + JSON.stringify(data));
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("에러: " + msg);
+      }
+    });
+  };
+
   return (
     <div className="p-4">
       <h1 className="mb-4 text-lg font-bold">Push 디버그</h1>
@@ -70,6 +105,22 @@ export default function DebugPush() {
           </div>
         ))}
       </div>
+      <button
+        type="button"
+        onClick={() => void requestPermissionAndRegister()}
+        style={{
+          marginTop: "16px",
+          padding: "12px 24px",
+          background: "blue",
+          color: "white",
+          fontSize: "18px",
+          borderRadius: "8px",
+          border: "none",
+          width: "100%",
+        }}
+      >
+        알림 권한 요청하기
+      </button>
     </div>
   );
 }
