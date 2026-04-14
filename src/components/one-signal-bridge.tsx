@@ -159,6 +159,24 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
 
       initPromiseRef.current = (async () => {
         try {
+          /** 모바일 등에서 SDK 등록 전 SW=0인 경우 완화 — 호스트 워커를 먼저 등록 후 init */
+          if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+            try {
+              const reg = await navigator.serviceWorker.register("/OneSignalSDKWorker.js", { scope: "/" });
+              const swState =
+                reg.installing?.state ?? reg.waiting?.state ?? reg.active?.state ?? "pending";
+              logClient("① SW 사전 등록", { scope: reg.scope, state: swState });
+              if (clientDebug()) {
+                console.log("[OneSignal SW] pre-register OK", reg.scope, swState);
+              }
+            } catch (swErr: unknown) {
+              logClient("① SW 사전 등록 실패(SDK에 맡김)", { err: String(swErr) });
+              if (clientDebug()) {
+                console.warn("[OneSignal SW] pre-register failed", swErr);
+              }
+            }
+          }
+
           await OneSignal.init(initObject);
           if (clientDebug() && OneSignal.Debug?.setLogLevel) {
             try {

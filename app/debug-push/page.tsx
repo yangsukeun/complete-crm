@@ -141,6 +141,47 @@ export default function DebugPush() {
     });
   };
 
+  const registerServiceWorkerManual = async () => {
+    log("SW 수동 등록 시도");
+    if (!("serviceWorker" in navigator)) {
+      log("SW 미지원");
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.register("/OneSignalSDKWorker.js", { scope: "/" });
+      const swState =
+        reg.installing?.state ?? reg.waiting?.state ?? reg.active?.state ?? "알 수 없음";
+      log("SW 등록 성공: " + reg.scope);
+      log("SW state: " + swState);
+
+      await new Promise((r) => setTimeout(r, 2000));
+
+      const w = window as WindowWithDeferred;
+      if (w.OneSignalDeferred) {
+        w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
+          const id = os.User?.PushSubscription?.id;
+          log("SW 등록 후 구독ID: " + (id || "없음"));
+
+          if (id) {
+            const res = await fetch("/api/user/onesignal-register", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ subscriptionId: id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            log("등록결과: " + JSON.stringify(data));
+          }
+        });
+      } else {
+        log("OneSignalDeferred 없음 — 구독 확인만 스킵");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log("SW 등록 실패: " + msg);
+    }
+  };
+
   return (
     <div className="p-4">
       <h1 className="mb-4 text-lg font-bold">Push 디버그</h1>
@@ -169,6 +210,22 @@ export default function DebugPush() {
         }}
       >
         알림 권한 요청하기
+      </button>
+      <button
+        type="button"
+        onClick={() => void registerServiceWorkerManual()}
+        style={{
+          marginTop: "8px",
+          padding: "12px",
+          background: "green",
+          color: "white",
+          fontSize: "16px",
+          borderRadius: "8px",
+          width: "100%",
+          border: "none",
+        }}
+      >
+        서비스 워커 수동 등록
       </button>
     </div>
   );
