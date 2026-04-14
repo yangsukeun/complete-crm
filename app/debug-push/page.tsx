@@ -60,21 +60,53 @@ export default function DebugPush() {
     return () => clearTimeout(t);
   }, []);
 
-  const requestPermissionAndRegister = async () => {
+  const requestPermission = async () => {
     log("버튼 클릭됨");
+
+    if ("Notification" in window) {
+      log("Notification API 있음");
+      log("현재 권한: " + Notification.permission);
+      try {
+        const result = await Notification.requestPermission();
+        log("네이티브 권한 결과: " + result);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("네이티브 권한 에러: " + msg);
+      }
+    } else {
+      log("Notification API 없음");
+    }
+
+    if ("serviceWorker" in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        log("SW 등록 수: " + regs.length);
+        regs.forEach((r, i) => {
+          log("SW " + i + ": " + r.scope);
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("SW 조회 에러: " + msg);
+      }
+    }
+
     const w = window as WindowWithDeferred;
     if (!w.OneSignalDeferred) {
       log("OneSignalDeferred 없음");
       return;
     }
+
     w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
-      log("권한 요청 시작");
+      log("OS 권한 요청 시작");
       try {
-        const result = await os.Notifications?.requestPermission?.();
-        log("권한 요청 결과: " + String(result ?? "(반환 없음)"));
-        await new Promise((r) => setTimeout(r, 2000));
+        await os.Notifications?.requestPermission?.();
+        log("OS 권한 완료");
+
+        await new Promise((r) => setTimeout(r, 3000));
+
         const id = os.User?.PushSubscription?.id;
         log("구독ID: " + (id || "없음"));
+
         if (id) {
           const res = await fetch("/api/user/onesignal-register", {
             method: "POST",
@@ -87,7 +119,7 @@ export default function DebugPush() {
         }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        log("에러: " + msg);
+        log("OS 에러: " + msg);
       }
     });
   };
@@ -107,7 +139,7 @@ export default function DebugPush() {
       </div>
       <button
         type="button"
-        onClick={() => void requestPermissionAndRegister()}
+        onClick={() => void requestPermission()}
         style={{
           marginTop: "16px",
           padding: "12px 24px",
