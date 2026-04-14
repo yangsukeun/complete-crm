@@ -30,6 +30,23 @@ export default function DebugPush() {
     log("OneSignal 타입: " + typeof (window as Window & { OneSignal?: unknown }).OneSignal);
     log("OneSignalDeferred 타입: " + typeof w.OneSignalDeferred);
 
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.getRegistrations().then((regs) => {
+        log("SW 수: " + regs.length);
+        regs.forEach((r, i) => {
+          log("SW" + i + " scope: " + r.scope);
+          log("SW" + i + " state: " + (r.active?.state ?? "(active 없음)"));
+        });
+      });
+    } else {
+      log("SW 미지원");
+    }
+
+    log("Notification 지원: " + String("Notification" in window));
+    if ("Notification" in window) {
+      log("현재 권한: " + Notification.permission);
+    }
+
     const t = setTimeout(() => {
       if (w.OneSignalDeferred) {
         w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {

@@ -5,6 +5,7 @@ import type { MetadataRoute } from "next";
  * `/api/branding/favicon`은 .ico·원본 MIME일 수 있어 PWA가 무시하고 이니셜(C)만 그리는 경우가 많음.
  */
 export default function manifest(): MetadataRoute.Manifest {
+  /** `gcm_sender_id` 는 Next 타입에 없으나 Chrome FCM 웹 푸시에 필요 — 런타임 manifest JSON에 포함 */
   return {
     name: "COMPLETE CRM",
     short_name: "CRM",
@@ -35,5 +36,6 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
-  };
+    gcm_sender_id: "482941778946",
+  } as MetadataRoute.Manifest;
 }
