@@ -632,31 +632,43 @@ export async function PATCH(
     const nextStatus = (data.status ?? existing.status) as any;
     const becameDone = nextStatus === "DONE" && existing.status !== "DONE";
     if (becameDone) {
-      await createActivityLog(session.user.id, "TASK_COMPLETED", existing.title);
+      try {
+        await createActivityLog(session.user.id, "TASK_COMPLETED", existing.title);
+      } catch (logErr) {
+        console.error("[tasks] PATCH activity log skipped:", logErr);
+      }
     }
 
     // 최초 단계 이동 자동 기록 (준비/진행중/완료)
     if (data.status && data.status !== existing.status) {
-      void appendWorkLogOnceForTaskStatus({
-        userId: session.user.id,
-        dateStr: todayYmdKst(),
-        taskId: existing.id,
-        taskTitle: existing.title,
-        status: data.status,
-      });
+      try {
+        void appendWorkLogOnceForTaskStatus({
+          userId: session.user.id,
+          dateStr: todayYmdKst(),
+          taskId: existing.id,
+          taskTitle: existing.title,
+          status: data.status,
+        });
+      } catch (wlErr) {
+        console.error("[tasks] PATCH work-log skipped:", wlErr);
+      }
     }
 
     if (assigneeIdsUpdate !== undefined) {
       const prevAssigneeIds = new Set(existing.assignees.map((a) => a.userId));
       for (const uid of assigneeIdsUpdate) {
         if (!prevAssigneeIds.has(uid) && uid !== session.user.id) {
-          await createNotificationWithOptions({
-            userId: uid,
-            type: "ASSIGNED",
-            message: `'${existing.title}' 프로젝트가 배정되었습니다.`,
-            link: `/tasks/${id}`,
-            actorId: session.user.id,
-          });
+          try {
+            await createNotificationWithOptions({
+              userId: uid,
+              type: "ASSIGNED",
+              message: `'${existing.title}' 프로젝트가 배정되었습니다.`,
+              link: `/tasks/${id}`,
+              actorId: session.user.id,
+            });
+          } catch (notifyErr) {
+            console.error("[tasks] PATCH assigned notify skipped:", notifyErr);
+          }
         }
       }
     }
@@ -675,16 +687,21 @@ export async function PATCH(
       /** FK·무결성: User 테이블에 없는 id는 알림 생성 스킵 (로그만) */
       let toNotify = toNotifyRaw;
       if (toNotifyRaw.length > 0) {
-        const existingUsers = await prisma.user.findMany({
-          where: { id: { in: toNotifyRaw } },
-          select: { id: true },
-        });
-        const ok = new Set(existingUsers.map((u) => u.id));
-        const missing = toNotifyRaw.filter((id) => !ok.has(id));
-        if (missing.length > 0) {
-          console.warn("[tasks] @멘션 알림: DB에 없는 userId (무시됨)", { missing });
+        try {
+          const existingUsers = await prisma.user.findMany({
+            where: { id: { in: toNotifyRaw } },
+            select: { id: true },
+          });
+          const ok = new Set(existingUsers.map((u) => u.id));
+          const missing = toNotifyRaw.filter((id) => !ok.has(id));
+          if (missing.length > 0) {
+            console.warn("[tasks] @멘션 알림: DB에 없는 userId (무시됨)", { missing });
+          }
+          toNotify = toNotifyRaw.filter((id) => ok.has(id));
+        } catch (usersErr) {
+          console.error("[tasks] PATCH mention users lookup skipped:", usersErr);
+          toNotify = [];
         }
-        toNotify = toNotifyRaw.filter((id) => ok.has(id));
       }
       mentionNotifyCountForDebug = toNotify.length;
       const debugMention =
@@ -703,7 +720,9 @@ export async function PATCH(
 
       const actorName =
         (session.user as { name?: string }).name ||
-        (await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } }))?.name ||
+        (await prisma.user
+          .findUnique({ where: { id: session.user.id }, select: { name: true } })
+          .catch(() => null))?.name ||
         "팀원";
       for (const uid of toNotify) {
         try {
@@ -718,7 +737,11 @@ export async function PATCH(
         }
       }
 
-      await syncTaskMentionsForTask(id, nextUnique);
+      try {
+        await syncTaskMentionsForTask(id, nextUnique);
+      } catch (syncErr) {
+        console.error("[tasks] PATCH mention sync skipped:", syncErr);
+      }
     }
 
     const res = NextResponse.json(
@@ -729,9 +752,13 @@ export async function PATCH(
     }
     return res;
   } catch (e) {
-    console.error(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[tasks] PATCH /api/tasks/[id] failed:", msg, e);
     return NextResponse.json(
-      { error: "프로젝트를 수정할 수 없습니다." },
+      {
+        error: "프로젝트를 수정할 수 없습니다.",
+        ...(process.env.NODE_ENV === "development" ? { details: msg } : {}),
+      },
       { status: 500 }
     );
   }
