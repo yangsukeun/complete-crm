@@ -14,6 +14,7 @@ import {
   clearProfileMeCache,
   fetchProfileMeResult,
 } from "@/lib/profile-me-client";
+import { onesignalOptOutAndDeregister } from "@/lib/onesignal/client-logout";
 
 type Profile = {
   id: string;
@@ -556,8 +557,9 @@ export function ProfilePageClient({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => {
-                signOut({ callbackUrl: "/login" });
+              onClick={async () => {
+                await onesignalOptOutAndDeregister();
+                await signOut({ callbackUrl: "/login" });
               }}
               className="gap-2"
             >

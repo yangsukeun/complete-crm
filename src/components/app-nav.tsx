@@ -9,6 +9,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { jsonFetcher, SWR_KEYS, SWR_LOGO_SETTINGS_KEY } from "@/lib/api-swr";
 import type { LogoSettingsApiPayload } from "@/lib/header-bootstrap";
 import { useWorkspaceStore } from "@/store/workspace-store";
+import { onesignalOptOutAndDeregister } from "@/lib/onesignal/client-logout";
 import {
   Calendar,
   ListTodo,
@@ -618,8 +619,9 @@ export function AppNav() {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => {
-                    signOut({ callbackUrl: "/login" });
+                  onClick={async () => {
+                    await onesignalOptOutAndDeregister();
+                    await signOut({ callbackUrl: "/login" });
                   }}
                   className="flex items-center gap-2 cursor-pointer text-red-600 focus:text-red-600"
                 >

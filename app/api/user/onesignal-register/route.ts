@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
+import prisma from "@/lib/prisma";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
@@ -80,5 +81,79 @@ export async function POST(req: Request) {
       { error: "저장 실패", details: process.env.NODE_ENV === "development" ? detail : undefined },
       { status: 500 }
     );
+  }
+}
+
+function isMissingPushColumnsError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return (
+    msg.includes("playerids") ||
+    msg.includes("playersids") ||
+    msg.includes("oneSignalPlayerId".toLowerCase()) ||
+    msg.includes("playerid") ||
+    (msg.includes("unknown arg") && (msg.includes("player") || msg.includes("onesignal"))) ||
+    (msg.includes("column") && msg.includes("does not exist") && (msg.includes("player") || msg.includes("onesignal")))
+  );
+}
+
+/**
+ * 로그아웃 등에서: 현재 브라우저 구독 ID를 DB에서 제거(또는 없으면 전부 초기화).
+ * body: { subscriptionId?: string }
+ */
+export async function DELETE(req: Request) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => ({}))) as { subscriptionId?: string };
+    const subscriptionId =
+      typeof body.subscriptionId === "string" ? body.subscriptionId.trim() : "";
+
+    // 구독 ID가 유효하면 해당 기기만 제거, 아니면 전체 초기화(안전한 로그아웃)
+    const removeOne =
+      subscriptionId && isLikelyOneSignalSubscriptionId(subscriptionId) ? subscriptionId : null;
+
+    // DB 스키마 다양성/호환을 위해: 현 row를 읽고, 가능한 컬럼만 갱신
+    let existing: { playerIds?: string[] | null; playerId?: string | null; oneSignalPlayerId?: string | null } | null =
+      null;
+    try {
+      existing = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { playerIds: true, playerId: true, oneSignalPlayerId: true },
+      });
+    } catch (e) {
+      if (!isMissingPushColumnsError(e)) throw e;
+      existing = null;
+    }
+
+    const currentIds = Array.isArray(existing?.playerIds)
+      ? existing!.playerIds.filter((x) => typeof x === "string")
+      : [];
+    const nextIds = removeOne ? currentIds.filter((x) => x !== removeOne) : [];
+
+    try {
+      const clearLegacy =
+        !removeOne ||
+        existing?.playerId === removeOne ||
+        existing?.oneSignalPlayerId === removeOne;
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          ...(existing && "playerIds" in existing ? { playerIds: nextIds } : {}),
+          ...(clearLegacy ? { playerId: null, oneSignalPlayerId: null } : {}),
+        } as any,
+        select: { id: true },
+      });
+    } catch (e) {
+      if (!isMissingPushColumnsError(e)) throw e;
+      // 컬럼이 없으면 조용히 성공 처리
+    }
+
+    return NextResponse.json({ ok: true, removed: removeOne ? 1 : "all" });
+  } catch (e) {
+    console.error("[OneSignal register API] DELETE 예외", e);
+    return NextResponse.json({ error: "삭제 실패" }, { status: 500 });
   }
 }
