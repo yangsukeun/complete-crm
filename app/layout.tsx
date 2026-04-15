@@ -32,17 +32,17 @@ const defaultMetadata: Metadata = {
   title: "COMPLETE CRM",
   description: "주식회사 컴플리트 CRM",
   manifest: "/manifest.webmanifest",
-  // [PERF-2차] 존재하지 않는 og 경로(404) 방지 — manifest와 동일 아이콘 사용
+  // SNS 공유: public/og-image.png (1200×630, scripts/brand-icons-build.ts 로 생성)
   openGraph: {
     title: "COMPLETE CRM",
     description: "주식회사 컴플리트 CRM",
-    images: [{ url: "/icons/icon-192x192.png", width: 192, height: 192, alt: "COMPLETE CRM" }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "COMPLETE CRM" }],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "COMPLETE CRM",
     description: "주식회사 컴플리트 CRM",
-    images: ["/icons/icon-192x192.png"],
+    images: ["/og-image.png"],
   },
   /* 탭 파비콘: favicon API / iOS·PWA 큰 아이콘: PNG 리사이즈(이니셜만 나오는 것 방지) */
   icons: {

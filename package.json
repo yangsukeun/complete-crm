@@ -19,6 +19,7 @@
     "check-user": "tsx scripts/check-user.ts",
     "check-db": "tsx scripts/check-db-connection.ts",
     "icons": "tsx scripts/generate-icons.ts",
+    "icons:brand": "tsx scripts/brand-icons-build.ts",
     "analyze": "cross-env ANALYZE=true node scripts/prisma-with-env.cjs generate && cross-env ANALYZE=true next build --webpack"
   },
   "dependencies": {

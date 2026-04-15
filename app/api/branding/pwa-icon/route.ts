@@ -12,6 +12,7 @@ function parseSize(raw: string | null): number {
   const n = parseInt(raw || "192", 10);
   if (n >= 400) return 512;
   if (n === 180) return 180;
+  if (n === 144) return 144;
   return 192;
 }
 
