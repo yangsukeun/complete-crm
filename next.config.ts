@@ -8,6 +8,20 @@ const withBundleAnalyzer = bundleAnalyzer({
 // Supabase: 앱 쿼리는 DATABASE_URL에 Pooler(6543) 권장, prisma migrate는 DIRECT_URL(5432).
 // 아이콘/UI 라이브러리 트리쉐이킹으로 번들 축소 → 페이지 전환 시 로드 감소
 const nextConfig: NextConfig = {
+  /**
+   * apex → www 고정 — SW scope·OneSignal Site URL·쿠키 출처와 실제 접속 호스트를 맞춤.
+   * OneSignal 대시보드 Web Site URL도 `https://www.cpcrm.co.kr` 로 통일 권장.
+   */
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "cpcrm.co.kr" }],
+        destination: "https://www.cpcrm.co.kr/:path*",
+        permanent: true,
+      },
+    ];
+  },
   /** OneSignal 호스트 SW가 루트 스코프로 동작하도록 (모바일 크롬 등록 실패 완화) */
   async headers() {
     const swHeaders = [
