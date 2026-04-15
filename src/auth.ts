@@ -7,6 +7,7 @@ import { compare, hash } from "bcryptjs";
 import { authConfig } from "@/auth.config";
 import prisma from "@/lib/prisma";
 import { consumeLoginToken } from "@/lib/login-token-store";
+import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
 // Vercel 배포 시 NEXTAUTH_URL 미설정이면 VERCEL_URL로 자동 설정 (404/인증 경고 방지)
 if (!process.env.NEXTAUTH_URL && process.env.VERCEL_URL) {
@@ -71,7 +72,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           base.user.email = user.email ?? null;
           // JWT에는 예전 role이 남아 있을 수 있음(db seed·역할 변경 후에도). 개발/옵션 시 DB 기준으로 맞춤.
           base.user.role = user.role;
-          (base.user as { permissions?: string | null }).permissions = user.permissions ?? undefined;
+          const eff = await resolveEffectivePermissionsJson(userId);
+          (base.user as { permissions?: string | null }).permissions = eff ?? undefined;
           (base.user as Record<string, unknown>).badgePreset = user.badgePreset ?? undefined;
         }
       } catch {

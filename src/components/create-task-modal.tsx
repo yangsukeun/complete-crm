@@ -22,7 +22,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { formatUserName } from "@/lib/utils";
+import { formatUserName, cn } from "@/lib/utils";
+import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 
 type User = {
@@ -69,6 +70,7 @@ export function CreateTaskModal({
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringDays, setRecurringDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [recurringMemo, setRecurringMemo] = useState("");
+  const [color, setColor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +100,7 @@ export function CreateTaskModal({
       setIsRecurring(false);
       setRecurringDays([1, 2, 3, 4, 5]);
       setRecurringMemo("");
+      setColor(null);
     }
   }, [open, defaultAssignedToId, defaultAssigneeIds]);
 
@@ -136,6 +139,7 @@ export function CreateTaskModal({
           isRecurring: isRecurring ? true : undefined,
           recurringDays: isRecurring ? JSON.stringify(recurringDays) : undefined,
           recurringMemo: isRecurring ? recurringMemo.trim() || null : undefined,
+          ...(color ? { color } : {}),
         }),
       });
       if (!res.ok) {
@@ -229,6 +233,35 @@ export function CreateTaskModal({
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>카드 색상 (선택)</Label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    title="색 없음"
+                    onClick={() => setColor(null)}
+                    className={cn(
+                      "flex size-7 items-center justify-center rounded-full border-2 text-[10px] text-muted-foreground transition-transform",
+                      color === null ? "border-gray-800 scale-110" : "border-muted hover:bg-muted"
+                    )}
+                  >
+                    —
+                  </button>
+                  {PROJECT_TASK_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      title={c.label}
+                      onClick={() => setColor(c.value)}
+                      className={cn(
+                        "size-7 shrink-0 rounded-full border-2 transition-transform",
+                        color === c.value ? "scale-110 border-gray-800" : "border-transparent hover:scale-105"
+                      )}
+                      style={{ background: c.value }}
+                    />
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>우선순위</Label>

@@ -11,6 +11,7 @@ import {
 } from "@/lib/task-assignees";
 import { z } from "zod";
 import { endOfDay, endOfWeek, parse, startOfDay, startOfWeek } from "date-fns";
+import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
 
 /** null·비배열·숫자 id 등 클라이언트/직렬화 불일치 시 400 방지 */
 const assigneeIdsInCreate = z.preprocess((val: unknown) => {
@@ -56,6 +57,7 @@ const createSchema = z.object({
   isRecurring: z.boolean().optional(),
   recurringDays: z.union([z.string(), z.null()]).optional(),
   recurringMemo: z.union([z.string(), z.null()]).optional(),
+  color: z.union([z.string(), z.null()]).optional(),
 });
 
 const listSelect = {
@@ -69,6 +71,7 @@ const listSelect = {
   categoryId: true,
   orderIndex: true,
   isCollapsed: true,
+  color: true,
   scope: true,
   createdById: true,
   projectId: true,
@@ -142,10 +145,24 @@ export async function GET(req: Request) {
     const projectId =
       projectIdParam && projectIdParam.trim().length > 0 ? projectIdParam.trim() : null;
 
+    const filterUserIdRaw = (searchParams.get("userId") ?? "").trim();
+    const filterUserId =
+      filterUserIdRaw.length > 0 && isAdmin && scope === "TEAM" ? filterUserIdRaw : null;
+    const employeeScopeFilter = filterUserId
+      ? {
+          OR: [
+            { assignees: { some: { userId: filterUserId } } },
+            { assignedToId: filterUserId },
+            { createdById: filterUserId },
+          ],
+        }
+      : {};
+
     const baseWhere = {
       deletedAt: null,
       ...visibilityWhere,
       ...(projectId ? { projectId } : {}),
+      ...employeeScopeFilter,
     };
 
     const calendarDue = searchParams.get("calendarDue") === "1";
@@ -292,6 +309,16 @@ export async function POST(req: Request) {
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
+    const payloadColor = parsed.data.color;
+    let colorForCreate: string | null | undefined = undefined;
+    if (payloadColor !== undefined) {
+      if (payloadColor === null || payloadColor === "") colorForCreate = null;
+      else {
+        const c = String(payloadColor).trim();
+        colorForCreate = PROJECT_TASK_COLOR_SET.has(c) ? c : undefined;
+      }
+    }
+
     const task = await createTaskWithNotifications({
       createdById: session.user.id,
       scope,
@@ -311,6 +338,7 @@ export async function POST(req: Request) {
         isRecurring: parsed.data.isRecurring,
         recurringDays: parsed.data.recurringDays,
         recurringMemo: parsed.data.recurringMemo,
+        ...(colorForCreate !== undefined ? { color: colorForCreate } : {}),
       },
     });
 

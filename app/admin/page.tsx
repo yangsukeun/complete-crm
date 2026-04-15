@@ -11,10 +11,12 @@ import {
   Building2,
   Image,
   Settings,
+  Shield,
   Trash2,
 } from "lucide-react";
 
 const menuItems = [
+  { href: "/admin/permissions", label: "기능 권한", description: "직책별·사용자별 메뉴·기능 접근 설정", icon: Shield },
   { href: "/admin/employees", label: "직원 관리", description: "직원 계정 추가·수정·역할 관리", icon: Users },
   { href: "/admin/logs", label: "Daily Report 조회", description: "직원별 Daily Report 조회", icon: FileText },
   { href: "/admin/departments-positions", label: "부서·직책", description: "부서·직책 마스터 관리", icon: Layers },

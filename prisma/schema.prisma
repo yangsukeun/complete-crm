@@ -402,6 +402,8 @@ model Task {
   id           String         @id @default(cuid())
   title        String
   description  String?
+  /// 목록·보드 카드 왼쪽 강조색 (#RRGGBB, 팔레트만 허용)
+  color        String?
   dueDate      DateTime
   isCompleted  Boolean        @default(false)
   status       TaskStatus     @default(TODO)
@@ -856,6 +858,8 @@ model Position {
   id        String   @id @default(cuid())
   name      String   // 직책명
   sortOrder Int      @default(0)
+  /// JSON 배열 문자열: 기능 키 목록. null이면 User.permissions 없을 때 역할(role) 기본 권한
+  permissions String?
   createdAt DateTime @default(now())
 }
 

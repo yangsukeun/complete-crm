@@ -31,6 +31,7 @@ import {
   Sparkles,
   BrainCircuit,
   Trash2,
+  Shield,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -86,6 +87,7 @@ const ADMIN_MENU_DEFS: {
 }[] = [
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
   { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
+  { href: "/admin/permissions", label: "기능 권한", icon: Shield, executiveOnly: true },
   { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
   { href: "/admin/departments-positions", label: "부서·직책", icon: Layers, feature: "admin_departments" },
   { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban, feature: "admin_projects" },

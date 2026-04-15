@@ -17,7 +17,7 @@ export const getCachedPositions = unstable_cache(
   async () =>
     prisma.position.findMany({
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, sortOrder: true },
+      select: { id: true, name: true, sortOrder: true, permissions: true },
     }),
   ["crm-positions"],
   { revalidate: 120, tags: ["positions"] }

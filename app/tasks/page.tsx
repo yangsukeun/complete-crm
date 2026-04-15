@@ -50,6 +50,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
@@ -169,6 +170,7 @@ type Task = {
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
   projectId?: string | null;
+  color?: string | null;
 };
 
 function taskCreatorId(t: Task): string | null {
@@ -349,6 +351,8 @@ export default function TasksPage() {
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   /** 초기값은 항상 고정 — localStorage/역할 기반 보정은 아래 useEffect에서만(하이드레이션 안전) */
   const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>("all");
+  const [adminTasksUserId, setAdminTasksUserId] = useState<string>("");
+  const [colorFilter, setColorFilter] = useState<string | null>(null);
   const projectScopeHydratedRef = useRef(false);
   const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
   /** 노션식 오른쪽 패널 미리보기 */
@@ -399,6 +403,29 @@ export default function TasksPage() {
     }
   }, [projectsViewMode, projectsViewModeReady]);
 
+  const isTasksAdmin =
+    session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
+
+  useEffect(() => {
+    if (!isTasksAdmin) setAdminTasksUserId("");
+  }, [isTasksAdmin]);
+
+  const adminUsersSwrKey =
+    authStatus === "authenticated" && isTasksAdmin ? "/api/users" : null;
+  const { data: tasksAdminUsers = [] } = useSWR(
+    adminUsersSwrKey,
+    async (url: string) => {
+      const r = await fetch(url, {
+        credentials: "include",
+        headers: workspaceFetchHeaders(),
+      });
+      if (!r.ok) return [];
+      const j = await r.json();
+      return Array.isArray(j) ? j : [];
+    },
+    { revalidateOnFocus: false }
+  );
+
   /** 마인드맵·필터·보기 범위 적용 시 전체 목록 필요 (부분 페이지에만 클라이언트 필터를 쓰면 안 됨) */
   const needsFullTaskList =
     view === "mindmap" ||
@@ -406,7 +433,9 @@ export default function TasksPage() {
     filterAssigneeId !== "" ||
     filterPriority !== "" ||
     filterDue !== "all" ||
-    projectScopeFilter !== "all";
+    projectScopeFilter !== "all" ||
+    colorFilter !== null ||
+    (isTasksAdmin && adminTasksUserId !== "");
 
   useEffect(() => {
     setColumnVisible(loadColumnVisibility());
@@ -468,7 +497,10 @@ export default function TasksPage() {
     return () => cancelAnimationFrame(t);
   }, [view]);
 
-  const tasksFullKey = authStatus === "authenticated" && needsFullTaskList ? "/api/tasks?all=1" : null;
+  const tasksFullKey =
+    authStatus === "authenticated" && needsFullTaskList
+      ? `/api/tasks?all=1${adminTasksUserId ? `&userId=${encodeURIComponent(adminTasksUserId)}` : ""}`
+      : null;
   const {
     data: tasksFullData,
     isLoading: tasksFullLoading,
@@ -487,9 +519,13 @@ export default function TasksPage() {
       if (authStatus !== "authenticated") return null;
       if (needsFullTaskList) return null;
       if (previousPageData && !previousPageData.hasMore) return null;
-      return `/api/tasks?limit=20&offset=${pageIndex * 20}`;
+      const q = new URLSearchParams();
+      q.set("limit", "20");
+      q.set("offset", String(pageIndex * 20));
+      if (isTasksAdmin && adminTasksUserId) q.set("userId", adminTasksUserId);
+      return `/api/tasks?${q.toString()}`;
     },
-    [authStatus, needsFullTaskList]
+    [authStatus, needsFullTaskList, isTasksAdmin, adminTasksUserId]
   );
 
   const {
@@ -625,9 +661,10 @@ export default function TasksPage() {
         return false;
       if (filterPriority && normPriority(t.priority) !== filterPriority) return false;
       if (!passesDueFilter(t, filterDue)) return false;
+      if (colorFilter && (t.color ?? null) !== colorFilter) return false;
       return true;
     });
-  }, [scopeFilteredTasks, filterStatus, filterAssigneeId, filterPriority, filterDue]);
+  }, [scopeFilteredTasks, filterStatus, filterAssigneeId, filterPriority, filterDue, colorFilter]);
 
   const assigneePairs = tasks.flatMap((t: Task) => {
     const list = t.assignees?.length ? t.assignees : t.assignedTo ? [t.assignedTo] : [];
@@ -638,7 +675,8 @@ export default function TasksPage() {
     filterStatus !== "" ||
     filterAssigneeId !== "" ||
     filterPriority !== "" ||
-    filterDue !== "all";
+    filterDue !== "all" ||
+    colorFilter !== null;
 
   const visibleStatusColumns = useMemo(
     () => STATUS_LIST.filter((s) => columnVisible[s.value]),
@@ -661,6 +699,7 @@ export default function TasksPage() {
       assignees: t.assignees,
       assignedTo: t.assignees?.[0] ?? t.assignedTo,
       createdById: t.createdById ?? t.createdBy?.id ?? null,
+      color: t.color ?? null,
     }));
   }, [filteredTasks]);
 
@@ -761,6 +800,24 @@ export default function TasksPage() {
                   <SelectItem value="all">전체 보기</SelectItem>
                 </SelectContent>
               </Select>
+              {isTasksAdmin && (
+                <Select
+                  value={adminTasksUserId || "__all_staff__"}
+                  onValueChange={(v) => setAdminTasksUserId(v === "__all_staff__" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9 w-[148px] border-gray-200 text-left text-sm">
+                    <SelectValue placeholder="직원" />
+                  </SelectTrigger>
+                  <SelectContent align="start">
+                    <SelectItem value="__all_staff__">전체 직원</SelectItem>
+                    {(tasksAdminUsers as { id: string; name: string }[]).map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {formatUserName(u)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           )}
           {view === "list" && (
@@ -859,6 +916,7 @@ export default function TasksPage() {
                       setFilterAssigneeId("");
                       setFilterPriority("");
                       setFilterDue("all");
+                      setColorFilter(null);
                     }}
                   >
                     필터 초기화
@@ -890,6 +948,34 @@ export default function TasksPage() {
         {(() => {
           const inner = (
             <>
+        {(view === "list" || view === "mindmap") && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-muted/10 px-3 py-2">
+            <span className="text-muted-foreground text-xs font-medium">색상</span>
+            <button
+              type="button"
+              onClick={() => setColorFilter(null)}
+              className={cn(
+                "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                colorFilter === null ? "border-gray-800 bg-gray-800 text-white" : "border-gray-200 hover:bg-muted"
+              )}
+            >
+              전체
+            </button>
+            {PROJECT_TASK_COLORS.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                title={c.label}
+                onClick={() => setColorFilter(colorFilter === c.value ? null : c.value)}
+                className={cn(
+                  "size-6 shrink-0 rounded-full border-2 transition-transform",
+                  colorFilter === c.value ? "scale-110 border-gray-800" : "border-transparent hover:scale-105"
+                )}
+                style={{ background: c.value }}
+              />
+            ))}
+          </div>
+        )}
         {view === "list" && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-muted/15 px-4 py-3">
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
@@ -907,6 +993,24 @@ export default function TasksPage() {
                   <SelectItem value="all">전체 보기 (팀에 허용된 목록)</SelectItem>
                 </SelectContent>
               </Select>
+              {isTasksAdmin && (
+                <Select
+                  value={adminTasksUserId || "__all_staff__"}
+                  onValueChange={(v) => setAdminTasksUserId(v === "__all_staff__" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9 w-full min-w-[160px] border-gray-200 sm:w-[200px]" size="sm">
+                    <SelectValue placeholder="직원별 보기" />
+                  </SelectTrigger>
+                  <SelectContent align="start">
+                    <SelectItem value="__all_staff__">전체 직원</SelectItem>
+                    {(tasksAdminUsers as { id: string; name: string }[]).map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {formatUserName(u)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <span className="text-muted-foreground w-full text-xs font-semibold tracking-wide sm:w-auto">
               컬럼 표시
@@ -1066,9 +1170,10 @@ export default function TasksPage() {
                             key={task.id}
                             className={cn(
                               "border-border overflow-hidden rounded-lg border border-gray-200/90 bg-card shadow-sm transition-shadow hover:shadow-md",
-                              priorityLeftBarClass(task.priority),
+                              !task.color && priorityLeftBarClass(task.priority),
                               splitPeekTaskId === task.id && isMdUp && "ring-2 ring-primary ring-offset-2 ring-offset-background"
                             )}
+                            style={task.color ? { borderLeftWidth: 4, borderLeftColor: task.color } : undefined}
                           >
                             <Link
                               href={`/tasks/${task.id}`}

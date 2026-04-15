@@ -1,6 +1,9 @@
 /**
  * 계정별 사용 가능 기능(권한) 정의 및 체크
- * User.permissions가 있으면 해당 목록만 사용, 없으면 role 기본값 적용
+ *
+ * JWT/세션의 `permissions`는 서버에서 **이미 해석된** JSON(개별 지정 → 직책 마스터 → 역할 기본)일 수 있습니다.
+ * DB의 User.permissions만 넘기는 경우에는 직책 템플릿이 반영되지 않으므로, API·RSC에서는 세션 또는
+ * `resolveEffectivePermissionsJson` 결과를 사용하는 것이 안전합니다.
  */
 
 export type RoleName = "USER" | "TEAM_LEAD" | "EXECUTIVE" | "ADMIN";
@@ -68,7 +71,7 @@ const DEFAULT_BY_ROLE: Record<RoleName, string[]> = {
   ADMIN: FEATURE_KEYS,
 };
 
-function parsePermissions(json: string | null | undefined): string[] | null {
+export function parsePermissions(json: string | null | undefined): string[] | null {
   if (json == null || String(json).trim() === "") return null;
   try {
     const arr = JSON.parse(json) as unknown;

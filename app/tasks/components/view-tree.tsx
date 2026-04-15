@@ -40,7 +40,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Plus, ChevronDown, ChevronRight, Check, X, GripVertical, TreePine, Trash2, Settings2, Palette, ArrowUpFromLine } from "lucide-react";
+import { Plus, Check, X, GripVertical, TreePine, Trash2, Settings2, Palette, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Types
@@ -60,6 +60,7 @@ type TaskData = {
   assignedTo: { id: string; name: string; position?: string | null; image?: string | null } | null;
   /** 삭제 권한: 임원/관리자 또는 본인이 생성한 프로젝트만 */
   createdById?: string | null;
+  color?: string | null;
 };
 
 type TaskLink = {
@@ -370,11 +371,16 @@ function TaskNode({ data, id, selected }: NodeProps) {
         "relative rounded-lg border shadow-md transition-all hover:shadow-lg",
         style.nodeBgColor,
         style.nodeTextColor,
+        task.color ? "border-l-4" : "",
         task.isCompleted && "opacity-70",
         isDropTarget && "ring-2 ring-violet-500 ring-offset-2 scale-105",
         selected && "ring-2 ring-blue-500 ring-offset-2"
       )}
-      style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
+      style={{
+        width: NODE_WIDTH,
+        minHeight: NODE_HEIGHT,
+        ...(task.color ? { borderLeftColor: task.color } : {}),
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -392,23 +398,6 @@ function TaskNode({ data, id, selected }: NodeProps) {
       <div className="p-3">
         {/* Header */}
         <div className="flex items-start gap-2">
-          {/* Collapse Toggle */}
-          {hasChildren && (
-            <button
-              onClick={(e: any) => {
-                e.stopPropagation();
-                onToggleCollapse(id);
-              }}
-              className="mt-0.5 p-0.5 rounded hover:bg-muted"
-            >
-              {isCollapsed ? (
-                <ChevronRight className="size-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="size-4 text-muted-foreground" />
-              )}
-            </button>
-          )}
-
           {/* Title */}
           <div className="flex-1 min-w-0">
             {isEditing ? (
@@ -498,6 +487,20 @@ function TaskNode({ data, id, selected }: NodeProps) {
         position={Position.Bottom}
         className="!bg-violet-500 !w-3 !h-3"
       />
+
+      {hasChildren && (
+        <button
+          type="button"
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+            onToggleCollapse(id);
+          }}
+          className="absolute -bottom-3 left-1/2 z-10 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border-2 border-gray-300 bg-white text-xs shadow-sm hover:border-blue-500 hover:text-blue-500 dark:border-muted-foreground dark:bg-card"
+          title={isCollapsed ? "펼치기" : "접기"}
+        >
+          {isCollapsed ? "+" : "−"}
+        </button>
+      )}
     </div>
   );
 }
@@ -843,22 +846,31 @@ function TreeViewInner({
     }
   }, [onRefresh]);
 
-  // Helper function for visible tasks
-  const getVisibleTasks = useCallback((allTasks: TaskData[], collapsed: Set<string>): TaskData[] => {
-    const hiddenIds = new Set<string>();
-
-    function hideChildren(parentId: string) {
-      allTasks.forEach((t: any) => {
-        if (t.parentId === parentId) {
-          hiddenIds.add(t.id);
-          hideChildren(t.id);
-        }
-      });
+  // 접힘: 기본 parentId 트리 + 추가 연결(taskLinks)을 합친 방향 그래프의 하위 전부 숨김
+  const getVisibleTasks = useCallback((allTasks: TaskData[], collapsed: Set<string>, links: TaskLink[]): TaskData[] => {
+    const adj = new Map<string, string[]>();
+    for (const t of allTasks) {
+      if (t.parentId) {
+        if (!adj.has(t.parentId)) adj.set(t.parentId, []);
+        adj.get(t.parentId)!.push(t.id);
+      }
     }
-
-    collapsed.forEach((id: any) => hideChildren(id));
-
-    return allTasks.filter((t: any) => !hiddenIds.has(t.id));
+    for (const l of links) {
+      if (!adj.has(l.parentId)) adj.set(l.parentId, []);
+      const arr = adj.get(l.parentId)!;
+      if (!arr.includes(l.childId)) arr.push(l.childId);
+    }
+    const hidden = new Set<string>();
+    for (const rootId of collapsed) {
+      const stack = [...(adj.get(rootId) ?? [])];
+      while (stack.length) {
+        const c = stack.pop()!;
+        if (hidden.has(c)) continue;
+        hidden.add(c);
+        for (const nx of adj.get(c) ?? []) stack.push(nx);
+      }
+    }
+    return allTasks.filter((t) => !hidden.has(t.id));
   }, []);
 
   // Handle selection change
@@ -1075,9 +1087,23 @@ function TreeViewInner({
     return { treeTasks: tree, uncategorizedTasks: uncategorized };
   }, [tasks, taskLinks, stagedRootIds]);
 
+  const collapseAllWithChildren = useCallback(() => {
+    const parentIds = new Set<string>();
+    for (const t of treeTasks) {
+      const hasChild =
+        treeTasks.some((x) => x.parentId === t.id) || taskLinks.some((l) => l.parentId === t.id);
+      if (hasChild) parentIds.add(t.id);
+    }
+    setCollapsedIds(parentIds);
+  }, [treeTasks, taskLinks]);
+
+  const expandAllMindmap = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, []);
+
   // Build nodes and edges from tree tasks
   const { layoutedNodes, layoutedEdges } = useMemo(() => {
-    const visibleTasks = getVisibleTasks(treeTasks, collapsedIds);
+    const visibleTasks = getVisibleTasks(treeTasks, collapsedIds, taskLinks);
     const visibleTaskIds = new Set(visibleTasks.map((t: any) => t.id));
 
     const nodes: Node[] = visibleTasks.map((task: any) => {
@@ -1147,6 +1173,7 @@ function TreeViewInner({
     handleAddParentNode,
     getVisibleTasks,
     getNodeStyle,
+    taskLinks,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
@@ -1391,6 +1418,27 @@ function TreeViewInner({
               상위 노드
             </Button>
           )}
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mindmap-toolbar-btn h-8 px-2 text-xs"
+            onClick={collapseAllWithChildren}
+          >
+            전체 접기
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mindmap-toolbar-btn h-8 px-2 text-xs"
+            onClick={expandAllMindmap}
+          >
+            전체 펼치기
+          </Button>
         </div>
 
         {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 프로젝트만 */}

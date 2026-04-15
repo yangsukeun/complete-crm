@@ -46,6 +46,7 @@ export type ProjectTableTask = {
   } | null;
   createdById?: string | null;
   createdBy?: { id: string; name: string; position?: string | null };
+  color?: string | null;
 };
 
 type SortKey = "title" | "status" | "assignee" | "dueDate" | "priority" | "progress";
@@ -237,6 +238,7 @@ export function ProjectTableView<T extends ProjectTableTask = ProjectTableTask>(
                       "border-b",
                       splitPeekTaskId === task.id && isMdUp && "bg-primary/5"
                     )}
+                    style={task.color ? { borderLeftWidth: 4, borderLeftColor: task.color } : undefined}
                   >
                     <TableCell className="max-w-[220px]">
                       <Link

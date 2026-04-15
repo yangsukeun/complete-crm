@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
@@ -29,11 +30,11 @@ export const authConfig: NextAuthConfig = {
     signIn() {
       return true;
     },
-    jwt({ token, user }) {
-      if (user) {
+    async jwt({ token, user }) {
+      if (user?.id) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
-        token.permissions = (user as { permissions?: string | null }).permissions ?? null;
+        token.permissions = await resolveEffectivePermissionsJson(user.id);
       }
       return token;
     },

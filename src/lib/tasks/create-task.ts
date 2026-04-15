@@ -27,6 +27,7 @@ export type CreateTaskInput = {
   isRecurring?: boolean;
   recurringDays?: string | null;
   recurringMemo?: string | null;
+  color?: string | null;
 };
 
 const taskInclude = {
@@ -79,6 +80,7 @@ export async function createTaskWithNotifications(params: {
       isRecurring,
       recurringDays,
       recurringMemo,
+      ...(data.color !== undefined ? { color: data.color } : {}),
       assignees: {
         create: ids.map((userId) => ({ userId })),
       },

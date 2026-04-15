@@ -10,6 +10,7 @@ import { todayYmdKst } from "@/lib/date-kst";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 import { serializeAssigneesFromRows, taskAssigneeUserSelect } from "@/lib/task-assignees";
+import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
 
 function serializeTaskDetail(task: {
   assignees: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
@@ -256,6 +257,7 @@ export async function PATCH(
       isRecurring?: boolean;
       recurringDays?: string | null;
       recurringMemo?: string | null;
+      color?: string | null;
     } = {};
     if (typeof body.isCompleted === "boolean") {
       data.isCompleted = body.isCompleted;
@@ -290,6 +292,15 @@ export async function PATCH(
           body.recurringMemo === null || body.recurringMemo === ""
             ? null
             : String(body.recurringMemo);
+      }
+    }
+
+    if ("color" in body) {
+      if (body.color === null || body.color === "") {
+        data.color = null;
+      } else if (typeof body.color === "string") {
+        const c = body.color.trim();
+        if (PROJECT_TASK_COLOR_SET.has(c)) data.color = c;
       }
     }
 

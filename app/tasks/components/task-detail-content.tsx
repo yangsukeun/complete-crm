@@ -42,12 +42,14 @@ import {
   Flag,
   Download,
   FolderKanban,
+  Palette,
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { cn } from "@/lib/utils";
+import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
@@ -61,6 +63,7 @@ type TaskDetail = {
   dueDate: string;
   isCompleted: boolean;
   priority: string;
+  color?: string | null;
   isRecurring?: boolean;
   recurringDays?: string | null;
   recurringMemo?: string | null;
@@ -671,6 +674,39 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                 </div>
               </PopoverContent>
             </Popover>
+          </div>
+
+          <div className="flex items-start gap-3 text-sm">
+            <span className="text-muted-foreground flex w-16 shrink-0 gap-1.5 pt-0.5">
+              <Palette className="size-3.5" />
+              색상
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                title="기본(우선순위 막대만)"
+                onClick={() => updateTask({ color: null })}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-full border-2 text-[10px] text-muted-foreground",
+                  !task.color ? "border-violet-500" : "border-muted hover:bg-muted"
+                )}
+              >
+                —
+              </button>
+              {PROJECT_TASK_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  title={c.label}
+                  onClick={() => updateTask({ color: c.value })}
+                  className={cn(
+                    "size-7 shrink-0 rounded-full border-2 transition-transform",
+                    task.color === c.value ? "scale-110 border-gray-800" : "border-transparent hover:scale-105"
+                  )}
+                  style={{ background: c.value }}
+                />
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-start gap-3 text-sm">
