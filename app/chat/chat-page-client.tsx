@@ -54,6 +54,7 @@ import { ChatMessagesSkeleton } from "@/components/detail/detail-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { subscribeChatMessagesForChatRoom } from "@/lib/supabase/realtime-client";
 import type { RealtimeSubscriptionHandle } from "@/lib/supabase/realtime-client";
+import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 
 type User = {
   id: string;
@@ -1282,10 +1283,16 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                                 );
                               }
                               if (part.match(/^https?:\/\//)) {
+                                const driveId = /drive\.google\.com|googleusercontent\.com/i.test(part)
+                                  ? parseGoogleDriveFileIdFromUrl(part)
+                                  : null;
+                                const href = driveId
+                                  ? `/api/drive/proxy?fileId=${encodeURIComponent(driveId)}`
+                                  : part;
                                 return (
                                   <a
                                     key={i}
-                                    href={part}
+                                    href={href}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-primary underline"
