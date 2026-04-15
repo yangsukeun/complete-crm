@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
+import { Prisma } from "@prisma/client";
 import { createTaskWithNotifications, jsonSerializeCreatedTask } from "@/lib/tasks/create-task";
 import {
   serializeAssigneesFromRows,
@@ -101,6 +102,27 @@ function mapListItem(task: Record<string, unknown>) {
   const { assignees, assignedTo } = serializeAssigneesFromRows(assigneesRows, legacy);
   const { assignees: _a, ...rest } = task as { assignees?: unknown };
   return { ...rest, assignees, assignedTo };
+}
+
+/** DB에 color 마이그레이션 전이면 Prisma가 실패 → color 제외 select로 한 번 재시도 */
+async function findManyTasksForList(
+  args: Omit<Prisma.TaskFindManyArgs, "select"> & { select: typeof listSelect }
+) {
+  try {
+    return await prisma.task.findMany(args);
+  } catch (e) {
+    const prismaMissing =
+      e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022";
+    const msg = String(e instanceof Error ? e.message : e).toLowerCase();
+    const looksLikeMissingColor =
+      msg.includes("color") && (msg.includes("column") || msg.includes("does not exist"));
+    if (!prismaMissing && !looksLikeMissingColor) throw e;
+    const { color: _drop, ...selectWithoutColor } = listSelect as unknown as Record<string, unknown>;
+    return await prisma.task.findMany({
+      ...args,
+      select: selectWithoutColor as typeof listSelect,
+    });
+  }
 }
 
 export async function GET(req: Request) {
@@ -237,7 +259,7 @@ export async function GET(req: Request) {
         const d0 = startOfDay(anchor);
         const d1 = endOfDay(anchor);
         const whereDueDay = { ...baseWhere, dueDate: { gte: d0, lte: d1 } };
-        const tasksDueDay = await prisma.task.findMany({
+        const tasksDueDay = await findManyTasksForList({
           where: whereDueDay,
           select: listSelect,
           orderBy,
@@ -251,7 +273,7 @@ export async function GET(req: Request) {
     const all = searchParams.get("all") === "1";
 
     if (all) {
-      const tasks = await prisma.task.findMany({
+      const tasks = await findManyTasksForList({
         where: baseWhere,
         select: listSelect,
         orderBy,
@@ -264,7 +286,7 @@ export async function GET(req: Request) {
 
     const [total, tasks] = await Promise.all([
       prisma.task.count({ where: baseWhere }),
-      prisma.task.findMany({
+      findManyTasksForList({
         where: baseWhere,
         select: listSelect,
         orderBy,
