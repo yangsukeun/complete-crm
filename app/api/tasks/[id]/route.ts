@@ -17,6 +17,14 @@ import type { Prisma } from "@prisma/client";
 /** Prisma·DB는 Node 런타임 전제 (Edge에서 cookies/Prisma 이슈 방지) */
 export const runtime = "nodejs";
 
+/** TaskRevision·로그용 — 긴 본문 전체를 넣으면 DB/풀러에서 실패할 수 있음 */
+const REVISION_BODY_PREVIEW_MAX = 4000;
+function revisionBodyPreview(text: string | null | undefined): string | null {
+  if (text == null) return null;
+  if (text.length <= REVISION_BODY_PREVIEW_MAX) return text;
+  return `${text.slice(0, REVISION_BODY_PREVIEW_MAX)}…(+${text.length - REVISION_BODY_PREVIEW_MAX}자)`;
+}
+
 function serializeTaskDetail(task: {
   assignees?: { user?: import("@/lib/task-assignees").TaskAssigneeUser | null }[] | null;
   assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
@@ -465,8 +473,8 @@ export async function PATCH(
     if (data.description !== undefined && data.description !== (existing.description ?? null)) {
       revisions.push({
         field: "description",
-        oldValue: existing.description ?? null,
-        newValue: data.description ?? null,
+        oldValue: revisionBodyPreview(existing.description ?? null),
+        newValue: revisionBodyPreview(data.description ?? null),
       });
     }
     if (data.status !== undefined && data.status !== existing.status) {
@@ -476,7 +484,14 @@ export async function PATCH(
         newValue: statusLabels[data.status] ?? data.status,
       });
     }
-    if (data.dueDate !== undefined && String(data.dueDate) !== String(existing.dueDate)) {
+    if (
+      data.dueDate !== undefined &&
+      existing.dueDate instanceof Date &&
+      !Number.isNaN(existing.dueDate.getTime()) &&
+      data.dueDate instanceof Date &&
+      !Number.isNaN(data.dueDate.getTime()) &&
+      String(data.dueDate) !== String(existing.dueDate)
+    ) {
       revisions.push({
         field: "dueDate",
         oldValue: existing.dueDate.toISOString().slice(0, 10),
@@ -491,23 +506,27 @@ export async function PATCH(
       const assigneesUnchanged =
         oldSet.size === newSet.size && [...oldSet].every((uid) => newSet.has(uid));
       if (!assigneesUnchanged) {
-        const [oldUsers, newUsers] = await Promise.all([
-          oldIds.length
-            ? prisma.user.findMany({ where: { id: { in: oldIds } }, select: { id: true, name: true } })
-            : Promise.resolve([]),
-          newIds.length
-            ? prisma.user.findMany({ where: { id: { in: newIds } }, select: { id: true, name: true } })
-            : Promise.resolve([]),
-        ]);
-        const namesInOrder = (ids: string[], users: { id: string; name: string }[]) => {
-          const m = new Map(users.map((u) => [u.id, u.name]));
-          return ids.map((uid) => m.get(uid) ?? uid).join(", ");
-        };
-        revisions.push({
-          field: "assignees",
-          oldValue: namesInOrder(oldIds, oldUsers) || "(없음)",
-          newValue: namesInOrder(newIds, newUsers) || "(없음)",
-        });
+        try {
+          const [oldUsers, newUsers] = await Promise.all([
+            oldIds.length
+              ? prisma.user.findMany({ where: { id: { in: oldIds } }, select: { id: true, name: true } })
+              : Promise.resolve([]),
+            newIds.length
+              ? prisma.user.findMany({ where: { id: { in: newIds } }, select: { id: true, name: true } })
+              : Promise.resolve([]),
+          ]);
+          const namesInOrder = (ids: string[], users: { id: string; name: string }[]) => {
+            const m = new Map(users.map((u) => [u.id, u.name]));
+            return ids.map((uid) => m.get(uid) ?? uid).join(", ");
+          };
+          revisions.push({
+            field: "assignees",
+            oldValue: namesInOrder(oldIds, oldUsers) || "(없음)",
+            newValue: namesInOrder(newIds, newUsers) || "(없음)",
+          });
+        } catch (assigneeRevErr) {
+          console.error("[tasks] PATCH revision assignees lookup skipped:", assigneeRevErr);
+        }
       }
     }
     if (data.priority !== undefined && data.priority !== existing.priority) {
@@ -548,9 +567,15 @@ export async function PATCH(
     /**
      * PATCH 응답용: 루트 select에 color를 넣지 않음 → DB에 color 컬럼이 없어도
      * UPDATE … RETURNING 이 color를 읽지 않아 500을 막을 수 있음.
-     * (include + omit 조합은 엔진/버전에 따라 여전히 color를 읽는 경우가 있음)
+     * 본문 자동저장(description만)일 때는 댓글·첨부를 읽지 않아 타임아웃/부하를 줄임.
      */
-    const patchResultSelect = {
+    const touchedKeys = (Object.keys(data) as (keyof typeof data)[]).filter(
+      (k) => data[k] !== undefined
+    );
+    const descriptionOnlyPatch =
+      touchedKeys.length === 1 && touchedKeys[0] === "description";
+
+    const patchResultSelectBase = {
       id: true,
       title: true,
       description: true,
@@ -587,37 +612,39 @@ export async function PATCH(
           position: true,
         },
       },
-      attachments: {
-        select: {
-          id: true,
-          taskId: true,
-          type: true,
-          url: true,
-          name: true,
-          createdAt: true,
-        },
-      },
-      comments: {
-        orderBy: { createdAt: "asc" as const },
-        select: {
-          id: true,
-          body: true,
-          createdAt: true,
-          userId: true,
-          user: {
+    } as const;
+
+    const patchResultSelect: Prisma.TaskSelect = descriptionOnlyPatch
+      ? ({ ...patchResultSelectBase } as unknown as Prisma.TaskSelect)
+      : ({
+          ...patchResultSelectBase,
+          attachments: {
             select: {
               id: true,
+              taskId: true,
+              type: true,
+              url: true,
               name: true,
-              position: true,
+              createdAt: true,
             },
           },
-        },
-      },
-    } as const satisfies Prisma.TaskSelect;
-
-    type PatchedTaskForResponse = Prisma.TaskGetPayload<{
-      select: typeof patchResultSelect;
-    }>;
+          comments: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              body: true,
+              createdAt: true,
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: true,
+                },
+              },
+            },
+          },
+        } as unknown as Prisma.TaskSelect);
 
     const runPatchTransaction = async (patchData: typeof data) =>
       prisma.$transaction(async (tx) => {
@@ -630,15 +657,14 @@ export async function PATCH(
             });
           }
         }
-        const updated = await tx.task.update({
+        return tx.task.update({
           where: { id },
           data: patchData,
           select: patchResultSelect,
         });
-        return updated as PatchedTaskForResponse;
       });
 
-    let taskRow: PatchedTaskForResponse;
+    let taskRow: Awaited<ReturnType<typeof runPatchTransaction>>;
     try {
       taskRow = await runPatchTransaction(data);
     } catch (e) {
@@ -655,7 +681,7 @@ export async function PATCH(
       });
       colorFromDb = cRow?.color ?? null;
     } catch (e) {
-      if (!isPrismaTaskColorColumnMissing(e)) throw e;
+      console.error("[tasks] PATCH color fetch skipped:", e);
       colorFromDb = null;
     }
 
