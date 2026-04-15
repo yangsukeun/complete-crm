@@ -202,6 +202,14 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
     throw new Error("Drive 업로드 후 file id를 받지 못했습니다.");
   }
 
+  // 업로드 직후 공개 읽기 권한 부여 (채팅 링크 클릭 시 '열 수 없음' 방지)
+  // 실패해도 업로드 자체는 성공 처리(권한은 별도 재시도/관리 가능)
+  try {
+    await grantDriveAnyoneWithLinkRead(fileId);
+  } catch {
+    /* ignore */
+  }
+
   const mime = (input.mime || "").toLowerCase();
   const isImage = mime.startsWith("image/");
   /** 이미지는 thumbnail이 img src에 실제 바이너리를 돌려줌(uc?export=view는 HTML 뷰어로 엑박 가능) */
