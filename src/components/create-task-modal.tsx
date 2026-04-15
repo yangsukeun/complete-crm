@@ -127,6 +127,7 @@ export function CreateTaskModal({
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || undefined,
@@ -144,7 +145,11 @@ export function CreateTaskModal({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "프로젝트 생성에 실패했습니다.");
+        const msg =
+          (data as { error?: string; details?: string }).error ||
+          (data as { error?: string; details?: string }).details ||
+          `프로젝트 생성에 실패했습니다. (HTTP ${res.status})`;
+        throw new Error(msg);
       }
       toast.success("프로젝트가 할당되었습니다.");
       onCreated();

@@ -1026,6 +1026,7 @@ function TreeViewInner({
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title: quickTitle.trim(),
           dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 일주일 후
@@ -1033,7 +1034,14 @@ function TreeViewInner({
           parentId,
         }),
       });
-      if (!res.ok) throw new Error("생성 실패");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          (data as { error?: string; details?: string }).error ||
+          (data as { error?: string; details?: string }).details ||
+          `생성 실패 (HTTP ${res.status})`;
+        throw new Error(msg);
+      }
       toast.success(parentId ? "하위 프로젝트가 생성되었습니다!" : "새 프로젝트가 생성되었습니다!");
       setQuickTitle("");
       
