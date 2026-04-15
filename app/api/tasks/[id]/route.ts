@@ -691,24 +691,33 @@ export async function PATCH(
       });
 
     let taskRow: Awaited<ReturnType<typeof runPatchTransaction>>;
+    /** 이미 color 컬럼 없음으로 update 폴백했으면 SELECT color도 불가 */
+    let skipColorSelect = false;
     try {
       taskRow = await runPatchTransaction(data);
     } catch (e) {
       if (!isPrismaTaskColorColumnMissing(e)) throw e;
       const { color: _c, ...dataNoColor } = data;
       taskRow = await runPatchTransaction(dataNoColor);
+      skipColorSelect = true;
     }
 
     let colorFromDb: string | null = null;
-    try {
-      const cRow = await prisma.task.findUnique({
-        where: { id },
-        select: { color: true },
-      });
-      colorFromDb = cRow?.color ?? null;
-    } catch (e) {
-      console.error("[tasks] PATCH color fetch skipped:", e);
-      colorFromDb = null;
+    if (!skipColorSelect) {
+      try {
+        const cRow = await prisma.task.findUnique({
+          where: { id },
+          select: { color: true },
+        });
+        colorFromDb = cRow?.color ?? null;
+      } catch (e) {
+        if (isPrismaTaskColorColumnMissing(e)) {
+          colorFromDb = null;
+        } else {
+          console.error("[tasks] PATCH color fetch skipped:", e);
+          colorFromDb = null;
+        }
+      }
     }
 
     const task = { ...taskRow, color: colorFromDb } as unknown as Parameters<typeof serializeTaskDetail>[0];

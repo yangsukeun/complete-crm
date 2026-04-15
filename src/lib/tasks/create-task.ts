@@ -40,6 +40,41 @@ const taskInclude = {
   },
 } as const;
 
+/**
+ * DB에 `Task.color` 컬럼이 없을 때: `create`+`include`는 RETURNING에 color가 들어가 P2022가 날 수 있음.
+ * `omit` 폴백은 Prisma/런타임 조합에 따라 실패할 수 있어, id만 받은 뒤 루트 select에서 color만 빼고 재조회한다.
+ */
+const taskReloadSelectNoColor = {
+  id: true,
+  title: true,
+  description: true,
+  dueDate: true,
+  isCompleted: true,
+  status: true,
+  priority: true,
+  isRecurring: true,
+  recurringDays: true,
+  recurringMemo: true,
+  projectId: true,
+  parentId: true,
+  categoryId: true,
+  orderIndex: true,
+  isCollapsed: true,
+  scope: true,
+  deletedAt: true,
+  deletedById: true,
+  createdAt: true,
+  updatedAt: true,
+  assignedToId: true,
+  createdById: true,
+  assignedTo: { select: taskAssigneeUserSelect },
+  createdBy: { select: { name: true, position: true } },
+  assignees: {
+    select: { user: { select: taskAssigneeUserSelect } },
+    orderBy: { createdAt: "asc" as const },
+  },
+} as const;
+
 export type CreatedTaskWithRelations = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
 /**
@@ -98,12 +133,15 @@ export async function createTaskWithNotifications(params: {
     })) as CreatedTaskWithRelations;
   } catch (e) {
     if (!isPrismaTaskColorColumnMissing(e)) throw e;
-    // color 컬럼 없음: create 응답 SELECT에서도 color 제외 (omit은 타입상 any)
-    task = (await (prisma.task.create as any)({
+    const { id } = await prisma.task.create({
       data: taskCreateInner as Prisma.TaskUncheckedCreateInput,
-      include: taskInclude,
-      omit: { color: true },
-    })) as CreatedTaskWithRelations;
+      select: { id: true },
+    });
+    const row = await prisma.task.findUniqueOrThrow({
+      where: { id },
+      select: taskReloadSelectNoColor,
+    });
+    task = { ...row, color: null } as CreatedTaskWithRelations;
   }
 
   const dueDateStr = data.dueDate.slice(0, 10);
