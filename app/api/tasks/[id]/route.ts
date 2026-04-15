@@ -605,7 +605,9 @@ export async function PATCH(
     try {
       task = await runPatchTransaction(data);
     } catch (e) {
-      if (data.color === undefined || !isPrismaTaskColorColumnMissing(e)) throw e;
+      // 자동저장 등 description만 PATCH할 때도, DB에 color 컬럼이 없으면
+      // update 후 조회(SELECT)에서 동일 오류가 나므로 data.color 유무와 관계없이 재시도해야 함.
+      if (!isPrismaTaskColorColumnMissing(e)) throw e;
       const { color: _c, ...dataNoColor } = data;
       task = await runPatchTransaction(dataNoColor, { omitColor: true });
     }

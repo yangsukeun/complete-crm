@@ -97,10 +97,12 @@ export async function createTaskWithNotifications(params: {
       include: taskInclude,
     })) as CreatedTaskWithRelations;
   } catch (e) {
-    if (data.color === undefined || !isPrismaTaskColorColumnMissing(e)) throw e;
-    task = (await prisma.task.create({
+    if (!isPrismaTaskColorColumnMissing(e)) throw e;
+    // color 컬럼 없음: create 응답 SELECT에서도 color 제외 (omit은 타입상 any)
+    task = (await (prisma.task.create as any)({
       data: taskCreateInner as Prisma.TaskUncheckedCreateInput,
       include: taskInclude,
+      omit: { color: true },
     })) as CreatedTaskWithRelations;
   }
 
