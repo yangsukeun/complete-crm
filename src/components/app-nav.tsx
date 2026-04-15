@@ -75,8 +75,6 @@ const financeGroupLinks: { href: string; label: string; icon: typeof Wallet; fea
   { href: "/quotations", label: "견적서", icon: FileText, featureKey: "quotations" },
 ];
 
-const CHAT_READ_KEY = "chat_read_";
-
 /** 관리 드롭다운: 대표는 전부, 그 외는 기능 권한(예: 팀장 admin_logs → Daily Report만) */
 const ADMIN_MENU_DEFS: {
   href: string;
@@ -96,11 +94,6 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin/settings/logo", label: "로고 설정", icon: Image, executiveOnly: true },
 ];
 
-type ChatRowForBadge = {
-  id: string;
-  lastMessage: { createdAt: string; user: { id: string } } | null;
-};
-
 export function AppNav() {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -108,7 +101,6 @@ export function AppNav() {
   const { logoUrl, setLogoUrl } = useLayoutShared();
   const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
   const urlMode = useWorkspaceStore((s: any) => s.urlSearchMode);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [paymentAlertCount, setPaymentAlertCount] = useState(0);
   const [paymentAlertLabel, setPaymentAlertLabel] = useState<string>("알림");
   /** [PERF-3차] 모드는 UrlSearchModeBridge·WorkspaceThemeSync·영속 스토어와 정렬 — /api/mode GET 제거 */
@@ -141,33 +133,31 @@ export function AppNav() {
     return () => window.removeEventListener("logo-updated", load);
   }, [session?.user, pathname, setLogoUrl, swrMutate]);
 
+  const userForPermissionForBadge = session?.user as { role?: string; permissions?: string | null } | undefined;
+  const canChatForBadge = (() => {
+    try {
+      return userForPermissionForBadge ? userHasPermission(userForPermissionForBadge as any, "chat") : true;
+    } catch {
+      return true;
+    }
+  })();
+
   const chatsBadgeEnabled =
     Boolean(session?.user?.id) &&
     pathname !== "/choose-mode" &&
+    pathname !== "/login" &&
     effectiveMode === "company" &&
-    session?.user?.role === "USER";
+    canChatForBadge;
 
-  const { data: chatsForBadge } = useSWR<ChatRowForBadge[]>(
-    chatsBadgeEnabled ? SWR_KEYS.chatsList : null,
+  const { data: unreadChat, mutate: mutateUnreadChat } = useSWR<{ count: number }>(
+    chatsBadgeEnabled ? "/api/chats/unread-count" : null,
     jsonFetcher,
-    { dedupingInterval: 10_000, keepPreviousData: true }
+    {
+      dedupingInterval: 30_000,
+      revalidateOnFocus: false,
+      keepPreviousData: true,
+    }
   );
-
-  useEffect(() => {
-    if (!chatsBadgeEnabled || !session?.user?.id) {
-      setChatUnreadCount(0);
-      return;
-    }
-    const list = chatsForBadge;
-    if (!list) return;
-    let count = 0;
-    for (const c of list) {
-      if (!c.lastMessage || c.lastMessage.user?.id === session.user.id) continue;
-      const readAt = typeof localStorage !== "undefined" ? localStorage.getItem(CHAT_READ_KEY + c.id) : null;
-      if (!readAt || new Date(c.lastMessage.createdAt) > new Date(readAt)) count += 1;
-    }
-    setChatUnreadCount(count);
-  }, [chatsBadgeEnabled, chatsForBadge, session?.user?.id]);
 
   useEffect(() => {
     if (!chatsBadgeEnabled) return;
@@ -176,11 +166,10 @@ export function AppNav() {
       if (debounceT) clearTimeout(debounceT);
       debounceT = setTimeout(() => {
         debounceT = null;
-        /** 백그라운드 탭에서도 캐시 갱신 — 포그라운드로 돌아올 때 목록이 오래된 채로 남는 문제 방지 */
-        void swrMutate(SWR_KEYS.chatsList);
+        void mutateUnreadChat();
       }, 400);
     };
-    const onRead = () => void swrMutate(SWR_KEYS.chatsList);
+    const onRead = () => void mutateUnreadChat();
     window.addEventListener("chat-inbox-refresh", onInbox);
     window.addEventListener("chat-read", onRead);
     return () => {
@@ -188,7 +177,7 @@ export function AppNav() {
       window.removeEventListener("chat-read", onRead);
       if (debounceT) clearTimeout(debounceT);
     };
-  }, [chatsBadgeEnabled, swrMutate]);
+  }, [chatsBadgeEnabled, mutateUnreadChat]);
 
   const financeBadgeEnabled =
     pathname !== "/choose-mode" && effectiveMode === "company" && Boolean(session?.user?.id);
@@ -217,14 +206,14 @@ export function AppNav() {
     tasksBadgeEnabled && canTasksForBadge ? SWR_KEYS.tasksAssignedNewCount : null,
     jsonFetcher,
     {
-      dedupingInterval: 30_000,
+      dedupingInterval: 60_000,
       revalidateOnFocus: false,
-      revalidateOnMount: false,
-      revalidateIfStale: false,
+      revalidateOnMount: true,
     }
   );
 
   const projectAssignBadgeCount = tasksAssignedBadge?.count ?? 0;
+  const chatUnreadCount = unreadChat?.count ?? 0;
 
   useEffect(() => {
     if (!financeBadgeEnabled) {

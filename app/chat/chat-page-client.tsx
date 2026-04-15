@@ -267,11 +267,18 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     session?.user?.id && isChatPage ? SWR_KEYS.chatsList : null,
     jsonFetcher,
     {
-      dedupingInterval: 8000,
+      dedupingInterval: 5000,
       keepPreviousData: true,
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
+      revalidateOnMount: true,
     }
   );
+
+  useEffect(() => {
+    if (session?.user?.id && isChatPage) {
+      void mutateChats();
+    }
+  }, [session?.user?.id, isChatPage, mutateChats]);
 
   useEffect(() => {
     if (swrChatsLoading && swrChatList === undefined) return;
@@ -515,6 +522,21 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
             });
             setTimeout(() => scrollToBottom(), 80);
             void mutateChatsRef.current();
+
+            // 현재 열린 방에 새 메시지가 왔다면 즉시 읽음 처리(서버+로컬)하여
+            // "읽었는데 다시 안읽음으로 표시"되는 현상 방지
+            try {
+              if (typeof localStorage !== "undefined") {
+                localStorage.setItem(CHAT_READ_KEY + roomId, new Date().toISOString());
+              }
+              window.dispatchEvent(new Event("chat-read"));
+            } catch {
+              /* ignore */
+            }
+            void fetch(apiUrl(`/api/chats/${roomId}/read`), {
+              method: "POST",
+              credentials: "include",
+            }).catch(() => {});
           } else {
             const last = messagesRef.current[messagesRef.current.length - 1];
             void fetchMessagesRef.current(roomId, true, last?.createdAt ?? null);
