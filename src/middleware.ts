@@ -45,6 +45,20 @@ function hasAuthCookie(request: NextRequest): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
+  /**
+   * OneSignal 호스트 SW — next.config headers만으로 CDN에서 빠지는 경우가 있어
+   * 응답에 Service-Worker-Allowed 를 미들웨어에서도 명시 (루트 scope 등록 허용).
+   */
+  if (pathname === "/OneSignalSDKWorker.js" || pathname === "/OneSignalSDKUpdaterWorker.js") {
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    res.headers.set("Service-Worker-Allowed", "/");
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res;
+  }
+
   /** 예전 PWA·캐시가 /manifest.json 을 요청하면 웹 매니페스트로 보냄(304로 구버전 고착 방지) */
   if (pathname === "/manifest.json") {
     const res = NextResponse.redirect(new URL("/manifest.webmanifest", request.url), 308);
@@ -58,9 +72,6 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/api/branding/favicon";
     return NextResponse.rewrite(url);
   }
-
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-pathname", pathname);
 
   // 잘못된 URL /app/login/... → /login/... 로 리다이렉트 (Next.js App Router는 URL에 /app 이 없음)
   if (pathname.startsWith("/app/login")) {

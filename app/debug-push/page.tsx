@@ -142,25 +142,34 @@ export default function DebugPush() {
   };
 
   const registerServiceWorkerManual = async () => {
-    log("SW 수동 등록 시도");
+    log("SW 수동 등록 시작");
     if (!("serviceWorker" in navigator)) {
       log("SW 미지원");
       return;
     }
     try {
-      const reg = await navigator.serviceWorker.register("/OneSignalSDKWorker.js", { scope: "/" });
-      const swState =
-        reg.installing?.state ?? reg.waiting?.state ?? reg.active?.state ?? "알 수 없음";
-      log("SW 등록 성공: " + reg.scope);
-      log("SW state: " + swState);
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) {
+        const scope = r.scope;
+        await r.unregister();
+        log("기존 SW 해제: " + scope);
+      }
 
-      await new Promise((r) => setTimeout(r, 2000));
+      const reg = await navigator.serviceWorker.register("/OneSignalSDKWorker.js", { scope: "/" });
+      log("SW 등록 성공: " + reg.scope);
+
+      await new Promise((r) => setTimeout(r, 3000));
+
+      const regs2 = await navigator.serviceWorker.getRegistrations();
+      log("등록 후 SW 수: " + regs2.length);
 
       const w = window as WindowWithDeferred;
       if (w.OneSignalDeferred) {
         w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
+          await new Promise((r) => setTimeout(r, 2000));
           const id = os.User?.PushSubscription?.id;
-          log("SW 등록 후 구독ID: " + (id || "없음"));
+          log("구독ID: " + (id || "없음"));
+          log("optedIn: " + String(os.User?.PushSubscription?.optedIn ?? "(없음)"));
 
           if (id) {
             const res = await fetch("/api/user/onesignal-register", {
@@ -170,11 +179,11 @@ export default function DebugPush() {
               body: JSON.stringify({ subscriptionId: id }),
             });
             const data = await res.json().catch(() => ({}));
-            log("등록결과: " + JSON.stringify(data));
+            log("DB 등록결과: " + JSON.stringify(data));
           }
         });
       } else {
-        log("OneSignalDeferred 없음 — 구독 확인만 스킵");
+        log("OneSignalDeferred 없음");
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -216,16 +225,18 @@ export default function DebugPush() {
         onClick={() => void registerServiceWorkerManual()}
         style={{
           marginTop: "8px",
-          padding: "12px",
-          background: "green",
+          padding: "14px",
+          background: "#16a34a",
           color: "white",
           fontSize: "16px",
+          fontWeight: "bold",
           borderRadius: "8px",
           width: "100%",
           border: "none",
+          cursor: "pointer",
         }}
       >
-        서비스 워커 수동 등록
+        🔧 서비스 워커 수동 등록
       </button>
     </div>
   );

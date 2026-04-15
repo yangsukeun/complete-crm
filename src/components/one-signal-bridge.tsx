@@ -106,19 +106,18 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         appId,
         ...(safariWebId ? { safari_web_id: safariWebId } : {}),
         serviceWorkerPath: "/OneSignalSDKWorker.js",
+        serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
         serviceWorkerParam: { scope: "/" },
         /** Chromium(Chrome·Edge·기타) 및 SW 지원 브라우저 공통. Safari(iOS/mac) 웹푸시는 대시보드 Safari Web ID + 사용자 OS 조건 필요 */
         allowLocalhostAsSecureOrigin: process.env.NODE_ENV === "development",
         welcomeNotification: { disable: true, message: "" },
+        /** 벨 UI 비활성 — SW/구독 초기화와 UI 프롬프트 경합 완화 (text 는 타입 필수) */
         notifyButton: {
-          enable: true,
+          enable: false,
           prenotify: false,
           showCredit: false,
-          position: "bottom-right",
-          size: "medium",
           text: {
-            "dialog.blocked.message":
-              "브라우저 설정에서 이 사이트의 알림을 허용해 주세요.",
+            "dialog.blocked.message": "브라우저 설정에서 이 사이트의 알림을 허용해 주세요.",
             "dialog.blocked.title": "푸시 알림 차단됨",
             "dialog.main.button.subscribe": "알림 받기",
             "dialog.main.button.unsubscribe": "알림 끄기",
@@ -131,17 +130,6 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
             "tip.state.blocked": "알림이 차단됨",
             "tip.state.subscribed": "알림 수신 중",
             "tip.state.unsubscribed": "알림 미수신",
-          },
-        },
-        promptOptions: {
-          slidedown: {
-            prompts: [
-              {
-                type: "push",
-                autoPrompt: false,
-                delay: { pageViews: 1, timeDelay: 0 },
-              },
-            ],
           },
         },
       };
