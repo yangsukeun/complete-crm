@@ -361,11 +361,25 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await req.json();
+    // DB에 Task.color 컬럼이 없는 환경에서 findFirst 기본 선택(스칼라 전체)이 500을 유발함
     const existing = await prisma.task.findFirst({
       where: { id, deletedAt: null },
-      include: {
-        assignedTo: { select: { name: true } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        dueDate: true,
+        isCompleted: true,
+        status: true,
+        priority: true,
+        isRecurring: true,
+        recurringDays: true,
+        recurringMemo: true,
+        scope: true,
+        assignedToId: true,
+        createdById: true,
         assignees: { select: { userId: true } },
+        assignedTo: { select: { name: true } },
       },
     });
     if (!existing) {
@@ -865,9 +879,19 @@ export async function DELETE(
 
     const { id } = await params;
     const scope = await getServerWorkspaceScopeFromRequest(req);
+    // DB에 Task.color 컬럼이 없는 환경에서도 안전한 select 사용
     const existing = await prisma.task.findFirst({
       where: { id, deletedAt: null },
-      include: { attachments: true },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        scope: true,
+        createdById: true,
+        attachments: {
+          select: { id: true, url: true },
+        },
+      },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
