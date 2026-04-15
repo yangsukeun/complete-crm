@@ -11,19 +11,24 @@ import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-dri
 import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
 import { serializeAssigneesFromRows, taskAssigneeUserSelect } from "@/lib/task-assignees";
 import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
+import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
+import type { Prisma } from "@prisma/client";
+
+/** Prisma·DB는 Node 런타임 전제 (Edge에서 cookies/Prisma 이슈 방지) */
+export const runtime = "nodejs";
 
 function serializeTaskDetail(task: {
-  assignees: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
+  assignees?: { user?: import("@/lib/task-assignees").TaskAssigneeUser | null }[] | null;
   assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
   children?: {
-    assignees?: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
+    assignees?: { user?: import("@/lib/task-assignees").TaskAssigneeUser | null }[] | null;
     assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
     [key: string]: unknown;
   }[];
   [key: string]: unknown;
 }) {
   const { assignees: rows, children: rawChildren, ...rest } = task;
-  const { assignees, assignedTo } = serializeAssigneesFromRows(rows, task.assignedTo);
+  const { assignees, assignedTo } = serializeAssigneesFromRows(rows ?? [], task.assignedTo);
   const children = rawChildren?.map((c) => {
     const { assignees: crows, ...crest } = c as typeof c & {
       assignees?: { user: import("@/lib/task-assignees").TaskAssigneeUser }[];
@@ -32,6 +37,212 @@ function serializeTaskDetail(task: {
     return { ...crest, assignees: ca.assignees, assignedTo: ca.assignedTo };
   });
   return { ...rest, assignees, assignedTo, ...(children != null ? { children } : {}) };
+}
+
+/**
+ * DB에 Task.color 컬럼이 없을 때용: 루트 select에 color를 넣지 않아 SELECT 절에서 제외됨.
+ * (omit + include 조합은 런타임/버전에 따라 실패할 수 있음)
+ */
+function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
+  return {
+    id: true,
+    title: true,
+    description: true,
+    dueDate: true,
+    isCompleted: true,
+    status: true,
+    priority: true,
+    isRecurring: true,
+    recurringDays: true,
+    recurringMemo: true,
+    projectId: true,
+    parentId: true,
+    categoryId: true,
+    orderIndex: true,
+    isCollapsed: true,
+    scope: true,
+    deletedAt: true,
+    deletedById: true,
+    createdAt: true,
+    updatedAt: true,
+    assignedToId: true,
+    createdById: true,
+    parent: {
+      select: {
+        id: true,
+        title: true,
+      },
+    },
+    children: {
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        isCompleted: true,
+        status: true,
+        priority: true,
+        orderIndex: true,
+        isCollapsed: true,
+        assignedTo: {
+          select: taskAssigneeUserSelect,
+        },
+        assignees: {
+          select: { user: { select: taskAssigneeUserSelect } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
+    },
+    assignees: {
+      select: { user: { select: taskAssigneeUserSelect } },
+      orderBy: { createdAt: "asc" },
+    },
+    assignedTo: {
+      select: taskAssigneeUserSelect,
+    },
+    createdBy: {
+      select: {
+        id: true,
+        name: true,
+        position: true,
+      },
+    },
+    project: {
+      select: {
+        id: true,
+        name: true,
+        brand: { select: { name: true } },
+      },
+    },
+    attachments: {
+      select: {
+        id: true,
+        type: true,
+        url: true,
+        name: true,
+        createdAt: true,
+      },
+    },
+    ...(deferComments
+      ? {}
+      : {
+          comments: {
+            orderBy: { createdAt: "asc" as const },
+            select: {
+              id: true,
+              body: true,
+              createdAt: true,
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: true,
+                },
+              },
+            },
+          },
+        }),
+  };
+}
+
+function buildTaskDetailInclude(deferComments: boolean): Prisma.TaskInclude {
+  return {
+    parent: {
+      select: {
+        id: true,
+        title: true,
+      },
+    },
+    children: {
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        isCompleted: true,
+        status: true,
+        priority: true,
+        orderIndex: true,
+        isCollapsed: true,
+        assignedTo: {
+          select: taskAssigneeUserSelect,
+        },
+        assignees: {
+          select: { user: { select: taskAssigneeUserSelect } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
+    },
+    assignees: {
+      select: { user: { select: taskAssigneeUserSelect } },
+      orderBy: { createdAt: "asc" },
+    },
+    assignedTo: {
+      select: taskAssigneeUserSelect,
+    },
+    createdBy: {
+      select: {
+        id: true,
+        name: true,
+        position: true,
+      },
+    },
+    project: {
+      select: {
+        id: true,
+        name: true,
+        brand: { select: { name: true } },
+      },
+    },
+    attachments: {
+      select: {
+        id: true,
+        type: true,
+        url: true,
+        name: true,
+        createdAt: true,
+      },
+    },
+    ...(deferComments
+      ? {}
+      : {
+          comments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: true,
+                },
+              },
+            },
+            orderBy: { createdAt: "asc" as const },
+          },
+        }),
+  };
+}
+
+async function loadTaskForDetailGet(taskId: string, deferComments: boolean) {
+  const include = buildTaskDetailInclude(deferComments);
+  try {
+    return await prisma.task.findUnique({
+      where: { id: taskId },
+      include,
+    });
+  } catch (e) {
+    if (!isPrismaTaskColorColumnMissing(e)) throw e;
+    const select = buildTaskDetailSelect(deferComments);
+    try {
+      return await prisma.task.findUnique({
+        where: { id: taskId },
+        select,
+      });
+    } catch (e2) {
+      console.error("[tasks] GET loadTaskForDetailGet: color-column fallback failed", e2);
+      throw e;
+    }
+  }
 }
 
 export async function GET(
@@ -49,90 +260,21 @@ export async function GET(
     const deferComments = new URL(req.url).searchParams.get("deferComments") === "1";
     const [scope, task, revisions] = await Promise.all([
       getServerWorkspaceScopeFromRequest(req),
-      prisma.task.findUnique({
-        where: { id },
-        include: {
-          parent: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
-          children: {
-            select: {
-              id: true,
-              title: true,
-              dueDate: true,
-              isCompleted: true,
-              status: true,
-              priority: true,
-              orderIndex: true,
-              isCollapsed: true,
-              assignedTo: {
-                select: taskAssigneeUserSelect,
-              },
-              assignees: {
-                select: { user: { select: taskAssigneeUserSelect } },
-                orderBy: { createdAt: "asc" },
-              },
-            },
-            orderBy: [{ orderIndex: "asc" }, { dueDate: "asc" }],
-          },
-          assignees: {
-            select: { user: { select: taskAssigneeUserSelect } },
+      loadTaskForDetailGet(id, deferComments),
+      (async () => {
+        try {
+          return await prisma.taskRevision.findMany({
+            where: { taskId: id },
             orderBy: { createdAt: "asc" },
-          },
-          assignedTo: {
-            select: taskAssigneeUserSelect,
-          },
-          createdBy: {
-            select: {
-              id: true,
-              name: true,
-              position: true,
+            include: {
+              user: { select: { id: true, name: true, position: true } },
             },
-          },
-          project: {
-            select: {
-              id: true,
-              name: true,
-              brand: { select: { name: true } },
-            },
-          },
-          attachments: {
-            select: {
-              id: true,
-              type: true,
-              url: true,
-              name: true,
-              createdAt: true,
-            },
-          },
-          ...(deferComments
-            ? {}
-            : {
-                comments: {
-                  include: {
-                    user: {
-                      select: {
-                        id: true,
-                        name: true,
-                        position: true,
-                      },
-                    },
-                  },
-                  orderBy: { createdAt: "asc" as const },
-                },
-              }),
-        },
-      }),
-      prisma.taskRevision.findMany({
-        where: { taskId: id },
-        orderBy: { createdAt: "asc" },
-        include: {
-          user: { select: { id: true, name: true, position: true } },
-        },
-      }),
+          });
+        } catch (revErr) {
+          console.error("[tasks] GET revisions skipped:", revErr);
+          return [];
+        }
+      })(),
     ]);
     if (!task || (task as { deletedAt?: Date | null }).deletedAt) {
       return NextResponse.json(
@@ -156,23 +298,32 @@ export async function GET(
       );
     }
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const assigneeRows = (task.assignees ?? []) as { user?: { id: string }; userId: string }[];
     const isAssignee =
       task.assignedToId === session.user.id ||
-      task.assignees.some((a) => a.user.id === session.user.id);
+      assigneeRows.some((a) => (a.user?.id ?? a.userId) === session.user.id);
     const isCreator = task.createdById === session.user.id;
     if (!isAdmin && !isAssignee && !isCreator) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const detail = serializeTaskDetail(task as Parameters<typeof serializeTaskDetail>[0]);
+    const detail = serializeTaskDetail(
+      task as unknown as Parameters<typeof serializeTaskDetail>[0]
+    );
+    const colorNorm = (detail as { color?: string | null }).color ?? null;
     return NextResponse.json({
       ...detail,
+      color: colorNorm,
       ...(deferComments ? { comments: [] } : {}),
       revisions,
     });
   } catch (e) {
-    console.error(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[tasks] GET /api/tasks/[id] failed:", msg, e);
     return NextResponse.json(
-      { error: "프로젝트를 불러올 수 없습니다." },
+      {
+        error: "프로젝트를 불러올 수 없습니다.",
+        ...(process.env.NODE_ENV === "development" ? { details: msg } : {}),
+      },
       { status: 500 }
     );
   }
@@ -394,49 +545,70 @@ export async function PATCH(
       }
     }
 
-    const task = await prisma.$transaction(async (tx) => {
-      if (assigneeIdsUpdate !== undefined) {
-        await tx.taskAssignee.deleteMany({ where: { taskId: id } });
-        if (assigneeIdsUpdate.length > 0) {
-          await tx.taskAssignee.createMany({
-            data: assigneeIdsUpdate.map((userId) => ({ taskId: id, userId })),
-            skipDuplicates: true,
-          });
-        }
-      }
-      return tx.task.update({
-        where: { id },
-        data,
+    const patchResultInclude = {
+      assignedTo: {
+        select: taskAssigneeUserSelect,
+      },
+      assignees: {
+        select: { user: { select: taskAssigneeUserSelect } },
+        orderBy: { createdAt: "asc" as const },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          position: true,
+        },
+      },
+      attachments: true,
+      comments: {
         include: {
-          assignedTo: {
-            select: taskAssigneeUserSelect,
-          },
-          assignees: {
-            select: { user: { select: taskAssigneeUserSelect } },
-            orderBy: { createdAt: "asc" },
-          },
-          createdBy: {
+          user: {
             select: {
               id: true,
               name: true,
               position: true,
             },
           },
-          attachments: true,
-          comments: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  position: true,
-                },
-              },
-            },
-          },
         },
+      },
+    } as const;
+
+    type PatchedTaskForResponse = Prisma.TaskGetPayload<{
+      include: typeof patchResultInclude;
+    }>;
+
+    const runPatchTransaction = async (
+      patchData: typeof data,
+      opts?: { omitColor?: boolean }
+    ) =>
+      prisma.$transaction(async (tx) => {
+        if (assigneeIdsUpdate !== undefined) {
+          await tx.taskAssignee.deleteMany({ where: { taskId: id } });
+          if (assigneeIdsUpdate.length > 0) {
+            await tx.taskAssignee.createMany({
+              data: assigneeIdsUpdate.map((userId) => ({ taskId: id, userId })),
+              skipDuplicates: true,
+            });
+          }
+        }
+        const updated = await tx.task.update({
+          where: { id },
+          data: patchData,
+          ...(opts?.omitColor ? { omit: { color: true as const } } : {}),
+          include: patchResultInclude,
+        } as any);
+        return updated as unknown as PatchedTaskForResponse;
       });
-    });
+
+    let task;
+    try {
+      task = await runPatchTransaction(data);
+    } catch (e) {
+      if (data.color === undefined || !isPrismaTaskColorColumnMissing(e)) throw e;
+      const { color: _c, ...dataNoColor } = data;
+      task = await runPatchTransaction(dataNoColor, { omitColor: true });
+    }
 
     /** 본문에서 빠진 이미지 블록의 Drive 파일은 저장 성공 후 삭제 (저장 실패 시 Drive 보존) */
     if (data.description !== undefined) {
@@ -550,7 +722,7 @@ export async function PATCH(
     }
 
     const res = NextResponse.json(
-      serializeTaskDetail(task as Parameters<typeof serializeTaskDetail>[0])
+      serializeTaskDetail(task as unknown as Parameters<typeof serializeTaskDetail>[0])
     );
     if (mentionNotifyCountForDebug !== undefined && process.env.DEBUG_TASK_MENTION === "1") {
       res.headers.set("X-Debug-Mention-Notify-Count", String(mentionNotifyCountForDebug));

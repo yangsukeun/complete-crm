@@ -50,7 +50,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
+import {
+  COLOR_FILTER_DEFAULT_ONLY,
+  getTaskCardAccentColor,
+  PROJECT_TASK_COLORS,
+  taskHasPaletteColor,
+} from "@/lib/project-task-colors";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
@@ -252,17 +257,6 @@ function columnHeaderClass(status: TaskStatus): string {
       return "border-emerald-700 bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-sm";
     default:
       return "";
-  }
-}
-
-function priorityLeftBarClass(priority: string): string {
-  switch (normPriority(priority)) {
-    case "HIGH":
-      return "border-l-[5px] border-l-red-500";
-    case "LOW":
-      return "border-l-[5px] border-l-slate-400";
-    default:
-      return "border-l-[5px] border-l-amber-500";
   }
 }
 
@@ -661,7 +655,9 @@ export default function TasksPage() {
         return false;
       if (filterPriority && normPriority(t.priority) !== filterPriority) return false;
       if (!passesDueFilter(t, filterDue)) return false;
-      if (colorFilter && (t.color ?? null) !== colorFilter) return false;
+      if (colorFilter === COLOR_FILTER_DEFAULT_ONLY) {
+        if (taskHasPaletteColor(t.color)) return false;
+      } else if (colorFilter && (t.color ?? null) !== colorFilter) return false;
       return true;
     });
   }, [scopeFilteredTasks, filterStatus, filterAssigneeId, filterPriority, filterDue, colorFilter]);
@@ -961,6 +957,23 @@ export default function TasksPage() {
             >
               전체
             </button>
+            <button
+              type="button"
+              title="팔레트 미지정·기본 테두리"
+              onClick={() =>
+                setColorFilter((prev) =>
+                  prev === COLOR_FILTER_DEFAULT_ONLY ? null : COLOR_FILTER_DEFAULT_ONLY
+                )
+              }
+              className={cn(
+                "rounded-full border-2 border-dashed px-2.5 py-0.5 text-xs transition-colors",
+                colorFilter === COLOR_FILTER_DEFAULT_ONLY
+                  ? "border-gray-800 bg-gray-100 text-gray-900"
+                  : "border-gray-300 text-muted-foreground hover:bg-muted"
+              )}
+            >
+              기본
+            </button>
             {PROJECT_TASK_COLORS.map((c) => (
               <button
                 key={c.value}
@@ -1170,10 +1183,12 @@ export default function TasksPage() {
                             key={task.id}
                             className={cn(
                               "border-border overflow-hidden rounded-lg border border-gray-200/90 bg-card shadow-sm transition-shadow hover:shadow-md",
-                              !task.color && priorityLeftBarClass(task.priority),
                               splitPeekTaskId === task.id && isMdUp && "ring-2 ring-primary ring-offset-2 ring-offset-background"
                             )}
-                            style={task.color ? { borderLeftWidth: 4, borderLeftColor: task.color } : undefined}
+                            style={{
+                              borderLeftWidth: 4,
+                              borderLeftColor: getTaskCardAccentColor(task.color),
+                            }}
                           >
                             <Link
                               href={`/tasks/${task.id}`}

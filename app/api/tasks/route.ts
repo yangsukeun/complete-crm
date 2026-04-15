@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { createTaskWithNotifications, jsonSerializeCreatedTask } from "@/lib/tasks/create-task";
 import {
   serializeAssigneesFromRows,
@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import { endOfDay, endOfWeek, parse, startOfDay, startOfWeek } from "date-fns";
 import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
+import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
 
 /** null·비배열·숫자 id 등 클라이언트/직렬화 불일치 시 400 방지 */
 const assigneeIdsInCreate = z.preprocess((val: unknown) => {
@@ -111,12 +112,7 @@ async function findManyTasksForList(
   try {
     return await prisma.task.findMany(args);
   } catch (e) {
-    const prismaMissing =
-      e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022";
-    const msg = String(e instanceof Error ? e.message : e).toLowerCase();
-    const looksLikeMissingColor =
-      msg.includes("color") && (msg.includes("column") || msg.includes("does not exist"));
-    if (!prismaMissing && !looksLikeMissingColor) throw e;
+    if (!isPrismaTaskColorColumnMissing(e)) throw e;
     const { color: _drop, ...selectWithoutColor } = listSelect as unknown as Record<string, unknown>;
     return await prisma.task.findMany({
       ...args,

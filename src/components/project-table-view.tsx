@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { formatUserName, cn } from "@/lib/utils";
+import { getTaskCardAccentColor } from "@/lib/project-task-colors";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { ExternalLink, Trash2 } from "lucide-react";
 import type { VariantProps } from "class-variance-authority";
@@ -238,7 +239,10 @@ export function ProjectTableView<T extends ProjectTableTask = ProjectTableTask>(
                       "border-b",
                       splitPeekTaskId === task.id && isMdUp && "bg-primary/5"
                     )}
-                    style={task.color ? { borderLeftWidth: 4, borderLeftColor: task.color } : undefined}
+                    style={{
+                      borderLeftWidth: 4,
+                      borderLeftColor: getTaskCardAccentColor(task.color),
+                    }}
                   >
                     <TableCell className="max-w-[220px]">
                       <Link

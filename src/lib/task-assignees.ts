@@ -38,10 +38,11 @@ export function normalizeAssigneeIds(
 }
 
 export function serializeAssigneesFromRows(
-  rows: { user: TaskAssigneeUser }[],
+  rows: { user?: TaskAssigneeUser | null }[] | null | undefined,
   legacyAssigned: TaskAssigneeUser | null | undefined
 ): { assignees: TaskAssigneeUser[]; assignedTo: TaskAssigneeUser | null } {
-  const assignees = rows.map((r) => r.user);
+  const list = rows ?? [];
+  const assignees = list.flatMap((r) => (r?.user ? [r.user] : []));
   const assignedTo = assignees[0] ?? legacyAssigned ?? null;
   return { assignees, assignedTo };
 }

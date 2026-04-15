@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Check, X, GripVertical, TreePine, Trash2, Settings2, Palette, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getTaskCardAccentColor } from "@/lib/project-task-colors";
 
 // Types
 type TaskData = {
@@ -371,7 +372,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
         "relative rounded-lg border shadow-md transition-all hover:shadow-lg",
         style.nodeBgColor,
         style.nodeTextColor,
-        task.color ? "border-l-4" : "",
+        "border-l-4",
         task.isCompleted && "opacity-70",
         isDropTarget && "ring-2 ring-violet-500 ring-offset-2 scale-105",
         selected && "ring-2 ring-blue-500 ring-offset-2"
@@ -379,7 +380,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
       style={{
         width: NODE_WIDTH,
         minHeight: NODE_HEIGHT,
-        ...(task.color ? { borderLeftColor: task.color } : {}),
+        borderLeftColor: getTaskCardAccentColor(task.color),
       }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

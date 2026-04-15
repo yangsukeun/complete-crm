@@ -49,7 +49,7 @@ import { formatUserName } from "@/lib/utils";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { cn } from "@/lib/utils";
-import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
+import { getTaskCardAccentColor, PROJECT_TASK_COLORS, taskHasPaletteColor } from "@/lib/project-task-colors";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
@@ -456,6 +456,11 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
 
   return (
     <div className="max-h-[90vh] overflow-y-auto">
+      <div
+        className="h-1 shrink-0"
+        style={{ background: getTaskCardAccentColor(task.color) }}
+        aria-hidden
+      />
       <div className="flex items-center justify-end gap-1 px-4 pt-3 pb-0">
         {task.scope === "TEAM" && (
           <Button
@@ -688,7 +693,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                 onClick={() => updateTask({ color: null })}
                 className={cn(
                   "flex size-7 items-center justify-center rounded-full border-2 text-[10px] text-muted-foreground",
-                  !task.color ? "border-violet-500" : "border-muted hover:bg-muted"
+                  !taskHasPaletteColor(task.color) ? "border-violet-500" : "border-muted hover:bg-muted"
                 )}
               >
                 —

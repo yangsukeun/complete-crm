@@ -16,6 +16,19 @@ export const PROJECT_TASK_COLOR_SET: Set<string> = new Set(
 
 export const DEFAULT_PROJECT_CARD_BORDER = "#e5e7eb";
 
+/** 색상 미지정·레거시: 카드 왼쪽 강조에 사용 */
+export function getTaskCardAccentColor(color: string | null | undefined): string {
+  if (color && PROJECT_TASK_COLOR_SET.has(color)) return color;
+  return DEFAULT_PROJECT_CARD_BORDER;
+}
+
+export function taskHasPaletteColor(color: string | null | undefined): boolean {
+  return typeof color === "string" && PROJECT_TASK_COLOR_SET.has(color);
+}
+
 export function isAllowedProjectTaskColor(hex: string | null | undefined): boolean {
   return typeof hex === "string" && PROJECT_TASK_COLOR_SET.has(hex);
 }
+
+/** 색상 필터: 팔레트 외 '지정 없음'만 보기 */
+export const COLOR_FILTER_DEFAULT_ONLY = "__default__" as const;

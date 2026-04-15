@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { todayYmdKst } from "@/lib/date-kst";
 import type { Prisma, TaskPriority, TaskStatus } from "@prisma/client";
 import type { WorkspaceScope } from "@/lib/workspace";
+import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
 import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import {
@@ -63,30 +64,45 @@ export async function createTaskWithNotifications(params: {
         : null;
   const recurringMemo = isRecurring ? (data.recurringMemo?.trim() ? data.recurringMemo.trim() : null) : null;
 
-  const task = await prisma.task.create({
-    data: {
-      title: data.title,
-      description: data.description ?? null,
-      dueDate: new Date(data.dueDate),
-      priority: data.priority ?? "MEDIUM",
-      status: data.status ?? "TODO",
-      assignedToId: primaryAssignee,
-      createdById,
-      projectId: data.projectId ?? null,
-      parentId: data.parentId ?? null,
-      categoryId: data.categoryId ?? null,
-      orderIndex: data.orderIndex ?? 0,
-      scope: scope === "PERSONAL" ? "PERSONAL" : "TEAM",
-      isRecurring,
-      recurringDays,
-      recurringMemo,
-      ...(data.color !== undefined ? { color: data.color } : {}),
-      assignees: {
-        create: ids.map((userId) => ({ userId })),
-      },
+  const taskScope: WorkspaceScope = scope === "PERSONAL" ? "PERSONAL" : "TEAM";
+  const taskCreateInner = {
+    title: data.title,
+    description: data.description ?? null,
+    dueDate: new Date(data.dueDate),
+    priority: data.priority ?? "MEDIUM",
+    status: data.status ?? "TODO",
+    assignedToId: primaryAssignee,
+    createdById,
+    projectId: data.projectId ?? null,
+    parentId: data.parentId ?? null,
+    categoryId: data.categoryId ?? null,
+    orderIndex: data.orderIndex ?? 0,
+    scope: taskScope,
+    isRecurring,
+    recurringDays,
+    recurringMemo,
+    assignees: {
+      create: ids.map((userId) => ({ userId })),
     },
-    include: taskInclude,
-  });
+  };
+  const taskCreateData =
+    data.color !== undefined
+      ? { ...taskCreateInner, color: data.color }
+      : taskCreateInner;
+
+  let task: CreatedTaskWithRelations;
+  try {
+    task = (await prisma.task.create({
+      data: taskCreateData as Prisma.TaskUncheckedCreateInput,
+      include: taskInclude,
+    })) as CreatedTaskWithRelations;
+  } catch (e) {
+    if (data.color === undefined || !isPrismaTaskColorColumnMissing(e)) throw e;
+    task = (await prisma.task.create({
+      data: taskCreateInner as Prisma.TaskUncheckedCreateInput,
+      include: taskInclude,
+    })) as CreatedTaskWithRelations;
+  }
 
   const dueDateStr = data.dueDate.slice(0, 10);
   const timestampForLog = dueDateStr ? new Date(dueDateStr + "T12:00:00") : undefined;
