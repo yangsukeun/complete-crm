@@ -145,6 +145,10 @@ export function CreateTaskModal({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        console.error("[CreateTaskModal] /api/tasks failed", {
+          status: res.status,
+          data,
+        });
         const msg =
           (data as { error?: string; details?: string }).error ||
           (data as { error?: string; details?: string }).details ||
@@ -155,6 +159,7 @@ export function CreateTaskModal({
       onCreated();
       onOpenChange(false);
     } catch (e) {
+      console.error("[CreateTaskModal] submit failed", e);
       toast.error(e instanceof Error ? e.message : "프로젝트 생성에 실패했습니다.");
     } finally {
       setLoading(false);

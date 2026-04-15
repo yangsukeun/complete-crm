@@ -1036,6 +1036,10 @@ function TreeViewInner({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        console.error("[TaskTreeView] quick create /api/tasks failed", {
+          status: res.status,
+          data,
+        });
         const msg =
           (data as { error?: string; details?: string }).error ||
           (data as { error?: string; details?: string }).details ||
