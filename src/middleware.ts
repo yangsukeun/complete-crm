@@ -48,6 +48,15 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
+  /** 레거시/캐시된 OG 아이콘 경로 호환 */
+  if (pathname === "/assets/favicon/og-270.png") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/og-image.png";
+    const res = NextResponse.rewrite(url);
+    res.headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+    return res;
+  }
+
   /**
    * OneSignal 호스트 SW — next.config headers만으로 CDN에서 빠지는 경우가 있어
    * 응답에 Service-Worker-Allowed 를 미들웨어에서도 명시 (루트 scope 등록 허용).
@@ -111,5 +120,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   /* favicon.ico 포함 — rewrite로 /api/branding/favicon 처리 */
-  matcher: ["/((?!_next/static|_next/image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/assets/favicon/og-270.png",
+  ],
 };
