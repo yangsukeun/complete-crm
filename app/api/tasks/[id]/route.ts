@@ -25,6 +25,14 @@ function revisionBodyPreview(text: string | null | undefined): string | null {
   return `${text.slice(0, REVISION_BODY_PREVIEW_MAX)}…(+${text.length - REVISION_BODY_PREVIEW_MAX}자)`;
 }
 
+function shouldExposeDebugDetails(req: Request, session: any): boolean {
+  // 프로덕션에서 무조건 details를 노출하면 위험하므로, 디버그 헤더 + 관리자만 허용
+  const header = req.headers.get("x-debug-tasks");
+  const okHeader = header === "1" || header === "true";
+  const isAdmin = session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
+  return Boolean(okHeader && isAdmin);
+}
+
 function serializeTaskDetail(task: {
   assignees?: { user?: import("@/lib/task-assignees").TaskAssigneeUser | null }[] | null;
   assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
@@ -257,11 +265,13 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let exposeDetails = false;
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    exposeDetails = shouldExposeDebugDetails(req, session);
 
     const { id } = await params;
     // [PERF-auto] deferComments=1: 본문·메타는 먼저 응답, 댓글은 GET /api/tasks/[id]/comments 병렬 로드
@@ -330,7 +340,7 @@ export async function GET(
     return NextResponse.json(
       {
         error: "프로젝트를 불러올 수 없습니다.",
-        ...(process.env.NODE_ENV === "development" ? { details: msg } : {}),
+        ...(process.env.NODE_ENV === "development" || exposeDetails ? { details: msg } : {}),
       },
       { status: 500 }
     );
@@ -341,11 +351,13 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let exposeDetails = false;
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    exposeDetails = shouldExposeDebugDetails(req, session);
 
     const { id } = await params;
     const body = await req.json();
@@ -834,7 +846,7 @@ export async function PATCH(
     return NextResponse.json(
       {
         error: "프로젝트를 수정할 수 없습니다.",
-        ...(process.env.NODE_ENV === "development" ? { details: msg } : {}),
+        ...(process.env.NODE_ENV === "development" || exposeDetails ? { details: msg } : {}),
       },
       { status: 500 }
     );
