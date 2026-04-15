@@ -28,6 +28,56 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * OneSignal v16 — init만으로 구독 ID가 안 붙는 환경용: 권한 확인 → 필요 시 요청 → 명시적 optIn(재시도).
+ * react-onesignal 패키지의 `OneSignal` 싱글톤 사용(Deferred 안에서 os.init 재호출 안 함).
+ */
+async function runExplicitPushOptIn(reason: string): Promise<void> {
+  const N = OneSignal.Notifications as
+    | {
+        permission?: boolean;
+        requestPermission?: () => Promise<unknown>;
+        getPermissionAsync?: () => Promise<string | boolean>;
+      }
+    | undefined;
+  const Sub = OneSignal.User?.PushSubscription as { optIn?: () => Promise<void> } | undefined;
+  if (!Sub?.optIn) {
+    logClient("[OS] optIn 스킵: API 없음", { reason });
+    return;
+  }
+
+  let browserGranted = typeof Notification !== "undefined" && Notification.permission === "granted";
+  let osGranted = false;
+  try {
+    if (typeof N?.permission === "boolean") osGranted = N.permission;
+    else if (typeof N?.getPermissionAsync === "function") {
+      const p = await N.getPermissionAsync().catch(() => "default");
+      osGranted = p === true || p === "granted";
+    }
+  } catch {
+    /* */
+  }
+
+  if (!osGranted && !browserGranted) {
+    try {
+      await N?.requestPermission?.();
+    } catch (e) {
+      logClient("[OS] requestPermission 예외", { reason, err: String(e) });
+    }
+    await sleep(300);
+  }
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await Sub.optIn();
+      logClient("[OS] optIn 완료", { reason, attempt });
+    } catch (e) {
+      logClient("[OS] optIn 실패", { reason, attempt, err: String(e) });
+    }
+    if (attempt === 1) await sleep(700);
+  }
+}
+
+/**
  * OneSignal 웹 SDK는 대시보드의 사이트 URL과 브라우저 origin이 맞지 않으면
  * `Can only be used on: https://…` 형태로 초기화를 거부합니다.
  * localhost / 프리뷰 도메인에서는 init을 생략해 콘솔 오류를 막습니다.
@@ -174,6 +224,8 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
             }
           }
           logClient("② init 완료", { serviceWorker: "/OneSignalSDKWorker.js" });
+          await sleep(400);
+          await runExplicitPushOptIn("init 직후");
         } catch (err: unknown) {
           const msg = typeof err === "string" ? err : String((err as Error)?.message ?? err);
           if (msg.includes("already initialized")) {
@@ -198,19 +250,13 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
       if (cancelled) return;
       try {
         if (userId) {
-          logClient("③ 로그인 세션 — 권한·optIn (토큰 등록은 OneSignalPushTokenRegister)", { userId });
-          await sleep(500);
+          logClient("③ 로그인 세션 — login 후 명시적 optIn (토큰 등록은 OneSignalPushTokenRegister)", { userId });
+          await sleep(400);
           try {
             await OneSignal.Notifications?.requestPermission?.();
           } catch (permErr) {
             logClient("알림 권한 요청 실패/미지원", { err: String(permErr) });
           }
-          try {
-            await OneSignal.User?.PushSubscription?.optIn?.();
-          } catch {
-            /* ignore */
-          }
-          await sleep(600);
           try {
             const loginFn = (OneSignal as { login?: (externalId: string) => Promise<void> }).login;
             if (typeof loginFn === "function") {
@@ -224,6 +270,8 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           } catch {
             /* ignore */
           }
+          await sleep(500);
+          await runExplicitPushOptIn("login 후");
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("crm-onesignal-session-ready", { detail: { userId } }));
           }

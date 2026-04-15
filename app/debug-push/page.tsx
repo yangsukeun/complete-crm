@@ -9,7 +9,11 @@ type OneSignalDebugOs = {
     requestPermission?: () => Promise<unknown>;
   };
   User?: {
-    PushSubscription?: { optedIn?: boolean; id?: string | null };
+    PushSubscription?: {
+      optedIn?: boolean;
+      id?: string | null;
+      optIn?: () => Promise<void>;
+    };
   };
 };
 
@@ -52,6 +56,13 @@ export default function DebugPush() {
         w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
           log("os 초기화됨");
           log("권한: " + String(os.Notifications?.permission ?? "(없음)"));
+          try {
+            await os.User?.PushSubscription?.optIn?.();
+            log("자동 점검: optIn 호출됨");
+          } catch (e: unknown) {
+            log("자동 점검: optIn 실패 " + (e instanceof Error ? e.message : String(e)));
+          }
+          await new Promise((r) => setTimeout(r, 1500));
           log("optedIn: " + String(os.User?.PushSubscription?.optedIn ?? "(없음)"));
           log("구독ID: " + String(os.User?.PushSubscription?.id ?? "(없음)"));
 
@@ -114,12 +125,20 @@ export default function DebugPush() {
     }
 
     w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
-      log("OS 권한 요청 시작");
+      log("OS 권한·optIn 시작");
       try {
         await os.Notifications?.requestPermission?.();
-        log("OS 권한 완료");
+        log("OS 권한 요청 완료");
 
-        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          await os.User?.PushSubscription?.optIn?.();
+          log("optIn 완료");
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          log("optIn 실패: " + msg);
+        }
+
+        await new Promise((r) => setTimeout(r, 2000));
 
         const id = os.User?.PushSubscription?.id;
         log("구독ID: " + (id || "없음"));
@@ -166,7 +185,16 @@ export default function DebugPush() {
       const w = window as WindowWithDeferred;
       if (w.OneSignalDeferred) {
         w.OneSignalDeferred.push(async (os: OneSignalDebugOs) => {
+          try {
+            await os.User?.PushSubscription?.optIn?.();
+            log("optIn 완료 (SW 수동 후)");
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            log("optIn 실패: " + msg);
+          }
+
           await new Promise((r) => setTimeout(r, 2000));
+
           const id = os.User?.PushSubscription?.id;
           log("구독ID: " + (id || "없음"));
           log("optedIn: " + String(os.User?.PushSubscription?.optedIn ?? "(없음)"));
