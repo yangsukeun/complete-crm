@@ -326,6 +326,15 @@ export async function POST(req: Request) {
       );
     }
 
+    // 방어: 날짜 파싱 실패(Invalid Date)는 Prisma에서 500으로 터질 수 있어 400으로 처리
+    const dueT = new Date(parsed.data.dueDate).getTime();
+    if (Number.isNaN(dueT)) {
+      return NextResponse.json(
+        { error: "마감일(dueDate) 형식이 올바르지 않습니다." },
+        { status: 400 }
+      );
+    }
+
     const scope = await getServerWorkspaceScopeFromRequest(req);
     const payloadColor = parsed.data.color;
     let colorForCreate: string | null | undefined = undefined;
@@ -362,9 +371,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json(jsonSerializeCreatedTask(task));
   } catch (e) {
-    console.error(e);
+    console.error("[tasks POST] failed", e);
+    const detail = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "프로젝트를 저장할 수 없습니다." },
+      {
+        error: "프로젝트를 저장할 수 없습니다.",
+        ...(process.env.NODE_ENV === "development" ? { details: detail } : {}),
+      },
       { status: 500 }
     );
   }
