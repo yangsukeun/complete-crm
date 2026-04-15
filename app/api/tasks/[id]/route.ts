@@ -545,7 +545,34 @@ export async function PATCH(
       }
     }
 
-    const patchResultInclude = {
+    /**
+     * PATCH 응답용: 루트 select에 color를 넣지 않음 → DB에 color 컬럼이 없어도
+     * UPDATE … RETURNING 이 color를 읽지 않아 500을 막을 수 있음.
+     * (include + omit 조합은 엔진/버전에 따라 여전히 color를 읽는 경우가 있음)
+     */
+    const patchResultSelect = {
+      id: true,
+      title: true,
+      description: true,
+      dueDate: true,
+      isCompleted: true,
+      status: true,
+      priority: true,
+      isRecurring: true,
+      recurringDays: true,
+      recurringMemo: true,
+      projectId: true,
+      parentId: true,
+      categoryId: true,
+      orderIndex: true,
+      isCollapsed: true,
+      scope: true,
+      deletedAt: true,
+      deletedById: true,
+      createdAt: true,
+      updatedAt: true,
+      assignedToId: true,
+      createdById: true,
       assignedTo: {
         select: taskAssigneeUserSelect,
       },
@@ -560,9 +587,23 @@ export async function PATCH(
           position: true,
         },
       },
-      attachments: true,
+      attachments: {
+        select: {
+          id: true,
+          taskId: true,
+          type: true,
+          url: true,
+          name: true,
+          createdAt: true,
+        },
+      },
       comments: {
-        include: {
+        orderBy: { createdAt: "asc" as const },
+        select: {
+          id: true,
+          body: true,
+          createdAt: true,
+          userId: true,
           user: {
             select: {
               id: true,
@@ -572,16 +613,13 @@ export async function PATCH(
           },
         },
       },
-    } as const;
+    } as const satisfies Prisma.TaskSelect;
 
     type PatchedTaskForResponse = Prisma.TaskGetPayload<{
-      include: typeof patchResultInclude;
+      select: typeof patchResultSelect;
     }>;
 
-    const runPatchTransaction = async (
-      patchData: typeof data,
-      opts?: { omitColor?: boolean }
-    ) =>
+    const runPatchTransaction = async (patchData: typeof data) =>
       prisma.$transaction(async (tx) => {
         if (assigneeIdsUpdate !== undefined) {
           await tx.taskAssignee.deleteMany({ where: { taskId: id } });
@@ -595,22 +633,33 @@ export async function PATCH(
         const updated = await tx.task.update({
           where: { id },
           data: patchData,
-          ...(opts?.omitColor ? { omit: { color: true as const } } : {}),
-          include: patchResultInclude,
-        } as any);
-        return updated as unknown as PatchedTaskForResponse;
+          select: patchResultSelect,
+        });
+        return updated as PatchedTaskForResponse;
       });
 
-    let task;
+    let taskRow: PatchedTaskForResponse;
     try {
-      task = await runPatchTransaction(data);
+      taskRow = await runPatchTransaction(data);
     } catch (e) {
-      // 자동저장 등 description만 PATCH할 때도, DB에 color 컬럼이 없으면
-      // update 후 조회(SELECT)에서 동일 오류가 나므로 data.color 유무와 관계없이 재시도해야 함.
       if (!isPrismaTaskColorColumnMissing(e)) throw e;
       const { color: _c, ...dataNoColor } = data;
-      task = await runPatchTransaction(dataNoColor, { omitColor: true });
+      taskRow = await runPatchTransaction(dataNoColor);
     }
+
+    let colorFromDb: string | null = null;
+    try {
+      const cRow = await prisma.task.findUnique({
+        where: { id },
+        select: { color: true },
+      });
+      colorFromDb = cRow?.color ?? null;
+    } catch (e) {
+      if (!isPrismaTaskColorColumnMissing(e)) throw e;
+      colorFromDb = null;
+    }
+
+    const task = { ...taskRow, color: colorFromDb } as unknown as Parameters<typeof serializeTaskDetail>[0];
 
     /** 본문에서 빠진 이미지 블록의 Drive 파일은 저장 성공 후 삭제 (저장 실패 시 Drive 보존) */
     if (data.description !== undefined) {
