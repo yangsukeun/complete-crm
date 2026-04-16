@@ -71,6 +71,7 @@ export async function PATCH(
       });
       if (!row) return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
       return NextResponse.json({
+        noOp: true,
         id: row.id,
         status: row.status,
         amount: row.amount,

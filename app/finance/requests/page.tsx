@@ -267,12 +267,18 @@ export default function FinanceRequestsPage() {
         setPaymentAlertUnreadCount(undefined);
         setTransferExecutorIds([]);
       }
-    } catch {
-      // 에러 시 기존 목록 유지 (사라지지 않도록)
+    } catch (e) {
+      // 에러 시 기존 목록 유지 (사라지지 않도록) + 사용자에게 표시
+      toast.error(e instanceof Error ? e.message : "목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const toastForActionResult = (data: any, successMsg: string) => {
+    if (data?.noOp) toast.message("이미 처리된 건입니다.");
+    else toast.success(successMsg);
+  };
 
   const fetchVendors = useCallback(async () => {
     try {
@@ -483,7 +489,8 @@ export default function FinanceRequestsPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "승인 처리 실패");
       }
-      toast.success("승인했습니다. 이체 담당자에게 알림이 전달됩니다.");
+      const data = await res.json().catch(() => ({}));
+      toastForActionResult(data, "승인했습니다. 이체 담당자에게 알림이 전달됩니다.");
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
@@ -505,7 +512,8 @@ export default function FinanceRequestsPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "반려 처리 실패");
       }
-      toast.success("반려했습니다.");
+      const data = await res.json().catch(() => ({}));
+      toastForActionResult(data, "반려했습니다.");
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
@@ -527,7 +535,8 @@ export default function FinanceRequestsPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "되돌리기 실패");
       }
-      toast.success("승인 대기 상태로 되돌렸습니다.");
+      const data = await res.json().catch(() => ({}));
+      toastForActionResult(data, "승인 대기 상태로 되돌렸습니다.");
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
@@ -549,7 +558,8 @@ export default function FinanceRequestsPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "처리 실패");
       }
-      toast.success("이체 완료로 처리했습니다.");
+      const data = await res.json().catch(() => ({}));
+      toastForActionResult(data, "이체 완료로 처리했습니다.");
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
