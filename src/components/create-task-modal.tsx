@@ -68,7 +68,11 @@ export function CreateTaskModal({
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFreq, setRecurringFreq] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "HOURLY">("WEEKLY");
+  const [recurringInterval, setRecurringInterval] = useState<number>(1);
   const [recurringDays, setRecurringDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [recurringMonthDay, setRecurringMonthDay] = useState<number>(1);
+  const [recurringHourInterval, setRecurringHourInterval] = useState<number>(24);
   const [recurringMemo, setRecurringMemo] = useState("");
   const [color, setColor] = useState<string | null>(null);
 
@@ -98,7 +102,11 @@ export function CreateTaskModal({
             : [];
       setAssigneeIds(initial);
       setIsRecurring(false);
+      setRecurringFreq("WEEKLY");
+      setRecurringInterval(1);
       setRecurringDays([1, 2, 3, 4, 5]);
+      setRecurringMonthDay(1);
+      setRecurringHourInterval(24);
       setRecurringMemo("");
       setColor(null);
     }
@@ -138,7 +146,18 @@ export function CreateTaskModal({
           categoryId: categoryId ?? undefined,
           orderIndex,
           isRecurring: isRecurring ? true : undefined,
-          recurringDays: isRecurring ? JSON.stringify(recurringDays) : undefined,
+          recurringDays: isRecurring && recurringFreq === "WEEKLY" ? JSON.stringify(recurringDays) : undefined,
+          recurringRule: isRecurring
+            ? {
+                freq: recurringFreq,
+                interval:
+                  recurringFreq === "HOURLY"
+                    ? Math.max(1, Math.floor(recurringHourInterval || 1))
+                    : Math.max(1, Math.floor(recurringInterval || 1)),
+                ...(recurringFreq === "WEEKLY" ? { weekdays: recurringDays } : {}),
+                ...(recurringFreq === "MONTHLY" ? { monthDay: Math.min(31, Math.max(1, recurringMonthDay || 1)) } : {}),
+              }
+            : undefined,
           recurringMemo: isRecurring ? recurringMemo.trim() || null : undefined,
           ...(color ? { color } : {}),
         }),
@@ -298,27 +317,95 @@ export function CreateTaskModal({
               </div>
               {isRecurring && (
                 <div className="space-y-2 rounded-md border bg-muted/15 p-3">
-                  <p className="text-muted-foreground text-xs">반복 요일 (1=월 … 7=일)</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["월", "화", "수", "목", "금", "토", "일"].map((day, i) => {
-                      const n = i + 1;
-                      const on = recurringDays.includes(n);
-                      return (
-                        <button
-                          key={n}
-                          type="button"
-                          onClick={() => toggleDay(n)}
-                          className={`flex size-8 items-center justify-center rounded-full border text-xs transition-colors ${
-                            on
-                              ? "border-violet-300 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200"
-                              : "border-border text-muted-foreground hover:bg-muted/60"
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
+                  <div className="grid gap-2">
+                    <Label className="text-xs">반복 단위</Label>
+                    <Select value={recurringFreq} onValueChange={(v: string) => setRecurringFreq(v as any)}>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="HOURLY">시간 단위</SelectItem>
+                        <SelectItem value="DAILY">일 단위</SelectItem>
+                        <SelectItem value="WEEKLY">주 단위</SelectItem>
+                        <SelectItem value="MONTHLY">월 단위</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
+
+                  {recurringFreq === "HOURLY" ? (
+                    <div className="grid gap-2">
+                      <Label className="text-xs">간격</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={recurringHourInterval}
+                        onChange={(e: any) => setRecurringHourInterval(Math.max(1, parseInt(e.target.value || "1", 10) || 1))}
+                        className="h-9 text-xs"
+                      />
+                      <p className="text-muted-foreground text-[11px]">예: 1 = 매시간, 24 = 매일 같은 시간</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      <Label className="text-xs">간격</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={recurringInterval}
+                        onChange={(e: any) => setRecurringInterval(Math.max(1, parseInt(e.target.value || "1", 10) || 1))}
+                        className="h-9 text-xs"
+                      />
+                      <p className="text-muted-foreground text-[11px]">
+                        예: 1 = 매{recurringFreq === "DAILY" ? "일" : recurringFreq === "WEEKLY" ? "주" : "월"}, 2 = 2{recurringFreq === "DAILY" ? "일" : recurringFreq === "WEEKLY" ? "주" : "월"}마다
+                      </p>
+                    </div>
+                  )}
+
+                  {recurringFreq === "WEEKLY" && (
+                    <>
+                      <p className="text-muted-foreground text-xs">반복 요일 (1=월 … 7=일)</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {["월", "화", "수", "목", "금", "토", "일"].map((day, i) => {
+                          const n = i + 1;
+                          const on = recurringDays.includes(n);
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => toggleDay(n)}
+                              className={`flex size-8 items-center justify-center rounded-full border text-xs transition-colors ${
+                                on
+                                  ? "border-violet-300 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200"
+                                  : "border-border text-muted-foreground hover:bg-muted/60"
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {recurringFreq === "MONTHLY" && (
+                    <div className="grid gap-2">
+                      <Label className="text-xs">매월 N일</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={recurringMonthDay}
+                        onChange={(e: any) =>
+                          setRecurringMonthDay(Math.min(31, Math.max(1, parseInt(e.target.value || "1", 10) || 1)))
+                        }
+                        className="h-9 text-xs"
+                      />
+                      <p className="text-muted-foreground text-[11px]">예: 25 = 매월 25일</p>
+                    </div>
+                  )}
+
+                  <p className="text-muted-foreground text-[11px]">
+                    시간은 위의 <strong>마감일</strong> 시간(YYYY-MM-DD HH:mm)을 기준으로 반복됩니다.
+                  </p>
                   <Input
                     type="text"
                     placeholder="반복 업무 메모 (선택)"

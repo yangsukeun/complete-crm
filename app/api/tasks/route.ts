@@ -58,6 +58,7 @@ const createSchema = z.object({
   projectId: optionalIdish,
   isRecurring: z.boolean().optional(),
   recurringDays: z.union([z.string(), z.null()]).optional(),
+  recurringRule: z.any().optional(),
   recurringMemo: z.union([z.string(), z.null()]).optional(),
   color: z.union([z.string(), z.null()]).optional(),
 });
@@ -74,6 +75,7 @@ const listSelect = {
   orderIndex: true,
   isCollapsed: true,
   color: true,
+  recurringRule: true,
   scope: true,
   createdById: true,
   projectId: true,
@@ -364,6 +366,7 @@ export async function POST(req: Request) {
         projectId: parsed.data.projectId ?? null,
         isRecurring: parsed.data.isRecurring,
         recurringDays: parsed.data.recurringDays,
+        recurringRule: parsed.data.recurringRule,
         recurringMemo: parsed.data.recurringMemo,
         ...(colorForCreate !== undefined ? { color: colorForCreate } : {}),
       },

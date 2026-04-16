@@ -114,7 +114,11 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editIsRecurring, setEditIsRecurring] = useState(false);
+  const [editRecurringFreq, setEditRecurringFreq] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "HOURLY">("WEEKLY");
+  const [editRecurringInterval, setEditRecurringInterval] = useState<number>(1);
   const [editRecurringDays, setEditRecurringDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [editRecurringMonthDay, setEditRecurringMonthDay] = useState<number>(1);
+  const [editRecurringHourInterval, setEditRecurringHourInterval] = useState<number>(24);
   const [editRecurringMemo, setEditRecurringMemo] = useState("");
 
   useEffect(() => {
@@ -239,11 +243,38 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   useEffect(() => {
     if (!task) {
       setEditIsRecurring(false);
+      setEditRecurringFreq("WEEKLY");
+      setEditRecurringInterval(1);
       setEditRecurringDays([1, 2, 3, 4, 5]);
+      setEditRecurringMonthDay(1);
+      setEditRecurringHourInterval(24);
       setEditRecurringMemo("");
       return;
     }
     setEditIsRecurring(Boolean(task.isRecurring));
+    // recurringRule 우선, 없으면 recurringDays(레거시)로 폴백
+    const rr = (task as any).recurringRule as any;
+    if (rr && typeof rr === "object") {
+      const freq = String(rr.freq || "WEEKLY").toUpperCase();
+      if (freq === "DAILY" || freq === "WEEKLY" || freq === "MONTHLY" || freq === "HOURLY") {
+        setEditRecurringFreq(freq);
+      } else {
+        setEditRecurringFreq("WEEKLY");
+      }
+      const interval = Math.max(1, Math.floor(Number(rr.interval || 1) || 1));
+      if (freq === "HOURLY") setEditRecurringHourInterval(interval);
+      else setEditRecurringInterval(interval);
+      if (freq === "MONTHLY") {
+        const md = Math.min(31, Math.max(1, Math.floor(Number(rr.monthDay || 1) || 1)));
+        setEditRecurringMonthDay(md);
+      }
+      const w: number[] = Array.isArray(rr.weekdays)
+        ? rr.weekdays.map((n: any) => Number(n)).filter((n: number) => n >= 1 && n <= 7)
+        : [];
+      if (freq === "WEEKLY" && w.length > 0) {
+        setEditRecurringDays([...new Set(w)].sort((a: number, b: number) => a - b));
+      }
+    }
     try {
       const raw = task.recurringDays ? JSON.parse(task.recurringDays) : null;
       const arr = Array.isArray(raw) ? raw.map((n: unknown) => Number(n)).filter((n) => n >= 1 && n <= 7) : [];
@@ -252,7 +283,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       setEditRecurringDays([1, 2, 3, 4, 5]);
     }
     setEditRecurringMemo(task.recurringMemo ?? "");
-  }, [task?.id, task?.isRecurring, task?.recurringDays, task?.recurringMemo]);
+  }, [task?.id, task?.isRecurring, (task as any)?.recurringRule, task?.recurringDays, task?.recurringMemo]);
 
   const toggleRecurringDay = (day: number) => {
     setEditRecurringDays((prev) =>
@@ -269,7 +300,16 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     }
     void updateTask({
       isRecurring: true,
-      recurringDays: JSON.stringify(editRecurringDays.length > 0 ? editRecurringDays : [1, 2, 3, 4, 5]),
+      recurringDays: editRecurringFreq === "WEEKLY" ? JSON.stringify(editRecurringDays.length > 0 ? editRecurringDays : [1, 2, 3, 4, 5]) : null,
+      recurringRule: {
+        freq: editRecurringFreq,
+        interval:
+          editRecurringFreq === "HOURLY"
+            ? Math.max(1, Math.floor(editRecurringHourInterval || 1))
+            : Math.max(1, Math.floor(editRecurringInterval || 1)),
+        ...(editRecurringFreq === "WEEKLY" ? { weekdays: editRecurringDays } : {}),
+        ...(editRecurringFreq === "MONTHLY" ? { monthDay: Math.min(31, Math.max(1, editRecurringMonthDay || 1)) } : {}),
+      },
       recurringMemo: editRecurringMemo.trim() || null,
     });
   };
@@ -733,29 +773,93 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                   </label>
                   {editIsRecurring && (
                     <>
-                      <div>
-                        <p className="text-muted-foreground mb-1.5 text-xs">반복 요일</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["월", "화", "수", "목", "금", "토", "일"].map((day, i) => {
-                            const n = i + 1;
-                            const on = editRecurringDays.includes(n);
-                            return (
-                              <button
-                                key={n}
-                                type="button"
-                                onClick={() => toggleRecurringDay(n)}
-                                className={cn(
-                                  "flex size-8 items-center justify-center rounded-full border text-xs transition-colors",
-                                  on
-                                    ? "border-violet-300 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200"
-                                    : "border-border text-muted-foreground hover:bg-muted/60"
-                                )}
-                              >
-                                {day}
-                              </button>
-                            );
-                          })}
+                      <div className="grid gap-2">
+                        <Label className="text-xs text-muted-foreground">반복 단위</Label>
+                        <Select value={editRecurringFreq} onValueChange={(v: any) => setEditRecurringFreq(v)}>
+                          <SelectTrigger className="h-9 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="HOURLY">시간 단위</SelectItem>
+                            <SelectItem value="DAILY">일 단위</SelectItem>
+                            <SelectItem value="WEEKLY">주 단위</SelectItem>
+                            <SelectItem value="MONTHLY">월 단위</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {editRecurringFreq === "HOURLY" ? (
+                        <div className="grid gap-2">
+                          <Label className="text-xs text-muted-foreground">간격(시간)</Label>
+                          <Input
+                            className="mt-1 h-9 text-sm"
+                            type="number"
+                            min={1}
+                            value={editRecurringHourInterval}
+                            onChange={(e: any) =>
+                              setEditRecurringHourInterval(Math.max(1, parseInt(e.target.value || "1", 10) || 1))
+                            }
+                          />
                         </div>
+                      ) : (
+                        <div className="grid gap-2">
+                          <Label className="text-xs text-muted-foreground">간격</Label>
+                          <Input
+                            className="mt-1 h-9 text-sm"
+                            type="number"
+                            min={1}
+                            value={editRecurringInterval}
+                            onChange={(e: any) =>
+                              setEditRecurringInterval(Math.max(1, parseInt(e.target.value || "1", 10) || 1))
+                            }
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        {editRecurringFreq === "WEEKLY" && (
+                          <>
+                            <p className="text-muted-foreground mb-1.5 text-xs">반복 요일</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {["월", "화", "수", "목", "금", "토", "일"].map((day, i) => {
+                                const n = i + 1;
+                                const on = editRecurringDays.includes(n);
+                                return (
+                                  <button
+                                    key={n}
+                                    type="button"
+                                    onClick={() => toggleRecurringDay(n)}
+                                    className={cn(
+                                      "flex size-8 items-center justify-center rounded-full border text-xs transition-colors",
+                                      on
+                                        ? "border-violet-300 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200"
+                                        : "border-border text-muted-foreground hover:bg-muted/60"
+                                    )}
+                                  >
+                                    {day}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                        {editRecurringFreq === "MONTHLY" && (
+                          <div className="grid gap-2">
+                            <Label className="text-xs text-muted-foreground">매월 N일</Label>
+                            <Input
+                              className="mt-1 h-9 text-sm"
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={editRecurringMonthDay}
+                              onChange={(e: any) =>
+                                setEditRecurringMonthDay(
+                                  Math.min(31, Math.max(1, parseInt(e.target.value || "1", 10) || 1))
+                                )
+                              }
+                            />
+                          </div>
+                        )}
                       </div>
                       <div>
                         <Label className="text-xs text-muted-foreground">메모 (선택)</Label>
@@ -766,6 +870,9 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                           placeholder="반복 업무 설명"
                         />
                       </div>
+                      <p className="text-muted-foreground text-[11px]">
+                        시간은 <strong>마감일</strong> 시간(YYYY-MM-DD HH:mm)을 기준으로 반복됩니다.
+                      </p>
                     </>
                   )}
                   <Button type="button" size="sm" disabled={saving} onClick={saveRecurringSettings}>

@@ -412,6 +412,9 @@ model Task {
   isRecurring  Boolean        @default(false)
   /// 반복 요일 JSON: "[1,2,3,4,5]" (1=월 … 7=일)
   recurringDays String?
+  /// 반복 규칙(JSON): { freq: 'DAILY'|'WEEKLY'|'MONTHLY'|'HOURLY', interval: number, weekdays?: number[], monthDay?: number }
+  /// - 신규 UI는 이 값을 우선 사용, 미설정이면 recurringDays(레거시)로 폴백
+  recurringRule Json?
   /// 반복 업무 설명
   recurringMemo String?
   projectId    String?

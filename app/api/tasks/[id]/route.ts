@@ -70,6 +70,7 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
     priority: true,
     isRecurring: true,
     recurringDays: true,
+    recurringRule: true,
     recurringMemo: true,
     projectId: true,
     parentId: true,
@@ -441,6 +442,7 @@ export async function PATCH(
       priority?: "HIGH" | "MEDIUM" | "LOW";
       isRecurring?: boolean;
       recurringDays?: string | null;
+      recurringRule?: any;
       recurringMemo?: string | null;
       color?: string | null;
     } = {};
@@ -466,11 +468,16 @@ export async function PATCH(
     const turningOffRecurring = body.isRecurring === false;
     if (turningOffRecurring) {
       data.recurringDays = null;
+      data.recurringRule = null;
       data.recurringMemo = null;
     } else {
       if ("recurringDays" in body) {
         if (body.recurringDays === null || body.recurringDays === "") data.recurringDays = null;
         else if (typeof body.recurringDays === "string") data.recurringDays = body.recurringDays;
+      }
+      if ("recurringRule" in body) {
+        if (body.recurringRule === null) data.recurringRule = null;
+        else data.recurringRule = body.recurringRule;
       }
       if ("recurringMemo" in body) {
         data.recurringMemo =
@@ -611,6 +618,7 @@ export async function PATCH(
       priority: true,
       isRecurring: true,
       recurringDays: true,
+      recurringRule: true,
       recurringMemo: true,
       projectId: true,
       parentId: true,

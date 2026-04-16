@@ -27,6 +27,7 @@ export type CreateTaskInput = {
   projectId?: string | null;
   isRecurring?: boolean;
   recurringDays?: string | null;
+  recurringRule?: any;
   recurringMemo?: string | null;
   color?: string | null;
 };
@@ -54,6 +55,7 @@ const taskReloadSelectNoColor = {
   priority: true,
   isRecurring: true,
   recurringDays: true,
+  recurringRule: true,
   recurringMemo: true,
   projectId: true,
   parentId: true,
@@ -97,6 +99,7 @@ export async function createTaskWithNotifications(params: {
       : isRecurring
         ? data.recurringDays
         : null;
+  const recurringRule = isRecurring ? (data.recurringRule ?? null) : null;
   const recurringMemo = isRecurring ? (data.recurringMemo?.trim() ? data.recurringMemo.trim() : null) : null;
 
   const taskScope: WorkspaceScope = scope === "PERSONAL" ? "PERSONAL" : "TEAM";
@@ -115,6 +118,7 @@ export async function createTaskWithNotifications(params: {
     scope: taskScope,
     isRecurring,
     recurringDays,
+    recurringRule,
     recurringMemo,
     assignees: {
       create: ids.map((userId) => ({ userId })),
