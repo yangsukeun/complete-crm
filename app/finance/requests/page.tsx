@@ -37,6 +37,7 @@ import { ArrowLeft, Wallet, Plus, CheckCircle, FileText, ListChecks } from "luci
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
 
 type Vendor = {
   id: string;
@@ -128,6 +129,7 @@ export default function FinanceRequestsPage() {
   const [batchCompleting, setBatchCompleting] = useState(false);
   const [selectedCompleteIds, setSelectedCompleteIds] = useState<Set<string>>(new Set());
   const [paymentAlertUnreadCount, setPaymentAlertUnreadCount] = useState<number | undefined>(undefined);
+  const [transferExecutorIds, setTransferExecutorIds] = useState<string[]>([]);
   const [vendorModalOpen, setVendorModalOpen] = useState(false);
   const [vendorSaving, setVendorSaving] = useState(false);
   const [vendorForm, setVendorForm] = useState({
@@ -200,6 +202,7 @@ export default function FinanceRequestsPage() {
         setIsExecutiveTransferExecutor(true);
         setAllowTransferComplete(data.isExecutiveTransferExecutor === true);
         setPaymentAlertUnreadCount(typeof data.paymentAlertUnreadCount === "number" ? data.paymentAlertUnreadCount : undefined);
+        setTransferExecutorIds(Array.isArray(data.transferExecutorIds) ? data.transferExecutorIds : []);
       } else if (Array.isArray(data)) {
         const isExecutiveFromSession = session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
         if (isExecutiveFromSession) {
@@ -209,6 +212,7 @@ export default function FinanceRequestsPage() {
           setIsExecutiveTransferExecutor(true);
           setAllowTransferComplete(false);
           setPaymentAlertUnreadCount(undefined);
+          setTransferExecutorIds([]);
         } else {
           setRequests(data);
           setCompletedRequests([]);
@@ -216,6 +220,7 @@ export default function FinanceRequestsPage() {
           setIsExecutiveTransferExecutor(false);
           setAllowTransferComplete(false);
           setPaymentAlertUnreadCount(undefined);
+          setTransferExecutorIds([]);
         }
       } else if (data?.requests) {
         setRequests(data.requests);
@@ -224,6 +229,7 @@ export default function FinanceRequestsPage() {
         setIsExecutiveTransferExecutor(false);
         setAllowTransferComplete(false);
         setPaymentAlertUnreadCount(typeof data.paymentAlertUnreadCount === "number" ? data.paymentAlertUnreadCount : undefined);
+        setTransferExecutorIds(Array.isArray(data.transferExecutorIds) ? data.transferExecutorIds : []);
       } else {
         setRequests([]);
         setCompletedRequests([]);
@@ -231,6 +237,7 @@ export default function FinanceRequestsPage() {
         setIsExecutiveTransferExecutor(false);
         setAllowTransferComplete(false);
         setPaymentAlertUnreadCount(undefined);
+        setTransferExecutorIds([]);
       }
     } catch {
       // 에러 시 기존 목록 유지 (사라지지 않도록)
@@ -513,8 +520,13 @@ export default function FinanceRequestsPage() {
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
   const isTransferExecutor = !isTeamLead && (paymentAlertUnreadCount !== undefined || isExecutiveTransferExecutor);
   const canRequest = !isExecutive; // 직원·팀장·이체 담당자: 새 결제 요청 가능 (대표는 요청 불가). 팀장 요청 시 바로 이체 담당자에게 알람
-  const canApproveReject = isTeamLead; // 팀장: 승인/반려
   const canComplete = isTransferExecutor; // 이체 담당자(또는 대표+이체담당자): 이체완료
+  /** 팀장: 전 건. 대표/임원: 이체 담당자·김소윤 요청 건만 1차 승인·반려 */
+  const canApproveRejectRow = (r: PaymentRequest) =>
+    isTeamLead ||
+    (isExecutive &&
+      paymentRequestNeedsExecutiveFirstLineApproval(r.requester.id, r.requester.name, transferExecutorIds));
+  const showApprovalActionsColumn = isTeamLead || isExecutive || canComplete;
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
   const pendingTotal = pendingList.filter((r: any) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
   const showTwoSections =
@@ -560,6 +572,8 @@ export default function FinanceRequestsPage() {
               ? "결제 요청(이체 대기) 건과 이체 완료된 건을 모두 조회합니다. 이체 담당자로 지정된 경우 직접 이체 완료 처리할 수 있습니다."
               : isTeamLead
                 ? "요청을 승인/반려하면 이체 담당자에게 알림이 갑니다. 이체 완료는 이체 담당자가 처리합니다."
+                : isExecutive
+                  ? "이체 담당자 또는 김소윤 님이 올린 요청은 대표/임원이 승인·반려할 수 있습니다. 이체 완료는 이체 담당자가 처리합니다."
                 : isTransferExecutor
                   ? "팀장 승인된 건을 실제 이체한 뒤 이체완료 버튼을 눌러주세요."
                   : "거래처에 대한 송금을 요청합니다."
@@ -727,7 +741,7 @@ export default function FinanceRequestsPage() {
                         <TableCell className="text-right font-medium tabular-nums">{formatAmount(r.amount)}</TableCell>
                         <TableCell>{statusBadge(r.status)}</TableCell>
                         <TableCell>
-                          {canApproveReject && r.status === "PENDING" && (
+                          {canApproveRejectRow(r) && r.status === "PENDING" && (
                             <div className="flex flex-wrap gap-1">
                               <Button
                                 size="sm"
@@ -742,7 +756,7 @@ export default function FinanceRequestsPage() {
                               </Button>
                             </div>
                           )}
-                          {canApproveReject && r.status === "TEAM_LEAD_APPROVED" && (
+                          {canApproveRejectRow(r) && r.status === "TEAM_LEAD_APPROVED" && (
                             <div className="flex flex-wrap gap-1">
                               <Button
                                 size="sm"
@@ -933,7 +947,7 @@ export default function FinanceRequestsPage() {
                 <TableHead className="font-medium">은행/계좌</TableHead>
                 <TableHead className="font-medium text-right">금액</TableHead>
                 <TableHead className="font-medium">상태</TableHead>
-                {(canApproveReject || canComplete) && <TableHead className="w-[140px] font-medium" />}
+                {showApprovalActionsColumn && <TableHead className="w-[140px] font-medium" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -984,9 +998,9 @@ export default function FinanceRequestsPage() {
                     {formatAmount(r.amount)}
                   </TableCell>
                   <TableCell>{statusBadge(r.status)}</TableCell>
-                  {(canApproveReject || canComplete) && (
+                  {showApprovalActionsColumn && (
                     <TableCell>
-                      {canApproveReject && r.status === "PENDING" && (
+                      {canApproveRejectRow(r) && r.status === "PENDING" && (
                         <div className="flex flex-wrap gap-1">
                           <Button
                             size="sm"
@@ -1006,7 +1020,7 @@ export default function FinanceRequestsPage() {
                           </Button>
                         </div>
                       )}
-                      {canApproveReject && r.status === "TEAM_LEAD_APPROVED" && (
+                      {canApproveRejectRow(r) && r.status === "TEAM_LEAD_APPROVED" && (
                         <div className="flex flex-wrap gap-1">
                           <Button
                             size="sm"

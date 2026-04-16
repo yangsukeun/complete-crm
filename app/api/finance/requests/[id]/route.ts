@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
 
 const updateSchema = z.object({
   status: z.enum(["PENDING", "TEAM_LEAD_APPROVED", "COMPLETED", "REJECTED"]),
@@ -42,7 +43,17 @@ export async function PATCH(
 
     const current = await prisma.paymentRequest.findUnique({
       where: { id },
-      select: { id: true, status: true, requesterId: true, vendorId: true, amount: true, requestedAt: true, completedAt: true, description: true, attachment: true },
+      select: {
+        id: true,
+        status: true,
+        requesterId: true,
+        vendorId: true,
+        amount: true,
+        requestedAt: true,
+        completedAt: true,
+        description: true,
+        attachment: true,
+      },
     });
     if (!current) {
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
@@ -54,6 +65,7 @@ export async function PATCH(
     });
     const role = (dbUser?.role ?? session.user.role) as string | undefined;
     const isTeamLead = role === "TEAM_LEAD";
+    const isExecutiveApprover = role === "EXECUTIVE" || role === "ADMIN";
 
     const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
     const transferExecutorIds = getTransferExecutorIds(
@@ -61,8 +73,22 @@ export async function PATCH(
     );
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
-    // 팀장: PENDING → 이체대기(TEAM_LEAD_APPROVED) / 반려. 이체대기 건 → 승인대기로 되돌리기·반려 가능.
-    if (isTeamLead) {
+    const requesterRow = current.requesterId
+      ? await prisma.user.findUnique({
+          where: { id: current.requesterId },
+          select: { name: true },
+        })
+      : null;
+    const needsExecutiveFirstLine = paymentRequestNeedsExecutiveFirstLineApproval(
+      current.requesterId,
+      requesterRow?.name,
+      transferExecutorIds
+    );
+    /** 이체 담당자·김소윤 요청: 팀장 또는 대표/임원이 1차 승인·반려·되돌리기 */
+    const canFirstLineApprove = isTeamLead || (isExecutiveApprover && needsExecutiveFirstLine);
+
+    // 팀장·(해당 건) 대표/임원: PENDING → 이체대기(TEAM_LEAD_APPROVED) / 반려. 이체대기 건 → 승인대기로 되돌리기·반려 가능.
+    if (canFirstLineApprove) {
       if (parsed.data.status === "COMPLETED") {
         return NextResponse.json(
           { error: "이체 완료는 이체 담당자만 처리할 수 있습니다." },
@@ -101,9 +127,9 @@ export async function PATCH(
       }
     }
 
-    if (!isTeamLead && !isTransferExecutor) {
+    if (!canFirstLineApprove && !isTransferExecutor) {
       return NextResponse.json(
-        { error: "결재 담당자(팀장) 또는 이체 담당자만 처리할 수 있습니다." },
+        { error: "결재 담당자(팀장·대표/임원) 또는 이체 담당자만 처리할 수 있습니다." },
         { status: 403 }
       );
     }
@@ -127,8 +153,8 @@ export async function PATCH(
       await prisma.paymentRequestAlert.deleteMany({ where: { requestId: id } });
     }
 
-    // 팀장 승인 시: 이체 담당자에게 알람
-    if (isTeamLead && parsed.data.status === "TEAM_LEAD_APPROVED" && transferExecutorIds.length > 0) {
+    // 1차 승인 시: 이체 담당자에게 알람
+    if (canFirstLineApprove && parsed.data.status === "TEAM_LEAD_APPROVED" && transferExecutorIds.length > 0) {
       for (const userId of transferExecutorIds) {
         try {
           await prisma.paymentRequestAlert.create({

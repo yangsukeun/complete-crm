@@ -29,6 +29,26 @@ export async function GET() {
     });
     const role = user?.role ?? session.user.role;
 
+    // 대표/임원: 결제 요청 알람(이체 담당자·김소윤 건 승인 등) 미확인 수
+    if (role === "EXECUTIVE" || role === "ADMIN") {
+      let count = 0;
+      try {
+        count = await prisma.paymentRequestAlert.count({
+          where: { userId: session.user.id, readAt: null },
+        });
+      } catch (err) {
+        console.error("[GET /api/finance/alerts/count] executive paymentRequestAlert.count", err);
+      }
+      return NextResponse.json(
+        { count, label: "승인대기" },
+        {
+          headers: {
+            "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",
+          },
+        }
+      );
+    }
+
     // 팀장: 승인대기(자금요청) 건수 → "승인대기" 뱃지
     if (role === "TEAM_LEAD") {
       const count = await prisma.paymentRequest.count({

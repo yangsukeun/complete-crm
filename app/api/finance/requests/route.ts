@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
 
 const createSchema = z.object({
   vendorId: z.string().min(1),
@@ -66,15 +67,13 @@ export async function GET() {
         orderBy: { requestedAt: "desc" },
       });
       let unreadCount = 0;
-      if (isTransferExecutor) {
-        try {
-          const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-            'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-            session.user.id
-          );
-          unreadCount = Number(countRows[0]?.count ?? 0);
-        } catch (_) {}
-      }
+      try {
+        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
+          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
+          session.user.id
+        );
+        unreadCount = Number(countRows[0]?.count ?? 0);
+      } catch (_) {}
       const completedRequests = allRequests
         .filter((r: any) => r.status === "COMPLETED")
         .sort((a: any, b: any) => (b.completedAt ? b.completedAt.getTime() : 0) - (a.completedAt ? a.completedAt.getTime() : 0));
@@ -86,7 +85,8 @@ export async function GET() {
           completedRequests,
           pendingRequests,
           isExecutiveTransferExecutor: isTransferExecutor,
-          ...(isTransferExecutor ? { paymentAlertUnreadCount: unreadCount } : {}),
+          transferExecutorIds,
+          paymentAlertUnreadCount: unreadCount,
         },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
@@ -165,7 +165,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         finalUnread = Number(countRows[0]?.count ?? 0);
       } catch (_) {}
       return NextResponse.json(
-        { requests, paymentAlertUnreadCount: finalUnread },
+        { requests, paymentAlertUnreadCount: finalUnread, transferExecutorIds },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
     }
@@ -243,7 +243,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         unreadCount = Number(countRows[0]?.count ?? 0);
       } catch (_) {}
       return NextResponse.json(
-        { requests, paymentAlertUnreadCount: unreadCount },
+        { requests, paymentAlertUnreadCount: unreadCount, transferExecutorIds },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
     }
@@ -268,7 +268,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       );
       paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
     } catch (_) {}
-    return NextResponse.json({ requests, paymentAlertUnreadCount });
+    return NextResponse.json({ requests, paymentAlertUnreadCount, transferExecutorIds });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "결제 요청 목록을 불러올 수 없습니다." }, { status: 500 });
@@ -296,18 +296,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "거래처를 찾을 수 없습니다." }, { status: 404 });
     }
 
-    // 요청자 역할 확인 (팀장이 요청하면 바로 이체 담당자에게 알람, 일반 직원이면 팀장에게 알람)
-    let requesterRole: string | undefined = session.user.role as string | undefined;
-    try {
-      const roleRows = await prisma.$queryRawUnsafe<{ role: string }[]>(
-        'SELECT role FROM "User" WHERE id = $1',
-        session.user.id
-      );
-      if (roleRows[0]) requesterRole = roleRows[0].role;
-    } catch (_) {}
+    const requesterUser = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, name: true },
+    });
+    const requesterRole = (requesterUser?.role ?? session.user.role) as string | undefined;
 
+    const companyForPost = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
+    let transferExecutorIdsPost: string[] = [];
+    if (companyForPost?.id) {
+      const teRows = await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
+        'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
+        companyForPost.id
+      );
+      transferExecutorIdsPost = getTransferExecutorIds(teRows[0]?.transferExecutorIds ?? null);
+    }
+
+    const needsExecutiveFirstLine = paymentRequestNeedsExecutiveFirstLineApproval(
+      session.user.id,
+      requesterUser?.name,
+      transferExecutorIdsPost
+    );
     const isRequesterTeamLead = isTeamLead(requesterRole);
-    const initialStatus = isRequesterTeamLead ? "TEAM_LEAD_APPROVED" : "PENDING";
+    /** 이체 담당자·김소윤: 팀장 자동승인 없음 → 대표/임원·팀장이 1차 승인 */
+    const initialStatus =
+      needsExecutiveFirstLine ? "PENDING" : isRequesterTeamLead ? "TEAM_LEAD_APPROVED" : "PENDING";
 
     const paymentRequest = await prisma.paymentRequest.create({
       data: {
@@ -331,19 +344,32 @@ export async function POST(req: Request) {
     const now = new Date().toISOString();
     const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
 
-    if (isRequesterTeamLead) {
+    if (needsExecutiveFirstLine) {
+      // 이체 담당자·김소윤 요청: 대표/임원에게 알람 (없으면 팀장에게 폴백)
+      try {
+        const execs = await prisma.user.findMany({
+          where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
+          select: { id: true },
+        });
+        const notifyIds = execs.length > 0 ? execs.map((u) => u.id) : (await prisma.user.findMany({ where: { role: "TEAM_LEAD" }, select: { id: true } })).map((u) => u.id);
+        for (const userId of notifyIds) {
+          try {
+            await prisma.$executeRawUnsafe(
+              'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
+              cuidLike(),
+              paymentRequest.id,
+              userId,
+              now
+            );
+          } catch (_) {}
+        }
+      } catch (alertErr) {
+        console.error("대표/임원 알람 생성 실패:", alertErr);
+      }
+    } else if (isRequesterTeamLead) {
       // 팀장이 요청한 경우: 결제(이체) 담당자에게만 알람 등록
       try {
-        const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-        const transferExecutorIds: string[] = company?.id
-          ? getTransferExecutorIds(
-              (await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
-                'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
-                company.id
-              ))[0]?.transferExecutorIds ?? null
-            )
-          : [];
-        for (const userId of transferExecutorIds) {
+        for (const userId of transferExecutorIdsPost) {
           try {
             await prisma.$executeRawUnsafe(
               'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
