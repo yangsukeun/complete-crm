@@ -111,8 +111,12 @@ export async function PATCH(
       }
     }
 
-    // 이체 담당자: TEAM_LEAD_APPROVED → COMPLETED(이체완료) 만 가능
-    if (isTransferExecutor && !isTeamLead) {
+    /**
+     * 이체 담당자: TEAM_LEAD_APPROVED → COMPLETED(이체완료) 만 가능
+     * 단, 대표/임원이면서(또는 팀장이면서) 1차 승인 권한이 있는 경우에는
+     * "이체 담당자" 규칙으로 1차 승인(PENDING → TEAM_LEAD_APPROVED)이 막히면 안 됨.
+     */
+    if (isTransferExecutor && !canFirstLineApprove) {
       if (parsed.data.status !== "COMPLETED") {
         return NextResponse.json(
           { error: "이체 담당자는 이체 완료만 처리할 수 있습니다." },
