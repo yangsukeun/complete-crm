@@ -9,6 +9,7 @@ const createSchema = z.object({
   amount: z.number().int().positive(),
   description: z.string().optional(),
   attachment: z.string().url().optional().or(z.literal("")),
+  attachments: z.array(z.string().url()).optional(),
   quotationId: z.string().optional(),
 });
 
@@ -27,6 +28,22 @@ function getTransferExecutorIds(idsJson: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+function normalizePaymentRequestAttachments(input: {
+  attachment?: string | null;
+  attachments?: unknown;
+}): string[] {
+  const fromJson = Array.isArray(input.attachments)
+    ? input.attachments.filter((x): x is string => typeof x === "string")
+    : [];
+  const merged = [
+    ...fromJson,
+    ...(input.attachment && String(input.attachment).trim() ? [String(input.attachment).trim()] : []),
+  ]
+    .map((u) => u.trim())
+    .filter((u) => u.length > 0);
+  return [...new Set(merged)];
 }
 
 export async function GET() {
@@ -80,10 +97,14 @@ export async function GET() {
       const pendingRequests = allRequests.filter(
         (r: any) => r.status === "PENDING" || r.status === "TEAM_LEAD_APPROVED"
       );
+      const mapWithAttachments = (r: any) => ({
+        ...r,
+        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment ?? null, attachments: r.attachments }),
+      });
       return NextResponse.json(
         {
-          completedRequests,
-          pendingRequests,
+          completedRequests: completedRequests.map(mapWithAttachments),
+          pendingRequests: pendingRequests.map(mapWithAttachments),
           isExecutiveTransferExecutor: isTransferExecutor,
           transferExecutorIds,
           paymentAlertUnreadCount: unreadCount,
@@ -96,13 +117,13 @@ export async function GET() {
     if (isTeamLead(role)) {
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; requesterId: string; vendorId: string; quotationId: string | null;
+        description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
         r_id: string; r_name: string; r_email: string; r_position: string | null;
         v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
         q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr."requesterId", pr."vendorId", pr."quotationId",
+        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
          u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
          v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
          q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
@@ -120,6 +141,7 @@ export async function GET() {
         completedAt: r.completedAt,
         description: r.description,
         attachment: r.attachment,
+        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
         requesterId: r.requesterId,
         vendorId: r.vendorId,
         requester: { id: r.r_id, name: r.r_name, email: r.r_email, position: r.r_position },
@@ -174,13 +196,13 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
     if (isTransferExecutor) {
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; requesterId: string; vendorId: string; quotationId: string | null;
+        description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
         r_id: string; r_name: string; r_email: string; r_position: string | null;
         v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
         q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr."requesterId", pr."vendorId", pr."quotationId",
+        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
          u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
          v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
          q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
@@ -198,6 +220,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         completedAt: r.completedAt,
         description: r.description,
         attachment: r.attachment,
+        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
         requesterId: r.requesterId,
         vendorId: r.vendorId,
         requester: { id: r.r_id, name: r.r_name, email: r.r_email, position: r.r_position },
@@ -260,6 +283,10 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       },
       orderBy: { requestedAt: "desc" },
     });
+    const mapped = requests.map((r: any) => ({
+      ...r,
+      attachments: normalizePaymentRequestAttachments({ attachment: r.attachment ?? null, attachments: r.attachments }),
+    }));
     let paymentAlertUnreadCount = 0;
     try {
       const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
@@ -268,7 +295,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       );
       paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
     } catch (_) {}
-    return NextResponse.json({ requests, paymentAlertUnreadCount, transferExecutorIds });
+    return NextResponse.json({ requests: mapped, paymentAlertUnreadCount, transferExecutorIds });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "결제 요청 목록을 불러올 수 없습니다." }, { status: 500 });
@@ -322,12 +349,21 @@ export async function POST(req: Request) {
     const initialStatus =
       needsExecutiveFirstLine ? "PENDING" : isRequesterTeamLead ? "TEAM_LEAD_APPROVED" : "PENDING";
 
+    const normalizedAttachments = [
+      ...(Array.isArray(parsed.data.attachments) ? parsed.data.attachments : []),
+      ...(parsed.data.attachment && parsed.data.attachment !== "" ? [parsed.data.attachment] : []),
+    ]
+      .map((u) => String(u).trim())
+      .filter((u) => u.length > 0);
+    const uniqAttachments = [...new Set(normalizedAttachments)];
+
     const paymentRequest = await prisma.paymentRequest.create({
       data: {
         vendorId: parsed.data.vendorId,
         amount: parsed.data.amount,
         description: parsed.data.description || null,
-        attachment: parsed.data.attachment && parsed.data.attachment !== "" ? parsed.data.attachment : null,
+        attachment: uniqAttachments[0] ?? null,
+        attachments: uniqAttachments.length > 0 ? (uniqAttachments as any) : undefined,
         requesterId: session.user.id,
         quotationId: parsed.data.quotationId && parsed.data.quotationId !== "" ? parsed.data.quotationId : null,
         status: initialStatus as "PENDING" | "TEAM_LEAD_APPROVED",

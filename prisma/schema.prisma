@@ -767,7 +767,10 @@ model PaymentRequest {
   requestedAt DateTime           @default(now())
   completedAt DateTime?
   description String?             // 입금자명 변경 요청, 메모 등
-  attachment  String?             // 견적서/영수증 이미지 URL
+  /// (레거시) 단일 첨부 URL. 신규 UI는 attachments(배열)를 사용.
+  attachment  String?
+  /// 주문 내역 이미지/엑셀 등 여러 첨부 (URL 배열)
+  attachments Json?
   requesterId String?
   requester   User?               @relation(fields: [requesterId], references: [id], onDelete: SetNull)
   vendorId    String

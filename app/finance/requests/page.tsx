@@ -38,6 +38,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
+import { postUploadFile } from "@/lib/upload-client-validate";
+import * as XLSX from "xlsx";
 
 type Vendor = {
   id: string;
@@ -64,6 +66,7 @@ type PaymentRequest = {
   completedAt: string | null;
   description: string | null;
   attachment: string | null;
+  attachments?: string[] | null;
   requester: { id: string; name: string; email: string; position: string | null };
   vendor: Vendor;
   quotation?: QuotationOption | null;
@@ -111,6 +114,25 @@ function PaymentMemoCell({ description }: { description: string | null }) {
   );
 }
 
+function attachmentLabelFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const base = (u.pathname.split("/").pop() ?? "").trim();
+    return decodeURIComponent(base || "첨부파일");
+  } catch {
+    const base = (url.split("?")[0] ?? "").split("/").pop() ?? "";
+    return base || "첨부파일";
+  }
+}
+
+function attachmentsForRequest(r: PaymentRequest): string[] {
+  const list = Array.isArray(r.attachments) ? r.attachments : [];
+  const merged = [...list, ...(r.attachment ? [r.attachment] : [])]
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+  return [...new Set(merged)];
+}
+
 const VENDOR_CATEGORIES = ["인쇄", "식대", "용역", "자재", "기타"];
 
 export default function FinanceRequestsPage() {
@@ -146,6 +168,12 @@ export default function FinanceRequestsPage() {
     description: "",
     quotationId: "",
   });
+  const [orderAttachments, setOrderAttachments] = useState<{ url: string; name: string }[]>([]);
+  const [orderAttachMode, setOrderAttachMode] = useState<"file" | "table">("file");
+  const [orderUploading, setOrderUploading] = useState(false);
+  const [orderRows, setOrderRows] = useState<
+    { item: string; qty: string; unitPrice: string; note: string }[]
+  >([{ item: "", qty: "1", unitPrice: "", note: "" }]);
   const [quotations, setQuotations] = useState<QuotationOption[]>([]);
   const [search, setSearch] = useState("");
 
@@ -356,6 +384,41 @@ export default function FinanceRequestsPage() {
     }
     setSubmitting(true);
     try {
+      let attachments = orderAttachments.map((a) => a.url).filter(Boolean);
+
+      // 표로 작성 모드면 제출 시 엑셀 생성 → 업로드 → attachment URL로 저장
+      if (orderAttachMode === "table") {
+        const normalized = orderRows
+          .map((r) => ({
+            item: r.item.trim(),
+            qty: r.qty.trim(),
+            unitPrice: r.unitPrice.trim(),
+            note: r.note.trim(),
+          }))
+          .filter((r) => r.item.length > 0);
+
+        if (normalized.length > 0) {
+          const header = ["품목", "수량", "단가", "비고"];
+          const data = [header, ...normalized.map((r) => [r.item, r.qty, r.unitPrice, r.note])];
+          const ws = XLSX.utils.aoa_to_sheet(data);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "주문내역");
+          const out = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+          const fileName = `주문내역_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          const file = new File([out], fileName, {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          });
+          setOrderUploading(true);
+          try {
+            const up = await postUploadFile(file);
+            attachments = [...attachments, up.url].filter(Boolean);
+          } finally {
+            setOrderUploading(false);
+          }
+        }
+      }
+      attachments = [...new Set(attachments.map((u) => String(u).trim()).filter(Boolean))];
+
       const res = await fetch("/api/finance/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -364,6 +427,7 @@ export default function FinanceRequestsPage() {
           amount,
           description: form.description.trim() || undefined,
           quotationId: form.quotationId && form.quotationId !== "" ? form.quotationId : undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
         }),
       });
       if (!res.ok) {
@@ -373,11 +437,37 @@ export default function FinanceRequestsPage() {
       toast.success("결제 요청이 등록되었습니다.");
       setModalOpen(false);
       setForm({ vendorId: "", amount: "", description: "", quotationId: "" });
+      setOrderAttachments([]);
+      setOrderAttachMode("file");
+      setOrderRows([{ item: "", qty: "1", unitPrice: "", note: "" }]);
       fetchRequests();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "요청에 실패했습니다.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOrderFilePicked = async (file: File | null) => {
+    if (!file) return;
+    setOrderUploading(true);
+    try {
+      const up = await postUploadFile(file);
+      setOrderAttachments((prev) => {
+        const next = [...prev, { url: up.url, name: up.name || file.name }];
+        const seen = new Set<string>();
+        return next.filter((x) => {
+          const u = (x.url ?? "").trim();
+          if (!u || seen.has(u)) return false;
+          seen.add(u);
+          return true;
+        });
+      });
+      toast.success("첨부 파일이 추가되었습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "파일 첨부에 실패했습니다.");
+    } finally {
+      setOrderUploading(false);
     }
   };
 
@@ -723,7 +813,30 @@ export default function FinanceRequestsPage() {
                         </TableCell>
                         <TableCell>{r.vendor.name}</TableCell>
                         <TableCell className="w-[11rem] max-w-[11rem] align-top">
-                          <PaymentMemoCell description={r.description} />
+                          <div className="grid gap-2">
+                            <PaymentMemoCell description={r.description} />
+                            {attachmentsForRequest(r).length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {attachmentsForRequest(r).slice(0, 3).map((u) => (
+                                  <a
+                                    key={u}
+                                    href={u}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center rounded border bg-background px-1.5 py-0.5 text-[11px] text-primary underline underline-offset-2"
+                                    title={attachmentLabelFromUrl(u)}
+                                  >
+                                    첨부
+                                  </a>
+                                ))}
+                                {attachmentsForRequest(r).length > 3 && (
+                                  <span className="text-muted-foreground text-[11px]">
+                                    +{attachmentsForRequest(r).length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {r.quotation ? (
@@ -979,7 +1092,30 @@ export default function FinanceRequestsPage() {
                   )}
                   <TableCell>{r.vendor.name}</TableCell>
                   <TableCell className="w-[11rem] max-w-[11rem] align-top">
-                    <PaymentMemoCell description={r.description} />
+                    <div className="grid gap-2">
+                      <PaymentMemoCell description={r.description} />
+                      {attachmentsForRequest(r).length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {attachmentsForRequest(r).slice(0, 3).map((u) => (
+                            <a
+                              key={u}
+                              href={u}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center rounded border bg-background px-1.5 py-0.5 text-[11px] text-primary underline underline-offset-2"
+                              title={attachmentLabelFromUrl(u)}
+                            >
+                              첨부
+                            </a>
+                          ))}
+                          {attachmentsForRequest(r).length > 3 && (
+                            <span className="text-muted-foreground text-[11px]">
+                              +{attachmentsForRequest(r).length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {r.quotation ? (
@@ -1147,12 +1283,189 @@ export default function FinanceRequestsPage() {
                 rows={2}
               />
             </div>
+            <div className="grid gap-2 rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-sm">주문 내역 (견적서 외)</Label>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    어떤 걸 주문/구매하는지 <strong>이미지·엑셀</strong>을 첨부하거나, 아래 표에 입력하면{" "}
+                    <strong>엑셀로 자동 생성</strong>해 첨부합니다.
+                  </p>
+                </div>
+                <Select value={orderAttachMode} onValueChange={(v: any) => setOrderAttachMode(v)}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="첨부 방식" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="file">파일 첨부</SelectItem>
+                    <SelectItem value="table">표로 작성</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {orderAttachMode === "file" ? (
+                <div className="grid gap-2">
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf,.xls,.xlsx,.csv"
+                    multiple
+                    disabled={orderUploading || submitting}
+                    onChange={(e: any) => {
+                      const files = Array.from((e.target.files as FileList | null) ?? []);
+                      void (async () => {
+                        for (const f of files) {
+                          await handleOrderFilePicked(f);
+                        }
+                      })();
+                      e.target.value = "";
+                    }}
+                  />
+                  {orderAttachments.length > 0 ? (
+                    <div className="grid gap-2">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <Badge variant="secondary" className="font-normal">
+                          {orderAttachments.length}개 첨부됨
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderAttachments([])}
+                          disabled={orderUploading || submitting}
+                        >
+                          전체 제거
+                        </Button>
+                      </div>
+                      <div className="grid gap-1">
+                        {orderAttachments.map((a) => (
+                          <div key={a.url} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1 text-sm">
+                            <a
+                              href={a.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="min-w-0 flex-1 truncate text-primary underline underline-offset-2"
+                              title={a.name || a.url}
+                            >
+                              {a.name || attachmentLabelFromUrl(a.url)}
+                            </a>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setOrderAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                              disabled={orderUploading || submitting}
+                            >
+                              제거
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      이미지(JPG/PNG 등) 또는 엑셀(XLSX) / CSV를 올릴 수 있어요.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <div className="rounded-md border bg-background overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="font-medium">품목</TableHead>
+                          <TableHead className="w-[84px] font-medium">수량</TableHead>
+                          <TableHead className="w-[120px] font-medium">단가</TableHead>
+                          <TableHead className="font-medium">비고</TableHead>
+                          <TableHead className="w-[56px]" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {orderRows.map((r, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>
+                              <Input
+                                value={r.item}
+                                onChange={(e: any) =>
+                                  setOrderRows((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, item: e.target.value } : x))
+                                  )
+                                }
+                                placeholder="예: A4 인쇄 100부"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={r.qty}
+                                onChange={(e: any) =>
+                                  setOrderRows((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x))
+                                  )
+                                }
+                                placeholder="1"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={r.unitPrice}
+                                onChange={(e: any) =>
+                                  setOrderRows((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, unitPrice: e.target.value } : x))
+                                  )
+                                }
+                                placeholder="예: 12000"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={r.note}
+                                onChange={(e: any) =>
+                                  setOrderRows((prev) =>
+                                    prev.map((x, i) => (i === idx ? { ...x, note: e.target.value } : x))
+                                  )
+                                }
+                                placeholder="옵션/색상/사이즈 등"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={orderRows.length <= 1}
+                                onClick={() => setOrderRows((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                삭제
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setOrderRows((prev) => [...prev, { item: "", qty: "1", unitPrice: "", note: "" }])}
+                      disabled={orderUploading || submitting}
+                    >
+                      행 추가
+                    </Button>
+                    <p className="text-muted-foreground text-xs">
+                      요청 시 표가 엑셀로 생성되어 자동 첨부됩니다.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
                 취소
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "요청 중..." : "요청"}
+                {submitting || orderUploading ? "요청 중..." : "요청"}
               </Button>
             </DialogFooter>
           </form>

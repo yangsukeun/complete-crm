@@ -53,6 +53,7 @@ export async function PATCH(
         completedAt: true,
         description: true,
         attachment: true,
+        attachments: true,
       },
     });
     if (!current) {
@@ -77,6 +78,7 @@ export async function PATCH(
         completedAt: row.completedAt,
         description: row.description,
         attachment: row.attachment,
+        attachments: row.attachments,
         requesterId: row.requesterId,
         vendorId: row.vendorId,
         requester: row.requester,
@@ -222,6 +224,7 @@ export async function PATCH(
       completedAt: updated.completedAt,
       description: updated.description,
       attachment: updated.attachment,
+      attachments: updated.attachments,
       requesterId: updated.requesterId,
       vendorId: updated.vendorId,
       requester: updated.requester,
