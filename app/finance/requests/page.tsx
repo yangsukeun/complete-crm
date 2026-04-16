@@ -621,6 +621,27 @@ export default function FinanceRequestsPage() {
     }
   };
 
+  const handleDeleteRequest = async (id: string) => {
+    if (!confirm("이 결제 요청을 삭제할까요? (이체 완료 전까지만 삭제할 수 있습니다)")) return;
+    setCompletingId(id);
+    try {
+      const res = await fetch(`/api/finance/requests/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "삭제 실패");
+      toast.success("삭제했습니다.");
+      // 즉시 UI 반영
+      setRequests((prev) => prev.filter((r) => r.id !== id));
+      setPendingRequests((prev) => prev.filter((r) => r.id !== id));
+      setCompletedRequests((prev) => prev.filter((r) => r.id !== id));
+      await fetchRequests(true);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
   const toggleSelectComplete = (id: string) => {
     setSelectedCompleteIds((prev) => {
       const next = new Set(prev);
@@ -930,6 +951,17 @@ export default function FinanceRequestsPage() {
                               {completingId === r.id ? "처리 중..." : "이체완료"}
                             </Button>
                           )}
+                          {(r.requester?.id === session?.user?.id) && r.status !== "COMPLETED" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeleteRequest(r.id)}
+                              disabled={completingId === r.id}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              삭제
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1220,6 +1252,17 @@ export default function FinanceRequestsPage() {
                         >
                           <CheckCircle className="mr-1 size-4" />
                           {completingId === r.id ? "처리 중..." : "이체완료"}
+                        </Button>
+                      )}
+                      {(r.requester?.id === session?.user?.id) && r.status !== "COMPLETED" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteRequest(r.id)}
+                          disabled={completingId === r.id}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          삭제
                         </Button>
                       )}
                       {r.status === "COMPLETED" && r.completedAt && (

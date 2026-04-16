@@ -240,3 +240,41 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id } = await params;
+
+    const current = await prisma.paymentRequest.findUnique({
+      where: { id },
+      select: { id: true, status: true, requesterId: true },
+    });
+    if (!current) {
+      return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    // 완료(COMPLETED)된 건은 삭제 불가
+    if (current.status === "COMPLETED") {
+      return NextResponse.json({ error: "이체 완료된 건은 삭제할 수 없습니다." }, { status: 400 });
+    }
+
+    // 요청자 본인만 삭제 가능
+    if (!current.requesterId || current.requesterId !== session.user.id) {
+      return NextResponse.json({ error: "본인이 요청한 건만 삭제할 수 있습니다." }, { status: 403 });
+    }
+
+    await prisma.paymentRequest.delete({ where: { id } });
+    return NextResponse.json({ ok: true, id });
+  } catch (e) {
+    console.error(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: "삭제에 실패했습니다.", details: msg }, { status: 500 });
+  }
+}
