@@ -59,6 +59,31 @@ export async function PATCH(
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    /** UI 더블클릭/레이스 등으로 같은 상태로 다시 PATCH가 들어오면 no-op으로 성공 처리 */
+    if (parsed.data.status === current.status) {
+      const row = await prisma.paymentRequest.findUnique({
+        where: { id },
+        include: {
+          requester: { select: { id: true, name: true, email: true, position: true } },
+          vendor: true,
+        },
+      });
+      if (!row) return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
+      return NextResponse.json({
+        id: row.id,
+        status: row.status,
+        amount: row.amount,
+        requestedAt: row.requestedAt,
+        completedAt: row.completedAt,
+        description: row.description,
+        attachment: row.attachment,
+        requesterId: row.requesterId,
+        vendorId: row.vendorId,
+        requester: row.requester,
+        vendor: row.vendor,
+      });
+    }
+
     const dbUser = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { role: true },
