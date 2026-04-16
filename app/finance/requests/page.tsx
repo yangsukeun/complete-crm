@@ -133,6 +133,20 @@ function attachmentsForRequest(r: PaymentRequest): string[] {
   return [...new Set(merged)];
 }
 
+function updateRequestStatusInList<T extends PaymentRequest>(
+  list: T[],
+  id: string,
+  patch: Partial<T>
+): T[] {
+  let touched = false;
+  const next = list.map((r) => {
+    if (r.id !== id) return r;
+    touched = true;
+    return { ...r, ...patch } as T;
+  });
+  return touched ? next : list;
+}
+
 const VENDOR_CATEGORIES = ["인쇄", "식대", "용역", "자재", "기타"];
 
 export default function FinanceRequestsPage() {
@@ -278,6 +292,12 @@ export default function FinanceRequestsPage() {
   const toastForActionResult = (data: any, successMsg: string) => {
     if (data?.noOp) toast.message("이미 처리된 건입니다.");
     else toast.success(successMsg);
+  };
+
+  const optimisticApplyStatusPatch = (id: string, patch: Partial<PaymentRequest>) => {
+    setRequests((prev) => updateRequestStatusInList(prev, id, patch));
+    setPendingRequests((prev) => updateRequestStatusInList(prev, id, patch));
+    setCompletedRequests((prev) => updateRequestStatusInList(prev, id, patch));
   };
 
   const fetchVendors = useCallback(async () => {
@@ -491,6 +511,8 @@ export default function FinanceRequestsPage() {
       }
       const data = await res.json().catch(() => ({}));
       toastForActionResult(data, "승인했습니다. 이체 담당자에게 알림이 전달됩니다.");
+      // 재조회 전에 UI를 즉시 반영 (배포 환경에서 갱신 지연/실패 체감 최소화)
+      optimisticApplyStatusPatch(id, { status: "TEAM_LEAD_APPROVED" as any });
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
@@ -514,6 +536,7 @@ export default function FinanceRequestsPage() {
       }
       const data = await res.json().catch(() => ({}));
       toastForActionResult(data, "반려했습니다.");
+      optimisticApplyStatusPatch(id, { status: "REJECTED" as any });
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
@@ -537,6 +560,7 @@ export default function FinanceRequestsPage() {
       }
       const data = await res.json().catch(() => ({}));
       toastForActionResult(data, "승인 대기 상태로 되돌렸습니다.");
+      optimisticApplyStatusPatch(id, { status: "PENDING" as any });
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
@@ -560,6 +584,7 @@ export default function FinanceRequestsPage() {
       }
       const data = await res.json().catch(() => ({}));
       toastForActionResult(data, "이체 완료로 처리했습니다.");
+      optimisticApplyStatusPatch(id, { status: "COMPLETED" as any, completedAt: new Date().toISOString() });
       await fetchRequests(true);
       router.refresh();
     } catch (e) {
