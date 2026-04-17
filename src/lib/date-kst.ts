@@ -34,6 +34,32 @@ export function todayYmdKst(): string {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 }
 
+/** 임의 시각이 속한 한국 날짜 `YYYY-MM-DD` (스케줄 셀·휴가 구간 키 정렬용) */
+export function toKstYmd(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+}
+
+/**
+ * KST 달력 기준 시작일~종료일(포함)의 `YYYY-MM-DD` 목록.
+ * DB에 UTC 자정 등으로 저장된 `LeaveRequest.startDate/endDate`와 월간 캘린더 셀 키를 맞출 때 사용.
+ */
+export function eachKstYmdInclusive(start: string | Date, end: string | Date): string[] {
+  const a = toKstYmd(start);
+  const b = toKstYmd(end);
+  if (!a || !b || a > b) return [];
+  const out: string[] = [];
+  let cur = a;
+  for (;;) {
+    out.push(cur);
+    if (cur === b) break;
+    const { end: nextDayStart } = kstDateBoundsUtc(cur);
+    cur = nextDayStart.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  }
+  return out;
+}
+
 /** 시·분만, 24시간제 (Asia/Seoul) — 출퇴근 시각 표시용 */
 export function formatKstHm(value: string | Date): string {
   const d = value instanceof Date ? value : new Date(value);

@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { EVENT_PALETTE, type CalendarLayerId } from "@/lib/schedule-colors";
-import { todayYmdKst } from "@/lib/date-kst";
+import { eachKstYmdInclusive, todayYmdKst, toKstYmd } from "@/lib/date-kst";
 
 export type { CalendarLayerId };
 import Link from "next/link";
@@ -22,7 +22,6 @@ import {
   startOfMonth,
   endOfMonth,
   endOfWeek,
-  addDays,
   isBefore,
   isAfter,
 } from "date-fns";
@@ -228,19 +227,48 @@ function calendarLeaveTypeLabel(type: string): string {
   return CALENDAR_LEAVE_LABELS[type] ?? "휴가";
 }
 
+/** 해당 주(월간 행의 7칸)에 나타나는 휴가 라벨을 한 번만 정렬해, 요일마다 같은 행에 표시 */
+function weekLeaveSlotLines(range: Date[] | undefined, leaveByDate: Record<string, string[]>): string[] {
+  if (!range?.length) return [];
+  const uniq = new Set<string>();
+  for (const d of range) {
+    const k = toKstYmd(d);
+    for (const line of leaveByDate[k] ?? []) uniq.add(line);
+  }
+  return Array.from(uniq).sort((a, b) => a.localeCompare(b, "ko"));
+}
+
 function createDateCellWrapper(leaveByDate: Record<string, string[]>) {
-  return function DateCellWrapper({ value, children }: { value: Date; children: React.ReactNode }) {
-    const key = format(value, "yyyy-MM-dd");
-    const lines = leaveByDate[key] ?? [];
+  return function DateCellWrapper({
+    value,
+    children,
+    range,
+  }: {
+    value: Date;
+    children: React.ReactNode;
+    range?: Date[];
+  }) {
+    const key = toKstYmd(value);
+    const slotLines = weekLeaveSlotLines(range, leaveByDate);
+    const dayLines = leaveByDate[key] ?? [];
+    const daySet = new Set(dayLines);
+    const ariaForDay = dayLines.length > 0 ? dayLines.join(", ") : undefined;
     return (
       <div className="rbc-date-cell-wrapper-inner">
         {children}
-        {lines.length > 0 && (
-          <div className="rbc-date-cell-leave-names" aria-label={`근태: ${lines.join(", ")}`}>
-            {lines.map((line) => (
-              <span key={line} className="rbc-date-cell-leave-name">
-                {line}
-              </span>
+        {slotLines.length > 0 && (
+          <div
+            className="rbc-date-cell-leave-names"
+            aria-label={ariaForDay ? `근태: ${ariaForDay}` : undefined}
+          >
+            {slotLines.map((line) => (
+              <div key={line} className="rbc-date-cell-leave-slot">
+                {daySet.has(line) ? (
+                  <span className="rbc-date-cell-leave-name">{line}</span>
+                ) : (
+                  <span className="rbc-date-cell-leave-slot--empty" aria-hidden />
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -930,22 +958,18 @@ function SchedulePageInner() {
     return [...prev, ...curr, ...next].map(holidayToEvent);
   }, [date]);
 
-  /** 날짜별 승인 휴가 (yyyy-MM-dd -> "이름 (휴가|반차 …)"[]) */
+  /** 날짜별 승인 휴가 (KST yyyy-MM-dd -> "이름 (휴가|반차 …)"[]) — 구간은 KST 달력일 기준 포함 */
   const leaveByDate = useMemo(() => {
     const map: Record<string, string[]> = {};
     const approved = leaveRequests.filter((r: LeaveRequestItem) => r.status === "APPROVED");
     for (const r of approved) {
-      const start = startOfDay(new Date(r.startDate));
-      const end = endOfDay(new Date(r.endDate));
       const name = formatUserName(r.user);
       const kind = calendarLeaveTypeLabel(r.type);
-      let d = start;
-      while (d <= end) {
-        const key = format(d, "yyyy-MM-dd");
+      for (const key of eachKstYmdInclusive(r.startDate, r.endDate)) {
+        if (!key) continue;
         if (!map[key]) map[key] = [];
         const line = `${name} (${kind})`;
         if (!map[key].includes(line)) map[key].push(line);
-        d = addDays(d, 1);
       }
     }
     return map;
