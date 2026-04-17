@@ -56,8 +56,7 @@ export async function GET(
     const isAssignee =
       task.assignedToId === session.user.id ||
       task.assignees.some((a) => a.user.id === session.user.id);
-    const isCreator = task.createdById === session.user.id;
-    if (!isAdmin && !isAssignee && !isCreator) {
+    if (!isAdmin && !isAssignee) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -111,7 +110,6 @@ export async function POST(
     const allowed =
       (session.user.role === "EXECUTIVE" || session.user.role === "ADMIN") ||
       task.assignedToId === session.user.id ||
-      task.createdById === session.user.id ||
       task.assignees.some((a) => a.userId === session.user.id);
     if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

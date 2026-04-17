@@ -45,11 +45,12 @@ function parseLegacyWeekdays(recurringDays: string | null): number[] {
 
 function matchesRecurringRule(params: {
   targetDate: Date;
-  taskDueDate: Date;
+  taskDueDate: Date | null;
   recurringDays: string | null;
   recurringRule: any;
 }): boolean {
   const { targetDate, taskDueDate, recurringDays, recurringRule } = params;
+  if (!taskDueDate || Number.isNaN(new Date(taskDueDate).getTime())) return false;
   const weekday = recurringDayForDate(targetDate);
 
   const rule = recurringRule && typeof recurringRule === "object" ? recurringRule : null;
@@ -116,12 +117,8 @@ export async function GET(req: Request) {
       where: {
         deletedAt: null,
         isRecurring: true,
+        dueDate: { not: null },
         ...visibilityWhere,
-        OR: [
-          { assignedToId: session.user.id },
-          { createdById: session.user.id },
-          { assignees: { some: { userId: session.user.id } } },
-        ],
       },
       select: {
         id: true,

@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
+import { BLOCKNOTE_TABLES_OPTIONS } from "@/lib/blocknote-table-options";
 import {
   createPastedImageBlock,
   getClipboardImageFile,
@@ -162,6 +163,7 @@ export function ContentBodyEditor({
     uploadFile,
     dictionary,
     defaultStyles: true,
+    tables: BLOCKNOTE_TABLES_OPTIONS,
   });
 
   const loadedInitialRef = useRef(false);
@@ -348,7 +350,9 @@ export function ContentBodyEditor({
       {showHelp && (
         <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
           💡 텍스트 드래그 시 서식 툴바 | <kbd className="rounded border px-1 py-0.5 text-[10px]">/</kbd> 블록(YouTube·링크·HTML) |{" "}
-          <strong>YouTube·일반 URL 한 줄 붙여넣기</strong> 시 임베드·미리보기 자동 삽입 | 이미지 드래그·붙여넣기
+          <strong>YouTube·일반 URL 한 줄 붙여넣기</strong> 시 임베드·미리보기 자동 삽입 | 이미지 드래그·붙여넣기 |{" "}
+          <strong>표</strong>: 합칠 칸을 드래그로 여러 개 선택 → 표 오른쪽 <strong>핸들(⋮)</strong> 메뉴에서{" "}
+          <strong>셀 병합(Merge cells)</strong>, 병합된 칸에서는 <strong>셀 분할(Split cell)</strong>
         </p>
       )}
     </div>

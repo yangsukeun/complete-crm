@@ -6,6 +6,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
+import { BLOCKNOTE_TABLES_OPTIONS } from "@/lib/blocknote-table-options";
 import { uploadImageViaApi } from "@/lib/editor-image-upload";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -27,6 +28,7 @@ export function BoardBlockDocViewer({ blocks }: Props) {
     schema: taskBodySchema,
     uploadFile,
     defaultStyles: true,
+    tables: BLOCKNOTE_TABLES_OPTIONS,
   });
 
   const serialized = JSON.stringify(blocks);

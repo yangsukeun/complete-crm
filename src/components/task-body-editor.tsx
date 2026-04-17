@@ -38,6 +38,7 @@ import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
 import { normalizeImageBlocksDriveDisplayUrls } from "@/lib/task-body-drive-images";
 import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
+import { BLOCKNOTE_TABLES_OPTIONS } from "@/lib/blocknote-table-options";
 import {
   createPastedImageBlock,
   getClipboardImageFile,
@@ -195,6 +196,7 @@ export function TaskBodyEditor({
     dictionary,
     defaultStyles: true,
     dropCursor: multiColumnDropCursor,
+    tables: BLOCKNOTE_TABLES_OPTIONS,
   });
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -516,7 +518,8 @@ export function TaskBodyEditor({
         , <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">-</kbd>
         , <kbd className="rounded border bg-muted/50 px-1 py-px font-mono text-[10px]">[]</kbd> ·
         왼쪽 <span className="font-mono">⋮⋮</span>로 순서 이동 · 접기는 <strong>토글</strong> /
-        <strong>접을 수 있는 제목</strong>
+        <strong>접을 수 있는 제목</strong> · <strong>표</strong>: 칸 여러 개 드래그 선택 → 표 오른쪽 핸들 메뉴에서{" "}
+        <strong>셀 병합</strong> / <strong>셀 분할</strong>
       </p>
     </div>
   );

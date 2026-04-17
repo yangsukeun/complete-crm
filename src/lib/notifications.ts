@@ -258,6 +258,7 @@ export async function checkDeadlines(): Promise<void> {
     const existingUserLinkSet = new Set(existingNotifications.map((n) => `${n.userId}|${n.link}`));
 
     for (const task of tasks) {
+      if (!task.dueDate) continue;
       const recipientIds = [
         ...(task.assignedToId ? [task.assignedToId] : []),
         ...task.assignees.map((a) => a.userId),

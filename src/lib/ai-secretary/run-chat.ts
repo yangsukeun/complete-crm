@@ -465,7 +465,7 @@ async function executeTool(
           assigneeIds: [userId],
         },
       });
-      const dueLabel = task.dueDate.toISOString().slice(0, 10);
+      const dueLabel = task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "미정";
       return `✅ 프로젝트(업무)가 생성되었습니다.\n- 제목: ${task.title}\n- ID: ${task.id}\n- 마감: ${dueLabel}`;
     }
 

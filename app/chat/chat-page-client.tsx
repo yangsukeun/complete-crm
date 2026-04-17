@@ -531,6 +531,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                 localStorage.setItem(CHAT_READ_KEY + roomId, new Date().toISOString());
               }
               window.dispatchEvent(new Event("chat-read"));
+              window.dispatchEvent(new Event("notification-realtime"));
             } catch {
               /* ignore */
             }
@@ -591,6 +592,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
       if (typeof localStorage !== "undefined") {
         localStorage.setItem(CHAT_READ_KEY + selectedChatId, new Date().toISOString());
         window.dispatchEvent(new Event("chat-read"));
+        window.dispatchEvent(new Event("notification-realtime"));
       }
       /* 읽음·readAt는 GET ?markRead=1 에서 처리 */
     } else {

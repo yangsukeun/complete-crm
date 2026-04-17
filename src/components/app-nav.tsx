@@ -39,6 +39,12 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useLayoutShared } from "@/components/layout-shared-context";
 import { cn } from "@/lib/utils";
 import { userHasPermission } from "@/lib/permissions";
+import {
+  BOARD_LAST_SEEN_EVENT,
+  BOARD_NEW_POST_EVENT,
+  ensureBoardLastSeenBaseline,
+  readBoardLastSeenIso,
+} from "@/lib/board-last-seen";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -216,6 +222,62 @@ export function AppNav() {
   const projectAssignBadgeCount = tasksAssignedBadge?.count ?? 0;
   const chatUnreadCount = unreadChat?.count ?? 0;
 
+  const userForBoardBadge = session?.user as { role?: string; permissions?: string | null } | undefined;
+  const canBoardForBadge = (() => {
+    try {
+      return userForBoardBadge ? userHasPermission(userForBoardBadge as any, "board") : true;
+    } catch {
+      return true;
+    }
+  })();
+
+  const boardBadgeEnabled =
+    Boolean(session?.user?.id) &&
+    pathname !== "/choose-mode" &&
+    pathname !== "/login" &&
+    effectiveMode === "company" &&
+    canBoardForBadge;
+
+  const [boardLastSeenForSwr, setBoardLastSeenForSwr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!boardBadgeEnabled) return;
+    if (typeof window === "undefined") return;
+    const baseline = ensureBoardLastSeenBaseline();
+    queueMicrotask(() => setBoardLastSeenForSwr(baseline));
+    const onSeen = () => {
+      queueMicrotask(() =>
+        setBoardLastSeenForSwr(readBoardLastSeenIso() ?? new Date().toISOString())
+      );
+    };
+    window.addEventListener(BOARD_LAST_SEEN_EVENT, onSeen);
+    return () => window.removeEventListener(BOARD_LAST_SEEN_EVENT, onSeen);
+  }, [boardBadgeEnabled]);
+
+  const boardNewCountUrl =
+    boardBadgeEnabled && boardLastSeenForSwr
+      ? `/api/board/new-count?since=${encodeURIComponent(boardLastSeenForSwr)}`
+      : null;
+
+  const { data: boardNewBadge, mutate: mutateBoardNewBadge } = useSWR<{ count: number }>(
+    boardNewCountUrl,
+    jsonFetcher,
+    {
+      dedupingInterval: 45_000,
+      revalidateOnFocus: true,
+      keepPreviousData: true,
+    }
+  );
+
+  const boardNewCount = boardNewBadge?.count ?? 0;
+
+  useEffect(() => {
+    if (!boardBadgeEnabled) return;
+    const onNewPost = () => void mutateBoardNewBadge();
+    window.addEventListener(BOARD_NEW_POST_EVENT, onNewPost);
+    return () => window.removeEventListener(BOARD_NEW_POST_EVENT, onNewPost);
+  }, [boardBadgeEnabled, mutateBoardNewBadge]);
+
   useEffect(() => {
     if (!financeBadgeEnabled) {
       setPaymentAlertCount(0);
@@ -374,8 +436,15 @@ export function AppNav() {
           {/* 게시판(자료실) - 회사 모드에서만 */}
           {isCompany && can("board") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/board" || pathname.startsWith("/board/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/board" prefetch={false} className="flex items-center gap-1.5">
-                <FolderOpen className="size-4" />
+              <Link href="/board" prefetch={false} className="relative flex items-center gap-1.5">
+                <span className="relative inline-flex shrink-0">
+                  <FolderOpen className="size-4" />
+                  {boardNewCount > 0 && (
+                    <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {boardNewCount > 99 ? "99+" : boardNewCount}
+                    </span>
+                  )}
+                </span>
                 <span>게시판</span>
               </Link>
             </Button>
@@ -659,6 +728,11 @@ export function AppNav() {
               >
                 <Icon className="size-4" />
                 {label}
+                {href === "/board" && boardNewCount > 0 && (
+                  <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
+                    {boardNewCount > 99 ? "99+" : boardNewCount}
+                  </span>
+                )}
                 {href === "/chat" && chatUnreadCount > 0 && (
                   <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
                     {chatUnreadCount > 99 ? "99+" : chatUnreadCount}

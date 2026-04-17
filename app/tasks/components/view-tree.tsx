@@ -49,7 +49,7 @@ type TaskData = {
   id: string;
   title: string;
   description: string | null;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   status?: string | null;
   priority: string;

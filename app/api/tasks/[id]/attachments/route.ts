@@ -38,7 +38,6 @@ export async function POST(
     const allowed =
       (session.user.role === "EXECUTIVE" || session.user.role === "ADMIN") ||
       task.assignedToId === session.user.id ||
-      task.createdById === session.user.id ||
       task.assignees.length > 0;
     if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

@@ -65,7 +65,7 @@ type TaskDetail = {
   id: string;
   title: string;
   description: string | null;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   isCollapsed?: boolean;
   priority: string;
@@ -81,7 +81,7 @@ type TaskDetail = {
   children?: {
     id: string;
     title: string;
-    dueDate: string;
+    dueDate: string | null;
     isCompleted: boolean;
     status?: string | null;
     priority: string;
@@ -636,7 +636,9 @@ export default function TaskDetailPage() {
             <span className="text-muted-foreground mx-1">·</span>
             <span className="text-muted-foreground">마감</span>
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">
-              {format(new Date(task.dueDate), "yyyy.MM.dd (EEE)", { locale: ko })}
+              {task.dueDate
+                ? format(new Date(task.dueDate), "yyyy.MM.dd (EEE)", { locale: ko })
+                : "미정"}
             </span>
             <span className="text-muted-foreground mx-1">·</span>
             <span className="text-muted-foreground">우선순위</span>
@@ -850,7 +852,7 @@ export default function TaskDetailPage() {
                     >
                       <span className="font-medium">{c.title}</span>
                       <span className="text-xs text-muted-foreground">
-                        {format(new Date(c.dueDate), "M/d", { locale: ko })}
+                        {c.dueDate ? format(new Date(c.dueDate), "M/d", { locale: ko }) : "미정"}
                       </span>
                     </Link>
                   </li>

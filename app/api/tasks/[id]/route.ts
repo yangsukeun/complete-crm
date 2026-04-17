@@ -321,8 +321,7 @@ export async function GET(
     const isAssignee =
       task.assignedToId === session.user.id ||
       assigneeRows.some((a) => (a.user?.id ?? a.userId) === session.user.id);
-    const isCreator = task.createdById === session.user.id;
-    if (!isAdmin && !isAssignee && !isCreator) {
+    if (!isAdmin && !isAssignee) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const detail = serializeTaskDetail(
@@ -410,8 +409,7 @@ export async function PATCH(
     const isAssignee =
       existing.assignedToId === session.user.id ||
       existing.assignees.some((a) => a.userId === session.user.id);
-    const isCreator = existing.createdById === session.user.id;
-    if (!isAdmin && !isAssignee && !isCreator) {
+    if (!isAdmin && !isAssignee) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -438,7 +436,7 @@ export async function PATCH(
       assignedToId?: string | null;
       categoryId?: string | null;
       parentId?: string | null;
-      dueDate?: Date;
+      dueDate?: Date | null;
       priority?: "HIGH" | "MEDIUM" | "LOW";
       isRecurring?: boolean;
       recurringDays?: string | null;
@@ -460,7 +458,17 @@ export async function PATCH(
     }
     if ("categoryId" in body) data.categoryId = body.categoryId === null || body.categoryId === "" ? null : body.categoryId;
     if ("parentId" in body) data.parentId = body.parentId === null || body.parentId === "" ? null : body.parentId;
-    if (typeof body.dueDate === "string") data.dueDate = new Date(body.dueDate);
+    if ("dueDate" in body) {
+      if (body.dueDate === null || body.dueDate === "") {
+        data.dueDate = null;
+      } else if (typeof body.dueDate === "string") {
+        const parsedDue = new Date(body.dueDate);
+        if (Number.isNaN(parsedDue.getTime())) {
+          return NextResponse.json({ error: "마감일 형식이 올바르지 않습니다." }, { status: 400 });
+        }
+        data.dueDate = parsedDue;
+      }
+    }
     if (body.priority === "HIGH" || body.priority === "MEDIUM" || body.priority === "LOW") data.priority = body.priority;
     if (typeof body.isRecurring === "boolean") {
       data.isRecurring = body.isRecurring;
@@ -517,19 +525,24 @@ export async function PATCH(
         newValue: statusLabels[data.status] ?? data.status,
       });
     }
-    if (
-      data.dueDate !== undefined &&
-      existing.dueDate instanceof Date &&
-      !Number.isNaN(existing.dueDate.getTime()) &&
-      data.dueDate instanceof Date &&
-      !Number.isNaN(data.dueDate.getTime()) &&
-      String(data.dueDate) !== String(existing.dueDate)
-    ) {
-      revisions.push({
-        field: "dueDate",
-        oldValue: existing.dueDate.toISOString().slice(0, 10),
-        newValue: data.dueDate.toISOString().slice(0, 10),
-      });
+    if (data.dueDate !== undefined) {
+      const prevIso =
+        existing.dueDate instanceof Date && !Number.isNaN(existing.dueDate.getTime())
+          ? existing.dueDate.toISOString().slice(0, 10)
+          : null;
+      const nextIso =
+        data.dueDate === null
+          ? null
+          : data.dueDate instanceof Date && !Number.isNaN(data.dueDate.getTime())
+            ? data.dueDate.toISOString().slice(0, 10)
+            : null;
+      if (prevIso !== nextIso) {
+        revisions.push({
+          field: "dueDate",
+          oldValue: prevIso ?? "(없음)",
+          newValue: nextIso ?? "(없음)",
+        });
+      }
     }
     if (assigneeIdsUpdate !== undefined) {
       const oldIds = existing.assignees.map((a) => a.userId);
@@ -904,7 +917,9 @@ export async function DELETE(
         title: true,
         description: true,
         scope: true,
+        assignedToId: true,
         createdById: true,
+        assignees: { select: { userId: true } },
         attachments: {
           select: { id: true, url: true },
         },
@@ -919,8 +934,10 @@ export async function DELETE(
     }
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    const isCreator = existing.createdById === session.user.id;
-    if (!isAdmin && !isCreator) {
+    const isAssignee =
+      existing.assignedToId === session.user.id ||
+      existing.assignees.some((a) => a.userId === session.user.id);
+    if (!isAdmin && !isAssignee) {
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 

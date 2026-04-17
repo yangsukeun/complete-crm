@@ -35,7 +35,7 @@ export type TaskCategory = {
 export type TaskInCategory = {
   id: string;
   title: string;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   status?: string | null;
   priority: string;
@@ -394,7 +394,7 @@ export function TaskCategoryTree({
                             {priorityLabel(t.priority)}
                           </Badge>
                           <span className="text-muted-foreground text-xs">
-                            {format(new Date(t.dueDate), "M/d", { locale: ko })}
+                            {t.dueDate ? format(new Date(t.dueDate), "M/d", { locale: ko }) : "미정"}
                           </span>
                           <TaskAssigneeAvatars assignees={t.assignees} assignedTo={t.assignedTo} size={20} />
                           <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -536,7 +536,7 @@ export function TaskCategoryTree({
                           {priorityLabel(t.priority)}
                         </Badge>
                         <span className="text-muted-foreground text-xs">
-                          {format(new Date(t.dueDate), "M/d", { locale: ko })}
+                          {t.dueDate ? format(new Date(t.dueDate), "M/d", { locale: ko }) : "미정"}
                         </span>
                         <TaskAssigneeAvatars assignees={t.assignees} assignedTo={t.assignedTo} size={20} />
                         <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>

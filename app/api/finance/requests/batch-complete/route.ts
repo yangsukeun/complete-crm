@@ -47,10 +47,18 @@ export async function POST(req: Request) {
     const role = (dbUser?.role ?? session.user.role) as string | undefined;
     const isTeamLead = role === "TEAM_LEAD";
 
-    const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-    const transferExecutorIds = getTransferExecutorIds(
-      company?.transferExecutorIds ?? (company as { transferExecutorIds?: string | null })?.transferExecutorIds ?? null
-    );
+    let transferExecutorIds: string[] = [];
+    try {
+      const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
+      transferExecutorIds = getTransferExecutorIds(
+        company?.transferExecutorIds ??
+          (company as { transferExecutorIds?: string | null })?.transferExecutorIds ??
+          null
+      );
+    } catch (err) {
+      console.error("[POST /api/finance/requests/batch-complete] companyInfo.transferExecutorIds read failed", err);
+      transferExecutorIds = [];
+    }
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
     if (isTeamLead) {

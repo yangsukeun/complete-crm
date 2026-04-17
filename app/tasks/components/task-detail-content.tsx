@@ -60,7 +60,7 @@ type TaskDetail = {
   id: string;
   title: string;
   description: string | null;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   priority: string;
   color?: string | null;
@@ -296,6 +296,10 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       void updateTask({
         isRecurring: false,
       });
+      return;
+    }
+    if (!taskRef.current?.dueDate) {
+      toast.error("반복 업무를 쓰려면 먼저 마감일을 지정해 주세요.");
       return;
     }
     void updateTask({
@@ -659,24 +663,40 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                   type="button"
                   className="flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium transition-colors hover:bg-violet-100 hover:text-violet-700"
                 >
-                  {format(new Date(task.dueDate), "yyyy.MM.dd (EEE)", { locale: ko })}
+                  {task.dueDate
+                    ? format(new Date(task.dueDate), "yyyy.MM.dd (EEE)", { locale: ko })
+                    : "미정"}
                   <Pencil className="size-3 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-3" align="start">
-                <Label className="text-muted-foreground mb-2 block text-xs">마감일 변경</Label>
+              <PopoverContent className="w-auto space-y-2 p-3" align="start">
+                <Label className="text-muted-foreground block text-xs">마감일 변경</Label>
                 <Input
+                  key={task.dueDate ?? "none"}
                   type="datetime-local"
-                  defaultValue={format(new Date(task.dueDate), "yyyy-MM-dd'T'HH:mm")}
+                  defaultValue={
+                    task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd'T'HH:mm") : ""
+                  }
                   onChange={(e) => {
-                    if (!e.target.value) return;
-                    const nextMs = new Date(e.target.value).getTime();
-                    const curMs = new Date(task.dueDate).getTime();
+                    const v = e.target.value;
+                    if (!v) return;
+                    const nextMs = new Date(v).getTime();
+                    const curMs = task.dueDate ? new Date(task.dueDate).getTime() : NaN;
                     if (Number.isFinite(nextMs) && Number.isFinite(curMs) && nextMs === curMs) return;
-                    updateTask({ dueDate: new Date(e.target.value).toISOString() });
+                    updateTask({ dueDate: new Date(v).toISOString() });
                   }}
                   className="h-9"
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={saving || !task.dueDate}
+                  onClick={() => updateTask({ dueDate: null })}
+                >
+                  마감일 없음
+                </Button>
               </PopoverContent>
             </Popover>
           </div>

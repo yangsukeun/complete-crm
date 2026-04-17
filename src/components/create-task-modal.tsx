@@ -88,9 +88,7 @@ export function CreateTaskModal({
 
   useEffect(() => {
     if (open) {
-      const d = new Date();
-      d.setHours(23,59,59,999);
-      setDueDate(d.toISOString().slice(0, 16));
+      setDueDate("");
       setTitle("");
       setDescription("");
       setPriority("MEDIUM");
@@ -139,7 +137,7 @@ export function CreateTaskModal({
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || undefined,
-          dueDate: new Date(dueDate).toISOString(),
+          dueDate: dueDate.trim() ? new Date(dueDate).toISOString() : null,
           priority,
           assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
           parentId: parentId ?? undefined,
@@ -254,14 +252,14 @@ export function CreateTaskModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="task-due">프로젝트 마감일</Label>
+                <Label htmlFor="task-due">프로젝트 마감일 (선택)</Label>
                 <Input
                   id="task-due"
                   type="datetime-local"
                   value={dueDate}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
-                  required
                 />
+                <p className="text-muted-foreground text-xs">비워 두면 마감일 없이 등록됩니다.</p>
               </div>
               <div className="space-y-2">
                 <Label>카드 색상 (선택)</Label>

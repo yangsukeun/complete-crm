@@ -74,10 +74,18 @@ export async function GET() {
       console.error("[GET /api/finance/alerts/count] paymentRequestAlert.count", err);
     }
 
-    const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-    const transferExecutorIds = getTransferExecutorIds(
-      company?.transferExecutorIds ?? (company as { transferExecutorIds?: string | null })?.transferExecutorIds ?? null
-    );
+    let transferExecutorIds: string[] = [];
+    try {
+      const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
+      transferExecutorIds = getTransferExecutorIds(
+        company?.transferExecutorIds ??
+          (company as { transferExecutorIds?: string | null })?.transferExecutorIds ??
+          null
+      );
+    } catch (err) {
+      console.error("[GET /api/finance/alerts/count] companyInfo.transferExecutorIds read failed", err);
+      transferExecutorIds = [];
+    }
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
     // 이체 담당자 → "이체대기", 그 외(요청자 등) → "이체완료" 뱃지

@@ -95,6 +95,11 @@ export function FloatingChatPanel() {
         const raw = await msgRes.json();
         const list: FCMessage[] = Array.isArray(raw) ? raw : (raw.messages ?? []);
         setMessages(list);
+        // 읽음 처리(markRead=1) 후: 상단 뱃지/알림 카운트 즉시 갱신
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("chat-read"));
+          window.dispatchEvent(new Event("notification-realtime"));
+        }
       }
       if (chatRes.ok) {
         const info: FCChat = await chatRes.json();

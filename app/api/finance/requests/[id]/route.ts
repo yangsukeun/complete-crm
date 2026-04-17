@@ -95,10 +95,19 @@ export async function PATCH(
     const isTeamLead = role === "TEAM_LEAD";
     const isExecutiveApprover = role === "EXECUTIVE" || role === "ADMIN";
 
-    const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-    const transferExecutorIds = getTransferExecutorIds(
-      company?.transferExecutorIds ?? (company as { transferExecutorIds?: string | null })?.transferExecutorIds ?? null
-    );
+    let transferExecutorIds: string[] = [];
+    try {
+      const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
+      transferExecutorIds = getTransferExecutorIds(
+        company?.transferExecutorIds ??
+          (company as { transferExecutorIds?: string | null })?.transferExecutorIds ??
+          null
+      );
+    } catch (err) {
+      // 배포 DB 스키마가 덜 반영된 경우(컬럼 미존재 등)에도 승인/반려는 진행 가능해야 함
+      console.error("[PATCH /api/finance/requests/:id] companyInfo.transferExecutorIds read failed", err);
+      transferExecutorIds = [];
+    }
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
     const requesterRow = current.requesterId
@@ -113,7 +122,7 @@ export async function PATCH(
       transferExecutorIds
     );
     /** 이체 담당자·김소윤 요청: 팀장 또는 대표/임원이 1차 승인·반려·되돌리기 */
-    const canFirstLineApprove = isTeamLead || (isExecutiveApprover && needsExecutiveFirstLine);
+    const canFirstLineApprove = isTeamLead || isExecutiveApprover;
 
     // 팀장·(해당 건) 대표/임원: PENDING → 이체대기(TEAM_LEAD_APPROVED) / 반려. 이체대기 건 → 승인대기로 되돌리기·반려 가능.
     if (canFirstLineApprove) {

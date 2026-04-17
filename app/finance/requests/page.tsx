@@ -37,7 +37,6 @@ import { ArrowLeft, Wallet, Plus, CheckCircle, FileText, ListChecks } from "luci
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
 import { postUploadFile } from "@/lib/upload-client-validate";
 import * as XLSX from "xlsx";
 
@@ -515,6 +514,7 @@ export default function FinanceRequestsPage() {
       optimisticApplyStatusPatch(id, { status: "TEAM_LEAD_APPROVED" as any });
       await fetchRequests(true);
       router.refresh();
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "승인에 실패했습니다.");
     } finally {
@@ -539,6 +539,7 @@ export default function FinanceRequestsPage() {
       optimisticApplyStatusPatch(id, { status: "REJECTED" as any });
       await fetchRequests(true);
       router.refresh();
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "반려 처리에 실패했습니다.");
     } finally {
@@ -563,6 +564,7 @@ export default function FinanceRequestsPage() {
       optimisticApplyStatusPatch(id, { status: "PENDING" as any });
       await fetchRequests(true);
       router.refresh();
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "되돌리기에 실패했습니다.");
     } finally {
@@ -587,6 +589,7 @@ export default function FinanceRequestsPage() {
       optimisticApplyStatusPatch(id, { status: "COMPLETED" as any, completedAt: new Date().toISOString() });
       await fetchRequests(true);
       router.refresh();
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "처리에 실패했습니다.");
     } finally {
@@ -614,6 +617,7 @@ export default function FinanceRequestsPage() {
       setSelectedCompleteIds(new Set());
       await fetchRequests(true);
       router.refresh();
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "일괄 처리에 실패했습니다.");
     } finally {
@@ -635,6 +639,7 @@ export default function FinanceRequestsPage() {
       setCompletedRequests((prev) => prev.filter((r) => r.id !== id));
       await fetchRequests(true);
       router.refresh();
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
     } finally {
@@ -667,11 +672,8 @@ export default function FinanceRequestsPage() {
   const isTransferExecutor = !isTeamLead && (paymentAlertUnreadCount !== undefined || isExecutiveTransferExecutor);
   const canRequest = !isExecutive; // 직원·팀장·이체 담당자: 새 결제 요청 가능 (대표는 요청 불가). 팀장 요청 시 바로 이체 담당자에게 알람
   const canComplete = isTransferExecutor; // 이체 담당자(또는 대표+이체담당자): 이체완료
-  /** 팀장: 전 건. 대표/임원: 이체 담당자·김소윤 요청 건만 1차 승인·반려 */
-  const canApproveRejectRow = (r: PaymentRequest) =>
-    isTeamLead ||
-    (isExecutive &&
-      paymentRequestNeedsExecutiveFirstLineApproval(r.requester.id, r.requester.name, transferExecutorIds));
+  /** 팀장/대표/관리자: 전 건 1차 승인·반려 */
+  const canApproveRejectRow = (_r: PaymentRequest) => isTeamLead || isExecutive;
   const showApprovalActionsColumn = isTeamLead || isExecutive || canComplete;
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
   const pendingTotal = pendingList.filter((r: any) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);

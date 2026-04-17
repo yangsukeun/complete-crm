@@ -27,7 +27,7 @@ export type ProjectTableTaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type ProjectTableTask = {
   id: string;
   title: string;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   status?: ProjectTableTaskStatus | null;
   priority: string;
@@ -155,8 +155,11 @@ export function ProjectTableView<T extends ProjectTableTask = ProjectTableTask>(
         case "assignee":
           return mult * assigneeSortKey(a).localeCompare(assigneeSortKey(b), "ko");
         case "dueDate": {
-          const ta = new Date(a.dueDate).getTime();
-          const tb = new Date(b.dueDate).getTime();
+          const ta = a.dueDate ? new Date(a.dueDate).getTime() : null;
+          const tb = b.dueDate ? new Date(b.dueDate).getTime() : null;
+          if (ta === null && tb === null) return 0;
+          if (ta === null) return 1;
+          if (tb === null) return -1;
           return mult * (ta - tb);
         }
         case "priority": {
@@ -229,8 +232,8 @@ export function ProjectTableView<T extends ProjectTableTask = ProjectTableTask>(
             ) : (
               sorted.map((task) => {
                 const eff = getEffectiveStatus(task);
-                const due = new Date(task.dueDate);
-                const overdue = !task.isCompleted && isBefore(due, todayStart);
+                const due = task.dueDate ? new Date(task.dueDate) : null;
+                const overdue = Boolean(due && !task.isCompleted && isBefore(due, todayStart));
                 const progress = progressForTask(task, eff);
                 return (
                   <TableRow
@@ -272,7 +275,7 @@ export function ProjectTableView<T extends ProjectTableTask = ProjectTableTask>(
                       </div>
                     </TableCell>
                     <TableCell className={cn("whitespace-nowrap tabular-nums", overdue && "font-medium text-destructive")}>
-                      {format(due, "yyyy.MM.dd", { locale: ko })}
+                      {due ? format(due, "yyyy.MM.dd", { locale: ko }) : "—"}
                     </TableCell>
                     <TableCell>
                       <Badge variant={priorityVariant(task.priority)} className="text-[10px]">

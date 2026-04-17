@@ -597,8 +597,8 @@ export default async function DashboardPage() {
         ) : (
           <ul className="space-y-2">
             {myTasks.map((task: any) => {
-              const due = new Date(task.dueDate);
-              const urgent = isDueSoonOrOverdue(due);
+              const due = task.dueDate ? new Date(task.dueDate) : null;
+              const urgent = due ? isDueSoonOrOverdue(due) : false;
               return (
                 <li key={task.id}>
                   <Link
@@ -608,7 +608,7 @@ export default async function DashboardPage() {
                     <span className="flex-1 font-medium">{task.title}</span>
                     {urgent && <Badge variant="destructive">마감 임박</Badge>}
                     <span className="text-muted-foreground text-sm">
-                      {format(due, "MM/dd (EEE)", { locale: ko })}
+                      {due ? format(due, "MM/dd (EEE)", { locale: ko }) : "마감 미정"}
                     </span>
                   </Link>
                 </li>

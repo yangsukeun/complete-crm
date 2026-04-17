@@ -134,11 +134,13 @@ const DEFAULT_VISIBLE_CALENDARS: Record<CalendarLayerId, boolean> = {
 };
 
 function tasksToCalendarDueEvents(
-  tasks: { id: string; title: string; dueDate: string; isCompleted: boolean }[],
+  tasks: { id: string; title: string; dueDate: string | null; isCompleted: boolean }[],
   now: Date
 ): ScheduleEvent[] {
   const sod = startOfDay(now);
-  return tasks.map((t) => {
+  return tasks
+    .filter((t): t is typeof t & { dueDate: string } => Boolean(t.dueDate && t.dueDate !== ""))
+    .map((t) => {
     const d = startOfDay(new Date(t.dueDate));
     const end = endOfDay(new Date(t.dueDate));
     const overdue = !t.isCompleted && d < sod;
@@ -364,7 +366,7 @@ type ScheduleInvite = {
 type TaskItem = {
   id: string;
   title: string;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   priority: string;
   assignees?: { id: string; name: string; position?: string | null }[];
@@ -748,7 +750,7 @@ function SchedulePageInner() {
     const list = (Array.isArray(raw) ? raw : raw.items ?? []) as {
       id: string;
       title: string;
-      dueDate: string;
+      dueDate: string | null;
       isCompleted: boolean;
       priority: string;
       assignees?: TaskItem["assignees"];
@@ -998,7 +1000,10 @@ function SchedulePageInner() {
   const tasksOnDay =
     tab === "diary"
       ? tasks
-      : tasks.filter((t: TaskItem) => isSameDay(new Date(t.dueDate), new Date(diaryDate)));
+      : tasks.filter(
+          (t: TaskItem) =>
+            t.dueDate != null && t.dueDate !== "" && isSameDay(new Date(t.dueDate), new Date(diaryDate))
+        );
 
   const calendarTitle = useMemo(() => {
     if (view === "month") return format(date, "yyyy년 M월", { locale: ko });
@@ -1302,7 +1307,7 @@ function SchedulePageInner() {
                       {t.title}
                     </span>
                     <span className="text-muted-foreground text-xs">
-                      {format(new Date(t.dueDate), "MM/dd", { locale: ko })} ·{" "}
+                      {t.dueDate ? format(new Date(t.dueDate), "MM/dd", { locale: ko }) : "미정"} ·{" "}
                       {t.assignees && t.assignees.length > 0
                         ? t.assignees.map((a) => formatUserName(a)).join(", ")
                         : t.assignedTo

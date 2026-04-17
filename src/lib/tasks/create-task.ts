@@ -14,8 +14,8 @@ import {
 export type CreateTaskInput = {
   title: string;
   description?: string | null;
-  /** YYYY-MM-DD 또는 ISO 문자열 (기존 /api/tasks 와 동일) */
-  dueDate: string;
+  /** YYYY-MM-DD 또는 ISO; 생략·빈 문자열이면 마감일 없음 */
+  dueDate?: string | null;
   priority?: TaskPriority;
   status?: TaskStatus;
   /** 다중 담당 (우선). 없으면 assignedToId 단일·본인 폴백 */
@@ -103,10 +103,14 @@ export async function createTaskWithNotifications(params: {
   const recurringMemo = isRecurring ? (data.recurringMemo?.trim() ? data.recurringMemo.trim() : null) : null;
 
   const taskScope: WorkspaceScope = scope === "PERSONAL" ? "PERSONAL" : "TEAM";
+  const dueRaw = typeof data.dueDate === "string" ? data.dueDate.trim() : "";
+  const dueDateValue =
+    dueRaw && !Number.isNaN(new Date(dueRaw).getTime()) ? new Date(dueRaw) : null;
+
   const taskCreateInner = {
     title: data.title,
     description: data.description ?? null,
-    dueDate: new Date(data.dueDate),
+    dueDate: dueDateValue,
     priority: data.priority ?? "MEDIUM",
     status: data.status ?? "TODO",
     assignedToId: primaryAssignee,
@@ -148,7 +152,7 @@ export async function createTaskWithNotifications(params: {
     task = { ...row, color: null } as CreatedTaskWithRelations;
   }
 
-  const dueDateStr = data.dueDate.slice(0, 10);
+  const dueDateStr = dueRaw && dueDateValue ? dueDateValue.toISOString().slice(0, 10) : "";
   const timestampForLog = dueDateStr ? new Date(dueDateStr + "T12:00:00") : undefined;
   await createActivityLog(
     createdById,

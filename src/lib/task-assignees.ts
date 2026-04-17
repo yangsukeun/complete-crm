@@ -47,11 +47,7 @@ export function serializeAssigneesFromRows(
   return { assignees, assignedTo };
 }
 
-/** 팀/개인 업무 목록에서 본인에게 보이는 조건 */
+/** 팀/개인 업무 목록에서 본인에게 보이는 조건 (담당자·다중 담당만; 생성자만이면 목록에 안 보임) */
 export function taskVisibilityMemberOr(userId: string): Prisma.TaskWhereInput["OR"] {
-  return [
-    { assignedToId: userId },
-    { createdById: userId },
-    { assignees: { some: { userId } } },
-  ];
+  return [{ assignedToId: userId }, { assignees: { some: { userId } } }];
 }

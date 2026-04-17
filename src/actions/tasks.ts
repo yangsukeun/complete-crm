@@ -36,8 +36,7 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
   const isAssignee =
     original.assignedToId === session.user.id ||
     original.assignees.some((a) => a.userId === session.user.id);
-  const isCreator = original.createdById === session.user.id;
-  if (!isAdmin && !isAssignee && !isCreator) {
+  if (!isAdmin && !isAssignee) {
     return { error: "이 프로젝트를 가져올 권한이 없습니다." };
   }
 
@@ -76,7 +75,10 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
     });
   }
 
-  const dueStr = newTask.dueDate.toISOString().slice(0, 10);
+  const dueStr =
+    newTask.dueDate instanceof Date && !Number.isNaN(newTask.dueDate.getTime())
+      ? newTask.dueDate.toISOString().slice(0, 10)
+      : "";
   await createActivityLog(session.user.id, "TASK_CREATED", title, undefined, dueStr ? { timestamp: new Date(dueStr + "T12:00:00") } : undefined);
   revalidatePath("/tasks");
 

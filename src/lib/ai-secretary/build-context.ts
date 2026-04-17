@@ -109,7 +109,8 @@ export async function buildSecretaryDataContext(params: {
   if (myTasks.length === 0) lines.push("- (없음)");
   else {
     for (const t of myTasks) {
-      lines.push(`- [${t.status}] ${t.title} (마감: ${t.dueDate.toISOString().slice(0, 10)})`);
+      const dueLabel = t.dueDate ? t.dueDate.toISOString().slice(0, 10) : "미정";
+      lines.push(`- [${t.status}] ${t.title} (마감: ${dueLabel})`);
     }
   }
 
@@ -144,8 +145,9 @@ export async function buildSecretaryDataContext(params: {
     if (allOpen.length === 0) lines.push("- (없음)");
     else {
       for (const t of allOpen) {
+        const dueL = t.dueDate ? t.dueDate.toISOString().slice(0, 10) : "미정";
         lines.push(
-          `- [${t.status}] ${t.title} | 담당: ${t.assignedTo?.name ?? "미배정"} | 마감: ${t.dueDate.toISOString().slice(0, 10)}`
+          `- [${t.status}] ${t.title} | 담당: ${t.assignedTo?.name ?? "미배정"} | 마감: ${dueL}`
         );
       }
     }

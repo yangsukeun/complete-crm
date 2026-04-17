@@ -9,6 +9,7 @@ import "@blocknote/mantine/style.css";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { postUploadFile } from "@/lib/upload-client-validate";
+import { BLOCKNOTE_TABLES_OPTIONS } from "@/lib/blocknote-table-options";
 
 export type DocsEditorProps = {
   className?: string;
@@ -21,7 +22,7 @@ export function DocsEditor({ className }: DocsEditorProps) {
   }, []);
 
   const [title, setTitle] = useState("");
-  const editor = useCreateBlockNote({ uploadFile });
+  const editor = useCreateBlockNote({ uploadFile, tables: BLOCKNOTE_TABLES_OPTIONS });
 
   const handleSave = useCallback(() => {
     const blocks = editor.document;

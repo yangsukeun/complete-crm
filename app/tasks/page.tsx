@@ -161,7 +161,7 @@ type Task = {
   title: string;
   /** 목록 API에서는 비워 둠(용량). 상세에서만 로드 */
   description?: string | null;
-  dueDate: string;
+  dueDate: string | null;
   isCompleted: boolean;
   status?: TaskStatus | null;
   priority: string;
@@ -222,6 +222,7 @@ function normPriority(p: string | undefined | null): "HIGH" | "MEDIUM" | "LOW" {
 
 function passesDueFilter(task: Task, filterDue: DueFilterValue): boolean {
   if (filterDue === "all") return true;
+  if (task.dueDate == null || task.dueDate === "") return false;
   const due = new Date(task.dueDate);
   const now = new Date();
   const startToday = startOfDay(now);
@@ -263,6 +264,7 @@ function columnHeaderClass(status: TaskStatus): string {
 /** 마감 임박/지남 강조용 (미완료만) */
 function getDueUrgency(task: Task): { show: boolean; overdue: boolean; label: string } {
   if (task.isCompleted) return { show: false, overdue: false, label: "" };
+  if (task.dueDate == null || task.dueDate === "") return { show: false, overdue: false, label: "" };
   const due = startOfDay(new Date(task.dueDate));
   const today = startOfDay(new Date());
   const diff = differenceInCalendarDays(due, today);
@@ -1226,7 +1228,9 @@ export default function TasksPage() {
                                   </Badge>
                                 )}
                                 <span className="text-muted-foreground text-xs">
-                                  {format(new Date(task.dueDate), "M월 d일", { locale: ko })}
+                                  {task.dueDate
+                                    ? format(new Date(task.dueDate), "M월 d일", { locale: ko })
+                                    : "마감 미정"}
                                 </span>
                               </div>
                               <div className="mt-2 flex items-center gap-2">

@@ -404,7 +404,7 @@ model Task {
   description  String?
   /// 목록·보드 카드 왼쪽 강조색 (#RRGGBB, 팔레트만 허용)
   color        String?
-  dueDate      DateTime
+  dueDate      DateTime?
   isCompleted  Boolean        @default(false)
   status       TaskStatus     @default(TODO)
   priority     TaskPriority   @default(MEDIUM)

@@ -52,6 +52,7 @@ import { getDriveThumbnailUrl } from "@/lib/google-drive-url";
 import { isUnoptimizedRemoteImageSrc } from "@/lib/remote-image-unoptimized";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { BoardPostPeekSheet } from "@/components/board-post-peek-sheet";
+import { markBoardLastSeenNow } from "@/lib/board-last-seen";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -199,6 +200,11 @@ export function BoardPageClient({
       (filter === "ANNOUNCEMENT" && announcementsLoading && announcements.length === 0),
     [loading, filter, announcementsLoading, announcements.length]
   );
+
+  useEffect(() => {
+    if (pageLoading) return;
+    markBoardLastSeenNow();
+  }, [pageLoading]);
 
   const loadMoreBoard = async () => {
     if (!boardHasMore || boardLoadingMore || filter === "ANNOUNCEMENT") return;
@@ -398,14 +404,14 @@ export function BoardPageClient({
           공지·자료 목록
         </h2>
         {pageLoading ? (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <li key={i} className="overflow-hidden rounded-xl border bg-card shadow-sm">
-                <Skeleton className="aspect-video w-full rounded-none" />
-                <div className="space-y-2 p-4">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-1/2" />
+              <li key={i} className="overflow-hidden rounded-lg border bg-card shadow-sm">
+                <Skeleton className="aspect-[5/4] w-full rounded-none" />
+                <div className="space-y-1.5 p-2.5">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
               </li>
             ))}
@@ -419,41 +425,41 @@ export function BoardPageClient({
                 : "등록된 공지·자료가 없습니다."}
           </div>
         ) : (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {(() => {
               let boardCardImageIndex = 0;
               return unifiedList.map((item: any) => {
               if (item.type === "ANNOUNCEMENT") {
                 const a = item.data;
-                const preview = stripMarkdownPreview(a.content, 120);
+                const preview = stripMarkdownPreview(a.content, 80);
                 return (
                   <li
                     key={`ann-${a.id}`}
-                    className="sm:col-span-2 lg:col-span-3 rounded-xl border bg-card shadow-sm transition-colors hover:bg-muted/50"
+                    className="col-span-2 rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/50 sm:col-span-3 md:col-span-4 lg:col-span-5"
                   >
                     <Link
                       href={`/announcements/${a.id}`}
                       prefetch={false}
-                      className="block p-5 outline-none"
+                      className="block p-3 outline-none sm:p-3.5"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <span className="font-medium">{a.title}</span>
-                          <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                            <Megaphone className="size-3.5" />
+                          <span className="text-sm font-medium leading-snug">{a.title}</span>
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                            <Megaphone className="size-3" />
                             공지
                           </span>
                         </div>
-                        <span className="text-muted-foreground text-sm shrink-0">
-                          {format(new Date(a.createdAt), "yyyy.MM.dd (EEE) HH:mm", { locale: ko })}
+                        <span className="text-muted-foreground shrink-0 text-xs">
+                          {format(new Date(a.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                         </span>
                       </div>
                       {preview && (
-                        <p className="text-muted-foreground mt-1 line-clamp-2 break-words text-sm">
+                        <p className="text-muted-foreground mt-1 line-clamp-1 break-words text-xs">
                           {preview}
                         </p>
                       )}
-                      <p className="text-muted-foreground mt-2 text-xs">
+                      <p className="text-muted-foreground mt-1.5 text-[11px]">
                         {a.createdByName}
                         {a.createdByPosition ? ` · ${a.createdByPosition}` : ""}
                       </p>
@@ -465,7 +471,7 @@ export function BoardPageClient({
               const preview =
                 b.listPreview?.text?.trim() ??
                 (b.description != null && b.description !== ""
-                  ? previewPlainTextForBoard(b.description, 120)
+                  ? previewPlainTextForBoard(b.description, 72)
                   : "");
               const media =
                 b.listPreview?.mediaType === "image" && b.listPreview.imageUrl
@@ -474,13 +480,13 @@ export function BoardPageClient({
                     ? { type: "video" as const, url: b.listPreview.videoUrl, name: b.title }
                     : getPreviewMediaFromAttachmentsClient(b.attachments, b.description);
               const boardThumbRank = media?.type === "image" ? boardCardImageIndex++ : -1;
-              const thumbEager = boardThumbRank >= 0 && boardThumbRank < 3;
+              const thumbEager = boardThumbRank >= 0 && boardThumbRank < 5;
               const imageSrc =
                 media?.type === "image" ? getDriveThumbnailUrl(media.url, 400) : "";
               return (
                 <li
                   key={`board-${b.id}`}
-                  className="overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md"
+                  className="overflow-hidden rounded-lg border bg-card shadow-sm transition-all hover:shadow-md"
                 >
                   <Link
                     href={`/board/${b.id}`}
@@ -493,13 +499,13 @@ export function BoardPageClient({
                     }}
                   >
                     {/* 이미지/영상 미리보기 또는 플레이스홀더 */}
-                    <div className="relative aspect-video w-full bg-muted">
+                    <div className="relative aspect-[5/4] w-full bg-muted">
                       {media?.type === "image" ? (
                         <Image
                           src={imageSrc}
                           alt={media.name || b.title}
                           fill
-                          sizes="(max-width: 768px) 100vw, 350px"
+                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
                           unoptimized={isUnoptimizedRemoteImageSrc(imageSrc)}
                           loading={thumbEager ? "eager" : "lazy"}
                           priority={thumbEager}
@@ -518,34 +524,34 @@ export function BoardPageClient({
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-muted-foreground">
                           {b.category === "TRAINING" ? (
-                            <GraduationCap className="size-12 opacity-50" />
+                            <GraduationCap className="size-8 opacity-50 sm:size-9" />
                           ) : b.category === "FREE" ? (
-                            <MessageSquare className="size-12 opacity-50" />
+                            <MessageSquare className="size-8 opacity-50 sm:size-9" />
                           ) : b.category === "ANONYMOUS" ? (
-                            <Ghost className="size-12 opacity-50" />
+                            <Ghost className="size-8 opacity-50 sm:size-9" />
                           ) : b.category === "MEETING" ? (
-                            <ClipboardList className="size-12 opacity-50" />
+                            <ClipboardList className="size-8 opacity-50 sm:size-9" />
                           ) : (
-                            <FolderOpen className="size-12 opacity-50" />
+                            <FolderOpen className="size-8 opacity-50 sm:size-9" />
                           )}
                         </div>
                       )}
-                      <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
-                        <span className="rounded bg-black/50 px-2 py-0.5 text-xs text-white">
+                      <div className="absolute right-1 top-1 flex flex-col items-end gap-0.5">
+                        <span className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
                           {CATEGORY_LABEL[b.category] ?? b.category}
                         </span>
                         {b.workspaceScope === "PERSONAL" && (
-                          <span className="rounded bg-violet-600/90 px-2 py-0.5 text-xs text-white">
+                          <span className="rounded bg-violet-600/90 px-1.5 py-0.5 text-[10px] text-white">
                             개인
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <h3 className="min-w-0 flex-1 font-medium leading-tight">{b.title}</h3>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-muted-foreground text-xs">
+                    <div className="p-2.5">
+                      <div className="flex flex-wrap items-start justify-between gap-1.5">
+                        <h3 className="min-w-0 flex-1 text-sm font-medium leading-snug">{b.title}</h3>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <span className="text-muted-foreground text-[10px] sm:text-xs">
                             {format(new Date(b.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
                           </span>
                           {(canCreate && (!currentUserId || b.isAuthorSelf)) && (
@@ -554,7 +560,7 @@ export function BoardPageClient({
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="text-muted-foreground hover:text-destructive h-8 w-8"
+                                className="text-muted-foreground hover:text-destructive h-7 w-7"
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -573,12 +579,12 @@ export function BoardPageClient({
                         </div>
                       </div>
                       {preview && (
-                        <p className="text-muted-foreground mt-1 line-clamp-2 break-words text-sm">
+                        <p className="text-muted-foreground mt-1 line-clamp-1 break-words text-xs">
                           {preview}
                         </p>
                       )}
                       {b.attachments.length > 0 && !media && (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="mt-1.5 flex flex-wrap gap-0.5">
                           {b.attachments.slice(0, 3).map((att: any, idx: any) => (
                             <span
                               key={idx}
@@ -595,7 +601,7 @@ export function BoardPageClient({
                           )}
                         </div>
                       )}
-                      <p className="text-muted-foreground mt-2 text-xs">
+                      <p className="text-muted-foreground mt-1.5 text-[11px]">
                         {b.createdByName}
                         {b.createdByPosition ? ` · ${b.createdByPosition}` : ""}
                       </p>

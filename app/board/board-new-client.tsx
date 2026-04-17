@@ -17,6 +17,7 @@ import {
   UPLOAD_TOAST_DURATION_MS,
 } from "@/lib/upload-client-validate";
 import { useWorkspaceStore } from "@/store/workspace-store";
+import { BOARD_NEW_POST_EVENT } from "@/lib/board-last-seen";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 
 const ContentBodyEditor = dynamic(
@@ -130,6 +131,9 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "등록 실패");
       toast.success("자료가 등록되었습니다.");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(BOARD_NEW_POST_EVENT));
+      }
       router.push(`/board/${data.id}`);
       router.refresh();
     } catch (err) {

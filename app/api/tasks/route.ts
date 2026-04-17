@@ -35,7 +35,14 @@ const optionalIdish = z.preprocess((v: unknown) => {
 const createSchema = z.object({
   title: z.string().trim().min(1),
   description: z.union([z.string(), z.null()]).optional(),
-  dueDate: z.string().min(1),
+  dueDate: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      return s.length === 0 ? null : s;
+    }),
   priority: z
     .enum(["HIGH", "MEDIUM", "LOW"])
     .optional()
@@ -170,11 +177,7 @@ export async function GET(req: Request) {
       filterUserIdRaw.length > 0 && isAdmin && scope === "TEAM" ? filterUserIdRaw : null;
     const employeeScopeFilter = filterUserId
       ? {
-          OR: [
-            { assignees: { some: { userId: filterUserId } } },
-            { assignedToId: filterUserId },
-            { createdById: filterUserId },
-          ],
+          OR: [{ assignees: { some: { userId: filterUserId } } }, { assignedToId: filterUserId }],
         }
       : {};
 
@@ -220,7 +223,7 @@ export async function GET(req: Request) {
       const where = {
         deletedAt: null,
         ...scopeFilter,
-        dueDate: { gte: calStart, lte: calEnd },
+        dueDate: { not: null, gte: calStart, lte: calEnd },
         OR: [{ assignedToId: session.user.id }, { assignees: { some: { userId: session.user.id } } }],
       };
       const tasks = await prisma.task.findMany({
@@ -239,7 +242,7 @@ export async function GET(req: Request) {
         tasks.map((t) => ({
           id: t.id,
           title: t.title,
-          dueDate: t.dueDate.toISOString(),
+          dueDate: t.dueDate ? t.dueDate.toISOString() : null,
           isCompleted: t.isCompleted,
           status: t.status,
           projectId: t.projectId,
@@ -328,13 +331,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 방어: 날짜 파싱 실패(Invalid Date)는 Prisma에서 500으로 터질 수 있어 400으로 처리
-    const dueT = new Date(parsed.data.dueDate).getTime();
-    if (Number.isNaN(dueT)) {
-      return NextResponse.json(
-        { error: "마감일(dueDate) 형식이 올바르지 않습니다." },
-        { status: 400 }
-      );
+    if (parsed.data.dueDate) {
+      const dueT = new Date(parsed.data.dueDate).getTime();
+      if (Number.isNaN(dueT)) {
+        return NextResponse.json(
+          { error: "마감일(dueDate) 형식이 올바르지 않습니다." },
+          { status: 400 }
+        );
+      }
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
@@ -355,7 +359,7 @@ export async function POST(req: Request) {
         title: parsed.data.title,
         description:
           parsed.data.description === undefined ? null : parsed.data.description,
-        dueDate: parsed.data.dueDate,
+        dueDate: parsed.data.dueDate ?? null,
         priority: parsed.data.priority ?? "MEDIUM",
         status: parsed.data.status ?? "TODO",
         assigneeIds: parsed.data.assigneeIds,
