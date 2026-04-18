@@ -141,7 +141,16 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("수정 실패");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg =
+          typeof (errJson as { message?: unknown }).message === "string"
+            ? (errJson as { message: string }).message
+            : typeof (errJson as { error?: unknown }).error === "string"
+              ? (errJson as { error: string }).error
+              : "수정 실패";
+        throw new Error(msg);
+      }
       const updated = await res.json();
       if (taskIdRef.current !== tid) return;
       setTask((prev) => (prev ? { ...prev, ...updated } : null));

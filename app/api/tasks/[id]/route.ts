@@ -33,6 +33,20 @@ function shouldExposeDebugDetails(req: Request, session: any): boolean {
   return Boolean(okHeader && isAdmin);
 }
 
+/** DB에 Task.dueDate NOT NULL 제약이 남아 있을 때(null 저장) 흔한 Prisma/DB 오류 */
+function isTaskDueDateNullConstraintError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const err = e as { code?: string; message?: string; meta?: { field_name?: string; column?: string } };
+  const msg = String(err.message ?? "").toLowerCase();
+  const metaField = String(err.meta?.field_name ?? err.meta?.column ?? "").toLowerCase();
+  if (metaField.includes("duedate")) return true;
+  if (msg.includes("duedate") && (msg.includes("not null") || msg.includes("null value") || msg.includes("23502")))
+    return true;
+  // Prisma: 일반적으로 nullable 위반 시 P2011 (메타에 필드명이 없을 수도 있음)
+  if (err.code === "P2011" && (msg.includes("duedate") || metaField.includes("duedate"))) return true;
+  return false;
+}
+
 function serializeTaskDetail(task: {
   assignees?: { user?: import("@/lib/task-assignees").TaskAssigneeUser | null }[] | null;
   assignedTo: import("@/lib/task-assignees").TaskAssigneeUser | null;
@@ -374,6 +388,7 @@ export async function PATCH(
         priority: true,
         isRecurring: true,
         recurringDays: true,
+        recurringRule: true,
         recurringMemo: true,
         scope: true,
         assignedToId: true,
@@ -493,6 +508,28 @@ export async function PATCH(
             ? null
             : String(body.recurringMemo);
       }
+    }
+
+    // 마감일 제거 시 반복 규칙은 함께 해제(미설정 마감 + 반복 동시 유지 불가)
+    if (data.dueDate === null && existing.isRecurring) {
+      data.isRecurring = false;
+      data.recurringDays = null;
+      data.recurringRule = null;
+      data.recurringMemo = null;
+    }
+
+    const mergedDueDate =
+      data.dueDate !== undefined
+        ? data.dueDate
+        : existing.dueDate instanceof Date && !Number.isNaN(existing.dueDate.getTime())
+          ? existing.dueDate
+          : null;
+    const mergedRecurring = data.isRecurring !== undefined ? data.isRecurring : existing.isRecurring;
+    if (mergedRecurring && mergedDueDate == null) {
+      return NextResponse.json(
+        { error: "반복 업무를 켜려면 마감일이 필요합니다." },
+        { status: 400 }
+      );
     }
 
     if ("color" in body) {
@@ -887,6 +924,16 @@ export async function PATCH(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[tasks] PATCH /api/tasks/[id] failed:", msg, e);
+    if (isTaskDueDateNullConstraintError(e)) {
+      return NextResponse.json(
+        {
+          error: "db_due_date_null",
+          message:
+            "데이터베이스에 아직 마감일 NULL 허용이 반영되지 않았습니다. 배포 환경에서 Prisma 마이그레이션(예: prisma migrate deploy)을 적용한 뒤 다시 시도해 주세요.",
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       {
         error: "프로젝트를 수정할 수 없습니다.",
