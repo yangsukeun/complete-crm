@@ -433,6 +433,22 @@ export function AppNav() {
             </Button>
           )}
 
+          {can("tasks") && (
+            <Button
+              variant="ghost"
+              asChild
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+                pathname === "/trash" ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              )}
+            >
+              <Link href="/trash" prefetch={false} className="flex items-center gap-1.5">
+                <Trash2 className="size-4" />
+                <span>휴지통</span>
+              </Link>
+            </Button>
+          )}
+
           {/* 게시판(자료실) - 회사 모드에서만 */}
           {isCompany && can("board") && (
             <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/board" || pathname.startsWith("/board/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>

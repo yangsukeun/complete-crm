@@ -22,6 +22,82 @@ export async function GET(req: Request) {
     }
     const { searchParams } = new URL(req.url);
 
+    /** 마인드맵 전체 조감도: Project 카드 + Task 집계(active/done/overdue) */
+    if (searchParams.get("mindmapSummary") === "1") {
+      const scope = await getServerWorkspaceScopeFromRequest(req);
+      const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
+      const isMaster =
+        String((session.user as { email?: string }).email ?? "")
+          .trim()
+          .toLowerCase() === masterEmail;
+      const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+      const memberFilter =
+        isAdmin || isMaster ? {} : { users: { some: { id: session.user.id } } };
+
+      const projects = await prisma.project.findMany({
+        where: { deletedAt: null, ...memberFilter },
+        select: { id: true, name: true, brand: { select: { name: true } } },
+        orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
+      });
+      if (projects.length === 0) {
+        return NextResponse.json([], {
+          headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=60" },
+        });
+      }
+      const ids = projects.map((p) => p.id);
+      const taskScope = scope === "PERSONAL" ? ({ scope: "PERSONAL" as const } as const) : ({ scope: "TEAM" as const } as const);
+      const taskBase = { deletedAt: null, archivedAt: null, projectId: { in: ids }, ...taskScope };
+      const now = new Date();
+
+      const [activeRows, doneRows, overdueRows] = await Promise.all([
+        prisma.task.groupBy({
+          by: ["projectId"],
+          where: { ...taskBase, status: { in: ["TODO", "IN_PROGRESS"] } },
+          _count: { _all: true },
+        }),
+        prisma.task.groupBy({
+          by: ["projectId"],
+          where: { ...taskBase, status: "DONE" },
+          _count: { _all: true },
+        }),
+        prisma.task.groupBy({
+          by: ["projectId"],
+          where: {
+            ...taskBase,
+            status: { not: "DONE" },
+            dueDate: { not: null, lt: now },
+          },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const activeMap = new Map(activeRows.map((r) => [r.projectId, r._count._all]));
+      const doneMap = new Map(doneRows.map((r) => [r.projectId, r._count._all]));
+      const overdueMap = new Map(overdueRows.map((r) => [r.projectId, r._count._all]));
+
+      const stableColor = (id: string) => {
+        let h = 0;
+        for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+        const hex = (h & 0xffffff).toString(16).padStart(6, "0");
+        return `#${hex}`;
+      };
+
+      return NextResponse.json(
+        projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          brand: { name: p.brand.name },
+          color: stableColor(p.id),
+          activeCount: activeMap.get(p.id) ?? 0,
+          doneCount: doneMap.get(p.id) ?? 0,
+          overdueCount: overdueMap.get(p.id) ?? 0,
+        })),
+        {
+          headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=60" },
+        }
+      );
+    }
+
     /** 스케줄 캘린더: 마감일 없는 브랜드 프로젝트(Task의 project가 아닌 Project 테이블) */
     if (searchParams.get("noDueDate") === "1") {
       const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();

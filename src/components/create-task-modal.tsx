@@ -47,6 +47,8 @@ type Props = {
   defaultAssigneeIds?: string[] | null;
   /** 이 카테고리 아래에 프로젝트 추가 */
   categoryId?: string | null;
+  /** 마인드맵 프로젝트 뷰 등: 생성 시 CRM 프로젝트 연결 */
+  defaultProjectId?: string | null;
 };
 
 export function CreateTaskModal({
@@ -58,6 +60,7 @@ export function CreateTaskModal({
   defaultAssignedToId = null,
   defaultAssigneeIds = null,
   categoryId = null,
+  defaultProjectId = null,
 }: Props) {
   const [users, setUsers] = useState<User[]>([]);
   const [title, setTitle] = useState("");
@@ -158,6 +161,7 @@ export function CreateTaskModal({
             : undefined,
           recurringMemo: isRecurring ? recurringMemo.trim() || null : undefined,
           ...(color ? { color } : {}),
+          ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
         }),
       });
       if (!res.ok) {

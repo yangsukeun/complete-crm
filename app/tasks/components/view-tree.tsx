@@ -40,9 +40,25 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Plus, Check, X, GripVertical, TreePine, Trash2, Settings2, Palette, ArrowUpFromLine } from "lucide-react";
+import {
+  Plus,
+  Check,
+  X,
+  GripVertical,
+  TreePine,
+  Trash2,
+  Settings2,
+  Palette,
+  ArrowUpFromLine,
+  ArrowLeft,
+  RotateCcw,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor } from "@/lib/project-task-colors";
+import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
+import type { MindmapShellMode } from "@/lib/mindmap-canvas-keys";
+import { MINDMAP_CANVAS_ALL } from "@/lib/mindmap-canvas-keys";
+import type { TaskCompletionShelf } from "@/lib/task-visibility";
 
 // Types
 type TaskData = {
@@ -62,12 +78,26 @@ type TaskData = {
   /** 삭제 권한: 임원/관리자 또는 본인이 생성한 프로젝트만 */
   createdById?: string | null;
   color?: string | null;
+  completedAt?: string | null;
+  archivedAt?: string | null;
+  /** 서버 계산: 완료 후 3일 경과 시 기본 접힘 */
+  defaultCollapsed?: boolean;
 };
 
 type TaskLink = {
   id: string;
   parentId: string;
   childId: string;
+};
+
+export type ProjectMindmapSummary = {
+  id: string;
+  name: string;
+  brand: { name: string };
+  color: string;
+  activeCount: number;
+  doneCount: number;
+  overdueCount: number;
 };
 
 type TreeViewProps = {
@@ -83,6 +113,21 @@ type TreeViewProps = {
   isTaskDeleteAdmin: boolean;
   /** 페이지 헤더 sticky 영역 DOM — 설정 시 툴바를 포털로 이동 */
   toolbarPortalEl?: HTMLElement | null;
+  /** 마인드맵 3모드: 전체 조감도(Project 카드) / 프로젝트별(Task) / 미분류(Task, projectId 없음) */
+  mindmapMode?: MindmapShellMode;
+  /** UserTaskMindmapState.projectId (예약값 __ALL__ / __UNASSIGNED__ 또는 Project.id) */
+  mindmapCanvasId?: string;
+  /** 전체 조감도용 Project 집계 */
+  projectSummaries?: ProjectMindmapSummary[];
+  /** 프로젝트별 진입용 선택 목록 */
+  projectPicker?: { id: string; name: string; brand?: { name: string } }[];
+  /** URL·상태 동기화 (페이지에서 router.replace) */
+  onMindmapNavigate?: (next: { mode: MindmapShellMode; projectId?: string | null }) => void;
+  /** 프로젝트 뷰에서 새 Task 생성 시 projectId 로 전달 */
+  contextProjectId?: string | null;
+  /** 완료·아카이브 표시 범위 (목록과 동일 키로 localStorage 공유) */
+  taskCompletionShelf?: TaskCompletionShelf;
+  onTaskCompletionShelfChange?: (shelf: TaskCompletionShelf) => void;
 };
 
 // Style settings for tree customization
@@ -144,17 +189,21 @@ const CANVAS_BG_OPTIONS = [
 // Layout constants
 const NODE_WIDTH = 280;
 const NODE_HEIGHT = 100;
+const PROJECT_CARD_WIDTH = 240;
+const PROJECT_CARD_HEIGHT = 120;
 const MINDMAP_CENTER_X = 400;
 const MINDMAP_CENTER_Y = 280;
 const MINDMAP_RADIUS = 280;
 const MINDMAP_ANGLE_SPREAD = Math.PI * 0.85; // 약 153도 퍼짐
 
-const STORAGE_KEY_MINDMAP_POSITIONS = "task-mindmap-positions";
+function mindmapPositionsStorageKey(canvasId: string) {
+  return `task-mindmap-positions:${canvasId}`;
+}
 
-function loadSavedPositions(): Record<string, { x: number; y: number }> {
+function loadSavedPositions(canvasId: string): Record<string, { x: number; y: number }> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_MINDMAP_POSITIONS);
+    const raw = localStorage.getItem(mindmapPositionsStorageKey(canvasId));
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return typeof parsed === "object" && parsed !== null ? parsed : {};
@@ -163,11 +212,11 @@ function loadSavedPositions(): Record<string, { x: number; y: number }> {
   }
 }
 
-function savePosition(taskId: string, x: number, y: number) {
-  const saved = loadSavedPositions();
-  saved[taskId] = { x, y };
+function savePosition(canvasId: string, nodeId: string, x: number, y: number) {
+  const saved = loadSavedPositions(canvasId);
+  saved[nodeId] = { x, y };
   try {
-    localStorage.setItem(STORAGE_KEY_MINDMAP_POSITIONS, JSON.stringify(saved));
+    localStorage.setItem(mindmapPositionsStorageKey(canvasId), JSON.stringify(saved));
   } catch {
     // ignore
   }
@@ -275,6 +324,37 @@ function getLayoutedElements(
   return { nodes: layoutedNodes, edges };
 }
 
+function getLayoutedProjectCards(nodes: Node[], edges: Edge[]) {
+  if (nodes.length === 0) return { nodes: [] as Node[], edges: [] as Edge[] };
+
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ rankdir: "TB" as const, nodesep: 40, ranksep: 48 });
+
+  nodes.forEach((node: any) => {
+    dagreGraph.setNode(node.id, { width: PROJECT_CARD_WIDTH, height: PROJECT_CARD_HEIGHT });
+  });
+
+  edges.forEach((edge: any) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const layoutedNodes = nodes.map((node: any) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      position: {
+        x: nodeWithPosition.x - PROJECT_CARD_WIDTH / 2,
+        y: nodeWithPosition.y - PROJECT_CARD_HEIGHT / 2,
+      },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+}
+
 // Status colors
 function getStatusColor(status: string | null | undefined, isCompleted: boolean) {
   if (isCompleted || status === "DONE") return "bg-green-500";
@@ -373,7 +453,9 @@ function TaskNode({ data, id, selected }: NodeProps) {
         style.nodeBgColor,
         style.nodeTextColor,
         "border-l-4",
-        task.isCompleted && "opacity-70",
+        task.archivedAt != null && task.archivedAt !== ""
+          ? "opacity-40 border-gray-400 dark:border-gray-500"
+          : task.isCompleted && "opacity-70",
         isDropTarget && "ring-2 ring-violet-500 ring-offset-2 scale-105",
         selected && "ring-2 ring-blue-500 ring-offset-2"
       )}
@@ -506,8 +588,59 @@ function TaskNode({ data, id, selected }: NodeProps) {
   );
 }
 
+function ProjectCardNode({ data, selected }: NodeProps) {
+  const { summary, onOpen } = data as {
+    summary: ProjectMindmapSummary;
+    onOpen: () => void;
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={(e: MouseEvent) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className={cn(
+        "relative flex flex-col rounded-lg border-2 bg-card px-3 py-2 text-left shadow-md transition-all hover:shadow-lg",
+        "border-l-[4px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+        selected && "ring-2 ring-blue-500 ring-offset-2"
+      )}
+      style={{
+        width: PROJECT_CARD_WIDTH,
+        minHeight: PROJECT_CARD_HEIGHT,
+        borderLeftColor: summary.color,
+      }}
+    >
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <Badge variant="secondary" className="max-w-[140px] truncate px-1.5 py-0 text-[10px] font-normal">
+          {summary.brand?.name ?? "브랜드"}
+        </Badge>
+      </div>
+      <p className="line-clamp-2 flex-1 text-center text-sm font-semibold leading-tight">{summary.name}</p>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          활성 {summary.activeCount}
+        </Badge>
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          완료 {summary.doneCount}
+        </Badge>
+        <Badge
+          className={cn(
+            "text-[10px] px-1.5 py-0 text-white",
+            summary.overdueCount > 0 ? "border-0 bg-red-600 hover:bg-red-600" : "border-0 bg-muted-foreground/40"
+          )}
+        >
+          지연 {summary.overdueCount}
+        </Badge>
+      </div>
+    </button>
+  );
+}
+
 const nodeTypes = {
   taskNode: TaskNode,
+  projectCard: ProjectCardNode,
 };
 
 // Uncategorized Task Item (Draggable)
@@ -574,9 +707,19 @@ function TreeViewInner({
   currentUserId,
   isTaskDeleteAdmin,
   toolbarPortalEl,
+  mindmapMode = "project",
+  mindmapCanvasId = MINDMAP_CANVAS_ALL,
+  projectSummaries = [],
+  projectPicker = [],
+  onMindmapNavigate,
+  contextProjectId = null,
+  taskCompletionShelf = "active",
+  onTaskCompletionShelfChange,
 }: TreeViewProps) {
+  const mindmapCanvasKey = mindmapCanvasId;
   const { fitView, getNodes } = useReactFlow();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [expandedOverrideIds, setExpandedOverrideIds] = useState<Set<string>>(new Set());
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [stagedRootIds, setStagedRootIds] = useState<Set<string>>(new Set());
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -586,6 +729,8 @@ function TreeViewInner({
   const [nodeStylesMap, setNodeStylesMap] = useState<Record<string, NodeStyle>>({});
   const [hydrationVersion, setHydrationVersion] = useState(0);
   const [mindmapRemoteLoaded, setMindmapRemoteLoaded] = useState(false);
+  const [mindmapCanRevert, setMindmapCanRevert] = useState(false);
+  const [mindmapReloadKey, setMindmapReloadKey] = useState(0);
   const [saveUi, setSaveUi] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isAddingParent, setIsAddingParent] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -599,6 +744,7 @@ function TreeViewInner({
   const mindmapPersistRef = useRef({
     stagedRootIds: new Set<string>(),
     collapsedIds: new Set<string>(),
+    expandedOverrideIds: new Set<string>(),
     nodeStylesMap: {} as Record<string, NodeStyle>,
     canvasBgColor: "#f9fafb",
   });
@@ -607,28 +753,41 @@ function TreeViewInner({
     mindmapPersistRef.current = {
       stagedRootIds,
       collapsedIds,
+      expandedOverrideIds,
       nodeStylesMap,
       canvasBgColor,
     };
-  }, [stagedRootIds, collapsedIds, nodeStylesMap, canvasBgColor]);
+  }, [stagedRootIds, collapsedIds, expandedOverrideIds, nodeStylesMap, canvasBgColor]);
 
-  /** 마운트 시 DB에서 마인드맵 UI 상태 복원 (서버 좌표가 localStorage를 덮어씀) */
+  /** 캔버스(mindmapCanvasKey)별 DB 마인드맵 UI 상태 복원 */
   useEffect(() => {
     let cancelled = false;
+    mindmapRemoteLoadedRef.current = false;
+    setMindmapRemoteLoaded(false);
     (async () => {
       try {
-        const res = await fetch("/api/mindmap", { credentials: "include" });
+        const q = new URLSearchParams();
+        q.set("projectId", mindmapCanvasKey);
+        const res = await fetch(`/api/mindmap?${q.toString()}`, {
+          credentials: "include",
+          headers: workspaceFetchHeaders(),
+        });
         if (cancelled) return;
         if (res.ok) {
           const data = (await res.json()) as Record<string, unknown>;
+          setMindmapCanRevert(data.mindmapCanRevert === true);
           if (Array.isArray(data.stagedRootIds)) {
             const fromServer = data.stagedRootIds.filter((x): x is string => typeof x === "string");
-            /* 느린 GET이 사용자가 이미 스테이징한 id를 덮어쓰지 않도록 합집합 */
-            setStagedRootIds((prev) => new Set([...fromServer, ...prev]));
+            setStagedRootIds(new Set(fromServer));
           }
           if (Array.isArray(data.collapsedIds)) {
             setCollapsedIds(
               new Set(data.collapsedIds.filter((x): x is string => typeof x === "string"))
+            );
+          }
+          if (Array.isArray(data.expandedOverrideIds)) {
+            setExpandedOverrideIds(
+              new Set(data.expandedOverrideIds.filter((x): x is string => typeof x === "string"))
             );
           }
           if (data.nodeStylesMap && typeof data.nodeStylesMap === "object" && !Array.isArray(data.nodeStylesMap)) {
@@ -638,7 +797,7 @@ function TreeViewInner({
             setCanvasBgColor(data.canvasBgColor);
           }
           if (data.positions && typeof data.positions === "object" && !Array.isArray(data.positions)) {
-            const local = loadSavedPositions();
+            const local = loadSavedPositions(mindmapCanvasKey);
             const merged: Record<string, { x: number; y: number }> = { ...local };
             for (const [id, pos] of Object.entries(data.positions)) {
               if (!pos || typeof pos !== "object" || Array.isArray(pos)) continue;
@@ -649,7 +808,7 @@ function TreeViewInner({
               }
             }
             try {
-              localStorage.setItem(STORAGE_KEY_MINDMAP_POSITIONS, JSON.stringify(merged));
+              localStorage.setItem(mindmapPositionsStorageKey(mindmapCanvasKey), JSON.stringify(merged));
             } catch {
               // ignore
             }
@@ -668,12 +827,51 @@ function TreeViewInner({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mindmapCanvasKey, mindmapReloadKey]);
+
+  const handleMindmapRevert = useCallback(async () => {
+    if (mindmapMode === "all") return;
+    if (!window.confirm("마인드맵을 직전 저장 상태로 되돌리시겠습니까?")) return;
+    try {
+      const res = await fetch("/api/mindmap/revert", {
+        method: "POST",
+        credentials: "include",
+        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ projectId: mindmapCanvasKey }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(typeof j.error === "string" ? j.error : "되돌리기에 실패했습니다.");
+        return;
+      }
+      toast.success("직전 저장 상태로 되돌렸습니다.");
+      setMindmapCanRevert(false);
+      setMindmapReloadKey((k) => k + 1);
+    } catch {
+      toast.error("되돌리기에 실패했습니다.");
+    }
+  }, [mindmapCanvasKey, mindmapMode]);
+
+  /** defaultCollapsed 인 노드는 접힘(저장된 expandedOverrideIds 제외) */
+  useEffect(() => {
+    if (mindmapMode === "all") return;
+    if (!mindmapRemoteLoaded) return;
+    if (!tasks.length) return;
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      for (const t of tasks) {
+        if (t.defaultCollapsed && !expandedOverrideIds.has(t.id)) {
+          next.add(t.id);
+        }
+      }
+      return next;
+    });
+  }, [tasks, mindmapRemoteLoaded, mindmapMode, expandedOverrideIds]);
 
   const runMindmapPersist = useCallback(
     async (options?: { keepalive?: boolean; silent?: boolean }) => {
       if (!mindmapRemoteLoadedRef.current) return;
-      const { stagedRootIds: sr, collapsedIds: ci, nodeStylesMap: nsm, canvasBgColor: cbg } =
+      const { stagedRootIds: sr, collapsedIds: ci, expandedOverrideIds: eo, nodeStylesMap: nsm, canvasBgColor: cbg } =
         mindmapPersistRef.current;
       try {
         let flowNodes: Node[] = [];
@@ -686,19 +884,23 @@ function TreeViewInner({
         for (const n of flowNodes) {
           positions[n.id] = { x: n.position.x, y: n.position.y };
         }
-        const res = await fetch("/api/mindmap", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            positions,
-            stagedRootIds: [...sr],
-            collapsedIds: [...ci],
-            nodeStylesMap: nsm,
-            canvasBgColor: cbg,
-          }),
-          credentials: "include",
-          keepalive: options?.keepalive === true,
-        });
+        const res = await fetch(
+          `/api/mindmap?projectId=${encodeURIComponent(mindmapCanvasKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...workspaceFetchHeaders() },
+            body: JSON.stringify({
+              positions,
+              stagedRootIds: [...sr],
+              collapsedIds: [...ci],
+              expandedOverrideIds: [...eo],
+              nodeStylesMap: nsm,
+              canvasBgColor: cbg,
+            }),
+            credentials: "include",
+            keepalive: options?.keepalive === true,
+          }
+        );
         if (!res.ok) throw new Error("save failed");
         if (!options?.silent) {
           if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
@@ -712,7 +914,7 @@ function TreeViewInner({
         if (!options?.silent) setSaveUi("error");
       }
     },
-    [getNodes]
+    [getNodes, mindmapCanvasKey]
   );
 
   const schedulePersistMindmap = useCallback(() => {
@@ -732,7 +934,7 @@ function TreeViewInner({
   useEffect(() => {
     if (!mindmapRemoteLoaded) return;
     schedulePersistMindmapRef.current();
-  }, [stagedRootIds, collapsedIds, nodeStylesMap, canvasBgColor, mindmapRemoteLoaded]);
+  }, [stagedRootIds, collapsedIds, expandedOverrideIds, nodeStylesMap, canvasBgColor, mindmapRemoteLoaded]);
 
   useEffect(() => {
     return () => {
@@ -750,6 +952,7 @@ function TreeViewInner({
 
   /** 삭제·동기화 후 존재하지 않는 task id는 스테이징·접힘에서 제거 */
   useEffect(() => {
+    if (mindmapMode === "all") return;
     if (tasks.length === 0) return;
     const ids = new Set(tasks.map((t) => t.id));
     setStagedRootIds((prev) => {
@@ -760,7 +963,7 @@ function TreeViewInner({
       const next = new Set([...prev].filter((id) => ids.has(id)));
       return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
     });
-  }, [tasks]);
+  }, [tasks, mindmapMode]);
 
   // Get style for a specific node
   const getNodeStyle = useCallback((nodeId: string): NodeStyle => {
@@ -801,16 +1004,30 @@ function TreeViewInner({
 
   // Define handlers FIRST using useCallback
   const handleToggleCollapse = useCallback((id: string) => {
+    const row = tasks.find((t) => t.id === id);
+    const trackOverride = Boolean(row?.defaultCollapsed);
     setCollapsedIds((prev: any) => {
       const next = new Set<string>(prev);
       if (next.has(id)) {
         next.delete(id);
+        if (trackOverride) {
+          queueMicrotask(() => setExpandedOverrideIds((eo) => new Set([...eo, id])));
+        }
       } else {
         next.add(id);
+        if (trackOverride) {
+          queueMicrotask(() =>
+            setExpandedOverrideIds((eo) => {
+              const n = new Set(eo);
+              n.delete(id);
+              return n;
+            })
+          );
+        }
       }
       return next;
     });
-  }, []);
+  }, [tasks]);
 
   const handleTitleChange = useCallback(async (id: string, title: string) => {
     try {
@@ -1023,16 +1240,20 @@ function TreeViewInner({
     setIsCreating(true);
     try {
       const parentId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
+      const body: Record<string, unknown> = {
+        title: quickTitle.trim(),
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 일주일 후
+        priority: "MEDIUM",
+        parentId,
+      };
+      if (contextProjectId != null && contextProjectId !== "") {
+        body.projectId = contextProjectId;
+      }
       const res = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...workspaceFetchHeaders() },
         credentials: "include",
-        body: JSON.stringify({
-          title: quickTitle.trim(),
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 일주일 후
-          priority: "MEDIUM",
-          parentId,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -1061,7 +1282,7 @@ function TreeViewInner({
     } finally {
       setIsCreating(false);
     }
-  }, [quickTitle, selectedNodeIds, onRefresh]);
+  }, [quickTitle, selectedNodeIds, onRefresh, contextProjectId]);
 
   // Keyboard handler for delete key
   const handleKeyDown = useCallback(
@@ -1114,8 +1335,22 @@ function TreeViewInner({
     setCollapsedIds(new Set());
   }, []);
 
-  // Build nodes and edges from tree tasks
+  // Build nodes and edges: 전체 조감도(Project 카드) vs Task 마인드맵
   const { layoutedNodes, layoutedEdges } = useMemo(() => {
+    if (mindmapMode === "all") {
+      const rawNodes: Node[] = projectSummaries.map((p) => ({
+        id: p.id,
+        type: "projectCard",
+        position: { x: 0, y: 0 },
+        data: {
+          summary: p,
+          onOpen: () => onMindmapNavigate?.({ mode: "project", projectId: p.id }),
+        },
+      }));
+      const { nodes } = getLayoutedProjectCards(rawNodes, []);
+      return { layoutedNodes: nodes, layoutedEdges: [] as Edge[] };
+    }
+
     const visibleTasks = getVisibleTasks(treeTasks, collapsedIds, taskLinks);
     const visibleTaskIds = new Set(visibleTasks.map((t: any) => t.id));
 
@@ -1135,6 +1370,7 @@ function TreeViewInner({
           onAddChild: onCreateTask,
           onAddParent: handleAddParentNode,
           onTaskClick,
+          onTaskHover,
           nodeStyle: getNodeStyle(task.id),
         },
       };
@@ -1174,6 +1410,9 @@ function TreeViewInner({
     const mindMapNodes = getMindMapLayout(nodes, allEdges, rootIds);
     return { layoutedNodes: mindMapNodes, layoutedEdges: allEdges };
   }, [
+    mindmapMode,
+    projectSummaries,
+    onMindmapNavigate,
     treeTasks,
     taskLinks,
     collapsedIds,
@@ -1186,7 +1425,6 @@ function TreeViewInner({
     handleAddParentNode,
     getVisibleTasks,
     getNodeStyle,
-    taskLinks,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
@@ -1194,9 +1432,13 @@ function TreeViewInner({
 
   // 레이아웃 적용 + 저장된 위치 병합 (드래그로 옮긴 위치 유지) — 다음 프레임에 적용해 React DOM과 충돌 방지
   useEffect(() => {
-    if (!layoutedNodes?.length && !layoutedEdges?.length) return;
     const raf = requestAnimationFrame(() => {
-      const saved = loadSavedPositions();
+      if (!layoutedNodes?.length && !layoutedEdges?.length) {
+        setNodes([]);
+        setEdges([]);
+        return;
+      }
+      const saved = loadSavedPositions(mindmapCanvasKey);
       const merged = (layoutedNodes || []).map((node: any) => {
         const pos = saved[node.id];
         return pos ? { ...node, position: pos } : node;
@@ -1212,22 +1454,23 @@ function TreeViewInner({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView, hydrationVersion]);
+  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView, hydrationVersion, mindmapCanvasKey]);
 
   // 노드 드래그 끝났을 때 위치 저장 (자유 배치 유지) + 서버 동기화 예약
   const onNodeDragStop = useCallback(
     (_e: MouseEvent, node: Node) => {
       if (node?.position) {
-        savePosition(node.id, node.position.x, node.position.y);
+        savePosition(mindmapCanvasKey, node.id, node.position.x, node.position.y);
       }
       schedulePersistMindmap();
     },
-    [schedulePersistMindmap]
+    [schedulePersistMindmap, mindmapCanvasKey]
   );
 
   // Listen for drop-on-node events
   useEffect(() => {
     const handleDropOnNode = async (e: Event) => {
+      if (mindmapMode === "all") return;
       const { taskId, targetNodeId } = (e as CustomEvent).detail;
       
       // Remove from staged roots if it was there
@@ -1249,7 +1492,7 @@ function TreeViewInner({
 
     window.addEventListener("task-drop-on-node", handleDropOnNode);
     return () => window.removeEventListener("task-drop-on-node", handleDropOnNode);
-  }, [updateTaskParent]);
+  }, [updateTaskParent, mindmapMode]);
 
   // Handle drop on canvas (make it a root node)
   const handleCanvasDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -1266,6 +1509,7 @@ function TreeViewInner({
     async (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setIsDraggingOver(false);
+      if (mindmapMode === "all") return;
 
       const taskId = e.dataTransfer.getData("taskId");
       if (!taskId) return;
@@ -1281,7 +1525,7 @@ function TreeViewInner({
         description: "다른 프로젝트를 이 노드 위에 드롭하면 하위 노드가 됩니다.",
       });
     },
-    []
+    [mindmapMode]
   );
 
   // Create additional link between tasks
@@ -1328,6 +1572,7 @@ function TreeViewInner({
   // Handle connection (drag edge to connect)
   const handleConnect = useCallback(
     async (connection: Connection) => {
+      if (mindmapMode === "all") return;
       if (!connection.source || !connection.target) return;
       if (connection.source === connection.target) return;
 
@@ -1359,7 +1604,7 @@ function TreeViewInner({
         await createTaskLink(connection.source, connection.target);
       }
     },
-    [tasks, taskLinks, updateTaskParent, createTaskLink]
+    [tasks, taskLinks, updateTaskParent, createTaskLink, mindmapMode]
   );
 
   // Handle edge delete (disconnect parent or delete link)
@@ -1391,88 +1636,198 @@ function TreeViewInner({
   );
 
   const mindmapToolbar = (
-    <div className="mindmap-toolbar flex w-full min-w-0 items-center gap-2">
-        {/* Quick Create */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[100px]">
-          <Input
-            ref={quickInputRef}
-            placeholder={selectedNodeIds.length === 1 ? "하위 프로젝트 빠르게 추가..." : "새 프로젝트 빠르게 추가..."}
-            value={quickTitle}
-            onChange={(e: any) => setQuickTitle(e.target.value)}
-            onKeyDown={(e: any) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                handleQuickCreate();
-              }
-            }}
-            className="mindmap-toolbar-input h-9 min-w-0 flex-1"
-            disabled={isCreating}
-          />
+    <div className="mindmap-toolbar flex w-full min-w-0 flex-col gap-2">
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        {mindmapMode === "project" ? (
           <Button
+            type="button"
+            variant="ghost"
             size="sm"
-            className="mindmap-toolbar-btn shrink-0"
-            onClick={handleQuickCreate}
-            disabled={!quickTitle.trim() || isCreating}
+            className="mindmap-toolbar-btn h-8 shrink-0 gap-1 px-2"
+            onClick={() => onMindmapNavigate?.({ mode: "all" })}
           >
-            <Plus className="mr-1 size-4" />
-            추가
+            <ArrowLeft className="size-4" />
+            조감도로
           </Button>
-          {selectedNodeIds.length === 1 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mindmap-toolbar-btn shrink-0"
-              disabled={isAddingParent || isCreating}
-              onClick={() => void handleAddParentNode(selectedNodeIds[0]!)}
-              title="빠른 입력란의 제목을 쓰면 그 이름으로 상위 노드를 만듭니다. 비어 있으면 입력 창이 열립니다."
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant={mindmapMode === "all" ? "default" : "outline"}
+          className="mindmap-toolbar-btn h-8 px-2 text-xs"
+          onClick={() => onMindmapNavigate?.({ mode: "all" })}
+        >
+          전체 조감도
+        </Button>
+        {projectPicker.length > 0 ? (
+          <>
+            <span className="text-muted-foreground shrink-0 text-xs">프로젝트</span>
+            <Select
+              value={mindmapMode === "project" && contextProjectId ? contextProjectId : undefined}
+              onValueChange={(v) => onMindmapNavigate?.({ mode: "project", projectId: v })}
             >
-              <ArrowUpFromLine className="mr-1 size-4" />
-              상위 노드
-            </Button>
-          )}
-        </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-1">
+              <SelectTrigger className="mindmap-toolbar-btn h-8 w-[min(240px,50vw)] text-xs">
+                <SelectValue placeholder="프로젝트 선택" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {projectPicker.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.brand?.name ? `${p.brand.name} · ${p.name}` : p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant={mindmapMode === "unassigned" ? "default" : "outline"}
+          className="mindmap-toolbar-btn h-8 px-2 text-xs"
+          onClick={() => onMindmapNavigate?.({ mode: "unassigned" })}
+        >
+          미분류
+        </Button>
+        {mindmapMode !== "all" && mindmapCanRevert ? (
           <Button
             type="button"
-            variant="outline"
             size="sm"
-            className="mindmap-toolbar-btn h-8 px-2 text-xs"
-            onClick={collapseAllWithChildren}
+            variant="outline"
+            className="mindmap-toolbar-btn ml-auto h-8 shrink-0 gap-1 px-2 text-xs"
+            onClick={handleMindmapRevert}
           >
-            전체 접기
+            <RotateCcw className="size-3.5" />
+            되돌리기
+          </Button>
+        ) : null}
+      </div>
+
+      {mindmapMode !== "all" && onTaskCompletionShelfChange ? (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <span className="text-muted-foreground shrink-0 text-xs">완료·아카이브</span>
+          <Button
+            type="button"
+            size="sm"
+            variant={taskCompletionShelf === "active" ? "default" : "outline"}
+            className="mindmap-toolbar-btn h-8 px-2 text-xs"
+            onClick={() => onTaskCompletionShelfChange("active")}
+          >
+            활성만
           </Button>
           <Button
             type="button"
-            variant="outline"
             size="sm"
+            variant={taskCompletionShelf === "recent" ? "default" : "outline"}
             className="mindmap-toolbar-btn h-8 px-2 text-xs"
-            onClick={expandAllMindmap}
+            onClick={() => onTaskCompletionShelfChange("recent")}
           >
-            전체 펼치기
+            최근 완료 7일
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={taskCompletionShelf === "all" ? "default" : "outline"}
+            className="mindmap-toolbar-btn h-8 px-2 text-xs"
+            onClick={() => onTaskCompletionShelfChange("all")}
+          >
+            전체+아카이브
           </Button>
         </div>
+      ) : null}
 
-        {/* Delete Selected — 임원/관리자 전체, 직원은 본인이 만든 프로젝트만 */}
-        {selectedNodeIds.length > 0 && deletableSelectedIds.length > 0 && (
-          <Button variant="destructive" size="sm" className="mindmap-toolbar-btn shrink-0" onClick={deleteSelectedTasks}>
-            <Trash2 className="mr-1 size-4" />
-            {deletableSelectedIds.length}개 삭제
-            {deletableSelectedIds.length < selectedNodeIds.length ? (
-              <span className="ml-1 text-[10px] opacity-90">(권한 있는 항목만)</span>
-            ) : null}
-          </Button>
-        )}
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        {mindmapMode !== "all" ? (
+          <>
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[100px]">
+              <Input
+                ref={quickInputRef}
+                placeholder={
+                  selectedNodeIds.length === 1 ? "하위 프로젝트 빠르게 추가..." : "새 프로젝트 빠르게 추가..."
+                }
+                value={quickTitle}
+                onChange={(e: any) => setQuickTitle(e.target.value)}
+                onKeyDown={(e: any) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    handleQuickCreate();
+                  }
+                }}
+                className="mindmap-toolbar-input h-9 min-w-0 flex-1"
+                disabled={isCreating}
+              />
+              <Button
+                size="sm"
+                className="mindmap-toolbar-btn shrink-0"
+                onClick={handleQuickCreate}
+                disabled={!quickTitle.trim() || isCreating}
+              >
+                <Plus className="mr-1 size-4" />
+                추가
+              </Button>
+              {selectedNodeIds.length === 1 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mindmap-toolbar-btn shrink-0"
+                  disabled={isAddingParent || isCreating}
+                  onClick={() => void handleAddParentNode(selectedNodeIds[0]!)}
+                  title="빠른 입력란의 제목을 쓰면 그 이름으로 상위 노드를 만듭니다. 비어 있으면 입력 창이 열립니다."
+                >
+                  <ArrowUpFromLine className="mr-1 size-4" />
+                  상위 노드
+                </Button>
+              )}
+            </div>
 
-        {/* Style Settings */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="mindmap-toolbar-btn shrink-0" disabled={selectedNodeIds.length === 0}>
-              <Palette className="mr-1 size-4" />
-              스타일 {selectedNodeIds.length > 0 && `(${selectedNodeIds.length}개)`}
-            </Button>
-          </PopoverTrigger>
+            <div className="flex shrink-0 flex-wrap items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mindmap-toolbar-btn h-8 px-2 text-xs"
+                onClick={collapseAllWithChildren}
+              >
+                전체 접기
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mindmap-toolbar-btn h-8 px-2 text-xs"
+                onClick={expandAllMindmap}
+              >
+                전체 펼치기
+              </Button>
+            </div>
+
+            {selectedNodeIds.length > 0 && deletableSelectedIds.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="mindmap-toolbar-btn shrink-0"
+                onClick={deleteSelectedTasks}
+              >
+                <Trash2 className="mr-1 size-4" />
+                {deletableSelectedIds.length}개 삭제
+                {deletableSelectedIds.length < selectedNodeIds.length ? (
+                  <span className="ml-1 text-[10px] opacity-90">(권한 있는 항목만)</span>
+                ) : null}
+              </Button>
+            )}
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mindmap-toolbar-btn shrink-0"
+                  disabled={selectedNodeIds.length === 0}
+                >
+                  <Palette className="mr-1 size-4" />
+                  스타일 {selectedNodeIds.length > 0 && `(${selectedNodeIds.length}개)`}
+                </Button>
+              </PopoverTrigger>
           <PopoverContent className="w-36 max-h-[min(70vh,28rem)] overflow-y-auto sm:w-40" align="end">
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground">
@@ -1567,6 +1922,8 @@ function TreeViewInner({
             </div>
           </PopoverContent>
         </Popover>
+          </>
+        ) : null}
 
         <div className="flex min-h-[1.25rem] shrink-0 items-center gap-2 text-xs">
           {saveUi === "saving" && <span className="text-muted-foreground">저장 중...</span>}
@@ -1583,8 +1940,11 @@ function TreeViewInner({
         </div>
 
         <p className="text-muted-foreground hidden max-w-md text-xs lg:block">
-          💡 노드 드래그로 위치 자유 배치 · 하위/상위 추가 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)
+          {mindmapMode === "all"
+            ? "💡 프로젝트 카드를 드래그해 배치할 수 있습니다. 카드를 클릭하면 해당 프로젝트 업무 마인드맵으로 들어갑니다."
+            : "💡 노드 드래그로 위치 자유 배치 · 하위/상위 추가 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)"}
         </p>
+      </div>
     </div>
   );
 
@@ -1608,7 +1968,15 @@ function TreeViewInner({
         onDragLeave={handleCanvasDragLeave}
         onDrop={handleCanvasDrop}
       >
-        {treeTasks.length === 0 ? (
+        {mindmapMode === "all" && projectSummaries.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <TreePine className="size-16 mx-auto text-muted-foreground/50 mb-4" />
+              <p className="text-muted-foreground mb-2 font-medium">표시할 프로젝트가 없습니다</p>
+              <p className="text-sm text-muted-foreground">워크스페이스에 연결된 프로젝트가 생기면 여기에 카드로 나타납니다.</p>
+            </div>
+          </div>
+        ) : mindmapMode !== "all" && treeTasks.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <TreePine className="size-16 mx-auto text-muted-foreground/50 mb-4" />
@@ -1630,6 +1998,7 @@ function TreeViewInner({
             onSelectionChange={handleSelectionChange}
             nodeTypes={nodeTypes}
             nodesDraggable
+            nodesConnectable={mindmapMode !== "all"}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.3}
@@ -1653,17 +2022,24 @@ function TreeViewInner({
         )}
       </div>
 
-      {/* Uncategorized Tasks List */}
+      {/* Uncategorized Tasks List (전체 조감도에서는 숨김) */}
+      {mindmapMode === "all" ? null : (
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm">🌿 야생의 프로젝트 (미분류)</h3>
+            <h3 className="font-semibold text-sm">
+              {mindmapMode === "unassigned"
+                ? "미분류 보관함 (프로젝트 연결 필요)"
+                : "🌿 야생의 프로젝트 (미분류)"}
+            </h3>
             <Badge variant="secondary" className="text-xs">
               {uncategorizedTasks.length}개
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            드래그하여 위 캔버스에 놓으면 마인드맵에 추가할 수 있어요
+            {mindmapMode === "unassigned"
+              ? "Task에 CRM 프로젝트를 연결하면 팀 조감도·프로젝트 뷰에서 함께 관리할 수 있습니다."
+              : "드래그하여 위 캔버스에 놓으면 마인드맵에 추가할 수 있어요"}
           </p>
         </div>
 
@@ -1684,6 +2060,7 @@ function TreeViewInner({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

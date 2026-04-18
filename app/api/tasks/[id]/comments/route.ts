@@ -61,7 +61,7 @@ export async function GET(
     }
 
     const rows = await prisma.taskComment.findMany({
-      where: { taskId },
+      where: { taskId, deletedAt: null },
       include: {
         user: { select: { id: true, name: true, position: true } },
       },

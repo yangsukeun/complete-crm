@@ -4,13 +4,15 @@ import "./components/mindmap-toolbar.css";
 import React, {
   Component,
   type ReactNode,
+  Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
 import useSWRInfinite from "swr/infinite";
@@ -58,6 +60,15 @@ import {
 } from "@/lib/project-task-colors";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
+import {
+  mindmapCanvasIdFromMode,
+  mindmapShellModeFromQuery,
+  type MindmapShellMode,
+} from "@/lib/mindmap-canvas-keys";
+import {
+  taskCompletionShelfQuery,
+  type TaskCompletionShelf,
+} from "@/lib/task-visibility";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
 import { SplitView, useIsMdUp } from "@/components/ui/split-view";
 import { TaskDetailContent } from "./components/task-detail-content";
@@ -107,6 +118,8 @@ const PROJECT_VIEW_MODE_KEY = "projectViewMode";
 const LEGACY_PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
 /** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
 const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
+const MINDMAP_SHELL_STORAGE_KEY = "tasks-mindmap-shell-v1";
+const TASK_COMPLETION_SHELF_KEY = "tasks-completion-shelf-v1";
 type ProjectsViewMode = "board" | "table";
 type ProjectScopeFilter = "all" | "mine" | "shared";
 
@@ -176,6 +189,9 @@ type Task = {
   createdById?: string | null;
   projectId?: string | null;
   color?: string | null;
+  completedAt?: string | null;
+  archivedAt?: string | null;
+  defaultCollapsed?: boolean;
 };
 
 function taskCreatorId(t: Task): string | null {
@@ -304,7 +320,17 @@ async function fetchTasksPageJson(url: string): Promise<TasksPageResponse> {
 
 type TaskLink = { id: string; parentId: string; childId: string };
 function linksFetcher(url: string): Promise<TaskLink[]> {
-  return fetch(url).then((r: any) => (r.ok ? r.json() : []));
+  return fetch(url, {
+    credentials: "include",
+    headers: workspaceFetchHeaders(),
+  }).then((r: Response) => (r.ok ? r.json() : []));
+}
+
+async function fetchProjectMindmapSummaryJson(url: string) {
+  const r = await fetch(url, { credentials: "include", headers: workspaceFetchHeaders() });
+  if (!r.ok) return [];
+  const j = await r.json();
+  return Array.isArray(j) ? j : [];
 }
 
 class ViewErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -330,9 +356,11 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, { hasError: b
   }
 }
 
-export default function TasksPage() {
+function TasksPageInner() {
   const { data: session, status: authStatus } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
@@ -349,6 +377,8 @@ export default function TasksPage() {
   const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>("all");
   const [adminTasksUserId, setAdminTasksUserId] = useState<string>("");
   const [colorFilter, setColorFilter] = useState<string | null>(null);
+  const [taskCompletionShelf, setTaskCompletionShelf] = useState<TaskCompletionShelf>("active");
+  const taskShelfHydratedRef = useRef(false);
   const projectScopeHydratedRef = useRef(false);
   const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
   /** 노션식 오른쪽 패널 미리보기 */
@@ -422,16 +452,78 @@ export default function TasksPage() {
     { revalidateOnFocus: false }
   );
 
-  /** 마인드맵·필터·보기 범위 적용 시 전체 목록 필요 (부분 페이지에만 클라이언트 필터를 쓰면 안 됨) */
+  const mindmapMode: MindmapShellMode = useMemo(() => {
+    if (view !== "mindmap") return "all";
+    return mindmapShellModeFromQuery(searchParams.get("mindmap"));
+  }, [view, searchParams]);
+
+  const mindmapProjectId = useMemo(() => {
+    if (view !== "mindmap" || mindmapMode !== "project") return null as string | null;
+    const raw = searchParams.get("projectId");
+    if (!raw || raw.toLowerCase() === "null") return null;
+    return raw;
+  }, [view, mindmapMode, searchParams]);
+
+  /** 마인드맵 탭 진입 시 URL에 mindmap 쿼리가 없으면 localStorage 또는 기본(all)로 채움 */
+  useLayoutEffect(() => {
+    if (view !== "mindmap") return;
+    if (searchParams.has("mindmap")) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    try {
+      const raw = localStorage.getItem(MINDMAP_SHELL_STORAGE_KEY);
+      if (raw) {
+        const j = JSON.parse(raw) as { mode?: string; projectId?: string | null };
+        const m = mindmapShellModeFromQuery(j.mode ?? "all");
+        sp.set("mindmap", m);
+        if (m === "project" && typeof j.projectId === "string" && j.projectId.trim()) {
+          sp.set("projectId", j.projectId.trim());
+        }
+      } else {
+        sp.set("mindmap", "all");
+      }
+    } catch {
+      sp.set("mindmap", "all");
+    }
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [view, searchParams, pathname, router]);
+
+  const onMindmapNavigate = useCallback(
+    (next: { mode: MindmapShellMode; projectId?: string | null }) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      sp.set("mindmap", next.mode);
+      if (next.mode === "project" && next.projectId) {
+        sp.set("projectId", next.projectId);
+      } else {
+        sp.delete("projectId");
+      }
+      try {
+        localStorage.setItem(
+          MINDMAP_SHELL_STORAGE_KEY,
+          JSON.stringify({
+            mode: next.mode,
+            projectId: next.mode === "project" ? next.projectId ?? null : null,
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+      const qs = sp.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  /** 목록 탭: 필터·보기 범위 적용 시 전체 목록 필요. 마인드맵은 projectId 스코프 SWR로 별도 로드 */
   const needsFullTaskList =
-    view === "mindmap" ||
-    filterStatus !== "" ||
-    filterAssigneeId !== "" ||
-    filterPriority !== "" ||
-    filterDue !== "all" ||
-    projectScopeFilter !== "all" ||
-    colorFilter !== null ||
-    (isTasksAdmin && adminTasksUserId !== "");
+    view !== "mindmap" &&
+    (filterStatus !== "" ||
+      filterAssigneeId !== "" ||
+      filterPriority !== "" ||
+      filterDue !== "all" ||
+      projectScopeFilter !== "all" ||
+      colorFilter !== null ||
+      (isTasksAdmin && adminTasksUserId !== ""));
 
   useEffect(() => {
     setColumnVisible(loadColumnVisibility());
@@ -460,8 +552,29 @@ export default function TasksPage() {
   useEffect(() => {
     if (authStatus === "unauthenticated") {
       projectScopeHydratedRef.current = false;
+      taskShelfHydratedRef.current = false;
     }
   }, [authStatus]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || taskShelfHydratedRef.current) return;
+    taskShelfHydratedRef.current = true;
+    try {
+      const raw = localStorage.getItem(TASK_COMPLETION_SHELF_KEY);
+      if (raw === "active" || raw === "recent" || raw === "all") setTaskCompletionShelf(raw);
+    } catch {
+      /* ignore */
+    }
+  }, [authStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || authStatus !== "authenticated") return;
+    try {
+      localStorage.setItem(TASK_COMPLETION_SHELF_KEY, taskCompletionShelf);
+    } catch {
+      /* ignore */
+    }
+  }, [taskCompletionShelf, authStatus]);
 
   useEffect(() => {
     if (typeof window === "undefined" || authStatus !== "authenticated") return;
@@ -493,9 +606,14 @@ export default function TasksPage() {
     return () => cancelAnimationFrame(t);
   }, [view]);
 
+  const taskShelfQs = useMemo(
+    () => taskCompletionShelfQuery(taskCompletionShelf),
+    [taskCompletionShelf]
+  );
+
   const tasksFullKey =
     authStatus === "authenticated" && needsFullTaskList
-      ? `/api/tasks?all=1${adminTasksUserId ? `&userId=${encodeURIComponent(adminTasksUserId)}` : ""}`
+      ? `/api/tasks?all=1&${taskShelfQs}${adminTasksUserId ? `&userId=${encodeURIComponent(adminTasksUserId)}` : ""}`
       : null;
   const {
     data: tasksFullData,
@@ -519,9 +637,10 @@ export default function TasksPage() {
       q.set("limit", "20");
       q.set("offset", String(pageIndex * 20));
       if (isTasksAdmin && adminTasksUserId) q.set("userId", adminTasksUserId);
+      new URLSearchParams(taskShelfQs).forEach((v, k) => q.set(k, v));
       return `/api/tasks?${q.toString()}`;
     },
-    [authStatus, needsFullTaskList, isTasksAdmin, adminTasksUserId]
+    [authStatus, needsFullTaskList, isTasksAdmin, adminTasksUserId, taskShelfQs]
   );
 
   const {
@@ -538,8 +657,67 @@ export default function TasksPage() {
     dedupingInterval: 30_000,
   });
 
+  const projectMindmapKey =
+    authStatus === "authenticated" && view === "mindmap" ? "/api/projects?mindmapSummary=1" : null;
+  const {
+    data: projectMindmapSummaries = [],
+    isLoading: projectMindmapLoading,
+    mutate: mutateProjectMindmap,
+  } = useSWR(projectMindmapKey, fetchProjectMindmapSummaryJson, {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+    dedupingInterval: 20_000,
+  });
+
+  const mindmapAdminSuffix =
+    isTasksAdmin && adminTasksUserId ? `&userId=${encodeURIComponent(adminTasksUserId)}` : "";
+  const mindmapScopedTasksKey =
+    authStatus === "authenticated" &&
+    view === "mindmap" &&
+    mindmapMode === "project" &&
+    mindmapProjectId
+      ? `/api/tasks?projectId=${encodeURIComponent(mindmapProjectId)}${mindmapAdminSuffix}&${taskShelfQs}`
+      : authStatus === "authenticated" && view === "mindmap" && mindmapMode === "unassigned"
+        ? `/api/tasks?projectId=null${mindmapAdminSuffix}&${taskShelfQs}`
+        : null;
+
+  const {
+    data: mindmapScopedTasksRaw = [],
+    isLoading: mindmapScopedLoading,
+    mutate: mutateMindmapScoped,
+  } = useSWR<Task[]>(mindmapScopedTasksKey, fetchTasksAllJson, {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+    dedupingInterval: 120_000,
+  });
+
+  useEffect(() => {
+    if (view !== "mindmap") return;
+    if (mindmapMode !== "project") return;
+    if (mindmapProjectId) return;
+    if (projectMindmapLoading) return;
+    const list = projectMindmapSummaries as { id: string }[];
+    if (list.length > 0) {
+      onMindmapNavigate({ mode: "project", projectId: list[0]!.id });
+      return;
+    }
+    onMindmapNavigate({ mode: "all" });
+  }, [
+    view,
+    mindmapMode,
+    mindmapProjectId,
+    projectMindmapLoading,
+    projectMindmapSummaries,
+    onMindmapNavigate,
+  ]);
+
   const { data: linksData = [], mutate: mutateLinks, isLoading: linksLoading } = useSWR<TaskLink[]>(
-    authStatus === "authenticated" && view === "mindmap" ? "/api/tasks/links" : null,
+    authStatus === "authenticated" &&
+      view === "mindmap" &&
+      (mindmapMode === "project" || mindmapMode === "unassigned")
+      ? "/api/tasks/links"
+      : null,
     linksFetcher,
     {
       keepPreviousData: true,
@@ -580,8 +758,10 @@ export default function TasksPage() {
       void mutateTasksFull();
       void mutateTaskPages();
       void mutateLinks();
+      void mutateMindmapScoped();
+      void mutateProjectMindmap();
     }, 400);
-  }, [mutateTasksFull, mutateTaskPages, mutateLinks]);
+  }, [mutateTasksFull, mutateTaskPages, mutateLinks, mutateMindmapScoped, mutateProjectMindmap]);
 
   const onTasksDetailUpdated = useCallback(() => {
     refreshTasks();
@@ -681,8 +861,50 @@ export default function TasksPage() {
     [columnVisible]
   );
 
+  const mindmapSourceTasks = useMemo(() => {
+    if (view !== "mindmap") return tasks;
+    if (mindmapMode === "all") return [];
+    if (mindmapMode === "project" || mindmapMode === "unassigned") {
+      return Array.isArray(mindmapScopedTasksRaw) ? mindmapScopedTasksRaw : [];
+    }
+    return tasks;
+  }, [view, mindmapMode, mindmapScopedTasksRaw, tasks]);
+
+  const mindmapScopeFilteredTasks = useMemo(() => {
+    if (!currentUserId || projectScopeFilter === "all") return mindmapSourceTasks;
+    if (projectScopeFilter === "mine") {
+      return mindmapSourceTasks.filter((t) => taskIsMine(t, currentUserId));
+    }
+    return mindmapSourceTasks.filter((t) => taskIsSharedParticipation(t, currentUserId));
+  }, [mindmapSourceTasks, projectScopeFilter, currentUserId]);
+
+  const mindmapFilteredTasks = useMemo(() => {
+    return mindmapScopeFilteredTasks.filter((t: Task) => {
+      if (filterStatus && getEffectiveStatus(t) !== filterStatus) return false;
+      if (
+        filterAssigneeId &&
+        t.assignedTo?.id !== filterAssigneeId &&
+        !(t.assignees?.some((a) => a.id === filterAssigneeId))
+      )
+        return false;
+      if (filterPriority && normPriority(t.priority) !== filterPriority) return false;
+      if (!passesDueFilter(t, filterDue)) return false;
+      if (colorFilter === COLOR_FILTER_DEFAULT_ONLY) {
+        if (taskHasPaletteColor(t.color)) return false;
+      } else if (colorFilter && (t.color ?? null) !== colorFilter) return false;
+      return true;
+    });
+  }, [
+    mindmapScopeFilteredTasks,
+    filterStatus,
+    filterAssigneeId,
+    filterPriority,
+    filterDue,
+    colorFilter,
+  ]);
+
   const mindmapTasks = useMemo(() => {
-    return filteredTasks.map((t: any) => ({
+    return mindmapFilteredTasks.map((t: any) => ({
       id: t.id,
       title: t.title,
       description: t.description ?? null,
@@ -698,8 +920,11 @@ export default function TasksPage() {
       assignedTo: t.assignees?.[0] ?? t.assignedTo,
       createdById: t.createdById ?? t.createdBy?.id ?? null,
       color: t.color ?? null,
+      completedAt: t.completedAt ?? null,
+      archivedAt: t.archivedAt ?? null,
+      defaultCollapsed: !!t.defaultCollapsed,
     }));
-  }, [filteredTasks]);
+  }, [mindmapFilteredTasks]);
 
   const mindmapTaskIdSet = useMemo(() => new Set(mindmapTasks.map((t: { id: string }) => t.id)), [mindmapTasks]);
 
@@ -710,6 +935,37 @@ export default function TasksPage() {
       ),
     [taskLinks, mindmapTaskIdSet]
   );
+
+  const mindmapCanvasId = mindmapCanvasIdFromMode(mindmapMode, mindmapProjectId);
+
+  const mindmapProjectPicker = useMemo(
+    () =>
+      (projectMindmapSummaries as { id: string; name: string; brand?: { name: string } }[]).map((p) => ({
+        id: p.id,
+        name: p.name,
+        brand: p.brand,
+      })),
+    [projectMindmapSummaries]
+  );
+
+  const mindmapBlockLoading = useMemo(() => {
+    if (view !== "mindmap") return false;
+    if (mindmapMode === "all") {
+      return projectMindmapLoading && projectMindmapSummaries.length === 0;
+    }
+    if (mindmapMode === "project" && !mindmapProjectId) return true;
+    if (mindmapScopedLoading) return true;
+    if (linksLoading) return true;
+    return false;
+  }, [
+    view,
+    mindmapMode,
+    mindmapProjectId,
+    projectMindmapLoading,
+    projectMindmapSummaries.length,
+    mindmapScopedLoading,
+    linksLoading,
+  ]);
 
   if (authStatus === "loading" || authStatus === "unauthenticated") {
     return (
@@ -1027,6 +1283,40 @@ export default function TasksPage() {
                 </Select>
               )}
             </div>
+            <div className="flex w-full flex-col gap-2 border-t border-gray-200 pt-3 sm:flex-row sm:items-center sm:gap-3">
+              <span className="text-muted-foreground shrink-0 text-xs font-semibold tracking-wide">
+                완료·아카이브
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={taskCompletionShelf === "active" ? "default" : "outline"}
+                  className="h-8 border-gray-200 text-xs"
+                  onClick={() => setTaskCompletionShelf("active")}
+                >
+                  활성만
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={taskCompletionShelf === "recent" ? "default" : "outline"}
+                  className="h-8 border-gray-200 text-xs"
+                  onClick={() => setTaskCompletionShelf("recent")}
+                >
+                  최근 완료 7일
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={taskCompletionShelf === "all" ? "default" : "outline"}
+                  className="h-8 border-gray-200 text-xs"
+                  onClick={() => setTaskCompletionShelf("all")}
+                >
+                  전체+아카이브
+                </Button>
+              </div>
+            </div>
             <span className="text-muted-foreground w-full text-xs font-semibold tracking-wide sm:w-auto">
               컬럼 표시
             </span>
@@ -1061,14 +1351,9 @@ export default function TasksPage() {
               <Skeleton className="h-8 w-48 rounded-md" />
               <Skeleton className="h-[420px] w-full rounded-lg" />
             </div>
-          ) : tasksLoading && tasks.length === 0 ? (
+          ) : mindmapBlockLoading ? (
             <div className="min-h-[480px] w-full space-y-3 rounded-xl border bg-muted/10 p-4">
               <Skeleton className="h-8 w-64 rounded-md" />
-              <Skeleton className="h-[420px] w-full rounded-lg" />
-            </div>
-          ) : linksLoading ? (
-            <div className="min-h-[480px] w-full space-y-3 rounded-xl border bg-muted/10 p-4">
-              <Skeleton className="h-8 w-56 rounded-md" />
               <Skeleton className="h-[420px] w-full rounded-lg" />
             </div>
           ) : (
@@ -1093,6 +1378,14 @@ export default function TasksPage() {
                 }}
                 currentUserId={currentUserId}
                 isTaskDeleteAdmin={isTaskDeleteAdmin}
+                mindmapMode={mindmapMode}
+                mindmapCanvasId={mindmapCanvasId}
+                projectSummaries={mindmapMode === "all" ? (projectMindmapSummaries as any) : []}
+                projectPicker={mindmapProjectPicker}
+                onMindmapNavigate={onMindmapNavigate}
+                contextProjectId={mindmapMode === "project" ? mindmapProjectId : null}
+                taskCompletionShelf={taskCompletionShelf}
+                onTaskCompletionShelfChange={setTaskCompletionShelf}
               />
             </div>
           )
@@ -1366,6 +1659,7 @@ export default function TasksPage() {
         parentId={createParentId}
         orderIndex={tasksTotalCount}
         defaultAssignedToId={(session?.user as any)?.id ?? null}
+        defaultProjectId={view === "mindmap" && mindmapMode === "project" ? mindmapProjectId : null}
       />
       <TaskDetailDrawer
         taskId={peekTaskId}
@@ -1374,5 +1668,19 @@ export default function TasksPage() {
         narrow={view === "mindmap"}
       />
     </div>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[60vh] items-center justify-center p-6">
+          <p className="text-muted-foreground">불러오는 중...</p>
+        </div>
+      }
+    >
+      <TasksPageInner />
+    </Suspense>
   );
 }

@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { tryDeleteRemoteFileByUrl } from "@/lib/storage/delete-remote-upload";
-
 export const runtime = "nodejs";
 
 export async function DELETE(
@@ -43,13 +41,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const url = att.url;
-    try {
-      await tryDeleteRemoteFileByUrl(url);
-    } catch (e) {
-      console.error("[tasks] attachment DELETE storage:", e);
-    }
-    await prisma.taskAttachment.delete({ where: { id: attachmentId } });
+    /** 소프트 삭제 — 실제 파일·Drive 삭제는 30일 후 Cron */
+    await prisma.taskAttachment.update({
+      where: { id: attachmentId },
+      data: { deletedAt: new Date() },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

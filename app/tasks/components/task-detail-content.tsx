@@ -112,6 +112,11 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   const [assigneePickerIds, setAssigneePickerIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
+  const [detailTab, setDetailTab] = useState<"detail" | "audit">("detail");
+  const [auditRows, setAuditRows] = useState<
+    { id: string; field: string; oldValue: string | null; newValue: string | null; createdAt: string; actor: { id: string; name: string | null } }[]
+  >([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [editIsRecurring, setEditIsRecurring] = useState(false);
   const [editRecurringFreq, setEditRecurringFreq] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "HOURLY">("WEEKLY");
@@ -454,6 +459,30 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
     setDragOver(false);
   }, []);
 
+  useEffect(() => {
+    if (detailTab !== "audit" || !taskId) return;
+    let cancelled = false;
+    (async () => {
+      setAuditLoading(true);
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/audit`, {
+          credentials: "include",
+          headers: workspaceFetchHeaders(),
+        });
+        const j = await res.json();
+        if (!cancelled && res.ok && Array.isArray(j)) setAuditRows(j);
+        else if (!cancelled && !res.ok) setAuditRows([]);
+      } catch {
+        if (!cancelled) setAuditRows([]);
+      } finally {
+        if (!cancelled) setAuditLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailTab, taskId]);
+
   const handleAddComment = async () => {
     if (!commentBody.trim()) {
       toast.error("댓글 내용을 입력하세요.");
@@ -514,6 +543,55 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         style={{ background: getTaskCardAccentColor(task.color) }}
         aria-hidden
       />
+      <div className="flex gap-1 border-b border-border px-4 pt-2">
+        <Button
+          type="button"
+          variant={detailTab === "detail" ? "secondary" : "ghost"}
+          size="sm"
+          className="rounded-b-none"
+          onClick={() => setDetailTab("detail")}
+        >
+          상세
+        </Button>
+        <Button
+          type="button"
+          variant={detailTab === "audit" ? "secondary" : "ghost"}
+          size="sm"
+          className="rounded-b-none"
+          onClick={() => setDetailTab("audit")}
+        >
+          변경 이력
+        </Button>
+      </div>
+      {detailTab === "audit" ? (
+        <div className="px-6 py-8">
+          {auditLoading ? (
+            <p className="text-muted-foreground text-sm">불러오는 중...</p>
+          ) : auditRows.length === 0 ? (
+            <p className="text-muted-foreground text-sm">기록된 변경이 없습니다.</p>
+          ) : (
+            <ul className="space-y-3 text-sm">
+              {auditRows.map((r) => (
+                <li key={r.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                  <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs">
+                    <span>{format(new Date(r.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}</span>
+                    <span>·</span>
+                    <span>{formatUserName({ name: (r.actor.name ?? "").trim() || "이름 없음" })}</span>
+                    <span>·</span>
+                    <span className="font-medium text-foreground">{r.field}</span>
+                  </div>
+                  <p className="mt-1 break-all">
+                    <span className="text-red-700/90">{r.oldValue ?? "—"}</span>
+                    <span className="text-muted-foreground mx-1">→</span>
+                    <span className="text-emerald-800/90">{r.newValue ?? "—"}</span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="flex items-center justify-end gap-1 px-4 pt-3 pb-0">
         {task.scope === "TEAM" && (
           <Button
@@ -1066,6 +1144,8 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
           </Button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

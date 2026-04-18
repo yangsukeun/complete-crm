@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { WorkspaceScope } from "@prisma/client";
+import { MINDMAP_CANVAS_ALL, MINDMAP_CANVAS_UNASSIGNED } from "@/lib/mindmap-canvas-keys";
 
 const MAX_BODY_BYTES = 512_000;
 
@@ -10,9 +11,19 @@ type MindmapPayload = {
   positions?: Record<string, { x: number; y: number }>;
   stagedRootIds?: string[];
   collapsedIds?: string[];
+  /** defaultCollapsed 노드를 사용자가 펼친 경우 id 보관 */
+  expandedOverrideIds?: string[];
   nodeStylesMap?: Record<string, unknown>;
   canvasBgColor?: string;
 };
+
+function normalizeCanvasProjectId(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return MINDMAP_CANVAS_ALL;
+  if (s === MINDMAP_CANVAS_ALL || s === MINDMAP_CANVAS_UNASSIGNED) return s;
+  if (s.length > 128 || /[^a-zA-Z0-9_-]/.test(s)) return MINDMAP_CANVAS_ALL;
+  return s;
+}
 
 function sanitizePayload(raw: unknown): MindmapPayload {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
@@ -44,6 +55,12 @@ function sanitizePayload(raw: unknown): MindmapPayload {
     out.collapsedIds = o.collapsedIds.filter((id): id is string => typeof id === "string" && id.length <= 128).slice(0, 500);
   }
 
+  if (Array.isArray(o.expandedOverrideIds)) {
+    out.expandedOverrideIds = o.expandedOverrideIds
+      .filter((id): id is string => typeof id === "string" && id.length <= 128)
+      .slice(0, 500);
+  }
+
   if (o.nodeStylesMap && typeof o.nodeStylesMap === "object" && !Array.isArray(o.nodeStylesMap)) {
     const styles: Record<string, unknown> = {};
     let n = 0;
@@ -73,12 +90,25 @@ function mergeMindmapPayloads(prev: MindmapPayload, inc: MindmapPayload): Record
     positions: positions && Object.keys(positions).length > 0 ? positions : {},
     stagedRootIds: inc.stagedRootIds !== undefined ? inc.stagedRootIds : prev.stagedRootIds ?? [],
     collapsedIds: inc.collapsedIds !== undefined ? inc.collapsedIds : prev.collapsedIds ?? [],
+    expandedOverrideIds:
+      inc.expandedOverrideIds !== undefined ? inc.expandedOverrideIds : prev.expandedOverrideIds ?? [],
     nodeStylesMap: inc.nodeStylesMap !== undefined ? inc.nodeStylesMap : prev.nodeStylesMap ?? {},
     canvasBgColor: inc.canvasBgColor !== undefined ? inc.canvasBgColor : prev.canvasBgColor ?? "#f9fafb",
   };
 }
 
-/** GET: 현재 세션 · 워크스페이스 스코프 기준 마인드맵 UI 상태 */
+function resolveCanvasProjectIdFromRequest(req: Request, bodyProjectId?: unknown): string {
+  const url = new URL(req.url);
+  if (url.searchParams.has("projectId")) {
+    return normalizeCanvasProjectId(url.searchParams.get("projectId"));
+  }
+  if (typeof bodyProjectId === "string" && bodyProjectId.trim()) {
+    return normalizeCanvasProjectId(bodyProjectId);
+  }
+  return MINDMAP_CANVAS_ALL;
+}
+
+/** GET: (userId, scope, projectId) 캔버스별 마인드맵 UI 상태 */
 export async function GET(req: Request) {
   try {
     const session = await getAppSession();
@@ -87,10 +117,13 @@ export async function GET(req: Request) {
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
+    const projectId = resolveCanvasProjectIdFromRequest(req, undefined);
+
     const row = await prisma.userTaskMindmapState.findUnique({
       where: {
-        userId_scope: { userId: session.user.id, scope },
+        userId_scope_projectId: { userId: session.user.id, scope, projectId },
       },
+      select: { data: true, previousPayload: true, previousSavedAt: true },
     });
 
     const data = (row?.data && typeof row.data === "object" && !Array.isArray(row.data)
@@ -98,14 +131,19 @@ export async function GET(req: Request) {
       : {}) as Record<string, unknown>;
 
     const payload = sanitizePayload(data);
-    return NextResponse.json(payload);
+    const hasPrev = row?.previousPayload != null && typeof row.previousPayload === "object";
+    return NextResponse.json({
+      ...payload,
+      mindmapCanRevert: hasPrev,
+      mindmapPreviousSavedAt: row?.previousSavedAt?.toISOString() ?? null,
+    });
   } catch (e) {
     console.error("[mindmap GET]", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-/** POST: 전체 상태 upsert (nodes/edges는 Task 기반이라 positions·staging 등만 저장) */
+/** POST: 캔버스별 upsert (projectId는 쿼리 또는 JSON body.projectId) */
 export async function POST(req: Request) {
   try {
     const session = await getAppSession();
@@ -126,26 +164,34 @@ export async function POST(req: Request) {
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
-    const incoming = sanitizePayload(body);
+    const bodyObj = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+    const canvasProjectId = resolveCanvasProjectIdFromRequest(req, bodyObj.projectId);
+    const { projectId: _drop, ...restBody } = bodyObj;
+    const incoming = sanitizePayload(restBody);
 
     const existing = await prisma.userTaskMindmapState.findUnique({
       where: {
-        userId_scope: { userId: session.user.id, scope },
+        userId_scope_projectId: { userId: session.user.id, scope, projectId: canvasProjectId },
       },
+      select: { data: true, updatedAt: true },
     });
     const prev = sanitizePayload(existing?.data ?? {});
     const merged = mergeMindmapPayloads(prev, incoming);
+    const prevFull = mergeMindmapPayloads(prev, {}) as object;
 
     await prisma.userTaskMindmapState.upsert({
       where: {
-        userId_scope: { userId: session.user.id, scope },
+        userId_scope_projectId: { userId: session.user.id, scope, projectId: canvasProjectId },
       },
       create: {
         userId: session.user.id,
         scope: scope as WorkspaceScope,
+        projectId: canvasProjectId,
         data: merged as object,
       },
       update: {
+        previousPayload: prevFull,
+        previousSavedAt: existing?.updatedAt ?? new Date(),
         data: merged as object,
       },
     });

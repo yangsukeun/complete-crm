@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import type { Prisma } from "@prisma/client";
+import { Prisma, TaskStatus } from "@prisma/client";
 import { createTaskWithNotifications, jsonSerializeCreatedTask } from "@/lib/tasks/create-task";
 import {
   serializeAssigneesFromRows,
@@ -14,6 +14,7 @@ import { z } from "zod";
 import { endOfDay, endOfWeek, parse, startOfDay, startOfWeek } from "date-fns";
 import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
 import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
+import { taskDefaultCollapsed } from "@/lib/task-visibility";
 
 /** null·비배열·숫자 id 등 클라이언트/직렬화 불일치 시 400 방지 */
 const assigneeIdsInCreate = z.preprocess((val: unknown) => {
@@ -86,6 +87,8 @@ const listSelect = {
   scope: true,
   createdById: true,
   projectId: true,
+  completedAt: true,
+  archivedAt: true,
   /** 목록·all=1·페이지네이션: 상세/WorkLog 등은 별도 API에서 로드 (페이로드·Row 폭 축소) */
   assignedTo: {
     select: {
@@ -106,12 +109,72 @@ const listSelect = {
   ...taskListAssigneesInclude,
 } as const;
 
+const SHELF_STATUS_TOKENS = new Set<string>(["TODO", "IN_PROGRESS", "DONE"]);
+
+/** ?status= 콤마 구분 + ?completedAfter= (최근 완료 포함 시 DONE 하한) */
+function buildTaskStatusShelfWhere(searchParams: URLSearchParams): Prisma.TaskWhereInput {
+  const raw = (searchParams.get("status") ?? "").trim();
+  if (!raw) return {};
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is TaskStatus => SHELF_STATUS_TOKENS.has(s));
+  if (!parts.length) return {};
+
+  const completedAfterRaw = searchParams.get("completedAfter");
+  if (completedAfterRaw && parts.includes("DONE")) {
+    const d = new Date(completedAfterRaw);
+    if (!Number.isNaN(d.getTime())) {
+      const nonDone = parts.filter((p) => p !== "DONE");
+      const or: Prisma.TaskWhereInput[] = [];
+      if (nonDone.length) or.push({ status: { in: nonDone } });
+      or.push({
+        status: "DONE",
+        completedAt: { gte: d },
+      });
+      return { OR: or };
+    }
+  }
+  return { status: { in: parts } };
+}
+
 function mapListItem(task: Record<string, unknown>) {
   const assigneesRows = (task as { assignees?: { user: TaskAssigneeUser }[] }).assignees ?? [];
   const legacy = (task as { assignedTo?: TaskAssigneeUser | null }).assignedTo;
   const { assignees, assignedTo } = serializeAssigneesFromRows(assigneesRows, legacy);
-  const { assignees: _a, ...rest } = task as { assignees?: unknown };
-  return { ...rest, assignees, assignedTo };
+  const { assignees: _a, completedAt: rawCompleted, archivedAt: rawArchived, ...rest } = task as {
+    assignees?: unknown;
+    completedAt?: unknown;
+    archivedAt?: unknown;
+  };
+  const completedAtDate =
+    rawCompleted instanceof Date
+      ? rawCompleted
+      : typeof rawCompleted === "string"
+        ? new Date(rawCompleted)
+        : null;
+  const archivedAtDate =
+    rawArchived instanceof Date
+      ? rawArchived
+      : typeof rawArchived === "string"
+        ? new Date(rawArchived)
+        : null;
+  const completedAtIso =
+    completedAtDate && !Number.isNaN(completedAtDate.getTime()) ? completedAtDate.toISOString() : null;
+  const archivedAtIso =
+    archivedAtDate && !Number.isNaN(archivedAtDate.getTime()) ? archivedAtDate.toISOString() : null;
+  const statusStr = String((rest as { status?: unknown }).status ?? "");
+  return {
+    ...rest,
+    completedAt: completedAtIso,
+    archivedAt: archivedAtIso,
+    assignees,
+    assignedTo,
+    defaultCollapsed: taskDefaultCollapsed({
+      status: statusStr,
+      completedAt: completedAtDate && !Number.isNaN(completedAtDate.getTime()) ? completedAtDate : null,
+    }),
+  };
 }
 
 /** DB에 color 마이그레이션 전이면 Prisma가 실패 → color 제외 select로 한 번 재시도 */
@@ -167,10 +230,15 @@ export async function GET(req: Request) {
       );
     }
 
-    // [PERF-auto] CRM 프로젝트 단위 목록: 전체 all=1 대신 projectId+limit로 한정 가능
-    const projectIdParam = searchParams.get("projectId");
-    const projectId =
-      projectIdParam && projectIdParam.trim().length > 0 ? projectIdParam.trim() : null;
+    /** projectId 쿼리: 없음 = 필터 없음 | "null"(대소문자 무관)=Task.projectId IS NULL | 그 외=해당 프로젝트만 */
+    const hasProjectIdParam = searchParams.has("projectId");
+    const projectIdParamRaw = searchParams.get("projectId");
+    const projectIdFilter: { projectId: string } | { projectId: null } | Record<string, never> = (() => {
+      if (!hasProjectIdParam) return {} as Record<string, never>;
+      const raw = (projectIdParamRaw ?? "").trim();
+      if (raw === "" || raw.toLowerCase() === "null") return { projectId: null };
+      return { projectId: raw };
+    })();
 
     const filterUserIdRaw = (searchParams.get("userId") ?? "").trim();
     const filterUserId =
@@ -181,11 +249,25 @@ export async function GET(req: Request) {
         }
       : {};
 
-    const baseWhere = {
+    const searchQuery = (searchParams.get("q") ?? "").trim();
+    const includeArchived = searchParams.get("includeArchived") === "1";
+    /** 제목 검색 시 아카이브 행도 결과에 포함(표시 레벨 정책과 별도) */
+    const archivedFilter: Prisma.TaskWhereInput =
+      includeArchived || searchQuery.length > 0 ? {} : { archivedAt: null };
+    const statusShelfWhere = buildTaskStatusShelfWhere(searchParams);
+    const titleSearchWhere: Prisma.TaskWhereInput =
+      searchQuery.length > 0
+        ? { title: { contains: searchQuery, mode: Prisma.QueryMode.insensitive } }
+        : {};
+
+    const baseWhere: Prisma.TaskWhereInput = {
       deletedAt: null,
+      ...archivedFilter,
       ...visibilityWhere,
-      ...(projectId ? { projectId } : {}),
+      ...projectIdFilter,
       ...employeeScopeFilter,
+      ...statusShelfWhere,
+      ...titleSearchWhere,
     };
 
     const calendarDue = searchParams.get("calendarDue") === "1";
@@ -222,6 +304,7 @@ export async function GET(req: Request) {
       const scopeFilter = scope === "PERSONAL" ? { scope: "PERSONAL" as const } : { scope: "TEAM" as const };
       const where = {
         deletedAt: null,
+        archivedAt: null,
         ...scopeFilter,
         dueDate: { not: null, gte: calStart, lte: calEnd },
         OR: [{ assignedToId: session.user.id }, { assignees: { some: { userId: session.user.id } } }],
@@ -271,9 +354,10 @@ export async function GET(req: Request) {
       }
     }
 
-    const all = searchParams.get("all") === "1";
+    /** all=1: projectId 없을 때만(임원·관리자 전체 목록). projectId 있으면 해당 스코프 전부 한 번에 반환 */
+    const all = !hasProjectIdParam && searchParams.get("all") === "1";
 
-    if (all) {
+    if (all || hasProjectIdParam) {
       const tasks = await findManyTasksForList({
         where: baseWhere,
         select: listSelect,

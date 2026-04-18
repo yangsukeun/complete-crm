@@ -115,6 +115,11 @@ enum NotificationType {
   WORK_LOG_SUBMITTED // 업무일지 제출
   LEAVE_REQUEST      // 휴가 신청·승인 단계 알림
   PROJECT_COMPLETED  // 연계 견적/프로젝트 완료 처리 알림
+  TASK_ORPHAN        // 담당자 미지정(고아) 업무 Cron
+  TASK_DUE_D3        // 마감 3일 전 Cron
+  TASK_DUE_D1        // 마감 1일 전 Cron
+  TASK_DUE_OVERDUE   // 마감일 경과(당일 윈도우) Cron
+  DAILY_DIGEST       // 일일 업무 다이제스트 Cron
 }
 
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
@@ -187,11 +192,13 @@ model User {
   taskMentions          TaskMention[]
   dailyWorkLogs         DailyWorkLog[]
   notifications         Notification[]
+  notificationLogs      NotificationLog[]
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
   tasksDeletedByMe      Task[]          @relation("TaskDeletedBy")
   aiSecretaryConversations AiConversation[]
   aiHubHistories         AiHubHistory[]
   taskMindmapStates      UserTaskMindmapState[]
+  taskAuditLogs          TaskAuditLog[]          @relation("TaskAuditActor")
   @@index([currentProjectId])
 }
 
@@ -215,11 +222,16 @@ model AiHubHistory {
 model UserTaskMindmapState {
   userId    String
   scope     WorkspaceScope
+  /// 전체 조감도 `__ALL__`, 미분류 `__UNASSIGNED__`, 프로젝트 뷰는 Project.id (FK 아님 — 예약값 호환)
+  projectId String         @default("__ALL__")
   data      Json           @default("{}")
+  /// 직전 저장본 1건(되돌리기용)
+  previousPayload Json?
+  previousSavedAt DateTime?
   updatedAt DateTime       @updatedAt
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([userId, scope])
+  @@id([userId, scope, projectId])
   @@index([userId])
 }
 
@@ -420,12 +432,16 @@ model Task {
   projectId    String?
   project      Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parentId     String?
-  parent       Task?          @relation("TaskTree", fields: [parentId], references: [id], onDelete: Cascade)
+  parent       Task?          @relation("TaskTree", fields: [parentId], references: [id], onDelete: SetNull)
   children     Task[]         @relation("TaskTree")
   categoryId   String?
   category     TaskCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderIndex   Int            @default(0)
   isCollapsed  Boolean        @default(false)
+  /// status 가 DONE 이 된 시각(자동 접힘·아카이브 기준). 표시 전용, 삭제 아님
+  completedAt  DateTime?
+  /// 아카이브 시각(null 이면 기본 목록에 포함). 표시 전용
+  archivedAt   DateTime?
   scope        WorkspaceScope @default(TEAM)
   deletedAt    DateTime?
   deletedById  String?
@@ -444,6 +460,8 @@ model Task {
   assignees         TaskAssignee[]
   revisions        TaskRevision[]
   mentions         TaskMention[]
+  notificationLogs NotificationLog[]
+  auditLogs        TaskAuditLog[]
   @@index([assignedToId])
   @@index([assignedToId, dueDate])
   @@index([createdById])
@@ -455,6 +473,8 @@ model Task {
   // 목록: scope + deletedAt null 필터
   @@index([scope, deletedAt])
   @@index([projectId])
+  @@index([archivedAt])
+  @@index([status, completedAt])
 }
 
 // 업무 다중 담당자 (assignedToId 는 호환용으로 첫 담당자와 동기화)
@@ -519,7 +539,9 @@ model TaskAttachment {
   url      String
   name     String?
   createdAt DateTime @default(now())
+  deletedAt DateTime?
   @@index([taskId])
+  @@index([deletedAt])
 }
 
 model TaskComment {
@@ -530,8 +552,26 @@ model TaskComment {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   body      String
   createdAt DateTime @default(now())
+  deletedAt DateTime?
   @@index([taskId])
   @@index([userId])
+  @@index([deletedAt])
+}
+
+/// 중요 필드 변경 감사(상태·담당·마감·프로젝트·아카이브·삭제·completedAt)
+model TaskAuditLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  actorId   String
+  field     String
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor     User     @relation("TaskAuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model LeaveRequest {
@@ -695,6 +735,21 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@index([userId, createdAt])
+}
+
+/// Cron·푸시 중복 방지 (삭제 아님, 발송 이력만)
+model NotificationLog {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId String?
+  task   Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  /// ORPHAN | STALE | DUE_D3 | DUE_D1 | DUE_DAY | DIGEST
+  kind   String
+  sentAt DateTime @default(now())
+
+  @@index([userId, kind, sentAt])
+  @@index([taskId, kind])
 }
 
 // 접속 로그 (하루 최초 접속·IP 기록, 출근 보조용)

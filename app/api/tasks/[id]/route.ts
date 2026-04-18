@@ -8,7 +8,8 @@ import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-u
 import { syncTaskMentionsForTask } from "@/lib/task-mention-sync";
 import { todayYmdKst } from "@/lib/date-kst";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
-import { deleteFile, parseGoogleDriveFileIdFromUrl } from "@/lib/storage/google-drive-storage";
+import { deleteFile } from "@/lib/storage/google-drive-storage";
+import { logAudit, serializeAuditValue } from "@/lib/audit";
 import { serializeAssigneesFromRows, taskAssigneeUserSelect } from "@/lib/task-assignees";
 import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
 import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
@@ -96,6 +97,8 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
     deletedById: true,
     createdAt: true,
     updatedAt: true,
+    completedAt: true,
+    archivedAt: true,
     assignedToId: true,
     createdById: true,
     parent: {
@@ -105,6 +108,7 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
       },
     },
     children: {
+      where: { deletedAt: null },
       select: {
         id: true,
         title: true,
@@ -114,6 +118,8 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
         priority: true,
         orderIndex: true,
         isCollapsed: true,
+        completedAt: true,
+        archivedAt: true,
         assignedTo: {
           select: taskAssigneeUserSelect,
         },
@@ -146,6 +152,7 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
       },
     },
     attachments: {
+      where: { deletedAt: null },
       select: {
         id: true,
         type: true,
@@ -158,6 +165,7 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
       ? {}
       : {
           comments: {
+            where: { deletedAt: null },
             orderBy: { createdAt: "asc" as const },
             select: {
               id: true,
@@ -186,6 +194,7 @@ function buildTaskDetailInclude(deferComments: boolean): Prisma.TaskInclude {
       },
     },
     children: {
+      where: { deletedAt: null },
       select: {
         id: true,
         title: true,
@@ -195,6 +204,8 @@ function buildTaskDetailInclude(deferComments: boolean): Prisma.TaskInclude {
         priority: true,
         orderIndex: true,
         isCollapsed: true,
+        completedAt: true,
+        archivedAt: true,
         assignedTo: {
           select: taskAssigneeUserSelect,
         },
@@ -227,6 +238,7 @@ function buildTaskDetailInclude(deferComments: boolean): Prisma.TaskInclude {
       },
     },
     attachments: {
+      where: { deletedAt: null },
       select: {
         id: true,
         type: true,
@@ -239,6 +251,7 @@ function buildTaskDetailInclude(deferComments: boolean): Prisma.TaskInclude {
       ? {}
       : {
           comments: {
+            where: { deletedAt: null },
             include: {
               user: {
                 select: {
@@ -391,6 +404,9 @@ export async function PATCH(
         recurringRule: true,
         recurringMemo: true,
         scope: true,
+        projectId: true,
+        archivedAt: true,
+        completedAt: true,
         assignedToId: true,
         createdById: true,
         assignees: { select: { userId: true } },
@@ -458,6 +474,9 @@ export async function PATCH(
       recurringRule?: any;
       recurringMemo?: string | null;
       color?: string | null;
+      projectId?: string | null;
+      archivedAt?: Date | null;
+      completedAt?: Date | null;
     } = {};
     if (typeof body.isCompleted === "boolean") {
       data.isCompleted = body.isCompleted;
@@ -539,6 +558,39 @@ export async function PATCH(
         const c = body.color.trim();
         if (PROJECT_TASK_COLOR_SET.has(c)) data.color = c;
       }
+    }
+
+    if ("projectId" in body) {
+      if (body.projectId === null || body.projectId === "") {
+        data.projectId = null;
+      } else if (typeof body.projectId === "string" && body.projectId.trim()) {
+        data.projectId = body.projectId.trim();
+      }
+    }
+    if ("archivedAt" in body) {
+      if (body.archivedAt === null || body.archivedAt === "") {
+        data.archivedAt = null;
+      } else if (typeof body.archivedAt === "string") {
+        const ad = new Date(body.archivedAt);
+        if (!Number.isNaN(ad.getTime())) data.archivedAt = ad;
+      }
+    }
+
+    const nextStatusForLifecycle =
+      data.status !== undefined
+        ? data.status
+        : typeof body.isCompleted === "boolean" && body.isCompleted
+          ? ("DONE" as const)
+          : existing.status;
+    if (nextStatusForLifecycle === "DONE" && existing.status !== "DONE") {
+      (data as { completedAt?: Date }).completedAt = new Date();
+    }
+    if (
+      (nextStatusForLifecycle === "TODO" || nextStatusForLifecycle === "IN_PROGRESS") &&
+      existing.status === "DONE"
+    ) {
+      (data as { completedAt?: Date | null; archivedAt?: Date | null }).completedAt = null;
+      (data as { completedAt?: Date | null; archivedAt?: Date | null }).archivedAt = null;
     }
 
     // 수정 이력 기록 (누가, 무엇을, 언제)
@@ -680,6 +732,8 @@ export async function PATCH(
       deletedById: true,
       createdAt: true,
       updatedAt: true,
+      completedAt: true,
+      archivedAt: true,
       assignedToId: true,
       createdById: true,
       assignedTo: {
@@ -703,6 +757,7 @@ export async function PATCH(
       : ({
           ...patchResultSelectBase,
           attachments: {
+            where: { deletedAt: null },
             select: {
               id: true,
               taskId: true,
@@ -713,6 +768,7 @@ export async function PATCH(
             },
           },
           comments: {
+            where: { deletedAt: null },
             orderBy: { createdAt: "asc" },
             select: {
               id: true,
@@ -779,6 +835,19 @@ export async function PATCH(
     }
 
     const task = { ...taskRow, color: colorFromDb } as unknown as Parameters<typeof serializeTaskDetail>[0];
+
+    const actorId = session.user.id;
+    const auditIf = async (field: string, before: unknown, after: unknown) => {
+      const o = serializeAuditValue(before);
+      const n = serializeAuditValue(after);
+      if (o !== n) await logAudit({ taskId: id, actorId, field, oldValue: o, newValue: n });
+    };
+    await auditIf("status", existing.status, taskRow.status);
+    await auditIf("assignedToId", existing.assignedToId, taskRow.assignedToId);
+    await auditIf("dueDate", existing.dueDate, taskRow.dueDate);
+    await auditIf("projectId", existing.projectId, taskRow.projectId);
+    await auditIf("archivedAt", existing.archivedAt, taskRow.archivedAt);
+    await auditIf("completedAt", existing.completedAt, taskRow.completedAt);
 
     /** 본문에서 빠진 이미지 블록의 Drive 파일은 저장 성공 후 삭제 (저장 실패 시 Drive 보존) */
     if (data.description !== undefined) {
@@ -962,14 +1031,10 @@ export async function DELETE(
       select: {
         id: true,
         title: true,
-        description: true,
         scope: true,
         assignedToId: true,
         createdById: true,
         assignees: { select: { userId: true } },
-        attachments: {
-          select: { id: true, url: true },
-        },
       },
     });
     if (!existing) {
@@ -988,38 +1053,21 @@ export async function DELETE(
       return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
     }
 
-    /** 소프트 삭제 전 본문/첨부의 Drive ID 수집 (복원 API에서는 Drive 삭제 안 함) */
-    const bodyImageIds = collectDriveImageFileIdsFromTaskDescription(existing.description);
-    const driveIds = new Set<string>(bodyImageIds);
-    for (const att of existing.attachments) {
-      const fid = parseGoogleDriveFileIdFromUrl(att.url);
-      if (fid) driveIds.add(fid);
-    }
-
     const now = new Date();
 
-    await prisma.task.updateMany({
-      where: { parentId: id },
-      data: { parentId: null },
-    });
-
-    await prisma.taskLink.deleteMany({
-      where: { OR: [{ parentId: id }, { childId: id }] },
-    });
-
+    /** 소프트 삭제만 수행(자식·링크·Drive 유지). 하드 삭제·Drive 정리는 Cron. */
     await prisma.task.update({
       where: { id },
       data: { deletedAt: now, deletedById: session.user.id },
     });
 
-    if (driveIds.size > 0) {
-      console.log("[tasks] DELETE soft: 게시판과 동일 — Drive 파일 삭제", {
-        taskId: id,
-        driveFileCount: driveIds.size,
-        supportsAllDrives: true,
-      });
-      await Promise.all([...driveIds].map((fid) => deleteFile(fid)));
-    }
+    await logAudit({
+      taskId: id,
+      actorId: session.user.id,
+      field: "deletedAt",
+      oldValue: null,
+      newValue: now.toISOString(),
+    });
 
     return NextResponse.json({ success: true });
   } catch (e) {

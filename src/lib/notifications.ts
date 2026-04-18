@@ -34,7 +34,12 @@ export type NotificationTypeEnum =
   | "NOTICE_POSTED"
   | "WORK_LOG_SUBMITTED"
   | "LEAVE_REQUEST"
-  | "PROJECT_COMPLETED";
+  | "PROJECT_COMPLETED"
+  | "TASK_ORPHAN"
+  | "TASK_DUE_D3"
+  | "TASK_DUE_D1"
+  | "TASK_DUE_OVERDUE"
+  | "DAILY_DIGEST";
 export type NotificationPriority = "high" | "medium" | "low";
 
 type CreateNotificationInput = {
@@ -44,13 +49,15 @@ type CreateNotificationInput = {
   link?: string;
   actorId?: string | null;
   priority?: NotificationPriority;
+  /** 지정 시 OneSignal 제목(기본: "새 알림") */
+  pushTitle?: string;
 };
 
 const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriority> = {
   DEADLINE: "high",
   ASSIGNED: "high",
   COMMENT: "medium",
-  STAGNANT: "low",
+  STAGNANT: "medium",
   BOARD_MENTION: "medium",
   TASK_BODY_MENTION: "medium",
   CHAT_MESSAGE: "medium",
@@ -58,6 +65,11 @@ const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriorit
   WORK_LOG_SUBMITTED: "high",
   LEAVE_REQUEST: "high",
   PROJECT_COMPLETED: "medium",
+  TASK_ORPHAN: "high",
+  TASK_DUE_D3: "high",
+  TASK_DUE_D1: "high",
+  TASK_DUE_OVERDUE: "high",
+  DAILY_DIGEST: "medium",
 };
 
 /**
@@ -90,7 +102,7 @@ export async function markChatNotificationsRead(userId: string, chatId: string):
 }
 
 export async function createNotificationWithOptions(input: CreateNotificationInput): Promise<void> {
-  const { userId, type, message, link = "", actorId = null } = input;
+  const { userId, type, message, link = "", actorId = null, pushTitle } = input;
   const priority: NotificationPriority = input.priority ?? DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
 
   let persisted = false;
@@ -147,12 +159,27 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
   if (shouldSendPush) {
     await sendPushToUser({
       userId,
-      title: "새 알림",
+      title: pushTitle?.trim() ? pushTitle.trim() : "새 알림",
       message,
       url: link || undefined,
       priority,
     });
   }
+}
+
+/** 일일 다이제스트: DB 알림 + 푸시(제목 "오늘 업무") */
+export async function sendDigestToUser(input: {
+  userId: string;
+  message: string;
+  link?: string;
+}): Promise<void> {
+  await createNotificationWithOptions({
+    userId: input.userId,
+    type: "DAILY_DIGEST",
+    message: input.message,
+    link: input.link ?? "/dashboard",
+    pushTitle: "오늘 업무",
+  });
 }
 
 /**
