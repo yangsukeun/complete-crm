@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -10,12 +11,21 @@ import {
   FolderKanban,
   Building2,
   Image,
-  Settings,
   Shield,
   Trash2,
+  BookOpen,
 } from "lucide-react";
 
-const menuItems = [
+type MenuItem = {
+  href: string;
+  label: string;
+  description: string;
+  icon: ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
+};
+
+const menuItems: MenuItem[] = [
+  { href: "/admin/help", label: "도움말 DB", description: "도움말·투어·릴리즈 노트를 DB에서 편집 (ADMIN 전용)", icon: BookOpen, adminOnly: true },
   { href: "/admin/permissions", label: "기능 권한", description: "직책별·사용자별 메뉴·기능 접근 설정", icon: Shield },
   { href: "/admin/employees", label: "직원 관리", description: "직원 계정 추가·수정·역할 관리", icon: Users },
   { href: "/admin/logs", label: "Daily Report 조회", description: "직원별 Daily Report 조회", icon: FileText },
@@ -31,6 +41,8 @@ export default async function AdminPage() {
   if (!session?.user) redirect("/login");
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 
+  const visibleMenu = menuItems.filter((item) => !item.adminOnly || session.user.role === "ADMIN");
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 max-w-4xl mx-auto">
       <PageHeadline
@@ -39,7 +51,7 @@ export default async function AdminPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {menuItems.map((item: any) => (
+        {visibleMenu.map((item) => (
           <Link key={item.href} href={item.href}>
             <Card className="h-full transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/50">
               <CardHeader className="flex flex-row items-center gap-3 pb-2">

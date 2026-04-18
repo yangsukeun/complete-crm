@@ -457,6 +457,23 @@ function TasksPageInner() {
     return mindmapShellModeFromQuery(searchParams.get("mindmap"));
   }, [view, searchParams]);
 
+  /** 온보딩 투어: 마인드맵 전체 조감도로 진입(onboardingTour 쿼리는 TourProvider가 정리) */
+  const onboardingLayoutRef = useRef(false);
+  useEffect(() => {
+    if (searchParams.get("onboardingTour") !== "1") onboardingLayoutRef.current = false;
+  }, [searchParams]);
+  useLayoutEffect(() => {
+    if (authStatus !== "authenticated") return;
+    if (searchParams.get("onboardingTour") !== "1") return;
+    if (onboardingLayoutRef.current) return;
+    onboardingLayoutRef.current = true;
+    setView("mindmap");
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.set("mindmap", "all");
+    sp.set("onboardingTour", "1");
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+  }, [authStatus, pathname, router, searchParams]);
+
   const mindmapProjectId = useMemo(() => {
     if (view !== "mindmap" || mindmapMode !== "project") return null as string | null;
     const raw = searchParams.get("projectId");
@@ -990,7 +1007,7 @@ function TasksPageInner() {
         />
         <div className="flex flex-wrap items-center gap-3">
           <Tabs value={view} onValueChange={(v: any) => setView(v as any)} className="w-auto">
-            <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5">
+            <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5" data-tour="tasks-view-tabs">
               <TabsTrigger value="list" className="gap-2 rounded-md px-3">
                 <ListIcon className="size-4" />
                 Projects

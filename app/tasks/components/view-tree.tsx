@@ -45,7 +45,6 @@ import {
   Check,
   X,
   GripVertical,
-  TreePine,
   Trash2,
   Settings2,
   Palette,
@@ -59,6 +58,9 @@ import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import type { MindmapShellMode } from "@/lib/mindmap-canvas-keys";
 import { MINDMAP_CANVAS_ALL } from "@/lib/mindmap-canvas-keys";
 import type { TaskCompletionShelf } from "@/lib/task-visibility";
+import { HelpTooltip } from "@/components/help/help-tooltip";
+import { NewBadge } from "@/components/help/new-badge";
+import { EmptyState } from "@/components/help/empty-state";
 
 // Types
 type TaskData = {
@@ -589,14 +591,16 @@ function TaskNode({ data, id, selected }: NodeProps) {
 }
 
 function ProjectCardNode({ data, selected }: NodeProps) {
-  const { summary, onOpen } = data as {
+  const { summary, onOpen, tourProjectCard } = data as {
     summary: ProjectMindmapSummary;
     onOpen: () => void;
+    tourProjectCard?: boolean;
   };
 
   return (
     <button
       type="button"
+      data-tour={tourProjectCard ? "project-card" : undefined}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
         onOpen();
@@ -1338,13 +1342,14 @@ function TreeViewInner({
   // Build nodes and edges: 전체 조감도(Project 카드) vs Task 마인드맵
   const { layoutedNodes, layoutedEdges } = useMemo(() => {
     if (mindmapMode === "all") {
-      const rawNodes: Node[] = projectSummaries.map((p) => ({
+      const rawNodes: Node[] = projectSummaries.map((p, idx) => ({
         id: p.id,
         type: "projectCard",
         position: { x: 0, y: 0 },
         data: {
           summary: p,
           onOpen: () => onMindmapNavigate?.({ mode: "project", projectId: p.id }),
+          tourProjectCard: idx === 0,
         },
       }));
       const { nodes } = getLayoutedProjectCards(rawNodes, []);
@@ -1637,7 +1642,10 @@ function TreeViewInner({
 
   const mindmapToolbar = (
     <div className="mindmap-toolbar flex w-full min-w-0 flex-col gap-2">
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+      <div
+        className="flex w-full min-w-0 flex-wrap items-center gap-2"
+        data-tour="mindmap-mode-selector"
+      >
         {mindmapMode === "project" ? (
           <Button
             type="button"
@@ -1688,23 +1696,37 @@ function TreeViewInner({
         >
           미분류
         </Button>
-        {mindmapMode !== "all" && mindmapCanRevert ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="mindmap-toolbar-btn ml-auto h-8 shrink-0 gap-1 px-2 text-xs"
-            onClick={handleMindmapRevert}
-          >
-            <RotateCcw className="size-3.5" />
-            되돌리기
-          </Button>
+        {mindmapMode !== "all" ? (
+          <>
+            <span className="ml-auto flex shrink-0 items-center gap-1">
+              <HelpTooltip slug="mindmap-three-views" />
+              <NewBadge featureKey="mindmap-3views" expiresAt="2026-06-01" />
+            </span>
+            <span className="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                data-tour="mindmap-undo"
+                className="mindmap-toolbar-btn h-8 gap-1 px-2 text-xs"
+                disabled={!mindmapCanRevert}
+                onClick={handleMindmapRevert}
+              >
+                <RotateCcw className="size-3.5" />
+                되돌리기
+              </Button>
+              <HelpTooltip slug="mindmap-undo" />
+            </span>
+          </>
         ) : null}
       </div>
 
       {mindmapMode !== "all" && onTaskCompletionShelfChange ? (
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-          <span className="text-muted-foreground shrink-0 text-xs">완료·아카이브</span>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2" data-tour="completion-toggle">
+          <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
+            완료·아카이브
+            <HelpTooltip slug="completion-filter" />
+          </span>
           <Button
             type="button"
             size="sm"
@@ -1969,22 +1991,20 @@ function TreeViewInner({
         onDrop={handleCanvasDrop}
       >
         {mindmapMode === "all" && projectSummaries.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <TreePine className="size-16 mx-auto text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground mb-2 font-medium">표시할 프로젝트가 없습니다</p>
-              <p className="text-sm text-muted-foreground">워크스페이스에 연결된 프로젝트가 생기면 여기에 카드로 나타납니다.</p>
-            </div>
+          <div className="flex h-full items-center justify-center p-4">
+            <EmptyState
+              title="표시할 프로젝트가 없습니다"
+              description="워크스페이스에 연결된 프로젝트가 생기면 여기에 카드로 나타납니다."
+              helpSlug="mindmap-three-views"
+            />
           </div>
         ) : mindmapMode !== "all" && treeTasks.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <TreePine className="size-16 mx-auto text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground mb-2 font-medium">마인드맵이 비어있습니다</p>
-              <p className="text-sm text-muted-foreground">
-                아래 미분류 프로젝트를 여기로 드래그하여 마인드맵을 시작하세요 🌱
-              </p>
-            </div>
+          <div className="flex h-full items-center justify-center p-4">
+            <EmptyState
+              title="마인드맵이 비어있습니다"
+              description="아래 미분류 프로젝트를 여기로 드래그하여 마인드맵을 시작하세요."
+              helpSlug="mindmap-three-views"
+            />
           </div>
         ) : (
           <ReactFlow

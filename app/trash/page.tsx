@@ -8,6 +8,8 @@ import { PageHeadline } from "@/components/page-headline";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { toast } from "sonner";
 import Link from "next/link";
+import { HelpTooltip } from "@/components/help/help-tooltip";
+import { EmptyState } from "@/components/help/empty-state";
 
 type TrashItem = {
   id: string;
@@ -121,7 +123,12 @@ export default function TrashPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6 md:p-8">
-      <PageHeadline title="휴지통" description="삭제 후 30일 이내만 복구할 수 있습니다. 이후에는 시스템에서 영구 삭제됩니다." />
+      <div className="flex flex-wrap items-start gap-2">
+        <PageHeadline title="휴지통" description="삭제 후 30일 이내만 복구할 수 있습니다. 이후에는 시스템에서 영구 삭제됩니다." />
+        <div className="pt-1">
+          <HelpTooltip slug="trash-and-restore" />
+        </div>
+      </div>
       <p className="text-muted-foreground text-sm">
         <Link href="/tasks" className="text-primary hover:underline">
           ← Projects
@@ -134,11 +141,17 @@ export default function TrashPage() {
           <TabsTrigger value="projects">프로젝트</TabsTrigger>
           <TabsTrigger value="comments">댓글</TabsTrigger>
         </TabsList>
-        <TabsContent value="tasks" className="mt-4 space-y-3">
+        <TabsContent value="tasks" className="mt-4 space-y-3" data-tour="trash-list">
           {loading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground text-sm">휴지통에 삭제된 업무가 없습니다.</p>
+            <EmptyState
+              title="삭제된 업무가 없습니다"
+              description="삭제한 업무는 30일간 여기에 보관됩니다. 복구하면 원래 위치로 돌아갑니다."
+              actionLabel="업무로 이동"
+              actionHref="/tasks"
+              helpSlug="trash-and-restore"
+            />
           ) : (
             items.map((it) => (
               <div
@@ -161,11 +174,17 @@ export default function TrashPage() {
             ))
           )}
         </TabsContent>
-        <TabsContent value="projects" className="mt-4 space-y-3">
+        <TabsContent value="projects" className="mt-4 space-y-3" data-tour="trash-list">
           {loading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground text-sm">휴지통에 삭제된 프로젝트가 없습니다.</p>
+            <EmptyState
+              title="삭제된 프로젝트가 없습니다"
+              description="프로젝트를 삭제하면 기간 내 복구할 수 있습니다."
+              actionLabel="프로젝트로 이동"
+              actionHref="/tasks"
+              helpSlug="trash-and-restore"
+            />
           ) : (
             items.map((it) => (
               <div
@@ -186,11 +205,17 @@ export default function TrashPage() {
             ))
           )}
         </TabsContent>
-        <TabsContent value="comments" className="mt-4 space-y-3">
+        <TabsContent value="comments" className="mt-4 space-y-3" data-tour="trash-list">
           {loading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground text-sm">휴지통에 삭제된 댓글이 없습니다.</p>
+            <EmptyState
+              title="삭제된 댓글이 없습니다"
+              description="업무 댓글을 삭제하면 여기에서 복구할 수 있습니다."
+              actionLabel="업무로 이동"
+              actionHref="/tasks"
+              helpSlug="trash-and-restore"
+            />
           ) : (
             items.map((it) => (
               <div

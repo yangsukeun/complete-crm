@@ -511,3 +511,13 @@ html.dark[data-workspace="MY"] {
   display: inline-block;
   animation: announcement-sparkle 1.2s ease-in-out infinite;
 }
+
+/* Shepherd.js — 헤더·플로팅 UI 위에 표시 */
+.shepherd-element,
+.shepherd-modal-overlay-container {
+  z-index: 10050 !important;
+}
+
+.shepherd-theme-complete-crm .shepherd-content {
+  border-radius: var(--radius);
+}

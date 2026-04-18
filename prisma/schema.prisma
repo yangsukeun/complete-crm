@@ -199,6 +199,7 @@ model User {
   aiHubHistories         AiHubHistory[]
   taskMindmapStates      UserTaskMindmapState[]
   taskAuditLogs          TaskAuditLog[]          @relation("TaskAuditActor")
+  helpTourProgress       UserTourProgress[]
   @@index([currentProjectId])
 }
 
@@ -965,4 +966,59 @@ model CompanyInfo {
   transferExecutorIds   String?  // 이체 담당자 user id 목록 (JSON array: ["id1","id2"])
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+/// 도움말 문서 (DB 단일 소스, 관리자 /admin/help 에서 편집)
+model HelpArticle {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  category     String
+  summary      String
+  bodyMd       String   @db.Text
+  orderIndex   Int      @default(0)
+  isPublished  Boolean  @default(true)
+  targetRoles  String[] @default([])
+  relatedSlugs String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category, orderIndex])
+}
+
+/// 제품 투어 스텝 (앱에서 data-tour 등과 연동)
+model HelpTourStep {
+  id             String  @id @default(cuid())
+  tourKey        String
+  orderIndex     Int
+  targetSelector String
+  title          String
+  bodyMd         String
+  placement      String  @default("bottom")
+  route          String?
+
+  @@unique([tourKey, orderIndex])
+}
+
+model UserTourProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tourKey     String
+  completedAt DateTime?
+  skippedAt   DateTime?
+
+  @@unique([userId, tourKey])
+  @@index([userId])
+}
+
+model ReleaseNote {
+  id         String   @id @default(cuid())
+  version    String   @unique
+  releasedAt DateTime
+  title      String
+  bodyMd     String   @db.Text
+  category   String
+
+  @@index([releasedAt])
 }
