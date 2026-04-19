@@ -32,6 +32,14 @@ enum TaskStatus {
   DONE
 }
 
+/// 브랜드 프로젝트(일정 캘린더 마감 칩 등)
+enum ProjectStatus {
+  PREPARING
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -268,6 +276,8 @@ model Project {
   quote       Quotation? @relation("ProjectPrimaryQuote", fields: [quoteId], references: [id], onDelete: SetNull)
   quoteAmount Int       @default(0)
   dueDate     DateTime?
+  status      ProjectStatus @default(PREPARING)
+  completedAt DateTime?
   /// 프로젝트 본문(게시판과 동일: text | html)
   description String?   @default("")
   contentType String      @default("text") @map("content_type") @db.VarChar(20)

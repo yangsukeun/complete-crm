@@ -318,6 +318,7 @@ export async function GET(req: Request) {
           isCompleted: true,
           status: true,
           projectId: true,
+          project: { select: { status: true } },
         },
         orderBy: { dueDate: "asc" },
       });
@@ -329,6 +330,7 @@ export async function GET(req: Request) {
           isCompleted: t.isCompleted,
           status: t.status,
           projectId: t.projectId,
+          projectStatus: t.project?.status ?? null,
         }))
       );
     }

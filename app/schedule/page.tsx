@@ -43,7 +43,16 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  Stethoscope,
+  Palmtree,
+  Clock,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  PROJECT_STATUS_CHIP,
+  normalizeProjectStatus,
+  type ProjectStatusKey,
+} from "@/lib/project-status-color";
 import { cn, formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import {
@@ -76,6 +85,8 @@ type ScheduleEvent = {
   taskDueCompleted?: boolean;
   /** 마감일 원본(yyyy-MM-dd) — D-day 뱃지 */
   taskDueDate?: string;
+  /** 연결된 브랜드 프로젝트 상태(캘린더 마감 칩) */
+  projectStatus?: ProjectStatusKey | null;
 };
 
 function toEvent(
@@ -134,7 +145,13 @@ const DEFAULT_VISIBLE_CALENDARS: Record<CalendarLayerId, boolean> = {
 };
 
 function tasksToCalendarDueEvents(
-  tasks: { id: string; title: string; dueDate: string | null; isCompleted: boolean }[],
+  tasks: {
+    id: string;
+    title: string;
+    dueDate: string | null;
+    isCompleted: boolean;
+    projectStatus?: string | null;
+  }[],
   now: Date
 ): ScheduleEvent[] {
   const sod = startOfDay(now);
@@ -155,6 +172,7 @@ function tasksToCalendarDueEvents(
       taskDueOverdue: overdue,
       taskDueCompleted: t.isCompleted,
       taskDueDate: t.dueDate,
+      projectStatus: normalizeProjectStatus(t.projectStatus ?? null),
     };
   });
 }
@@ -229,65 +247,115 @@ function calendarLeaveTypeLabel(type: string): string {
   return CALENDAR_LEAVE_LABELS[type] ?? "휴가";
 }
 
-/** 해당 주(월간 행의 7칸)에 나타나는 휴가 라벨을 한 번만 정렬해, 요일마다 같은 행에 표시 */
-function weekLeaveSlotLines(range: Date[] | undefined, leaveByDate: Record<string, string[]>): string[] {
-  if (!range?.length) return [];
-  const uniq = new Set<string>();
-  for (const d of range) {
-    const k = toKstYmd(d);
-    for (const line of leaveByDate[k] ?? []) uniq.add(line);
+type LeaveDayEntry = { userId: string; type: string; display: string };
+
+function dedupeLeaveDayEntries(arr: LeaveDayEntry[]): LeaveDayEntry[] {
+  const seen = new Set<string>();
+  const out: LeaveDayEntry[] = [];
+  for (const e of arr) {
+    const k = `${e.userId}:${e.display}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(e);
   }
-  return Array.from(uniq).sort((a, b) => a.localeCompare(b, "ko"));
+  return out.sort((a, b) => a.display.localeCompare(b.display, "ko"));
 }
 
-function createDateCellWrapper(leaveByDate: Record<string, string[]>) {
-  return function DateCellWrapper({
-    value,
-    children,
-    range,
-  }: {
-    value: Date;
-    children: React.ReactNode;
-    range?: Date[];
-  }) {
+function LeaveTypeIcon({ type }: { type: string }) {
+  if (type === "SICK_PAID" || type === "SICK_UNPAID") {
+    return <Stethoscope className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
+  }
+  if (type.startsWith("HALF_") || type.startsWith("QUARTER_")) {
+    return <Clock className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
+  }
+  return <Palmtree className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
+}
+
+function DateCellLeaveFooter({ entries }: { entries: LeaveDayEntry[] }) {
+  const router = useRouter();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const goLeave = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window !== "undefined" && window.confirm("연차/근태 페이지로 이동하시겠습니까?")) {
+      router.push("/leave");
+    }
+  };
+
+  const lineBtn = (entry: LeaveDayEntry, key: string) => (
+    <button
+      key={key}
+      type="button"
+      className="rbc-date-cell-leave-line flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded px-0.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
+      onClick={goLeave}
+    >
+      <LeaveTypeIcon type={entry.type} />
+      <span className="min-w-0 flex-1 truncate text-center">{entry.display}</span>
+    </button>
+  );
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div
+      className="rbc-date-cell-leave-footer mt-auto shrink-0 border-t border-blue-100/80 pt-1 dark:border-blue-900/40"
+      aria-label={entries.map((x) => x.display).join(", ")}
+    >
+      {entries.length <= 2 ? (
+        <div className="flex max-h-[2.6rem] flex-col gap-0.5 overflow-hidden">{entries.map((en, i) => lineBtn(en, `${en.userId}-${i}`))}</div>
+      ) : (
+        <div className="flex max-h-[2.6rem] flex-col gap-0.5 overflow-hidden">
+          {lineBtn(entries[0], `${entries[0].userId}-0`)}
+          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="mx-auto inline-flex max-w-full cursor-pointer items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100 dark:hover:bg-blue-900/60"
+                onClick={(e) => e.stopPropagation()}
+              >
+                +{entries.length - 1}명 더
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="center" onClick={(e) => e.stopPropagation()}>
+              <p className="text-muted-foreground mb-2 text-xs">해당일 휴가</p>
+              <ul className="max-h-56 space-y-1 overflow-y-auto">
+                {entries.map((en, i) => (
+                  <li key={`${en.userId}-all-${i}`}>{lineBtn(en, `p-${en.userId}-${i}`)}</li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function createDateCellWrapper(leaveByDate: Record<string, LeaveDayEntry[]>) {
+  return function DateCellWrapper({ value, children }: { value: Date; children: React.ReactNode; range?: Date[] }) {
     const key = toKstYmd(value);
-    const slotLines = weekLeaveSlotLines(range, leaveByDate);
-    const dayLines = leaveByDate[key] ?? [];
-    const daySet = new Set(dayLines);
-    const ariaForDay = dayLines.length > 0 ? dayLines.join(", ") : undefined;
+    const entries = leaveByDate[key] ?? [];
     return (
-      <div className="rbc-date-cell-wrapper-inner">
-        {children}
-        {slotLines.length > 0 && (
-          <div
-            className="rbc-date-cell-leave-names"
-            aria-label={ariaForDay ? `근태: ${ariaForDay}` : undefined}
-          >
-            {slotLines.map((line) => (
-              <div key={line} className="rbc-date-cell-leave-slot">
-                {daySet.has(line) ? (
-                  <span className="rbc-date-cell-leave-name">{line}</span>
-                ) : (
-                  <span className="rbc-date-cell-leave-slot--empty" aria-hidden />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="rbc-date-cell-wrapper-inner flex h-full min-h-[140px] flex-col overflow-hidden">
+        <div className="rbc-date-cell-bg-area min-h-0 flex-1 overflow-hidden">{children}</div>
+        {entries.length > 0 ? <DateCellLeaveFooter entries={entries} /> : null}
       </div>
     );
   };
 }
 
-function getDday(dueDate: string) {
+function getDday(dueDate: string, projectStatus?: ProjectStatusKey | null) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDate);
   due.setHours(0, 0, 0, 0);
   const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff === 0) return { label: "D-Day", color: "#d93025" };
-  if (diff > 0) return { label: `D-${diff}`, color: "#1a73e8" };
-  return { label: `D+${Math.abs(diff)}`, color: "#9e9e9e" };
+  const st = normalizeProjectStatus(projectStatus ?? null);
+  const pal = PROJECT_STATUS_CHIP[st];
+  if (diff < 0) return { label: `D+${Math.abs(diff)}`, color: "#d93025" };
+  if (diff === 0) return { label: "D-Day", color: pal.accent };
+  return { label: `D-${diff}`, color: pal.accent };
 }
 
 function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; text: string } {
@@ -295,7 +363,9 @@ function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; tex
     if (event.taskDueOverdue && !event.taskDueCompleted) {
       return { bg: "#b71c1c", light: "#ffebee", text: "#ffffff" };
     }
-    return EVENT_PALETTE.taskDue;
+    const st = normalizeProjectStatus(event.projectStatus ?? null);
+    const p = PROJECT_STATUS_CHIP[st];
+    return { bg: p.accent, light: p.light, text: p.text };
   }
   if (event.calendarId === "holiday" || (typeof event.id === "string" && event.id.startsWith("hol-"))) {
     return EVENT_PALETTE.holiday;
@@ -325,14 +395,20 @@ function ScheduleCalendarEvent({
   const startTime = format(event.start, "HH:mm", { locale: ko });
   const dday =
     event.taskDueDate != null && (event.isTaskDue || String(event.id).startsWith("task-due"))
-      ? getDday(event.taskDueDate)
+      ? getDday(event.taskDueDate, event.projectStatus)
       : null;
+
+  const completedProjectDim =
+    (event.isTaskDue || String(event.id).startsWith("task-due")) &&
+    event.projectStatus === "COMPLETED" &&
+    !event.taskDueCompleted;
 
   return (
     <div
       className={cn(
         "schedule-gcal-event-chip",
-        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed"
+        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed",
+        completedProjectDim && "opacity-40"
       )}
       style={{
         background: isAllDay ? pal.bg : pal.light,
@@ -385,10 +461,12 @@ type LeaveRequestItem = {
   startDate: string;
   endDate: string;
   status: string;
-  user: { name: string; position?: string | null };
+  user: { id: string; name: string; position?: string | null };
 };
 
 type TabId = "schedule" | "tasks" | "diary";
+
+type CompletedProjectDisplayMode = "dimmed" | "hidden";
 
 const PAGE_TAB_ITEMS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "schedule", label: "일정", icon: <CalendarDays className="size-4" /> },
@@ -671,6 +749,45 @@ function SchedulePageInner() {
   useEffect(() => {
     setVisibleCalendars(loadVisibleCalendars());
   }, []);
+
+  const COMPLETED_PROJECT_DISPLAY_KEY = "schedule.hideCompletedProjects";
+  const loadCompletedProjectDisplay = (): CompletedProjectDisplayMode => {
+    if (typeof window === "undefined") return "dimmed";
+    try {
+      const v = localStorage.getItem(COMPLETED_PROJECT_DISPLAY_KEY);
+      return v === "hidden" ? "hidden" : "dimmed";
+    } catch {
+      return "dimmed";
+    }
+  };
+  const [completedProjectDisplay, setCompletedProjectDisplay] = useState<CompletedProjectDisplayMode>("dimmed");
+  useEffect(() => {
+    setCompletedProjectDisplay(loadCompletedProjectDisplay());
+  }, []);
+
+  const cycleCompletedProjectDisplay = useCallback(() => {
+    setCompletedProjectDisplay((prev) => {
+      const next: CompletedProjectDisplayMode = prev === "dimmed" ? "hidden" : "dimmed";
+      try {
+        localStorage.setItem(COMPLETED_PROJECT_DISPLAY_KEY, next);
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const [narrowViewport, setNarrowViewport] = useState(false);
+  const [mobileWeekBannerDismissed, setMobileWeekBannerDismissed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 767px)");
+    const onChange = () => setNarrowViewport(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   const { data: session } = useSession();
   const router = useRouter();
 
@@ -715,14 +832,21 @@ function SchedulePageInner() {
     jsonFetcher,
     { dedupingInterval: 120_000, revalidateOnFocus: true }
   );
-  const taskDueEvents = useMemo(
-    () =>
-      tasksToCalendarDueEvents(
-        (calendarDueRaw as { id: string; title: string; dueDate: string; isCompleted: boolean }[]) ?? [],
-        new Date()
-      ),
-    [calendarDueRaw]
-  );
+  const taskDueEvents = useMemo(() => {
+    const raw =
+      (calendarDueRaw as {
+        id: string;
+        title: string;
+        dueDate: string;
+        isCompleted: boolean;
+        projectStatus?: string | null;
+      }[]) ?? [];
+    const filtered =
+      completedProjectDisplay === "hidden"
+        ? raw.filter((t) => normalizeProjectStatus(t.projectStatus ?? null) !== "COMPLETED")
+        : raw;
+    return tasksToCalendarDueEvents(filtered, new Date());
+  }, [calendarDueRaw, completedProjectDisplay]);
 
   const schedulesLoading = Boolean(session?.user) && bundleLoading;
 
@@ -960,9 +1084,9 @@ function SchedulePageInner() {
     return [...prev, ...curr, ...next].map(holidayToEvent);
   }, [date]);
 
-  /** 날짜별 승인 휴가 (KST yyyy-MM-dd -> "이름 (휴가|반차 …)"[]) — 구간은 KST 달력일 기준 포함 */
+  /** 날짜별 승인 휴가 (KST yyyy-MM-dd) — 셀 하단 전용, 사용자별 한 줄 */
   const leaveByDate = useMemo(() => {
-    const map: Record<string, string[]> = {};
+    const map: Record<string, LeaveDayEntry[]> = {};
     const approved = leaveRequests.filter((r: LeaveRequestItem) => r.status === "APPROVED");
     for (const r of approved) {
       const name = formatUserName(r.user);
@@ -970,9 +1094,15 @@ function SchedulePageInner() {
       for (const key of eachKstYmdInclusive(r.startDate, r.endDate)) {
         if (!key) continue;
         if (!map[key]) map[key] = [];
-        const line = `${name} (${kind})`;
-        if (!map[key].includes(line)) map[key].push(line);
+        map[key].push({
+          userId: r.user.id,
+          type: r.type,
+          display: `${name} (${kind})`,
+        });
       }
+    }
+    for (const k of Object.keys(map)) {
+      map[k] = dedupeLeaveDayEntries(map[k]);
     }
     return map;
   }, [leaveRequests]);
@@ -1126,28 +1256,88 @@ function SchedulePageInner() {
 
       {tab === "schedule" && (
         <>
-          <div className="schedule-gcal-filter-chips -mx-1 px-1">
-            {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer) => {
-              const on = visibleCalendars[layer] !== false;
-              const color = CALENDAR_CHIP_COLORS[layer];
-              return (
-                <button
-                  key={layer}
-                  type="button"
-                  onClick={() => setVisibleCalendar(layer, !on)}
-                  className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95"
-                  style={{
-                    borderColor: color,
-                    background: on ? color : "transparent",
-                    color: on ? "#ffffff" : color,
+          <div className="sticky top-0 z-10 -mx-4 border-b border-[#e5e7eb] bg-background/95 px-4 py-2 backdrop-blur-md dark:border-border dark:bg-background/95 md:-mx-5 md:px-5">
+            <div className="schedule-gcal-filter-chips flex flex-wrap items-center gap-2 px-0">
+              {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer) => {
+                const on = visibleCalendars[layer] !== false;
+                const color = CALENDAR_CHIP_COLORS[layer];
+                return (
+                  <button
+                    key={layer}
+                    type="button"
+                    onClick={() => setVisibleCalendar(layer, !on)}
+                    className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95"
+                    style={{
+                      borderColor: color,
+                      background: on ? color : "transparent",
+                      color: on ? "#ffffff" : color,
+                    }}
+                  >
+                    {on ? <span className="text-xs leading-none">✓</span> : null}
+                    {CALENDAR_LAYER_LABELS[layer]}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                title="마감 프로젝트 표시 방식"
+                onClick={() => cycleCompletedProjectDisplay()}
+                className={cn(
+                  "flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95",
+                  completedProjectDisplay === "dimmed"
+                    ? "border-[#6B7280] bg-[#6B7280] text-white"
+                    : "border-[#9CA3AF] bg-transparent text-[#4B5563] dark:text-muted-foreground"
+                )}
+              >
+                <span className="max-w-[5.5rem] truncate text-[11px] opacity-90">
+                  {completedProjectDisplay === "dimmed" ? "반투명" : "숨김"}
+                </span>
+                <span className="whitespace-nowrap">마감 프로젝트</span>
+              </button>
+              <div className="ml-auto hidden min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-muted-foreground sm:flex">
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
+                    <circle cx="4" cy="4" r="4" fill="#F59E0B" />
+                  </svg>
+                  준비중
+                </span>
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
+                    <circle cx="4" cy="4" r="4" fill="#3B82F6" />
+                  </svg>
+                  진행중
+                </span>
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
+                    <circle cx="4" cy="4" r="4" fill="#D1D5DB" />
+                  </svg>
+                  마감
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {narrowViewport && view === "month" && !mobileWeekBannerDismissed && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-50">
+              <p className="min-w-0 flex-1">모바일에서는 주간 뷰가 더 편합니다. 전환하시겠습니까?</p>
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-8"
+                  onClick={() => {
+                    setView("week");
+                    setMobileWeekBannerDismissed(true);
                   }}
                 >
-                  {on ? <span className="text-xs leading-none">✓</span> : null}
-                  {CALENDAR_LAYER_LABELS[layer]}
-                </button>
-              );
-            })}
-          </div>
+                  주간으로
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8" onClick={() => setMobileWeekBannerDismissed(true)}>
+                  닫기
+                </Button>
+              </div>
+            </div>
+          )}
 
           {invites.length > 0 && (
             <Card>
@@ -1213,6 +1403,8 @@ function SchedulePageInner() {
               views={["month", "week"]}
               culture="ko-KR"
               toolbar={false}
+              popup
+              doShowMoreDrillDown={false}
               components={{
                 dateHeader: CustomDateHeader as any,
                 dateCellWrapper: createDateCellWrapper(leaveByDate) as any,
@@ -1241,6 +1433,7 @@ function SchedulePageInner() {
                 time: "시간",
                 event: "일정",
                 noEventsInRange: "이 기간에 일정이 없습니다.",
+                showMore: (count: number) => `+${count}개 더`,
               }}
             />
           </div>

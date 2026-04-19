@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { ProjectStatus } from "@prisma/client";
 import { z } from "zod";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
@@ -13,6 +14,17 @@ const createSchema = z.object({
   quoteId: z.string().min(1).optional(),
   createLeadTask: z.boolean().optional(),
 });
+
+const PROJECT_STATUS_SET = new Set<string>(Object.values(ProjectStatus));
+
+function parseStatusList(raw: string | null): ProjectStatus[] | null {
+  if (!raw?.trim()) return null;
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is ProjectStatus => PROJECT_STATUS_SET.has(s));
+  return parts.length ? parts : null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -129,16 +141,27 @@ export async function GET(req: Request) {
 
     const brandId = searchParams.get("brandId") ?? undefined;
     const includeDeleted = searchParams.get("includeDeleted") === "1";
+    const statusIn = parseStatusList(searchParams.get("statusIn"));
+    const statusNotIn = parseStatusList(searchParams.get("statusNotIn"));
+    const statusWhere =
+      statusIn && statusIn.length
+        ? { status: { in: statusIn } }
+        : statusNotIn && statusNotIn.length
+          ? { status: { notIn: statusNotIn } }
+          : {};
     const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
     const isMaster = String((session.user as any)?.email ?? "").trim().toLowerCase() === masterEmail;
 
     const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    const baseWhere: any = brandId ? { brandId } : {};
+    const baseWhere: Record<string, unknown> = brandId ? { brandId } : {};
     const projects = await prisma.project.findMany({
-      where: { ...baseWhere, deletedAt: null },
+      where: { ...baseWhere, deletedAt: null, ...statusWhere },
       select: {
         id: true,
         name: true,
+        status: true,
+        dueDate: true,
+        completedAt: true,
         brand: { select: { id: true, name: true } },
       },
       orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
