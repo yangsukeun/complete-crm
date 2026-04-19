@@ -51,6 +51,7 @@ import {
   ArrowUpFromLine,
   ArrowLeft,
   RotateCcw,
+  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor } from "@/lib/project-task-colors";
@@ -58,9 +59,6 @@ import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import type { MindmapShellMode } from "@/lib/mindmap-canvas-keys";
 import { MINDMAP_CANVAS_ALL } from "@/lib/mindmap-canvas-keys";
 import type { TaskCompletionShelf } from "@/lib/task-visibility";
-import { HelpTooltip } from "@/components/help/help-tooltip";
-import { NewBadge } from "@/components/help/new-badge";
-import { EmptyState } from "@/components/help/empty-state";
 
 // Types
 type TaskData = {
@@ -1697,36 +1695,26 @@ function TreeViewInner({
           미분류
         </Button>
         {mindmapMode !== "all" ? (
-          <>
-            <span className="ml-auto flex shrink-0 items-center gap-1">
-              <HelpTooltip slug="mindmap-three-views" />
-              <NewBadge featureKey="mindmap-3views" expiresAt="2026-06-01" />
-            </span>
-            <span className="flex shrink-0 items-center gap-0.5">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                data-tour="mindmap-undo"
-                className="mindmap-toolbar-btn h-8 gap-1 px-2 text-xs"
-                disabled={!mindmapCanRevert}
-                onClick={handleMindmapRevert}
-              >
-                <RotateCcw className="size-3.5" />
-                되돌리기
-              </Button>
-              <HelpTooltip slug="mindmap-undo" />
-            </span>
-          </>
+          <span className="ml-auto flex shrink-0 items-center gap-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-tour="mindmap-undo"
+              className="mindmap-toolbar-btn h-8 gap-1 px-2 text-xs"
+              disabled={!mindmapCanRevert}
+              onClick={handleMindmapRevert}
+            >
+              <RotateCcw className="size-3.5" />
+              되돌리기
+            </Button>
+          </span>
         ) : null}
       </div>
 
       {mindmapMode !== "all" && onTaskCompletionShelfChange ? (
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2" data-tour="completion-toggle">
-          <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
-            완료·아카이브
-            <HelpTooltip slug="completion-filter" />
-          </span>
+          <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">완료·아카이브</span>
           <Button
             type="button"
             size="sm"
@@ -1992,19 +1980,27 @@ function TreeViewInner({
       >
         {mindmapMode === "all" && projectSummaries.length === 0 ? (
           <div className="flex h-full items-center justify-center p-4">
-            <EmptyState
-              title="표시할 프로젝트가 없습니다"
-              description="워크스페이스에 연결된 프로젝트가 생기면 여기에 카드로 나타납니다."
-              helpSlug="mindmap-three-views"
-            />
+            <div className="flex max-w-sm flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+              <Inbox className="size-12 text-muted-foreground/60" aria-hidden />
+              <div>
+                <p className="font-medium text-foreground">표시할 프로젝트가 없습니다</p>
+                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                  워크스페이스에 연결된 프로젝트가 생기면 여기에 카드로 나타납니다.
+                </p>
+              </div>
+            </div>
           </div>
         ) : mindmapMode !== "all" && treeTasks.length === 0 ? (
           <div className="flex h-full items-center justify-center p-4">
-            <EmptyState
-              title="마인드맵이 비어있습니다"
-              description="아래 미분류 프로젝트를 여기로 드래그하여 마인드맵을 시작하세요."
-              helpSlug="mindmap-three-views"
-            />
+            <div className="flex max-w-sm flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+              <Inbox className="size-12 text-muted-foreground/60" aria-hidden />
+              <div>
+                <p className="font-medium text-foreground">마인드맵이 비어있습니다</p>
+                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                  아래 미분류 프로젝트를 여기로 드래그하여 마인드맵을 시작하세요.
+                </p>
+              </div>
+            </div>
           </div>
         ) : (
           <ReactFlow

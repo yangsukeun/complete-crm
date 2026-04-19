@@ -9,15 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { User, LogOut } from "lucide-react";
-import Link from "next/link";
 import { PageHeadline } from "@/components/page-headline";
 import {
   clearProfileMeCache,
   fetchProfileMeResult,
 } from "@/lib/profile-me-client";
 import { onesignalOptOutAndDeregister } from "@/lib/onesignal/client-logout";
-import { triggerOnboardingMainTour } from "@/lib/onboarding-tour-events";
-
 type Profile = {
   id: string;
   name: string;
@@ -239,15 +236,6 @@ export function ProfilePageClient({
               (isAdmin ? "입사일과 휴가 잔여일은 관리자만 수정할 수 있습니다." : "이름·연락처·직책 등은 본인이 직접 수정할 수 있습니다.")
         }
       />
-
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={() => triggerOnboardingMainTour()}>
-          온보딩 투어 다시 보기
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/help">도움말 센터</Link>
-        </Button>
-      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="border-2">

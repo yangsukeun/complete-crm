@@ -102,12 +102,6 @@ export async function middleware(request: NextRequest) {
         secureCookie: process.env.NODE_ENV === "production",
       });
       if (token) {
-        if (pathname.startsWith("/admin/help") && token.role !== "ADMIN") {
-          return new NextResponse(
-            `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/><title>403</title></head><body style="font-family:system-ui;padding:2rem"><h1>403 Forbidden</h1><p>도움말 관리는 <strong>ADMIN</strong> 역할만 접근할 수 있습니다.</p><p><a href="/dashboard">대시보드로</a></p></body></html>`,
-            { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } }
-          );
-        }
         return NextResponse.next({ request: { headers: requestHeaders } });
       }
     } catch {

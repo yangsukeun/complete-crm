@@ -1,9 +1,6 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
-import { seedHelpArticles, seedOnboardingTourSteps } from "../src/lib/help-seed";
-import { seedReleaseNotes } from "../src/lib/release-notes-seed";
-
 const prisma = new PrismaClient();
 
 async function main() {
@@ -36,10 +33,6 @@ async function main() {
   }
   console.log(`Seed 완료(마스터): ${masterEmail} / ${masterPassword}`);
   console.log("직책 추가: 경영관리 매니저, PP");
-
-  await seedHelpArticles(prisma);
-  await seedOnboardingTourSteps(prisma);
-  await seedReleaseNotes(prisma);
 
   /** 마인드맵 데모: 제목에「사무자동화」가 포함된 업무 위에「비지니스」상위 노드 삽입 (없으면 건너뜀) */
   const childTask = await prisma.task.findFirst({

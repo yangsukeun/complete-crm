@@ -89,6 +89,14 @@ type ScheduleEvent = {
   projectStatus?: ProjectStatusKey | null;
 };
 
+/** 마감(COMPLETED) 브랜드 프로젝트의 캘린더 마감 일정 칩 — 바깥 .rbc-event 에 opacity 주기 위해 사용 */
+function isTaskDueCompletedProjectEvent(event: ScheduleEvent): boolean {
+  return (
+    !!(event.isTaskDue || (typeof event.id === "string" && event.id.startsWith("task-due"))) &&
+    event.projectStatus === "COMPLETED"
+  );
+}
+
 function toEvent(
   s: {
     id: string;
@@ -299,13 +307,15 @@ function DateCellLeaveFooter({ entries }: { entries: LeaveDayEntry[] }) {
 
   return (
     <div
-      className="rbc-date-cell-leave-footer mt-auto shrink-0 border-t border-blue-100/80 pt-1 dark:border-blue-900/40"
+      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-100/80 pt-1 dark:border-blue-900/40"
       aria-label={entries.map((x) => x.display).join(", ")}
     >
       {entries.length <= 2 ? (
-        <div className="flex max-h-[2.6rem] flex-col gap-0.5 overflow-hidden">{entries.map((en, i) => lineBtn(en, `${en.userId}-${i}`))}</div>
+        <div className="flex max-h-[2.6rem] w-full max-w-full flex-col gap-0.5 overflow-hidden">
+          {entries.map((en, i) => lineBtn(en, `${en.userId}-${i}`))}
+        </div>
       ) : (
-        <div className="flex max-h-[2.6rem] flex-col gap-0.5 overflow-hidden">
+        <div className="flex max-h-[2.6rem] w-full max-w-full flex-col gap-0.5 overflow-hidden">
           {lineBtn(entries[0], `${entries[0].userId}-0`)}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
@@ -337,7 +347,11 @@ function createDateCellWrapper(leaveByDate: Record<string, LeaveDayEntry[]>) {
     const key = toKstYmd(value);
     const entries = leaveByDate[key] ?? [];
     return (
-      <div className="rbc-date-cell-wrapper-inner flex h-full min-h-[140px] flex-col overflow-hidden">
+      <div
+        className="rbc-date-cell-wrapper-inner flex h-full min-h-[140px] min-w-0 flex-col overflow-hidden"
+        /* rbc-row-bg 의 flex 자식은 원래 .rbc-day-bg 가 flex:1 0 0% — 래퍼가 그 역할을 해야 요일별로 셀이 갈라짐 */
+        style={{ flex: "1 0 0%" }}
+      >
         <div className="rbc-date-cell-bg-area min-h-0 flex-1 overflow-hidden">{children}</div>
         {entries.length > 0 ? <DateCellLeaveFooter entries={entries} /> : null}
       </div>
@@ -398,17 +412,11 @@ function ScheduleCalendarEvent({
       ? getDday(event.taskDueDate, event.projectStatus)
       : null;
 
-  const completedProjectDim =
-    (event.isTaskDue || String(event.id).startsWith("task-due")) &&
-    event.projectStatus === "COMPLETED" &&
-    !event.taskDueCompleted;
-
   return (
     <div
       className={cn(
         "schedule-gcal-event-chip",
-        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed",
-        completedProjectDim && "opacity-40"
+        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed"
       )}
       style={{
         background: isAllDay ? pal.bg : pal.light,
@@ -1420,7 +1428,11 @@ function SchedulePageInner() {
                 );
                 return cls ? { className: cls } : {};
               }}
-              eventPropGetter={() => ({})}
+              eventPropGetter={(ev) => {
+                const e = ev as ScheduleEvent;
+                if (!isTaskDueCompletedProjectEvent(e)) return {};
+                return { className: "rbc-event--completed-project" };
+              }}
               messages={{
                 today: "오늘",
                 previous: "이전",

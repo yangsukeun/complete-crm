@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
-import { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import { SWRConfig } from "swr";
 import { DeferredRealtimeBridges } from "@/components/deferred-realtime-bridges";
 import { clearProfileMeCache } from "@/lib/profile-me-client";
@@ -23,21 +23,6 @@ const AIAssistFloat = dynamic(
 
 const FloatingChatPanel = dynamic(
   () => import("@/components/floating-chat-panel").then((m) => m.FloatingChatPanel),
-  { ssr: false }
-);
-
-const TourProvider = dynamic(
-  () => import("@/components/tour/tour-provider").then((m) => m.TourProvider),
-  { ssr: false }
-);
-
-const FloatingHelpButton = dynamic(
-  () => import("@/components/help/floating-help-button").then((m) => m.FloatingHelpButton),
-  { ssr: false }
-);
-
-const HelpGlobalSearchDialog = dynamic(
-  () => import("../../app/help/components/help-global-search-dialog").then((m) => m.HelpGlobalSearchDialog),
   { ssr: false }
 );
 
@@ -90,13 +75,6 @@ export function Providers({
             <UrlSearchModeBridge />
             <WorkspaceThemeSync />
             {children}
-            {session?.user && (
-              <Suspense fallback={null}>
-                <TourProvider />
-                <HelpGlobalSearchDialog />
-                <FloatingHelpButton />
-              </Suspense>
-            )}
             {session?.user && <AIAssistFloat />}
             {session?.user && <FloatingChatPanel />}
           </AIAssistProvider>

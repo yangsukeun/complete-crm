@@ -19,7 +19,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { HelpTooltip } from "@/components/help/help-tooltip";
 import { toast } from "sonner";
 import {
   postUploadFile,
@@ -561,10 +560,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
           className="rounded-b-none"
           onClick={() => setDetailTab("audit")}
         >
-          <span className="inline-flex items-center gap-1">
-            변경 이력
-            <HelpTooltip slug="audit-log" />
-          </span>
+          변경 이력
         </Button>
       </div>
       {detailTab === "audit" ? (

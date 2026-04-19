@@ -180,6 +180,13 @@
   border-radius: 0 !important;
   min-height: 20px;
   max-height: 22px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 마감(COMPLETED) 프로젝트 마감일 — RBC 바깥 .rbc-event 에만 opacity (eventPropGetter class) */
+.schedule-gcal-viewport .rbc-event.rbc-event--completed-project {
+  opacity: 0.4;
 }
 
 .schedule-gcal-viewport .rbc-event:focus {
@@ -331,7 +338,15 @@
   }
 }
 
-/* 날짜 셀 래퍼: 배경 + 하단 휴가 영역 */
+/* 날짜 셀 래퍼: 배경 + 하단 휴가 영역
+ * rbc-row-bg 가 flex row 일 때, 원래 직접 자식이던 .rbc-day-bg 대신 래퍼가 들어가면
+ * flex: 1 0 0% 가 없으면 칸이 붕괴해 휴가 라벨이 주의 첫 열(월)에만 겹쳐 보임 → 반드시 균등 분배 */
+.schedule-gcal-viewport .rbc-row-bg > .rbc-date-cell-wrapper-inner {
+  flex: 1 0 0%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .rbc-date-cell-wrapper-inner {
   height: 100%;
   min-height: 140px;
@@ -339,6 +354,7 @@
 
 .rbc-date-cell-bg-area {
   position: relative;
+  min-width: 0;
 }
 
 .rbc-date-cell-leave-footer {

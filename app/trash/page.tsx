@@ -8,8 +8,32 @@ import { PageHeadline } from "@/components/page-headline";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { toast } from "sonner";
 import Link from "next/link";
-import { HelpTooltip } from "@/components/help/help-tooltip";
-import { EmptyState } from "@/components/help/empty-state";
+import { Inbox } from "lucide-react";
+
+function TrashTabEmpty({
+  title,
+  description,
+  actionLabel,
+  actionHref,
+}: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  actionHref: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+      <Inbox className="size-12 text-muted-foreground/60" aria-hidden />
+      <div>
+        <p className="font-medium text-foreground">{title}</p>
+        <p className="text-muted-foreground mt-1 max-w-sm text-sm leading-relaxed">{description}</p>
+      </div>
+      <Button asChild variant="secondary" size="sm">
+        <Link href={actionHref}>{actionLabel}</Link>
+      </Button>
+    </div>
+  );
+}
 
 type TrashItem = {
   id: string;
@@ -123,12 +147,7 @@ export default function TrashPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6 md:p-8">
-      <div className="flex flex-wrap items-start gap-2">
-        <PageHeadline title="휴지통" description="삭제 후 30일 이내만 복구할 수 있습니다. 이후에는 시스템에서 영구 삭제됩니다." />
-        <div className="pt-1">
-          <HelpTooltip slug="trash-and-restore" />
-        </div>
-      </div>
+      <PageHeadline title="휴지통" description="삭제 후 30일 이내만 복구할 수 있습니다. 이후에는 시스템에서 영구 삭제됩니다." />
       <p className="text-muted-foreground text-sm">
         <Link href="/tasks" className="text-primary hover:underline">
           ← Projects
@@ -145,12 +164,11 @@ export default function TrashPage() {
           {loading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>
           ) : items.length === 0 ? (
-            <EmptyState
+            <TrashTabEmpty
               title="삭제된 업무가 없습니다"
               description="삭제한 업무는 30일간 여기에 보관됩니다. 복구하면 원래 위치로 돌아갑니다."
               actionLabel="업무로 이동"
               actionHref="/tasks"
-              helpSlug="trash-and-restore"
             />
           ) : (
             items.map((it) => (
@@ -178,12 +196,11 @@ export default function TrashPage() {
           {loading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>
           ) : items.length === 0 ? (
-            <EmptyState
+            <TrashTabEmpty
               title="삭제된 프로젝트가 없습니다"
               description="프로젝트를 삭제하면 기간 내 복구할 수 있습니다."
               actionLabel="프로젝트로 이동"
               actionHref="/tasks"
-              helpSlug="trash-and-restore"
             />
           ) : (
             items.map((it) => (
@@ -209,12 +226,11 @@ export default function TrashPage() {
           {loading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>
           ) : items.length === 0 ? (
-            <EmptyState
+            <TrashTabEmpty
               title="삭제된 댓글이 없습니다"
               description="업무 댓글을 삭제하면 여기에서 복구할 수 있습니다."
               actionLabel="업무로 이동"
               actionHref="/tasks"
-              helpSlug="trash-and-restore"
             />
           ) : (
             items.map((it) => (

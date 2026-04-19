@@ -18,6 +18,7 @@ import {
   type ChatMessage,
 } from "@/lib/ai/assist-client";
 import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
+import { getProductKnowledge } from "@/lib/ai-secretary/product-knowledge";
 import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import { createActivityLog } from "@/lib/activity-log";
@@ -1136,7 +1137,11 @@ export async function sendSecretaryMessage(params: {
   const instructionSuffix = isExecutiveLike(role)
     ? "답변은 한국어로 하세요. 위 참고 데이터에 포함된 직원·연락처·업무 정보는 사용자가 물으면 제공하세요. 허용된 범위의 정보 제공을 거부하지 마세요."
     : "답변은 한국어로 하세요. 일정 등록·업무 생성·휴가(연차/반차) 신청·프로젝트(팀 업무) 생성/수정 요청은 반드시 도구를 사용해 즉시 실행하세요. 권한이 없는 정보(연락처·재무 등)만 거부하세요.";
-  const systemContent = `${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
+  const productKb = getProductKnowledge().trim();
+  const kbBlock = productKb
+    ? `【제품 지식 참고 (docs/PRODUCT_KNOWLEDGE.md)】\n아래는 앱 사용법·개념 요약입니다. 기능 설명·메뉴 경로·제한에 대한 질문이면 우선 참고하세요. 아래 내용과 실시간 DB·도구 결과가 다르면 DB·도구 결과를 우선합니다.\n\n${productKb}\n\n---\n\n`
+    : "";
+  const systemContent = `${kbBlock}${rolePrompt}\n\n${ctx}\n\n${instructionSuffix}`;
 
   logAiSecretarySystemPrompt(systemContent, { userId, role, dateKey });
 

@@ -13,7 +13,6 @@ import {
   Image,
   Shield,
   Trash2,
-  BookOpen,
 } from "lucide-react";
 
 type MenuItem = {
@@ -25,7 +24,6 @@ type MenuItem = {
 };
 
 const menuItems: MenuItem[] = [
-  { href: "/admin/help", label: "도움말 DB", description: "도움말·투어·릴리즈 노트를 DB에서 편집 (ADMIN 전용)", icon: BookOpen, adminOnly: true },
   { href: "/admin/permissions", label: "기능 권한", description: "직책별·사용자별 메뉴·기능 접근 설정", icon: Shield },
   { href: "/admin/employees", label: "직원 관리", description: "직원 계정 추가·수정·역할 관리", icon: Users },
   { href: "/admin/logs", label: "Daily Report 조회", description: "직원별 Daily Report 조회", icon: FileText },
