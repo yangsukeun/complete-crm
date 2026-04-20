@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { parse, isValid } from "date-fns";
-import { ArrowLeft, ClipboardList } from "lucide-react";
+import { ArrowLeft, ClipboardList, Monitor, Smartphone } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { resolveAppModeForUser } from "@/lib/app-mode-server";
@@ -10,6 +10,7 @@ import { startOfDayKst, formatKstHm, todayYmdKst } from "@/lib/date-kst";
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
+import { userAgentLooksMobile } from "@/lib/user-agent-device";
 
 function resolveDateStart(dateParam: string | undefined): Date {
   if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
@@ -27,6 +28,32 @@ function dateLabelKst(d: Date): string {
     day: "numeric",
     weekday: "short",
   }).format(d);
+}
+
+function AttendanceLocationCell({
+  ip,
+  ua,
+}: {
+  ip: string | null | undefined;
+  ua: string | null | undefined;
+}) {
+  if (!ip) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  const mobile = userAgentLooksMobile(ua ?? null);
+  return (
+    <span
+      className="inline-flex max-w-[11rem] items-center gap-1 font-mono text-xs text-foreground"
+      title={ua ?? undefined}
+    >
+      <span className="truncate">{ip}</span>
+      {mobile ? (
+        <Smartphone className="size-3.5 shrink-0 text-muted-foreground" aria-label="모바일" />
+      ) : (
+        <Monitor className="size-3.5 shrink-0 text-muted-foreground" aria-label="데스크톱" />
+      )}
+    </span>
+  );
 }
 
 type SearchParams = Promise<{ date?: string }>;
@@ -141,14 +168,16 @@ export default async function TodayAttendancePage({
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-muted-foreground">
                   <th className="px-4 py-2.5 font-medium">이름</th>
                   <th className="px-4 py-2.5 font-medium">부서</th>
                   <th className="px-4 py-2.5 font-medium">직책</th>
                   <th className="px-4 py-2.5 font-medium">출근</th>
+                  <th className="px-4 py-2.5 font-medium">출근 위치</th>
                   <th className="px-4 py-2.5 font-medium">퇴근</th>
+                  <th className="px-4 py-2.5 font-medium">퇴근 위치</th>
                 </tr>
               </thead>
               <tbody>
@@ -160,8 +189,14 @@ export default async function TodayAttendancePage({
                     <td className="px-4 py-2.5 tabular-nums">
                       {a.checkIn ? formatKstHm(a.checkIn) : "—"}
                     </td>
+                    <td className="px-4 py-2.5">
+                      <AttendanceLocationCell ip={a.checkInIp} ua={a.checkInUa} />
+                    </td>
                     <td className="px-4 py-2.5 tabular-nums">
                       {a.checkOut ? formatKstHm(a.checkOut) : "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <AttendanceLocationCell ip={a.checkOutIp} ua={a.checkOutUa} />
                     </td>
                   </tr>
                 ))}

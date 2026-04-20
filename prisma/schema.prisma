@@ -335,6 +335,12 @@ model Attendance {
   date     DateTime
   checkIn  DateTime?
   checkOut DateTime?
+  /// 출근 요청 클라이언트 IP (프록시: x-forwarded-for 첫 주소)
+  checkInIp  String?
+  checkInUa  String?        @db.Text
+  /// 퇴근 요청 클라이언트 IP
+  checkOutIp String?
+  checkOutUa String?        @db.Text
   status   AttendanceStatus @default(PRESENT)
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([userId, date])

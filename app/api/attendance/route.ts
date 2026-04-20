@@ -3,11 +3,10 @@ import { getAppSession } from "@/auth";
 import { createActivityLog } from "@/lib/activity-log";
 import { kstYmdToUtcDayStart, startOfDayKst } from "@/lib/date-kst";
 import prisma from "@/lib/prisma";
+import { getClientIpFromRequest, getClientUserAgent } from "@/lib/request-client-meta";
 
 function getClientIp(req: Request): string | null {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() ?? null;
-  return req.headers.get("x-real-ip") ?? null;
+  return getClientIpFromRequest(req);
 }
 
 export async function GET(req: Request) {
@@ -64,6 +63,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const clientIp = getClientIp(req);
+    const clientUa = getClientUserAgent(req);
 
     const body = await req.json();
     const action = body.action as string; // "checkIn" | "checkOut"
@@ -84,11 +84,13 @@ export async function POST(req: Request) {
 
       const attendance = await prisma.attendance.upsert({
         where: { userId_date: { userId: session.user.id, date: dateStart } },
-        update: { checkIn: now },
+        update: { checkIn: now, checkInIp: clientIp, checkInUa: clientUa },
         create: {
           userId: session.user.id,
           date: dateStart,
           checkIn: now,
+          checkInIp: clientIp,
+          checkInUa: clientUa,
         },
       });
       await createActivityLog(session.user.id, "CHECK_IN", "출근", clientIp);
@@ -114,7 +116,7 @@ export async function POST(req: Request) {
 
       const attendance = await prisma.attendance.update({
         where: { userId_date: { userId: session.user.id, date: dateStart } },
-        data: { checkOut: now },
+        data: { checkOut: now, checkOutIp: clientIp, checkOutUa: clientUa },
       });
       await createActivityLog(session.user.id, "CHECK_OUT", "퇴근", clientIp);
       return NextResponse.json(attendance);
