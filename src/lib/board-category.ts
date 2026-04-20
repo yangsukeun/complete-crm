@@ -6,6 +6,13 @@ export function isBoardCategory(value: string): value is BoardCategory {
   return (BOARD_CATEGORIES as readonly string[]).includes(value);
 }
 
+/** URL 쿼리 소문자·공백 등을 정규화. 알 수 없는 값은 회사 자료(COMPANY). */
+export function coerceBoardCategory(v: unknown): BoardCategory {
+  if (typeof v !== "string") return "COMPANY";
+  const u = v.trim().toUpperCase();
+  return isBoardCategory(u) ? u : "COMPANY";
+}
+
 export function boardCategoryIsAnonymous(category: string): boolean {
   return category === "ANONYMOUS";
 }

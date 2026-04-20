@@ -6,12 +6,39 @@ import { safeParseAttachments } from "@/lib/board-attachments";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { extractMentionedUserIdsFromTaskDescription } from "@/lib/task-mention-utils";
 import { z } from "zod";
+import { BOARD_CATEGORIES, coerceBoardCategory } from "@/lib/board-category";
 
-const categorySchema = z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS", "MEETING"]);
+const categorySchema = z.preprocess((v: unknown) => coerceBoardCategory(v), z.enum(BOARD_CATEGORIES));
+
 const workspaceScopeSchema = z.enum(["TEAM", "PERSONAL"]);
 
+function boardCreateValidationMessage(err: z.ZodError): string {
+  for (const iss of err.issues) {
+    const key = iss.path[0];
+    if (key === "title") {
+      if (iss.code === "too_small") return "제목을 입력해 주세요.";
+      if (iss.code === "too_big") return "제목은 200자 이하여야 합니다.";
+      return "제목 형식을 확인해 주세요.";
+    }
+    if (key === "category") return "구분(회사 자료·교육자료 등)을 선택해 주세요.";
+    if (key === "description" && iss.code === "too_big") {
+      return "본문이 허용 길이(약 5만 자)를 초과했습니다.";
+    }
+    if (key === "attachments" || iss.path.includes("attachments")) {
+      return "첨부 링크(URL) 형식을 확인해 주세요. (비어 있는 주소는 제거해 주세요)";
+    }
+    if (key === "contentType") return "본문 형식(텍스트/HTML)을 확인해 주세요.";
+    if (key === "workspaceScope") return "작업 공간(팀/개인) 값을 확인해 주세요.";
+  }
+  return "입력값을 확인해 주세요. 제목·구분·본문·첨부를 점검해 주세요.";
+}
+
 const createSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.preprocess((v: unknown) => {
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    return String(v).trim();
+  }, z.string().min(1, "제목을 입력해 주세요.").max(200, "제목은 200자 이하여야 합니다.")),
   description: z.preprocess(
     (v) => (typeof v === "string" ? v : ""),
     z.string().max(50000)
@@ -69,10 +96,13 @@ export async function handleBoardPost(req: Request): Promise<Response> {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
       console.error("[board POST] validation failed", parsed.error.flatten());
+      const userMsg = boardCreateValidationMessage(parsed.error);
       return NextResponse.json(
         {
-          error: "제목과 구분을 입력하세요.",
-          ...(process.env.NODE_ENV === "development" ? { details: parsed.error.flatten() } : {}),
+          error: userMsg,
+          ...(process.env.NODE_ENV === "development"
+            ? { details: parsed.error.flatten(), issues: parsed.error.issues }
+            : {}),
         },
         { status: 400 }
       );

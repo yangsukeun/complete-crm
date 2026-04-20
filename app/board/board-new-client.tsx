@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, FileText, Loader2, Sparkles, Trash2 } from "lucide-react";
-import type { BoardCategory } from "@/lib/board-category";
+import { coerceBoardCategory, type BoardCategory } from "@/lib/board-category";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,9 +36,7 @@ const ContentBodyEditor = dynamic(
 type AttachmentItem = { url: string; name: string };
 
 function parseCategory(raw: string | undefined): BoardCategory {
-  if (raw === "COMPANY" || raw === "TRAINING" || raw === "FREE" || raw === "ANONYMOUS" || raw === "MEETING")
-    return raw;
-  return "COMPANY";
+  return coerceBoardCategory(raw);
 }
 
 export function BoardNewClient({ initialCategory }: { initialCategory: string | undefined }) {

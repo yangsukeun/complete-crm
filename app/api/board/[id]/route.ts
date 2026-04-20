@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canUserViewBoardPost } from "@/lib/board-access";
-import { boardCategoryIsAnonymous } from "@/lib/board-category";
+import { boardCategoryIsAnonymous, BOARD_CATEGORIES, coerceBoardCategory } from "@/lib/board-category";
 import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { z } from "zod";
@@ -29,10 +29,18 @@ function safeParseBoardAttachments(raw: string | null | undefined): { url: strin
 }
 
 const updateSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
+  title: z.preprocess((v: unknown) => {
+    if (v === undefined) return undefined;
+    if (v == null) return "";
+    if (typeof v === "string") return v.trim();
+    return String(v).trim();
+  }, z.string().min(1).max(200).optional()),
   description: z.string().max(50000).optional(),
   contentType: z.enum(["text", "html"]).optional(),
-  category: z.enum(["COMPANY", "TRAINING", "FREE", "ANONYMOUS", "MEETING"]).optional(),
+  category: z.preprocess((v: unknown) => {
+    if (v === undefined) return undefined;
+    return coerceBoardCategory(v);
+  }, z.enum(BOARD_CATEGORIES).optional()),
   attachments: z.array(z.object({ url: z.string().min(1), name: z.string().optional() })).max(20).optional(),
 });
 
