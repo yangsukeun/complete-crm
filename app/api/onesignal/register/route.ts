@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
+import { touchOneSignalSubscriptionLastSeen } from "@/lib/onesignal/subscription-last-seen";
 
 /**
  * 별칭 엔드포인트: `/api/user/onesignal-register` 와 동일 목적.
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
       });
       if (user?.playerIds?.includes(playerId)) {
         void transferOneSignalSubscriptionToExternalId(playerId, session.user.id);
+        await touchOneSignalSubscriptionLastSeen(session.user.id, playerId);
         return NextResponse.json({ ok: true, alreadyRegistered: true });
       }
     } catch {

@@ -2,6 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
+import { touchOneSignalSubscriptionLastSeen } from "@/lib/onesignal/subscription-last-seen";
 
 /** OneSignal subscription id 최소 길이 (너무 짧은 값은 저장하지 않음) */
 const SUB_MIN_LEN = 8;
@@ -87,6 +88,10 @@ export async function saveOneSignalIdsToUser(userId: string, store: string | nul
   const value = normalizeIncomingSubscriptionId(store);
   if (value === null) return;
 
+  const afterSave = async () => {
+    await touchOneSignalSubscriptionLastSeen(userId, value);
+  };
+
   const logFail = (step: string, err: unknown) =>
     console.warn(`[OneSignal savePlayer] ${step}`, err instanceof Error ? err.message : String(err));
 
@@ -103,6 +108,7 @@ export async function saveOneSignalIdsToUser(userId: string, store: string | nul
       value,
       userId
     );
+    await afterSave();
     return;
   } catch (eRaw) {
     const msg = eRaw instanceof Error ? eRaw.message : String(eRaw);
@@ -123,6 +129,7 @@ export async function saveOneSignalIdsToUser(userId: string, store: string | nul
         playerId: value,
       },
     });
+    await afterSave();
     return;
   } catch (e1) {
     logFail("playerIds+legacy → try legacy only", e1);
@@ -133,6 +140,7 @@ export async function saveOneSignalIdsToUser(userId: string, store: string | nul
       where: { id: userId },
       data: { oneSignalPlayerId: value, playerId: value },
     });
+    await afterSave();
     return;
   } catch (e2) {
     logFail("both legacy fields → try oneSignalPlayerId only", e2);
@@ -143,6 +151,7 @@ export async function saveOneSignalIdsToUser(userId: string, store: string | nul
       where: { id: userId },
       data: { oneSignalPlayerId: value },
     });
+    await afterSave();
     return;
   } catch (e3) {
     logFail("oneSignalPlayerId Prisma → try raw SQL", e3);
@@ -150,10 +159,12 @@ export async function saveOneSignalIdsToUser(userId: string, store: string | nul
 
   try {
     await prisma.$executeRawUnsafe(`UPDATE "User" SET "oneSignalPlayerId" = $1 WHERE "id" = $2`, value, userId);
+    await afterSave();
     return;
   } catch (e4) {
     try {
       await prisma.$executeRawUnsafe(`UPDATE "User" SET "playerId" = $1 WHERE "id" = $2`, value, userId);
+      await afterSave();
       return;
     } catch (e5) {
       console.error("[OneSignal savePlayer] 모든 저장 경로 실패", e5);

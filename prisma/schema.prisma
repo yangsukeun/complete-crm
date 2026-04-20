@@ -201,6 +201,7 @@ model User {
   dailyWorkLogs         DailyWorkLog[]
   notifications         Notification[]
   notificationLogs      NotificationLog[]
+  oneSignalSubscriptions OneSignalSubscription[]
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
   tasksDeletedByMe      Task[]          @relation("TaskDeletedBy")
   aiSecretaryConversations AiConversation[]
@@ -751,6 +752,21 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@index([userId, createdAt])
+}
+
+/// 웹 푸시 구독 1행 = 기기별 subscription id (User.playerIds 와 동기화, lastSeenAt 으로 좀비 판정)
+model OneSignalSubscription {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId   String   @unique
+  /// 등록·갱신(동일 기기 재등록) 시각 — 크론에서 미사용 구독 판정
+  lastSeenAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([lastSeenAt])
 }
 
 /// Cron·푸시 중복 방지 (삭제 아님, 발송 이력만)

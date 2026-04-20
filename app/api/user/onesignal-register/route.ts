@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
+import { deleteOneSignalSubscriptionRows } from "@/lib/onesignal/subscription-last-seen";
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
  * 발송 시 `include_subscription_ids`(DB) 우선, 없으면 `include_aliases.external_id`.
@@ -138,6 +139,11 @@ export async function DELETE(req: Request) {
         !removeOne ||
         existing?.playerId === removeOne ||
         existing?.oneSignalPlayerId === removeOne;
+      if (removeOne) {
+        await deleteOneSignalSubscriptionRows({ subscriptionId: removeOne });
+      } else {
+        await deleteOneSignalSubscriptionRows({ userId: session.user.id });
+      }
       await prisma.user.update({
         where: { id: session.user.id },
         data: {
