@@ -71,6 +71,8 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+type TaskWorkflowStatus = "TODO" | "IN_PROGRESS" | "DONE";
+
 type ScheduleEvent = {
   id: string;
   title: string;
@@ -87,14 +89,59 @@ type ScheduleEvent = {
   taskDueDate?: string;
   /** 연결된 브랜드 프로젝트 상태(캘린더 마감 칩) */
   projectStatus?: ProjectStatusKey | null;
+  /** Task 워크플로 상태 — 마감 칩 색·토글(캘린더 마감 레이어는 Task 기준) */
+  taskStatus?: TaskWorkflowStatus | null;
+  /** 프로젝트에 연결된 할일 여부(표시 접두어) */
+  taskProjectId?: string | null;
 };
 
-/** 마감(COMPLETED) 브랜드 프로젝트의 캘린더 마감 일정 칩 — 바깥 .rbc-event 에 opacity 주기 위해 사용 */
-function isTaskDueCompletedProjectEvent(event: ScheduleEvent): boolean {
-  return (
-    !!(event.isTaskDue || (typeof event.id === "string" && event.id.startsWith("task-due"))) &&
-    event.projectStatus === "COMPLETED"
-  );
+function normalizeTaskWorkflowStatus(v: string | null | undefined): TaskWorkflowStatus {
+  if (v === "IN_PROGRESS" || v === "DONE") return v;
+  return "TODO";
+}
+
+const TASK_DUE_CHIP: Record<
+  TaskWorkflowStatus,
+  { bg: string; light: string; text: string; border: string; ddayAccent: string }
+> = {
+  TODO: {
+    bg: "#FEF3C7",
+    light: "#FEF3C7",
+    text: "#78350F",
+    border: "#F59E0B",
+    ddayAccent: "#F59E0B",
+  },
+  IN_PROGRESS: {
+    bg: "#DBEAFE",
+    light: "#DBEAFE",
+    text: "#1E3A8A",
+    border: "#3B82F6",
+    ddayAccent: "#3B82F6",
+  },
+  DONE: {
+    bg: "#F3F4F6",
+    light: "#F3F4F6",
+    text: "#374151",
+    border: "#6B7280",
+    ddayAccent: "#6B7280",
+  },
+};
+
+type CompletedProjectDisplayMode = "dimmed" | "hidden" | "normal";
+
+/** 바깥 .rbc-event 에 opacity 0.4 — 완료(DONE)·레거시 프로젝트 COMPLETED, 표시 모드가 dimmed 일 때만 */
+function shouldDimTaskDueWrapper(
+  event: ScheduleEvent,
+  displayMode: CompletedProjectDisplayMode
+): boolean {
+  if (displayMode !== "dimmed") return false;
+  if (!(event.isTaskDue || (typeof event.id === "string" && event.id.startsWith("task-due")))) {
+    return false;
+  }
+  const ts = event.taskStatus != null ? normalizeTaskWorkflowStatus(event.taskStatus) : null;
+  if (ts === "DONE") return true;
+  if (event.projectStatus === "COMPLETED") return true;
+  return false;
 }
 
 function toEvent(
@@ -158,6 +205,8 @@ function tasksToCalendarDueEvents(
     title: string;
     dueDate: string | null;
     isCompleted: boolean;
+    status?: string | null;
+    projectId?: string | null;
     projectStatus?: string | null;
   }[],
   now: Date
@@ -168,10 +217,13 @@ function tasksToCalendarDueEvents(
     .map((t) => {
     const d = startOfDay(new Date(t.dueDate));
     const end = endOfDay(new Date(t.dueDate));
-    const overdue = !t.isCompleted && d < sod;
+    const ts = normalizeTaskWorkflowStatus(t.status ?? undefined);
+    const done = ts === "DONE" || t.isCompleted;
+    const overdue = !done && d < sod;
+    const prefix = t.projectId != null && t.projectId !== "" ? "[프로젝트]" : "[업무]";
     return {
       id: `task-due-${t.id}`,
-      title: `[프로젝트] ${t.title}`,
+      title: `${prefix} ${t.title}`,
       start: d,
       end,
       allDay: true,
@@ -181,6 +233,8 @@ function tasksToCalendarDueEvents(
       taskDueCompleted: t.isCompleted,
       taskDueDate: t.dueDate,
       projectStatus: normalizeProjectStatus(t.projectStatus ?? null),
+      taskStatus: ts,
+      taskProjectId: t.projectId ?? null,
     };
   });
 }
@@ -359,27 +413,41 @@ function createDateCellWrapper(leaveByDate: Record<string, LeaveDayEntry[]>) {
   };
 }
 
-function getDday(dueDate: string, projectStatus?: ProjectStatusKey | null) {
+function getDday(
+  dueDate: string,
+  opts: { isTaskDue?: boolean; taskStatus?: TaskWorkflowStatus | null; projectStatus?: ProjectStatusKey | null } = {}
+) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(dueDate);
   due.setHours(0, 0, 0, 0);
   const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  const st = normalizeProjectStatus(projectStatus ?? null);
+  const isTaskDue = opts.isTaskDue === true;
+  const tw = opts.taskStatus != null ? normalizeTaskWorkflowStatus(opts.taskStatus) : null;
+  if (isTaskDue && tw != null) {
+    const chip = TASK_DUE_CHIP[tw];
+    if (diff < 0) {
+      if (tw === "DONE") return { label: `D+${Math.abs(diff)}`, color: chip.ddayAccent };
+      return { label: `D+${Math.abs(diff)}`, color: "#d93025" };
+    }
+    if (diff === 0) return { label: "D-Day", color: chip.ddayAccent };
+    return { label: `D-${diff}`, color: chip.ddayAccent };
+  }
+  const st = normalizeProjectStatus(opts.projectStatus ?? null);
   const pal = PROJECT_STATUS_CHIP[st];
   if (diff < 0) return { label: `D+${Math.abs(diff)}`, color: "#d93025" };
   if (diff === 0) return { label: "D-Day", color: pal.accent };
   return { label: `D-${diff}`, color: pal.accent };
 }
 
-function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; text: string } {
+function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; text: string; border?: string } {
   if (event.isTaskDue || (typeof event.id === "string" && event.id.startsWith("task-due"))) {
-    if (event.taskDueOverdue && !event.taskDueCompleted) {
-      return { bg: "#b71c1c", light: "#ffebee", text: "#ffffff" };
+    const tw = normalizeTaskWorkflowStatus(event.taskStatus ?? undefined);
+    if (event.taskDueOverdue && tw !== "DONE") {
+      return { bg: "#b71c1c", light: "#ffebee", text: "#ffffff", border: "#b71c1c" };
     }
-    const st = normalizeProjectStatus(event.projectStatus ?? null);
-    const p = PROJECT_STATUS_CHIP[st];
-    return { bg: p.accent, light: p.light, text: p.text };
+    const p = TASK_DUE_CHIP[tw];
+    return { bg: p.bg, light: p.light, text: p.text, border: p.border };
   }
   if (event.calendarId === "holiday" || (typeof event.id === "string" && event.id.startsWith("hol-"))) {
     return EVENT_PALETTE.holiday;
@@ -406,22 +474,31 @@ function ScheduleCalendarEvent({
 }) {
   const pal = paletteForEvent(event);
   const isAllDay = Boolean(allDayAccessor || event.allDay);
+  const isTaskDueChip = Boolean(event.isTaskDue || String(event.id).startsWith("task-due"));
   const startTime = format(event.start, "HH:mm", { locale: ko });
   const dday =
-    event.taskDueDate != null && (event.isTaskDue || String(event.id).startsWith("task-due"))
-      ? getDday(event.taskDueDate, event.projectStatus)
+    event.taskDueDate != null && isTaskDueChip
+      ? getDday(event.taskDueDate, {
+          isTaskDue: true,
+          taskStatus: event.taskStatus ?? null,
+          projectStatus: event.projectStatus ?? null,
+        })
       : null;
 
   return (
     <div
       className={cn(
         "schedule-gcal-event-chip",
-        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed"
+        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed",
+        isAllDay && isTaskDueChip && "schedule-gcal-event-chip--task-due-allday"
       )}
       style={{
         background: isAllDay ? pal.bg : pal.light,
         color: isAllDay ? pal.text : pal.bg,
         borderLeftColor: !isAllDay ? pal.bg : undefined,
+        ...(isAllDay && isTaskDueChip && pal.border
+          ? { border: `1px solid ${pal.border}`, boxSizing: "border-box" as const }
+          : {}),
       }}
     >
       <div className="schedule-gcal-event-chip__row">
@@ -473,8 +550,6 @@ type LeaveRequestItem = {
 };
 
 type TabId = "schedule" | "tasks" | "diary";
-
-type CompletedProjectDisplayMode = "dimmed" | "hidden";
 
 const PAGE_TAB_ITEMS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "schedule", label: "일정", icon: <CalendarDays className="size-4" /> },
@@ -763,7 +838,8 @@ function SchedulePageInner() {
     if (typeof window === "undefined") return "dimmed";
     try {
       const v = localStorage.getItem(COMPLETED_PROJECT_DISPLAY_KEY);
-      return v === "hidden" ? "hidden" : "dimmed";
+      if (v === "hidden" || v === "normal" || v === "dimmed") return v;
+      return "dimmed";
     } catch {
       return "dimmed";
     }
@@ -775,7 +851,9 @@ function SchedulePageInner() {
 
   const cycleCompletedProjectDisplay = useCallback(() => {
     setCompletedProjectDisplay((prev) => {
-      const next: CompletedProjectDisplayMode = prev === "dimmed" ? "hidden" : "dimmed";
+      const order: CompletedProjectDisplayMode[] = ["dimmed", "hidden", "normal"];
+      const idx = order.indexOf(prev);
+      const next = order[(idx + 1) % order.length];
       try {
         localStorage.setItem(COMPLETED_PROJECT_DISPLAY_KEY, next);
       } catch {
@@ -847,12 +925,18 @@ function SchedulePageInner() {
         title: string;
         dueDate: string;
         isCompleted: boolean;
+        status?: string | null;
+        projectId?: string | null;
         projectStatus?: string | null;
       }[]) ?? [];
+    const hideCompletedRow = (t: (typeof raw)[number]) => {
+      if (normalizeTaskWorkflowStatus(t.status ?? undefined) === "DONE") return true;
+      if (t.isCompleted) return true;
+      if (normalizeProjectStatus(t.projectStatus ?? null) === "COMPLETED") return true;
+      return false;
+    };
     const filtered =
-      completedProjectDisplay === "hidden"
-        ? raw.filter((t) => normalizeProjectStatus(t.projectStatus ?? null) !== "COMPLETED")
-        : raw;
+      completedProjectDisplay === "hidden" ? raw.filter((t) => !hideCompletedRow(t)) : raw;
     return tasksToCalendarDueEvents(filtered, new Date());
   }, [calendarDueRaw, completedProjectDisplay]);
 
@@ -1288,38 +1372,40 @@ function SchedulePageInner() {
               })}
               <button
                 type="button"
-                title="마감 프로젝트 표시 방식"
+                title="완료된 마감(Task DONE·프로젝트 완료) 표시: 반투명 → 숨김 → 선명 순환"
                 onClick={() => cycleCompletedProjectDisplay()}
                 className={cn(
                   "flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95",
-                  completedProjectDisplay === "dimmed"
-                    ? "border-[#6B7280] bg-[#6B7280] text-white"
-                    : "border-[#9CA3AF] bg-transparent text-[#4B5563] dark:text-muted-foreground"
+                  completedProjectDisplay === "dimmed" && "border-[#6B7280] bg-[#6B7280] text-white",
+                  completedProjectDisplay === "hidden" &&
+                    "border-[#9CA3AF] bg-transparent text-[#4B5563] dark:text-muted-foreground",
+                  completedProjectDisplay === "normal" &&
+                    "border-[#3B82F6] bg-[#EFF6FF] text-[#1E3A8A] dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100"
                 )}
               >
                 <span className="max-w-[5.5rem] truncate text-[11px] opacity-90">
-                  {completedProjectDisplay === "dimmed" ? "반투명" : "숨김"}
+                  {completedProjectDisplay === "dimmed"
+                    ? "반투명"
+                    : completedProjectDisplay === "hidden"
+                      ? "숨김"
+                      : "선명"}
                 </span>
-                <span className="whitespace-nowrap">마감 프로젝트</span>
+                <span className="whitespace-nowrap">마감 완료</span>
               </button>
               <div className="ml-auto hidden min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-muted-foreground sm:flex">
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
-                    <circle cx="4" cy="4" r="4" fill="#F59E0B" />
-                  </svg>
-                  준비중
+                  <span aria-hidden>🟠</span>
+                  대기 (TODO)
                 </span>
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
-                    <circle cx="4" cy="4" r="4" fill="#3B82F6" />
-                  </svg>
-                  진행중
+                  <span aria-hidden>🔵</span>
+                  진행중 (IN_PROGRESS)
                 </span>
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
-                    <circle cx="4" cy="4" r="4" fill="#D1D5DB" />
+                  <svg width="8" height="8" viewBox="0 0 8 8" className="opacity-40" aria-hidden>
+                    <circle cx="4" cy="4" r="4" fill="#6B7280" />
                   </svg>
-                  마감
+                  완료 (DONE)
                 </span>
               </div>
             </div>
@@ -1430,7 +1516,7 @@ function SchedulePageInner() {
               }}
               eventPropGetter={(ev) => {
                 const e = ev as ScheduleEvent;
-                if (!isTaskDueCompletedProjectEvent(e)) return {};
+                if (!shouldDimTaskDueWrapper(e, completedProjectDisplay)) return {};
                 return { className: "rbc-event--completed-project" };
               }}
               messages={{

@@ -184,7 +184,7 @@
   overflow: hidden;
 }
 
-/* 마감(COMPLETED) 프로젝트 마감일 — RBC 바깥 .rbc-event 에만 opacity (eventPropGetter class) */
+/* Task DONE·프로젝트 COMPLETED 마감 칩 — RBC 바깥 .rbc-event 에만 opacity (표시 모드 dimmed 일 때) */
 .schedule-gcal-viewport .rbc-event.rbc-event--completed-project {
   opacity: 0.4;
 }
@@ -221,7 +221,8 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-.schedule-gcal-event-chip--allday {
+/* 기본 종일 칩: 진한 배경 + 흰 글자. Task 마감(밝은 배경)은 --task-due-allday 로 제외 */
+.schedule-gcal-event-chip--allday:not(.schedule-gcal-event-chip--task-due-allday) {
   color: #fff !important;
 }
 
