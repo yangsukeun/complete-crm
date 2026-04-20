@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,11 @@ import { DashboardAttendance } from "@/components/dashboard-attendance";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CalendarClock, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { leaveDisplayDays } from "@/lib/leave-request-serialize";
 
 const LEAVE_TYPES: { value: string; label: string }[] = [
   { value: "ANNUAL", label: "연차" },
@@ -41,7 +43,14 @@ type LeaveRequest = {
   endDate: string;
   status: string;
   reason: string | null;
-  user?: { id: string; name: string; email: string; department: string | null; position?: string | null };
+  user?: {
+    id: string;
+    name: string;
+    email?: string;
+    department: string | null;
+    position?: string | null;
+    currentProject?: { name: string; brand: { name: string } } | null;
+  };
 };
 
 type Balance = {
@@ -80,6 +89,11 @@ export function LeavePageClient({
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [mainTab, setMainTab] = useState<"mine" | "peers" | "approve">("mine");
+  const [peerNameQ, setPeerNameQ] = useState("");
+  const [peerTypeQ, setPeerTypeQ] = useState<string>("");
+  const [peerFrom, setPeerFrom] = useState("");
+  const [peerTo, setPeerTo] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -203,6 +217,47 @@ export function LeavePageClient({
     return "반려";
   };
   const typeLabel = (t: string) => LEAVE_TYPES.find((x: any) => x.value === t)?.label ?? t;
+
+  const myUid = session?.user?.id ?? "";
+
+  const myRequests = useMemo(() => {
+    if (!myUid) return [];
+    return requests.filter((r) => r.user?.id === myUid);
+  }, [requests, myUid]);
+
+  const peerApprovedRequests = useMemo(() => {
+    if (!myUid) return [];
+    let list = requests.filter(
+      (r) => r.status === "APPROVED" && r.user?.id && r.user.id !== myUid
+    );
+    const q = peerNameQ.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => (r.user?.name ?? "").toLowerCase().includes(q));
+    }
+    if (peerTypeQ) {
+      list = list.filter((r) => r.type === peerTypeQ);
+    }
+    if (peerFrom) {
+      const from = new Date(peerFrom);
+      from.setHours(0, 0, 0, 0);
+      list = list.filter((r) => new Date(r.endDate) >= from);
+    }
+    if (peerTo) {
+      const to = new Date(peerTo);
+      to.setHours(23, 59, 59, 999);
+      list = list.filter((r) => new Date(r.startDate) <= to);
+    }
+    return list;
+  }, [requests, myUid, peerNameQ, peerTypeQ, peerFrom, peerTo]);
+
+  const approvalQueue = useMemo(() => {
+    if (!canApprove) return [];
+    return requests.filter((r) => {
+      if (isTeamLead && r.status === "PENDING") return true;
+      if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
+      return false;
+    });
+  }, [requests, canApprove, isTeamLead, isExecutive]);
 
   if (loading) {
     return (
@@ -344,104 +399,233 @@ export function LeavePageClient({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>사용 내역</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle>휴가 내역</CardTitle>
+          <p className="text-muted-foreground text-xs font-normal">
+            내 신청은 전 상태를 볼 수 있고, 동료의 승인된 휴가만 열람됩니다. (사유·이메일 등은 본인·관리자에게만 표시)
+          </p>
         </CardHeader>
         <CardContent>
-          {requests.length === 0 ? (
-            <p className="text-muted-foreground py-4 text-center text-sm">
-              신청 내역이 없습니다.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    {canApprove && <th className="pb-2 pr-2">신청자</th>}
-                    <th className="pb-2 pr-2">종류</th>
-                    <th className="pb-2 pr-2">기간</th>
-                    <th className="pb-2 pr-2">상태</th>
-                    {canApprove && <th className="pb-2">처리</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map((r: any) => (
-                    <tr key={r.id} className="border-b">
-                      {canApprove && r.user && (
-                        <td className="py-2 pr-2">
-                          {formatUserName(r.user)}
-                          {r.user.department ? ` · ${r.user.department}` : ""}
-                        </td>
-                      )}
-                      <td className="py-2 pr-2">{typeLabel(r.type)}</td>
-                      <td className="py-2 pr-2">
-                        {format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko })}
-                        {r.startDate !== r.endDate &&
-                          ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
-                      </td>
-                      <td className="py-2 pr-2">
-                        <Badge
-                          variant={
-                            r.status === "APPROVED"
-                              ? "default"
-                              : r.status === "REJECTED"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                        >
-                          {statusLabel(r.status)}
-                        </Badge>
-                      </td>
-                      {canApprove && (
-                        <td className="py-2">
-                          {r.status === "PENDING" && isTeamLead && (
-                            <div className="flex gap-1">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={processingId === r.id}
-                                onClick={() => handleStatus(r.id, "TEAM_LEAD_APPROVED")}
-                              >
-                                1차 승인
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={processingId === r.id}
-                                onClick={() => handleStatus(r.id, "REJECTED")}
-                              >
-                                반려
-                              </Button>
-                            </div>
-                          )}
-                          {r.status === "TEAM_LEAD_APPROVED" && isExecutive && (
-                            <div className="flex gap-1">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={processingId === r.id}
-                                onClick={() => handleStatus(r.id, "APPROVED")}
-                              >
-                                2차 승인
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={processingId === r.id}
-                                onClick={() => handleStatus(r.id, "REJECTED")}
-                              >
-                                반려
-                              </Button>
-                            </div>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "mine" | "peers" | "approve")}>
+            <TabsList className="mb-4 flex h-auto w-full flex-wrap justify-start gap-1">
+              <TabsTrigger value="mine">내 근태</TabsTrigger>
+              <TabsTrigger value="peers">동료 근태</TabsTrigger>
+              {canApprove ? <TabsTrigger value="approve">승인 처리</TabsTrigger> : null}
+            </TabsList>
+
+            <TabsContent value="mine" className="mt-0">
+              {myRequests.length === 0 ? (
+                <p className="text-muted-foreground py-4 text-center text-sm">내 신청 내역이 없습니다.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="pb-2 pr-2">종류</th>
+                        <th className="pb-2 pr-2">기간</th>
+                        <th className="pb-2 pr-2">일수</th>
+                        <th className="pb-2 pr-2">상태</th>
+                        <th className="pb-2">사유</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myRequests.map((r) => (
+                        <tr key={r.id} className="border-b">
+                          <td className="py-2 pr-2">{typeLabel(r.type)}</td>
+                          <td className="py-2 pr-2">
+                            {format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko })}
+                            {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10) &&
+                              ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
+                          </td>
+                          <td className="py-2 pr-2">
+                            {leaveDisplayDays(r.type, new Date(r.startDate), new Date(r.endDate))}일
+                          </td>
+                          <td className="py-2 pr-2">
+                            <Badge
+                              variant={
+                                r.status === "APPROVED"
+                                  ? "default"
+                                  : r.status === "REJECTED"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                            >
+                              {statusLabel(r.status)}
+                            </Badge>
+                          </td>
+                          <td className="max-w-[200px] truncate py-2 text-muted-foreground" title={r.reason ?? ""}>
+                            {r.reason ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="peers" className="mt-0 space-y-4">
+              <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">이름 검색</Label>
+                  <Input
+                    className="h-9 w-40"
+                    placeholder="이름"
+                    value={peerNameQ}
+                    onChange={(e) => setPeerNameQ(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">휴가 유형</Label>
+                  <Select value={peerTypeQ || "__ALL__"} onValueChange={(v) => setPeerTypeQ(v === "__ALL__" ? "" : v)}>
+                    <SelectTrigger className="h-9 w-40">
+                      <SelectValue placeholder="전체" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__ALL__">전체</SelectItem>
+                      {LEAVE_TYPES.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">기간 시작(이후)</Label>
+                  <Input className="h-9 w-36" type="date" value={peerFrom} onChange={(e) => setPeerFrom(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">기간 종료(이전)</Label>
+                  <Input className="h-9 w-36" type="date" value={peerTo} onChange={(e) => setPeerTo(e.target.value)} />
+                </div>
+              </div>
+              {peerApprovedRequests.length === 0 ? (
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  조건에 맞는 승인 휴가가 없습니다.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="pb-2 pr-2">이름</th>
+                        <th className="pb-2 pr-2">유형</th>
+                        <th className="pb-2 pr-2">기간</th>
+                        <th className="pb-2 pr-2">일수</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {peerApprovedRequests.map((r) => (
+                        <tr key={r.id} className="border-b">
+                          <td className="py-2 pr-2">
+                            {r.user ? formatUserName(r.user) : "—"}
+                            {r.user?.department ? ` · ${r.user.department}` : ""}
+                          </td>
+                          <td className="py-2 pr-2">{typeLabel(r.type)}</td>
+                          <td className="py-2 pr-2">
+                            {format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko })}
+                            {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10) &&
+                              ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
+                          </td>
+                          <td className="py-2 pr-2">
+                            {leaveDisplayDays(r.type, new Date(r.startDate), new Date(r.endDate))}일
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+
+            {canApprove ? (
+              <TabsContent value="approve" className="mt-0">
+                {approvalQueue.length === 0 ? (
+                  <p className="text-muted-foreground py-4 text-center text-sm">처리할 신청이 없습니다.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left">
+                          <th className="pb-2 pr-2">신청자</th>
+                          <th className="pb-2 pr-2">종류</th>
+                          <th className="pb-2 pr-2">기간</th>
+                          <th className="pb-2 pr-2">상태</th>
+                          <th className="pb-2 pr-2">사유</th>
+                          <th className="pb-2">처리</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {approvalQueue.map((r) => (
+                          <tr key={r.id} className="border-b">
+                            <td className="py-2 pr-2">
+                              {r.user ? formatUserName(r.user) : "—"}
+                              {r.user?.department ? ` · ${r.user.department}` : ""}
+                            </td>
+                            <td className="py-2 pr-2">{typeLabel(r.type)}</td>
+                            <td className="py-2 pr-2">
+                              {format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko })}
+                              {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10) &&
+                                ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
+                            </td>
+                            <td className="py-2 pr-2">
+                              <Badge variant="secondary">{statusLabel(r.status)}</Badge>
+                            </td>
+                            <td className="max-w-[160px] truncate py-2 text-muted-foreground text-xs" title={r.reason ?? ""}>
+                              {r.reason ?? "—"}
+                            </td>
+                            <td className="py-2">
+                              {r.status === "PENDING" && isTeamLead && (
+                                <div className="flex flex-wrap gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "TEAM_LEAD_APPROVED")}
+                                  >
+                                    1차 승인
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "REJECTED")}
+                                  >
+                                    반려
+                                  </Button>
+                                </div>
+                              )}
+                              {r.status === "TEAM_LEAD_APPROVED" && isExecutive && (
+                                <div className="flex flex-wrap gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "APPROVED")}
+                                  >
+                                    2차 승인
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "REJECTED")}
+                                  >
+                                    반려
+                                  </Button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </TabsContent>
+            ) : null}
+          </Tabs>
         </CardContent>
       </Card>
     </div>

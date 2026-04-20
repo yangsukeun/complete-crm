@@ -4,6 +4,11 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import { createNotificationWithOptions } from "@/lib/notifications";
+import {
+  leaveRequestListWhere,
+  serializeLeaveRequestForViewer,
+  type LeaveRequestWithUser,
+} from "@/lib/leave-request-serialize";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -40,13 +45,12 @@ export async function GET() {
     }
 
     const role = session.user.role;
-    const isManager = role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN"; // 팀장/대표: 전체 목록
     const year = new Date().getFullYear();
     const uid = session.user.id;
 
-    const [requests, user, balanceFound] = await Promise.all([
+    const [rawRequests, user, balanceFound] = await Promise.all([
       prisma.leaveRequest.findMany({
-        where: isManager ? {} : { userId: uid },
+        where: leaveRequestListWhere(uid, role),
         include: {
           user: {
             select: {
@@ -83,6 +87,10 @@ export async function GET() {
     const manualDeduction = balance.manualDeduction ?? 0;
     const totalAvailable = annualTotal + carryOver;
     const remaining = Math.max(0, totalAvailable - balance.annualUsed - manualDeduction);
+
+    const requests = (rawRequests as LeaveRequestWithUser[]).map((row) =>
+      serializeLeaveRequestForViewer(row, uid, role)
+    );
 
     return NextResponse.json({
       requests,
