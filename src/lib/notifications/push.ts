@@ -18,6 +18,8 @@ export type PushPayload = {
   url?: string;
   data?: Record<string, unknown>;
   priority?: PushPriority;
+  /** Notification DB id (있으면 OneSignal id를 역저장) */
+  notificationDbId?: string;
 };
 
 /** 서버: ONESIGNAL_APP_ID 또는 클라이언트와 동일한 NEXT_PUBLIC_ONESIGNAL_APP_ID */
@@ -104,7 +106,8 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       return;
     }
 
-    const externalIds = payload.userIds.map((id) => String(id));
+    const requestedExternalIds = payload.userIds.map((id) => String(id));
+    let externalIds = [...requestedExternalIds];
 
     let subscriptionIds: string[] = [];
     type Row = {
@@ -176,6 +179,16 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         } else {
           throw firstErr;
         }
+      }
+      if (rows.length === 0) {
+        console.log("[OneSignal push] ② 스킵: DB에 존재하는 userId 없음", { requestedExternalIds });
+        return;
+      }
+      externalIds = rows.map((r) => r.id);
+      const existingSet = new Set(externalIds);
+      const skipped = requestedExternalIds.filter((x) => !existingSet.has(x));
+      if (skipped.length > 0) {
+        console.log("[OneSignal push] ② 스킵: 유저 없음(삭제/미존재)", { skipped });
       }
       console.log("[OneSignal push] ② DB User 푸시 ID 조회", {
         rowCount: rows.length,
@@ -260,7 +273,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       return Array.isArray(ext) && ext.length > 0;
     }
 
-    type PostPushResult = { recipients: number; invalidExternalAliases: boolean };
+    type PostPushResult = { recipients: number; invalidExternalAliases: boolean; oneSignalId?: string | null };
 
     async function postOneSignal(body: Record<string, unknown>): Promise<PostPushResult> {
       const res = await fetch(ONESIGNAL_NOTIFICATIONS_URL, {
@@ -285,14 +298,15 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
           bodySnippet: text.slice(0, 800),
           parsedErrors: parsed && typeof parsed === "object" ? (parsed as { errors?: unknown }).errors : null,
         });
-        return { recipients: -1, invalidExternalAliases: false };
+        return { recipients: -1, invalidExternalAliases: false, oneSignalId: null };
       }
       console.log("[Push] OneSignal response:", text.length > 2000 ? `${text.slice(0, 2000)}…` : text);
       const recipients = parsed?.recipients;
       const errors = parsed?.errors;
       const invalidExternalAliases = hasInvalidExternalAliases(errors);
+      const oneSignalId = typeof parsed?.id === "string" ? String(parsed.id) : null;
       console.log("[OneSignal push] ⑤ 응답 OK (api.onesignal.com)", {
-        id: parsed?.id,
+        id: oneSignalId,
         recipients,
         errors: errors ?? null,
         invalidExternalAliases,
@@ -312,7 +326,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         );
       }
       const r = typeof recipients === "number" ? recipients : 0;
-      return { recipients: r, invalidExternalAliases };
+      return { recipients: r, invalidExternalAliases, oneSignalId };
     }
 
     /**
@@ -339,12 +353,30 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
 
     const [ext, sub] = await Promise.all(parallel);
 
+    const oneSignalId = ext.oneSignalId ?? sub?.oneSignalId ?? null;
+    if (payload.notificationDbId && oneSignalId) {
+      try {
+        await prisma.notification.update({
+          where: { id: payload.notificationDbId },
+          data: { oneSignalNotificationId: oneSignalId },
+          select: { id: true },
+        });
+      } catch (e) {
+        console.warn("[OneSignal push] Notification.oneSignalNotificationId 저장 실패", {
+          notificationDbId: payload.notificationDbId,
+          oneSignalId,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
     console.log("[OneSignal push] ⑥ 병행 발송 요약", {
       external_id_recipients: ext.recipients,
       external_id_invalid_aliases: ext.invalidExternalAliases,
       subscription_path_sent: subscriptionIds.length > 0,
       subscription_ids_count: subscriptionIds.length,
       subscription_id_recipients: sub?.recipients ?? null,
+      oneSignalId,
     });
 
     if (subscriptionIds.length > 0 && sub && sub.recipients <= 0 && !sub.invalidExternalAliases) {

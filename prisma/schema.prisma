@@ -745,6 +745,8 @@ model Notification {
   type      NotificationType
   message   String
   link      String           @default("")
+  /// OneSignal 알림 ID(취소·전 디바이스 제거용) — 푸시 발송 성공 시 저장
+  oneSignalNotificationId String?
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
   @@index([userId])
@@ -752,6 +754,7 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@index([userId, createdAt])
+  @@index([oneSignalNotificationId])
 }
 
 /// 웹 푸시 구독 1행 = 기기별 subscription id (User.playerIds 와 동기화, lastSeenAt 으로 좀비 판정)

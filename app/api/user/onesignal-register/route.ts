@@ -5,6 +5,7 @@ import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 import { isLikelyOneSignalSubscriptionId } from "@/lib/onesignal/subscription-id";
 import { transferOneSignalSubscriptionToExternalId } from "@/lib/onesignal/transfer-subscription-external-id";
 import { deleteOneSignalSubscriptionRows } from "@/lib/onesignal/subscription-last-seen";
+import { deleteOneSignalSubscriptionRemote } from "@/lib/onesignal/delete-subscription-remote";
 /**
  * 클라이언트 OneSignal 구독 ID를 User에 저장 (디버그·대시보드 Player ID와 대조).
  * 발송 시 `include_subscription_ids`(DB) 우선, 없으면 `include_aliases.external_id`.
@@ -139,6 +140,21 @@ export async function DELETE(req: Request) {
         !removeOne ||
         existing?.playerId === removeOne ||
         existing?.oneSignalPlayerId === removeOne;
+      // OneSignal 서버 쪽 구독도 제거 (삭제 실패는 무시)
+      try {
+        if (removeOne) {
+          await deleteOneSignalSubscriptionRemote(removeOne);
+        } else {
+          const set = new Set<string>();
+          for (const x of currentIds) set.add(x);
+          if (existing?.playerId) set.add(existing.playerId);
+          if (existing?.oneSignalPlayerId) set.add(existing.oneSignalPlayerId);
+          const ids = [...set].filter((x) => typeof x === "string" && x.trim().length > 0);
+          await Promise.allSettled(ids.map((sid: string) => deleteOneSignalSubscriptionRemote(sid)));
+        }
+      } catch {
+        /* ignore */
+      }
       if (removeOne) {
         await deleteOneSignalSubscriptionRows({ subscriptionId: removeOne });
       } else {

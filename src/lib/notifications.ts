@@ -1,6 +1,7 @@
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
 import { sendPushToUser as sendPushToUserImpl } from "./notifications/push";
+import { cancelOneSignalPush, syncBadgeCount } from "@/lib/onesignal/cancel";
 
 /**
  * OneSignal 웹 푸시 (실제 구현: `./notifications/push.ts`의 `sendPushToUser` / `sendPushToUsers`).
@@ -89,15 +90,30 @@ export async function createNotification(
 export async function markChatNotificationsRead(userId: string, chatId: string): Promise<number> {
   const canonical = `/chat/${chatId}`;
   const legacy = `/chats/${chatId}`;
-  const result = await prisma.notification.updateMany({
-    where: {
-      userId,
-      type: "CHAT_MESSAGE",
-      OR: [{ link: canonical }, { link: legacy }],
-      isRead: false,
-    },
-    data: { isRead: true },
+  const where = {
+    userId,
+    type: "CHAT_MESSAGE" as const,
+    OR: [{ link: canonical }, { link: legacy }],
+    isRead: false,
+  };
+
+  const targets = await prisma.notification.findMany({
+    where,
+    select: { oneSignalNotificationId: true },
   });
+
+  const result = await prisma.notification.updateMany({ where, data: { isRead: true } });
+
+  const osIds = targets
+    .map((n) => n.oneSignalNotificationId)
+    .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+  if (osIds.length > 0) {
+    await Promise.allSettled(osIds.map((id) => cancelOneSignalPush(id)));
+  }
+
+  const unreadCount = await prisma.notification.count({ where: { userId, isRead: false } });
+  await syncBadgeCount(userId, unreadCount);
+
   return result.count;
 }
 
@@ -106,6 +122,7 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
   const priority: NotificationPriority = input.priority ?? DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
 
   let persisted = false;
+  let notificationId: string | null = null;
   try {
     if (type === "CHAT_MESSAGE" && link) {
       const existing = await prisma.notification.findFirst({
@@ -117,17 +134,22 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
           data: { message, createdAt: new Date() },
         });
         persisted = true;
+        notificationId = existing.id;
       } else {
-        await prisma.notification.create({
+        const created = await prisma.notification.create({
           data: { userId, type, message, link },
+          select: { id: true },
         });
         persisted = true;
+        notificationId = created.id;
       }
     } else {
-      await prisma.notification.create({
+      const created = await prisma.notification.create({
         data: { userId, type, message, link },
+        select: { id: true },
       });
       persisted = true;
+      notificationId = created.id;
     }
   } catch (e) {
     console.error("[Notification] 생성 실패:", e);
@@ -163,6 +185,7 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
       message,
       url: link || undefined,
       priority,
+      notificationDbId: notificationId ?? undefined,
     });
   }
 }
@@ -195,21 +218,26 @@ export async function createTaskBodyMentionNotification(input: {
   const { userId, message, link = "", actorId } = input;
   const priority: NotificationPriority = DEFAULT_PRIORITY_BY_TYPE.TASK_BODY_MENTION;
   let inserted = false;
+  let notificationId: string | null = null;
   try {
-    await prisma.notification.create({
+    const created = await prisma.notification.create({
       data: { userId, type: "TASK_BODY_MENTION", message, link },
+      select: { id: true },
     });
     inserted = true;
+    notificationId = created.id;
     if (process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1") {
       console.info("[Notification] 업무 본문 호출 알림 저장됨 (TASK_BODY_MENTION)", { userId });
     }
   } catch (e) {
     console.warn("[Notification] TASK_BODY_MENTION 저장 실패 → BOARD_MENTION 시도(DB enum/마이그레이션 확인):", e);
     try {
-      await prisma.notification.create({
+      const created = await prisma.notification.create({
         data: { userId, type: "BOARD_MENTION", message, link },
+        select: { id: true },
       });
       inserted = true;
+      notificationId = created.id;
       if (process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1") {
         console.info("[Notification] 업무 본문 호출 알림 저장됨 (BOARD_MENTION 폴백)", { userId });
       }
@@ -241,6 +269,7 @@ export async function createTaskBodyMentionNotification(input: {
       message,
       url: link || undefined,
       priority,
+      notificationDbId: notificationId ?? undefined,
     });
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { cancelOneSignalPush, syncBadgeCount } from "@/lib/onesignal/cancel";
 
 const bodySchema = z.object({
   chatIds: z.array(z.string().min(1)).max(80),
@@ -45,6 +46,10 @@ export async function POST(req: Request) {
     const links = notifyChatIds.flatMap((id) => [`/chat/${id}`, `/chats/${id}`]);
 
     if (links.length > 0) {
+      const targets = await prisma.notification.findMany({
+        where: { userId, type: "CHAT_MESSAGE", isRead: false, link: { in: links } },
+        select: { oneSignalNotificationId: true },
+      });
       await prisma.notification.updateMany({
         where: {
           userId,
@@ -54,6 +59,13 @@ export async function POST(req: Request) {
         },
         data: { isRead: true },
       });
+
+      const osIds = targets
+        .map((n) => n.oneSignalNotificationId)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+      if (osIds.length > 0) {
+        await Promise.allSettled(osIds.map((id) => cancelOneSignalPush(id)));
+      }
     }
 
     if (participantChatIds.length > 0) {
@@ -66,6 +78,9 @@ export async function POST(req: Request) {
         if (!isMissingLastReadAtColumnError(e)) throw e;
       }
     }
+
+    const unreadCount = await prisma.notification.count({ where: { userId, isRead: false } });
+    await syncBadgeCount(userId, unreadCount);
 
     const synced = isAdmin ? chatIds.length : participantChatIds.length;
     return NextResponse.json({ ok: true, synced });

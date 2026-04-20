@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { cancelOneSignalPush, syncBadgeCount } from "@/lib/onesignal/cancel";
 
 /**
  * PATCH: 알림 읽음 처리 (isRead: true)
@@ -27,6 +28,14 @@ export async function PATCH(
       where: { id },
       data: { isRead: true },
     });
+
+    if (notification.oneSignalNotificationId) {
+      await cancelOneSignalPush(notification.oneSignalNotificationId);
+    }
+    const unreadCount = await prisma.notification.count({
+      where: { userId: session.user.id, isRead: false },
+    });
+    await syncBadgeCount(session.user.id, unreadCount);
 
     return NextResponse.json({ success: true });
   } catch (e) {
