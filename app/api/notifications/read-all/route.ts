@@ -10,10 +10,25 @@ export async function PATCH() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const targets = await prisma.notification.findMany({
-      where: { userId: session.user.id, isRead: false },
-      select: { oneSignalNotificationId: true },
-    });
+    const isMissingOneSignalNotificationIdColumnError = (e: unknown): boolean => {
+      const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+      return (
+        msg.includes("onesignalnotificationid") ||
+        (msg.includes("unknown arg") && msg.includes("onesignal")) ||
+        (msg.includes("column") && msg.includes("does not exist") && msg.includes("onesignal"))
+      );
+    };
+
+    let targets: { oneSignalNotificationId?: string | null }[] = [];
+    try {
+      targets = await prisma.notification.findMany({
+        where: { userId: session.user.id, isRead: false },
+        select: { oneSignalNotificationId: true },
+      });
+    } catch (e) {
+      if (!isMissingOneSignalNotificationIdColumnError(e)) throw e;
+      targets = [];
+    }
     await prisma.notification.updateMany({
       where: { userId: session.user.id, isRead: false },
       data: { isRead: true },

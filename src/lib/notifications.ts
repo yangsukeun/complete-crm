@@ -97,10 +97,26 @@ export async function markChatNotificationsRead(userId: string, chatId: string):
     isRead: false,
   };
 
-  const targets = await prisma.notification.findMany({
-    where,
-    select: { oneSignalNotificationId: true },
-  });
+  const isMissingOneSignalNotificationIdColumnError = (e: unknown): boolean => {
+    const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+    return (
+      msg.includes("onesignalnotificationid") ||
+      (msg.includes("unknown arg") && msg.includes("onesignal")) ||
+      (msg.includes("column") && msg.includes("does not exist") && msg.includes("onesignal"))
+    );
+  };
+
+  let targets: { oneSignalNotificationId?: string | null }[] = [];
+  try {
+    targets = await prisma.notification.findMany({
+      where,
+      select: { oneSignalNotificationId: true },
+    });
+  } catch (e) {
+    // 배포 직후 마이그레이션 미적용 시에도 채팅 로드는 살아야 함
+    if (!isMissingOneSignalNotificationIdColumnError(e)) throw e;
+    targets = [];
+  }
 
   const result = await prisma.notification.updateMany({ where, data: { isRead: true } });
 
@@ -112,6 +128,7 @@ export async function markChatNotificationsRead(userId: string, chatId: string):
   }
 
   const unreadCount = await prisma.notification.count({ where: { userId, isRead: false } });
+  // 배포 직후 OneSignal env/column 미적용이어도 읽음 처리는 성공해야 함
   await syncBadgeCount(userId, unreadCount);
 
   return result.count;

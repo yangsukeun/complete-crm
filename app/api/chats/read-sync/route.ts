@@ -46,10 +46,25 @@ export async function POST(req: Request) {
     const links = notifyChatIds.flatMap((id) => [`/chat/${id}`, `/chats/${id}`]);
 
     if (links.length > 0) {
-      const targets = await prisma.notification.findMany({
-        where: { userId, type: "CHAT_MESSAGE", isRead: false, link: { in: links } },
-        select: { oneSignalNotificationId: true },
-      });
+      const isMissingOneSignalNotificationIdColumnError = (e: unknown): boolean => {
+        const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+        return (
+          msg.includes("onesignalnotificationid") ||
+          (msg.includes("unknown arg") && msg.includes("onesignal")) ||
+          (msg.includes("column") && msg.includes("does not exist") && msg.includes("onesignal"))
+        );
+      };
+
+      let targets: { oneSignalNotificationId?: string | null }[] = [];
+      try {
+        targets = await prisma.notification.findMany({
+          where: { userId, type: "CHAT_MESSAGE", isRead: false, link: { in: links } },
+          select: { oneSignalNotificationId: true },
+        });
+      } catch (e) {
+        if (!isMissingOneSignalNotificationIdColumnError(e)) throw e;
+        targets = [];
+      }
       await prisma.notification.updateMany({
         where: {
           userId,
