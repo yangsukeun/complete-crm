@@ -40,6 +40,7 @@ export type LeaveRequestWithUser = {
   startDate: Date;
   endDate: Date;
   status: string;
+  cancelFromStatus?: string | null;
   reason: string | null;
   createdAt: Date;
   user: LeaveUserSelect | null;
@@ -61,6 +62,7 @@ export function serializeLeaveRequestForViewer(
     startDate: row.startDate,
     endDate: row.endDate,
     status: row.status,
+    cancelFromStatus: (row as any).cancelFromStatus ?? null,
     createdAt: row.createdAt,
     reason: showSensitive ? row.reason : null,
   };

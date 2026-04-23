@@ -42,6 +42,7 @@ type LeaveRequest = {
   startDate: string;
   endDate: string;
   status: string;
+  cancelFromStatus?: string | null;
   reason: string | null;
   user?: {
     id: string;
@@ -186,7 +187,7 @@ export function LeavePageClient({
 
   const handleStatus = async (
     id: string,
-    status: "TEAM_LEAD_APPROVED" | "APPROVED" | "REJECTED"
+    status: "TEAM_LEAD_APPROVED" | "APPROVED" | "REJECTED" | "CANCEL_REQUESTED" | "CANCELLED"
   ) => {
     setProcessingId(id);
     try {
@@ -200,7 +201,15 @@ export function LeavePageClient({
         throw new Error(data.error ?? "처리 실패");
       }
       toast.success(
-        status === "REJECTED" ? "반려했습니다." : status === "TEAM_LEAD_APPROVED" ? "1차 승인했습니다." : "2차 승인했습니다."
+        status === "REJECTED"
+          ? "반려했습니다."
+          : status === "TEAM_LEAD_APPROVED"
+            ? "1차 승인했습니다."
+            : status === "APPROVED"
+              ? "2차 승인했습니다."
+              : status === "CANCEL_REQUESTED"
+                ? "취소를 요청했습니다."
+                : "취소 처리했습니다."
       );
       fetchData();
     } catch (e) {
@@ -214,6 +223,8 @@ export function LeavePageClient({
     if (s === "PENDING") return "1차 대기";
     if (s === "TEAM_LEAD_APPROVED") return "2차 대기";
     if (s === "APPROVED") return "승인";
+    if (s === "CANCEL_REQUESTED") return "취소 요청";
+    if (s === "CANCELLED") return "취소 완료";
     return "반려";
   };
   const typeLabel = (t: string) => LEAVE_TYPES.find((x: any) => x.value === t)?.label ?? t;
@@ -255,6 +266,17 @@ export function LeavePageClient({
     return requests.filter((r) => {
       if (isTeamLead && r.status === "PENDING") return true;
       if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
+      if (r.status === "CANCEL_REQUESTED") {
+        // 취소 요청은 cancelFromStatus 기준으로 라우팅
+        if (isTeamLead && r.cancelFromStatus === "PENDING") return true;
+        if (
+          isExecutive &&
+          (r.cancelFromStatus === "PENDING" ||
+            r.cancelFromStatus === "TEAM_LEAD_APPROVED" ||
+            r.cancelFromStatus === "APPROVED")
+        )
+          return true;
+      }
       return false;
     });
   }, [requests, canApprove, isTeamLead, isExecutive]);
@@ -426,6 +448,7 @@ export function LeavePageClient({
                         <th className="pb-2 pr-2">일수</th>
                         <th className="pb-2 pr-2">상태</th>
                         <th className="pb-2">사유</th>
+                        <th className="pb-2">취소</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -455,6 +478,23 @@ export function LeavePageClient({
                           </td>
                           <td className="max-w-[200px] truncate py-2 text-muted-foreground" title={r.reason ?? ""}>
                             {r.reason ?? "—"}
+                          </td>
+                          <td className="py-2">
+                            {["PENDING", "TEAM_LEAD_APPROVED", "APPROVED"].includes(r.status) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={processingId === r.id}
+                                onClick={() => {
+                                  if (!confirm("이 휴가 신청을 취소 요청할까요?")) return;
+                                  void handleStatus(r.id, "CANCEL_REQUESTED");
+                                }}
+                              >
+                                취소 요청
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -613,6 +653,18 @@ export function LeavePageClient({
                                     onClick={() => handleStatus(r.id, "REJECTED")}
                                   >
                                     반려
+                                  </Button>
+                                </div>
+                              )}
+                              {r.status === "CANCEL_REQUESTED" && (
+                                <div className="flex flex-wrap gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "CANCELLED")}
+                                  >
+                                    취소 처리
                                   </Button>
                                 </div>
                               )}

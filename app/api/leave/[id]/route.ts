@@ -23,6 +23,19 @@ function isExecutive(role: string | undefined) {
   return role === "EXECUTIVE" || role === "ADMIN";
 }
 
+function canOwnerRequestCancel(current: string) {
+  return current === "PENDING" || current === "TEAM_LEAD_APPROVED" || current === "APPROVED";
+}
+
+function canManagerFinalizeCancel(cancelFromStatus: string | null | undefined, role: string | undefined) {
+  if (!cancelFromStatus) return false;
+  // 1차 대기(PENDING) 취소는 팀장/임원 모두 처리 가능
+  if (cancelFromStatus === "PENDING") return isTeamLead(role) || isExecutive(role);
+  // 2차 대기/최종승인 취소는 임원(또는 ADMIN)이 최종 처리
+  if (cancelFromStatus === "TEAM_LEAD_APPROVED" || cancelFromStatus === "APPROVED") return isExecutive(role);
+  return false;
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -43,8 +56,70 @@ export async function PATCH(
       return NextResponse.json({ error: "신청을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // 본인: 취소 요청 (PENDING|TEAM_LEAD_APPROVED|APPROVED → CANCEL_REQUESTED)
+    if (leave.userId === session.user.id) {
+      if (requestedStatus === "CANCEL_REQUESTED") {
+        if (leave.status === "CANCEL_REQUESTED" || leave.status === "CANCELLED") {
+          return NextResponse.json({ error: "이미 취소 요청/취소 처리된 신청입니다." }, { status: 400 });
+        }
+        if (!canOwnerRequestCancel(leave.status)) {
+          return NextResponse.json({ error: "취소 요청할 수 없는 상태입니다." }, { status: 400 });
+        }
+
+        const updated = await prisma.leaveRequest.update({
+          where: { id },
+          data: { status: "CANCEL_REQUESTED", cancelFromStatus: leave.status },
+          include: { user: { select: { name: true, position: true } } },
+        });
+
+        const applicant = updated.user?.name ?? "직원";
+        const managers = await prisma.user.findMany({
+          where: {
+            role: { in: ["TEAM_LEAD", "EXECUTIVE", "ADMIN"] },
+            id: { not: leave.userId },
+          },
+          select: { id: true, role: true },
+        });
+        for (const m of managers) {
+          const msg =
+            leave.status === "PENDING"
+              ? `${applicant}님이 휴가 신청을 취소 요청했습니다. 연차/근태에서 취소 처리해 주세요.`
+              : `${applicant}님이 휴가(승인 단계)를 취소 요청했습니다. 연차/근태에서 취소 처리해 주세요.`;
+          await createNotificationWithOptions({
+            userId: m.id,
+            type: "LEAVE_REQUEST",
+            message: msg,
+            link: "/leave",
+            actorId: leave.userId,
+          });
+        }
+
+        return NextResponse.json(updated);
+      }
+      // 소유자는 승인/반려 상태 변경 불가(취소 요청만)
+      if (requestedStatus === "TEAM_LEAD_APPROVED" || requestedStatus === "APPROVED" || requestedStatus === "REJECTED" || requestedStatus === "CANCELLED") {
+        return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+      }
+    }
+
     // 팀장: 1차 승인/반려 (PENDING → TEAM_LEAD_APPROVED | REJECTED)
     if (isTeamLead(role)) {
+      // 취소 요청 처리: cancelFromStatus 기준으로 가능 여부 결정
+      if (leave.status === "CANCEL_REQUESTED") {
+        if (requestedStatus !== "CANCELLED") {
+          return NextResponse.json({ error: "취소 요청 건은 취소 처리(CANCELLED)만 가능합니다." }, { status: 400 });
+        }
+        if (!canManagerFinalizeCancel(leave.cancelFromStatus, role)) {
+          return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
+        }
+        const updated = await prisma.leaveRequest.update({
+          where: { id },
+          data: { status: "CANCELLED" },
+          include: { user: { select: { name: true, position: true } } },
+        });
+        return NextResponse.json(updated);
+      }
+
       if (leave.status !== "PENDING") {
         return NextResponse.json({ error: "이미 처리된 신청이거나 2차 승인 대기 중입니다." }, { status: 400 });
       }
@@ -79,6 +154,45 @@ export async function PATCH(
 
     // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED), 최종 승인 시에만 연차 차감
     if (isExecutive(role)) {
+      // 취소 요청 처리 (CANCEL_REQUESTED → CANCELLED). APPROVED 취소면 연차 사용 복구
+      if (leave.status === "CANCEL_REQUESTED") {
+        if (requestedStatus !== "CANCELLED") {
+          return NextResponse.json({ error: "취소 요청 건은 취소 처리(CANCELLED)만 가능합니다." }, { status: 400 });
+        }
+        if (!canManagerFinalizeCancel(leave.cancelFromStatus, role)) {
+          return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
+        }
+
+        // 최종 승인(연차 차감)된 건을 취소할 때만 복구
+        if (leave.cancelFromStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
+          const days =
+            leave.type === "ANNUAL"
+              ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+              : (leaveTypeDays[leave.type] ?? 0);
+          const year = leave.startDate.getFullYear();
+          const entitlement = getAnnualLeaveEntitlement(leave.user.joinDate, year);
+          await prisma.leaveBalance.upsert({
+            where: { userId_year: { userId: leave.userId, year } },
+            create: {
+              userId: leave.userId,
+              year,
+              annualTotal: entitlement,
+              annualUsed: 0,
+              manualDeduction: 0,
+              annualCarryOver: 0,
+            },
+            update: { annualUsed: { decrement: days } },
+          });
+        }
+
+        const updated = await prisma.leaveRequest.update({
+          where: { id },
+          data: { status: "CANCELLED" },
+          include: { user: { select: { name: true, position: true } } },
+        });
+        return NextResponse.json(updated);
+      }
+
       if (leave.status !== "TEAM_LEAD_APPROVED") {
         return NextResponse.json({ error: "2차 승인은 팀장 1차 승인된 건만 처리할 수 있습니다." }, { status: 400 });
       }

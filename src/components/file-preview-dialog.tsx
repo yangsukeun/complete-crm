@@ -52,6 +52,10 @@ function isOfficeLike(ext: string) {
   return ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv"].includes(ext);
 }
 
+function isGoogleDriveUrl(url: string) {
+  return /drive\.google\.com/i.test(url);
+}
+
 type Props = {
   url: string;
   name?: string | null;
@@ -90,12 +94,18 @@ export function FilePreviewDialog({
   const { kind, embedUrl, icon } = useMemo(() => {
     const ext = getExt(name || url);
     const abs = toPathForPreview(url);
+    const isDrive = isGoogleDriveUrl(abs);
 
     if (url.startsWith("data:image/")) {
       return { kind: "image" as const, embedUrl: url, icon: <ImageIcon className="size-4" /> };
     }
     if (isYouTube(abs)) {
       return { kind: "youtube" as const, embedUrl: toYouTubeEmbed(abs), icon: <Film className="size-4" /> };
+    }
+    // Google Drive는 iframe 내에서 권한/쿠키/프레임 정책으로 "엑세스 권한 필요"가 자주 발생.
+    // 모달 내 미리보기 대신 "새 탭에서 열기"로 안내한다.
+    if (isDrive) {
+      return { kind: "drive" as const, embedUrl: abs, icon: <FileText className="size-4" /> };
     }
     if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) {
       return {
@@ -118,7 +128,10 @@ export function FilePreviewDialog({
     return { kind: "other" as const, embedUrl: abs, icon: <FileText className="size-4" /> };
   }, [name, url]);
 
-  const openHref = useMemo(() => getDriveDownloadUrl(url), [url]);
+  const openHref = useMemo(() => {
+    const abs = toPathForPreview(url);
+    return isGoogleDriveUrl(abs) ? getDriveDownloadUrl(abs) : abs;
+  }, [url]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -181,6 +194,15 @@ export function FilePreviewDialog({
               className="w-full h-[70vh]"
               title={title}
             />
+          )}
+          {kind === "drive" && (
+            <div className="p-4 text-sm text-muted-foreground">
+              Google Drive 파일은 이 창에서 미리보기가 제한될 수 있습니다.{" "}
+              <a href={openHref} target="_blank" rel="noopener noreferrer" className="underline">
+                새 탭에서 열기
+              </a>
+              로 다운로드/확인해 주세요.
+            </div>
           )}
           {kind === "other" && (
             <div className="p-4 text-sm text-muted-foreground">

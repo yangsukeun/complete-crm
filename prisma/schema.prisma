@@ -61,6 +61,8 @@ enum LeaveRequestStatus {
   PENDING            // 신청됨 → 팀장 1차 승인 대기
   TEAM_LEAD_APPROVED // 팀장 1차 승인 → 대표 2차 승인 대기
   APPROVED           // 대표 2차 승인 (최종)
+  CANCEL_REQUESTED   // 취소 요청됨 (승인 단계에 따라 처리)
+  CANCELLED          // 취소 완료
   REJECTED
 }
 
@@ -599,6 +601,8 @@ model LeaveRequest {
   startDate DateTime
   endDate   DateTime
   status    LeaveRequestStatus @default(PENDING)
+  /// 취소 요청 시점의 기존 상태(PENDING|TEAM_LEAD_APPROVED|APPROVED). 승인 큐 라우팅/차감 복구에 사용
+  cancelFromStatus String?
   reason    String?
   createdAt DateTime          @default(now())
   @@index([userId])
