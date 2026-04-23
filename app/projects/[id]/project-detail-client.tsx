@@ -38,6 +38,7 @@ import { ko } from "date-fns/locale";
 import { ArrowLeft, FileText, Link2, Loader2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
+import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 
 const ContentBodyEditor = dynamic(
   () => import("@/components/content-body-editor").then((m) => ({ default: m.ContentBodyEditor })),
@@ -118,6 +119,17 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
   const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
   const [bodyEditorKey, setBodyEditorKey] = useState(0);
   const [bodySaving, setBodySaving] = useState(false);
+
+  useAutoReadOnEnter(
+    projectId
+      ? {
+          relatedType: "PROJECT",
+          relatedId: projectId,
+          linkFallback: [`/projects/${projectId}`],
+        }
+      : null,
+    `project:${projectId ?? ""}`
+  );
 
   const load = useCallback(async () => {
     setLoading(true);

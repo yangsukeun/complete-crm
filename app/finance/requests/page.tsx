@@ -879,7 +879,6 @@ export default function FinanceRequestsPage() {
                                   <a
                                     key={u}
                                     href={u}
-                                    target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex items-center rounded border bg-background px-1.5 py-0.5 text-[11px] text-primary underline underline-offset-2"
                                     title={attachmentLabelFromUrl(u)}
@@ -1169,7 +1168,6 @@ export default function FinanceRequestsPage() {
                             <a
                               key={u}
                               href={u}
-                              target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center rounded border bg-background px-1.5 py-0.5 text-[11px] text-primary underline underline-offset-2"
                               title={attachmentLabelFromUrl(u)}
@@ -1421,7 +1419,6 @@ export default function FinanceRequestsPage() {
                           <div key={a.url} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1 text-sm">
                             <a
                               href={a.url}
-                              target="_blank"
                               rel="noreferrer"
                               className="min-w-0 flex-1 truncate text-primary underline underline-offset-2"
                               title={a.name || a.url}

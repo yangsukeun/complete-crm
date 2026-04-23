@@ -49,6 +49,7 @@ import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
+import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 
 /** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
 const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
@@ -165,6 +166,18 @@ export default function TaskDetailPage() {
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useAutoReadOnEnter(
+    taskId
+      ? {
+          relatedType: "TASK",
+          relatedId: taskId,
+          // 백필 전 구 알림도 커버
+          linkFallback: [`/tasks/${taskId}`],
+        }
+      : null,
+    `task:${taskId ?? ""}`
+  );
 
   useEffect(() => {
     try {

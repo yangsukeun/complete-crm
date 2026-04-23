@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import prisma from "@/lib/prisma";
-import { cancelOneSignalPush, syncBadgeCount } from "@/lib/onesignal/cancel";
+import { autoReadNotifications } from "@/lib/notifications/auto-read";
 
 export async function PATCH() {
   try {
@@ -9,40 +8,8 @@ export async function PATCH() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const isMissingOneSignalNotificationIdColumnError = (e: unknown): boolean => {
-      const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
-      return (
-        msg.includes("onesignalnotificationid") ||
-        (msg.includes("unknown arg") && msg.includes("onesignal")) ||
-        (msg.includes("column") && msg.includes("does not exist") && msg.includes("onesignal"))
-      );
-    };
-
-    let targets: { oneSignalNotificationId?: string | null }[] = [];
-    try {
-      targets = await prisma.notification.findMany({
-        where: { userId: session.user.id, isRead: false },
-        select: { oneSignalNotificationId: true },
-      });
-    } catch (e) {
-      if (!isMissingOneSignalNotificationIdColumnError(e)) throw e;
-      targets = [];
-    }
-    await prisma.notification.updateMany({
-      where: { userId: session.user.id, isRead: false },
-      data: { isRead: true },
-    });
-
-    const osIds = targets
-      .map((n) => n.oneSignalNotificationId)
-      .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
-    if (osIds.length > 0) {
-      await Promise.allSettled(osIds.map((id) => cancelOneSignalPush(id)));
-    }
-    await syncBadgeCount(session.user.id, 0);
-
-    return NextResponse.json({ ok: true });
+    const out = await autoReadNotifications({ userId: session.user.id, all: true });
+    return NextResponse.json({ ok: true, ...out });
   } catch (e) {
     console.error("Notifications read-all:", e);
     return NextResponse.json(

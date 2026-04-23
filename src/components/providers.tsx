@@ -15,6 +15,7 @@ import { OneSignalPushTokenRegister } from "@/components/one-signal-push-token-r
 import { PresenceHeartbeat } from "@/components/presence-heartbeat";
 import { MobileWebPushHintBanner } from "@/components/mobile-web-push-hint-banner";
 import type { HeaderBootstrapData, SwrLayoutFallback } from "@/lib/header-bootstrap";
+import { useServiceWorkerNavigate } from "@/hooks/use-service-worker-navigate";
 
 const AIAssistFloat = dynamic(
   () => import("@/components/ai-assist-float").then((m) => m.AIAssistFloat),
@@ -46,6 +47,7 @@ export function Providers({
   /** [PERF-mode-logo] layout RSC 스냅샷 — 키는 `SWR_MODE_KEY`·`SWR_LOGO_SETTINGS_KEY`·`SWR_KEYS.notificationUnread`와 동일 */
   swrLayoutFallback: SwrLayoutFallback;
 }) {
+  useServiceWorkerNavigate();
   return (
     <SessionProvider
       basePath="/api/auth"

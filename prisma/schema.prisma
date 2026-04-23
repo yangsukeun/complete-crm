@@ -132,6 +132,20 @@ enum NotificationType {
   DAILY_DIGEST       // 일일 업무 다이제스트 Cron
 }
 
+/// 알림이 연결된 리소스(읽음 처리·백필용). 기존 type/link는 그대로 유지.
+enum NotificationRelatedType {
+  PROJECT
+  TASK
+  CHAT
+  LEAVE
+  ATTENDANCE
+  FINANCE
+  BOARD
+  NOTICE
+  WORK_LOG
+  SYSTEM
+}
+
 // 워크스페이스 구분 (TEAM = 팀 공유, PERSONAL = 내 전용)
 enum WorkspaceScope {
   TEAM
@@ -752,6 +766,11 @@ model Notification {
   /// OneSignal 알림 ID(취소·전 디바이스 제거용) — 푸시 발송 성공 시 저장
   oneSignalNotificationId String?
   isRead    Boolean          @default(false)
+  /// 읽은 시각(요구사항). 기존 isRead는 하위호환용으로 유지.
+  readAt    DateTime?
+  /// 연결 리소스(백필/자동읽음). null 가능(구 알림)
+  relatedType NotificationRelatedType?
+  relatedId  String?
   createdAt DateTime         @default(now())
   @@index([userId])
   @@index([userId, isRead])
@@ -759,6 +778,8 @@ model Notification {
   @@index([createdAt])
   @@index([userId, createdAt])
   @@index([oneSignalNotificationId])
+  @@index([userId, relatedType, relatedId])
+  @@index([userId, readAt])
 }
 
 /// 웹 푸시 구독 1행 = 기기별 subscription id (User.playerIds 와 동기화, lastSeenAt 으로 좀비 판정)

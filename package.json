@@ -16,6 +16,7 @@
     "db:validate": "node scripts/prisma-with-env.cjs validate",
     "db:baseline": "node scripts/baseline-migrations.cjs",
     "db:seed": "prisma db seed",
+    "db:backfill-notifications": "tsx scripts/backfill-notification-related.ts",
     "check-user": "tsx scripts/check-user.ts",
     "check-db": "tsx scripts/check-db-connection.ts",
     "icons": "tsx scripts/generate-icons.ts",

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import prisma from "@/lib/prisma";
-import { cancelOneSignalPush, syncBadgeCount } from "@/lib/onesignal/cancel";
+import { autoReadNotifications } from "@/lib/notifications/auto-read";
 
 /**
  * PATCH: 알림 읽음 처리 (isRead: true)
@@ -17,27 +16,9 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const notification = await prisma.notification.findUnique({
-      where: { id },
-    });
-    if (!notification || notification.userId !== session.user.id) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    await prisma.notification.update({
-      where: { id },
-      data: { isRead: true },
-    });
-
-    if (notification.oneSignalNotificationId) {
-      await cancelOneSignalPush(notification.oneSignalNotificationId);
-    }
-    const unreadCount = await prisma.notification.count({
-      where: { userId: session.user.id, isRead: false },
-    });
-    await syncBadgeCount(session.user.id, unreadCount);
-
-    return NextResponse.json({ success: true });
+    const out = await autoReadNotifications({ userId: session.user.id, notificationIds: [id] });
+    // 기존 동작 호환: 없는 id는 멱등 성공으로 처리(클라이언트 낙관적 UI 유지)
+    return NextResponse.json({ ok: true, ...out });
   } catch (e) {
     console.error("Notification read PATCH:", e);
     return NextResponse.json(

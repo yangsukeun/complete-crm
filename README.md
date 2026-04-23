@@ -45,6 +45,14 @@ npm run dev
 로그인(마스터): **admin@complete.co.kr** / **1234**  
 (원하면 `.env`에 `MASTER_EMAIL`, `MASTER_PASSWORD`, `MASTER_NAME`을 설정한 뒤 `npm run db:seed`로 변경 가능)
 
+## DB 마이그레이션 후 1회 작업
+
+마이그레이션 적용 후 과거 알림을 새 컬럼(`relatedType/relatedId`)으로 채우려면 한 번 실행하세요:
+
+```bash
+npm run db:backfill-notifications
+```
+
 ## AI 비서 (Gemini / GPT / 노트북 LLM)
 
 **기본값은 Gemini**입니다. `.env`에서 `AI_PROVIDER`로 전환할 수 있습니다.

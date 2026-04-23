@@ -81,7 +81,7 @@ export function NotificationsPageClient() {
       if (n.link) router.push(n.link);
       if (!n.isRead) {
         try {
-          await fetch(`/api/notifications/${n.id}/read`, { method: "PATCH" });
+          await fetch(`/api/notifications/${n.id}/read`, { method: "PATCH", credentials: "include" });
           setList((prev) =>
             prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x))
           );

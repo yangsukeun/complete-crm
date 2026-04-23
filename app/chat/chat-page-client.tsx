@@ -1295,7 +1295,6 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                                   <a
                                     key={i}
                                     href={href}
-                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-primary underline"
                                   >

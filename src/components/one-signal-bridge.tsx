@@ -158,6 +158,9 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
         serviceWorkerPath: "/OneSignalSDKWorker.js",
         serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
         serviceWorkerParam: { scope: "/" },
+        // 푸시 클릭 시 탭 폭발 방지: 같은 origin 탭을 포커스(가능하면)하고, 새 탭은 최소화
+        notificationClickHandlerMatch: "origin",
+        notificationClickHandlerAction: "focus",
         /** Chromium(Chrome·Edge·기타) 및 SW 지원 브라우저 공통. Safari(iOS/mac) 웹푸시는 대시보드 Safari Web ID + 사용자 OS 조건 필요 */
         allowLocalhostAsSecureOrigin: process.env.NODE_ENV === "development",
         welcomeNotification: { disable: true, message: "" },
@@ -200,6 +203,12 @@ export function OneSignalBridge({ userId }: { userId?: string | null }) {
           /** 모바일 등에서 SDK 등록 전 SW=0인 경우 완화 — 호스트 워커를 먼저 등록 후 init */
           if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
             try {
+              // 우리 SW는 OneSignal 워커와 별개(일반 notificationclick 포커스/NAVIGATE 브리지용)
+              try {
+                await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+              } catch {
+                /* ignore */
+              }
               const reg = await navigator.serviceWorker.register("/OneSignalSDKWorker.js", { scope: "/" });
               const swState =
                 reg.installing?.state ?? reg.waiting?.state ?? reg.active?.state ?? "pending";

@@ -102,18 +102,21 @@ export function MarkdownRenderer({ content, className = "" }: MarkdownRendererPr
           td: ({ children, ...props }: ComponentPropsWithoutRef<"td">) => (
             <td className="border-b border-border px-3 py-2" {...props}>{children}</td>
           ),
-          // 링크
-          a: ({ children, href, ...props }: ComponentPropsWithoutRef<"a">) => (
-            <a
-              href={href}
-              className="text-primary underline underline-offset-2 hover:text-primary/80"
-              target="_blank"
-              rel="noopener noreferrer"
-              {...props}
-            >
-              {children}
-            </a>
-          ),
+          // 링크: CRM 내부 링크는 새 탭을 열지 않음(탭 폭발 방지). 외부 링크만 _blank.
+          a: ({ children, href, ...props }: ComponentPropsWithoutRef<"a">) => {
+            const h = (href ?? "").trim();
+            const isInternal = h.startsWith("/") || h.startsWith("#");
+            return (
+              <a
+                href={h}
+                className="text-primary underline underline-offset-2 hover:text-primary/80"
+                {...(!isInternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                {...props}
+              >
+                {children}
+              </a>
+            );
+          },
         }}
       >
         {content}

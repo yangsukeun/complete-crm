@@ -25,6 +25,7 @@ import { formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { leaveDisplayDays } from "@/lib/leave-request-serialize";
+import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 
 const LEAVE_TYPES: { value: string; label: string }[] = [
   { value: "ANNUAL", label: "연차" },
@@ -95,6 +96,16 @@ export function LeavePageClient({
   const [peerTypeQ, setPeerTypeQ] = useState<string>("");
   const [peerFrom, setPeerFrom] = useState("");
   const [peerTo, setPeerTo] = useState("");
+
+  // /leave 진입 시: 휴가 관련 알림(목록 링크 기반 포함) 디바운스 자동 읽음
+  useAutoReadOnEnter(
+    {
+      relatedType: "LEAVE",
+      relatedId: null,
+      linkFallback: ["/leave"],
+    },
+    "leave"
+  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -211,6 +222,17 @@ export function LeavePageClient({
                 ? "취소를 요청했습니다."
                 : "취소 처리했습니다."
       );
+      // 액션 완료 시 해당 리소스(/leave) 관련 알림 자동 읽음
+      try {
+        await fetch("/api/notifications/auto-read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ relatedType: "LEAVE", relatedId: null, linkFallback: ["/leave"] }),
+        });
+      } catch {
+        /* ignore */
+      }
       fetchData();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "처리에 실패했습니다.");

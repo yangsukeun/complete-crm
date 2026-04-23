@@ -332,7 +332,6 @@ export function FloatingChatPanel() {
                               <Link
                                 key={i}
                                 href={part}
-                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-primary underline"
                               >
