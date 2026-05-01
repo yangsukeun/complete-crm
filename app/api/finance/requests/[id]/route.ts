@@ -121,8 +121,10 @@ export async function PATCH(
       requesterRow?.name,
       transferExecutorIds
     );
-    /** 이체 담당자·김소윤 요청: 팀장 또는 대표/임원이 1차 승인·반려·되돌리기 */
-    const canFirstLineApprove = isTeamLead || isExecutiveApprover;
+    /** 이체 담당자·김소윤 요청: 1차 승인·반려·되돌리기는 대표/임원만. 그 외는 팀장 또는 대표/임원 */
+    const canFirstLineApprove = needsExecutiveFirstLine
+      ? isExecutiveApprover
+      : isTeamLead || isExecutiveApprover;
 
     // 팀장·(해당 건) 대표/임원: PENDING → 이체대기(TEAM_LEAD_APPROVED) / 반려. 이체대기 건 → 승인대기로 되돌리기·반려 가능.
     if (canFirstLineApprove) {
@@ -149,9 +151,8 @@ export async function PATCH(
     }
 
     /**
-     * 이체 담당자: TEAM_LEAD_APPROVED → COMPLETED(이체완료) 만 가능
-     * 단, 대표/임원이면서(또는 팀장이면서) 1차 승인 권한이 있는 경우에는
-     * "이체 담당자" 규칙으로 1차 승인(PENDING → TEAM_LEAD_APPROVED)이 막히면 안 됨.
+     * 이체 담당자(팀장·임원 제외한 순수 담당자): TEAM_LEAD_APPROVED → COMPLETED 만 가능.
+     * 팀장 전용 이체 담당자는 1차 승인 권한이 없으므로 canFirstLineApprove 가 false 일 때 여기로 옴.
      */
     if (isTransferExecutor && !canFirstLineApprove) {
       if (parsed.data.status !== "COMPLETED") {
@@ -169,6 +170,12 @@ export async function PATCH(
     }
 
     if (!canFirstLineApprove && !isTransferExecutor) {
+      if (needsExecutiveFirstLine && isTeamLead) {
+        return NextResponse.json(
+          { error: "이체 담당자가 올린 요청은 대표(임원)만 승인할 수 있습니다." },
+          { status: 403 }
+        );
+      }
       return NextResponse.json(
         { error: "결재 담당자(팀장·대표/임원) 또는 이체 담당자만 처리할 수 있습니다." },
         { status: 403 }

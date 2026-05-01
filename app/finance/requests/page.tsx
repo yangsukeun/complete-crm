@@ -38,6 +38,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { postUploadFile } from "@/lib/upload-client-validate";
+import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
 import * as XLSX from "xlsx";
 
 type Vendor = {
@@ -122,6 +123,17 @@ function attachmentLabelFromUrl(url: string): string {
     const base = (url.split("?")[0] ?? "").split("/").pop() ?? "";
     return base || "첨부파일";
   }
+}
+
+function rowNeedsExecutiveFirstLineApproval(
+  r: PaymentRequest,
+  transferExecutorIds: readonly string[]
+): boolean {
+  return paymentRequestNeedsExecutiveFirstLineApproval(
+    r.requester?.id,
+    r.requester?.name,
+    transferExecutorIds
+  );
 }
 
 function attachmentsForRequest(r: PaymentRequest): string[] {
@@ -672,8 +684,12 @@ export default function FinanceRequestsPage() {
   const isTransferExecutor = !isTeamLead && (paymentAlertUnreadCount !== undefined || isExecutiveTransferExecutor);
   const canRequest = !isExecutive; // 직원·팀장·이체 담당자: 새 결제 요청 가능 (대표는 요청 불가). 팀장 요청 시 바로 이체 담당자에게 알람
   const canComplete = isTransferExecutor; // 이체 담당자(또는 대표+이체담당자): 이체완료
-  /** 팀장/대표/관리자: 전 건 1차 승인·반려 */
-  const canApproveRejectRow = (_r: PaymentRequest) => isTeamLead || isExecutive;
+  /** 팀장: 일반 건만 1차 승인·반려. 이체 담당자·김소윤 특례 건은 대표/임원만 */
+  const canApproveRejectRow = (r: PaymentRequest) => {
+    if (isExecutive) return true;
+    if (isTeamLead) return !rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds);
+    return false;
+  };
   const showApprovalActionsColumn = isTeamLead || isExecutive || canComplete;
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
   const pendingTotal = pendingList.filter((r: any) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
@@ -719,7 +735,7 @@ export default function FinanceRequestsPage() {
             showTwoSections
               ? "결제 요청(이체 대기) 건과 이체 완료된 건을 모두 조회합니다. 이체 담당자로 지정된 경우 직접 이체 완료 처리할 수 있습니다."
               : isTeamLead
-                ? "요청을 승인/반려하면 이체 담당자에게 알림이 갑니다. 이체 완료는 이체 담당자가 처리합니다."
+                ? "일반 요청은 팀장이 1차 승인할 수 있습니다. 이체 담당자(또는 김소윤 님)가 올린 건은 대표(임원)만 1차 승인합니다. 이체 완료는 이체 담당자가 처리합니다."
                 : isExecutive
                   ? "이체 담당자 또는 김소윤 님이 올린 요청은 대표/임원이 승인·반려할 수 있습니다. 이체 완료는 이체 담당자가 처리합니다."
                 : isTransferExecutor
@@ -911,6 +927,22 @@ export default function FinanceRequestsPage() {
                         <TableCell className="text-right font-medium tabular-nums">{formatAmount(r.amount)}</TableCell>
                         <TableCell>{statusBadge(r.status)}</TableCell>
                         <TableCell>
+                          {isTeamLead &&
+                            !isExecutive &&
+                            r.status === "PENDING" &&
+                            rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds) && (
+                              <p className="text-muted-foreground max-w-[10rem] text-xs leading-snug">
+                                대표(임원) 승인 대기 · 팀장 1차 승인 불가
+                              </p>
+                            )}
+                          {isTeamLead &&
+                            !isExecutive &&
+                            r.status === "TEAM_LEAD_APPROVED" &&
+                            rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds) && (
+                              <p className="text-muted-foreground max-w-[10rem] text-xs leading-snug">
+                                대표(임원) 결재 건 · 되돌리기·반려는 대표만 가능
+                              </p>
+                            )}
                           {canApproveRejectRow(r) && r.status === "PENDING" && (
                             <div className="flex flex-wrap gap-1">
                               <Button
@@ -1203,6 +1235,22 @@ export default function FinanceRequestsPage() {
                   <TableCell>{statusBadge(r.status)}</TableCell>
                   {showApprovalActionsColumn && (
                     <TableCell>
+                      {isTeamLead &&
+                        !isExecutive &&
+                        r.status === "PENDING" &&
+                        rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds) && (
+                          <p className="text-muted-foreground mb-1 max-w-[10rem] text-xs leading-snug">
+                            대표(임원) 승인 대기 · 팀장 1차 승인 불가
+                          </p>
+                        )}
+                      {isTeamLead &&
+                        !isExecutive &&
+                        r.status === "TEAM_LEAD_APPROVED" &&
+                        rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds) && (
+                          <p className="text-muted-foreground mb-1 max-w-[10rem] text-xs leading-snug">
+                            대표(임원) 결재 건 · 되돌리기·반려는 대표만 가능
+                          </p>
+                        )}
                       {canApproveRejectRow(r) && r.status === "PENDING" && (
                         <div className="flex flex-wrap gap-1">
                           <Button

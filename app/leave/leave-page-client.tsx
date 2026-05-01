@@ -26,6 +26,8 @@ import { PageHeadline } from "@/components/page-headline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { leaveDisplayDays } from "@/lib/leave-request-serialize";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
+import { mutate } from "swr";
+import { SWR_KEYS } from "@/lib/api-swr";
 
 const LEAVE_TYPES: { value: string; label: string }[] = [
   { value: "ANNUAL", label: "연차" },
@@ -164,7 +166,7 @@ export function LeavePageClient({
     fetchData();
   }, [fetchData]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!startDate) {
       toast.error("시작일을 선택하세요.");
@@ -188,7 +190,8 @@ export function LeavePageClient({
       setStartDate("");
       setEndDate("");
       setReason("");
-      fetchData();
+      await fetchData();
+      void mutate(SWR_KEYS.leave);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "신청에 실패했습니다.");
     } finally {
@@ -233,7 +236,8 @@ export function LeavePageClient({
       } catch {
         /* ignore */
       }
-      fetchData();
+      await fetchData();
+      void mutate(SWR_KEYS.leave);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "처리에 실패했습니다.");
     } finally {
