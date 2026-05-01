@@ -4,7 +4,12 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import { EVENT_PALETTE, type CalendarLayerId } from "@/lib/schedule-colors";
-import { eachKstYmdInclusive, todayYmdKst, toKstYmd } from "@/lib/date-kst";
+import {
+  eachKstYmdInclusive,
+  formatKstYmdLongKo,
+  todayYmdKst,
+  toKstYmd,
+} from "@/lib/date-kst";
 
 export type { CalendarLayerId };
 import Link from "next/link";
@@ -335,32 +340,61 @@ function stopCalendarSlotPointerChain(e: React.SyntheticEvent) {
   e.stopPropagation();
 }
 
-function LeaveTypeIcon({ type }: { type: string }) {
-  if (type === "SICK_PAID" || type === "SICK_UNPAID") {
-    return <Stethoscope className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
+function leaveTypeChipClass(type: string): string {
+  if (type === "ANNUAL") {
+    return "border border-blue-200/90 bg-blue-100/95 text-blue-900 shadow-sm hover:bg-blue-200/90 dark:border-blue-700 dark:bg-blue-950/70 dark:text-blue-100 dark:hover:bg-blue-900/55";
   }
   if (type.startsWith("HALF_") || type.startsWith("QUARTER_")) {
-    return <Clock className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
+    return "border border-amber-200/90 bg-amber-50/95 text-amber-950 shadow-sm hover:bg-amber-100/95 dark:border-amber-800/80 dark:bg-amber-950/45 dark:text-amber-100 dark:hover:bg-amber-900/40";
   }
-  return <Palmtree className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
+  if (type === "SICK_PAID") {
+    return "border border-emerald-200/90 bg-emerald-50/95 text-emerald-950 shadow-sm hover:bg-emerald-100/90 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-100 dark:hover:bg-emerald-900/35";
+  }
+  if (type === "SICK_UNPAID") {
+    return "border border-neutral-200/90 bg-neutral-100/95 text-neutral-900 shadow-sm hover:bg-neutral-200/80 dark:border-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-100 dark:hover:bg-neutral-700/70";
+  }
+  return "border border-blue-200/90 bg-blue-100/95 text-blue-900 shadow-sm hover:bg-blue-200/90 dark:border-blue-700 dark:bg-blue-950/70 dark:text-blue-100 dark:hover:bg-blue-900/55";
+}
+
+function LeaveTypeIcon({ type }: { type: string }) {
+  const iconCls = "size-3 shrink-0 text-current opacity-85";
+  if (type === "SICK_PAID" || type === "SICK_UNPAID") {
+    return <Stethoscope className={iconCls} aria-hidden />;
+  }
+  if (type.startsWith("HALF_") || type.startsWith("QUARTER_")) {
+    return <Clock className={iconCls} aria-hidden />;
+  }
+  return <Palmtree className={iconCls} aria-hidden />;
 }
 
 function DateCellLeaveFooter({
   entries,
   onLeaveClick,
+  onLeavePointerSession,
 }: {
   entries: LeaveDayEntry[];
   onLeaveClick: (leaveId: string) => void;
+  onLeavePointerSession?: () => void;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+
+  const swallowLeavePointer = (e: React.SyntheticEvent) => {
+    onLeavePointerSession?.();
+    stopCalendarSlotPointerChain(e);
+  };
 
   const lineBtn = (entry: LeaveDayEntry, key: string) => (
     <button
       key={key}
       type="button"
-      className="rbc-date-cell-leave-line flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded px-0.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
-      onMouseDown={stopCalendarSlotPointerChain}
-      onTouchStart={stopCalendarSlotPointerChain}
+      data-leave-item
+      className={cn(
+        "rbc-date-cell-leave-line flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded-md px-1 py-0.5 text-left text-[0.65rem] font-medium transition-[box-shadow,filter] duration-150",
+        leaveTypeChipClass(entry.type)
+      )}
+      onPointerDownCapture={swallowLeavePointer}
+      onMouseDown={swallowLeavePointer}
+      onTouchStart={swallowLeavePointer}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -376,10 +410,12 @@ function DateCellLeaveFooter({
 
   return (
     <div
-      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-200/90 bg-blue-50/80 pt-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-blue-800/70 dark:bg-blue-950/35 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      data-leave-footer
+      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-200/90 bg-blue-50/85 px-1 pt-1.5 pb-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-blue-800/70 dark:bg-blue-950/40 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
       aria-label={entries.map((x) => x.display).join(", ")}
-      onMouseDown={stopCalendarSlotPointerChain}
-      onTouchStart={stopCalendarSlotPointerChain}
+      onPointerDownCapture={swallowLeavePointer}
+      onMouseDown={swallowLeavePointer}
+      onTouchStart={swallowLeavePointer}
     >
       {entries.length <= 2 ? (
         <div className="flex max-h-[2.6rem] w-full max-w-full flex-col gap-0.5 overflow-hidden">
@@ -392,9 +428,11 @@ function DateCellLeaveFooter({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="mx-auto inline-flex max-w-full cursor-pointer items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100 dark:hover:bg-blue-900/60"
-                onMouseDown={stopCalendarSlotPointerChain}
-                onTouchStart={stopCalendarSlotPointerChain}
+                data-leave-item
+                className="mx-auto inline-flex max-w-full cursor-pointer items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100 dark:hover:bg-blue-900/60"
+                onPointerDownCapture={swallowLeavePointer}
+                onMouseDown={swallowLeavePointer}
+                onTouchStart={swallowLeavePointer}
                 onClick={(e) => e.stopPropagation()}
               >
                 +{entries.length - 1}명 더
@@ -403,8 +441,9 @@ function DateCellLeaveFooter({
             <PopoverContent
               className="w-64 p-2"
               align="center"
-              onMouseDown={stopCalendarSlotPointerChain}
-              onTouchStart={stopCalendarSlotPointerChain}
+              onPointerDownCapture={swallowLeavePointer}
+              onMouseDown={swallowLeavePointer}
+              onTouchStart={swallowLeavePointer}
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-muted-foreground mb-2 text-xs">해당일 휴가</p>
@@ -423,7 +462,8 @@ function DateCellLeaveFooter({
 
 function createDateCellWrapper(
   leaveByDate: Record<string, LeaveDayEntry[]>,
-  onLeaveClick: (leaveId: string) => void
+  onLeaveClick: (leaveId: string) => void,
+  onLeavePointerSession?: () => void
 ) {
   return function DateCellWrapper({ value, children }: { value: Date; children: React.ReactNode; range?: Date[] }) {
     const key = toKstYmd(value);
@@ -435,7 +475,13 @@ function createDateCellWrapper(
         style={{ flex: "1 0 0%" }}
       >
         <div className="rbc-date-cell-bg-area min-h-0 flex-1 overflow-hidden">{children}</div>
-        {entries.length > 0 ? <DateCellLeaveFooter entries={entries} onLeaveClick={onLeaveClick} /> : null}
+        {entries.length > 0 ? (
+          <DateCellLeaveFooter
+            entries={entries}
+            onLeaveClick={onLeaveClick}
+            onLeavePointerSession={onLeavePointerSession}
+          />
+        ) : null}
       </div>
     );
   };
@@ -864,6 +910,11 @@ function SchedulePageInner() {
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [leaveDetailId, setLeaveDetailId] = useState<string | null>(null);
+  /** 휴가 줄 포인터 직후 RBC onSelectSlot 이 한 번 열리는 것 방지 */
+  const blockSlotOpenFromLeaveUntilMs = useRef(0);
+  const markLeavePointerSession = useCallback(() => {
+    blockSlotOpenFromLeaveUntilMs.current = Date.now() + 600;
+  }, []);
   const [googleEvents, setGoogleEvents] = useState<ScheduleEvent[]>([]);
   /** 서버·클라이언트 초기값 동일(localStorage는 마운트 후에만 읽기) → 하이드레이션 불일치 방지 */
   const [visibleCalendars, setVisibleCalendars] = useState<Record<CalendarLayerId, boolean>>(
@@ -1138,6 +1189,7 @@ function SchedulePageInner() {
   }, [searchParams, router]);
 
   const handleSelectSlot = useCallback((slotInfo: { start: Date; end: Date }) => {
+    if (Date.now() < blockSlotOpenFromLeaveUntilMs.current) return;
     setCreateSlot({ start: slotInfo.start, end: slotInfo.end });
     setCreateOpen(true);
   }, []);
@@ -1239,6 +1291,20 @@ function SchedulePageInner() {
     }
     return map;
   }, [leaveRequests]);
+
+  const dateCellWrapperComponent = useMemo(
+    () => createDateCellWrapper(leaveByDate, (id) => setLeaveDetailId(id), markLeavePointerSession),
+    [leaveByDate, markLeavePointerSession]
+  );
+
+  const calendarRbcComponents = useMemo(
+    () => ({
+      dateHeader: CustomDateHeader as any,
+      dateCellWrapper: dateCellWrapperComponent as any,
+      event: ScheduleCalendarEvent as any,
+    }),
+    [dateCellWrapperComponent]
+  );
 
   const leaveDetail = useMemo(
     () => (leaveDetailId ? leaveRequests.find((r) => r.id === leaveDetailId) ?? null : null),
@@ -1545,18 +1611,16 @@ function SchedulePageInner() {
               toolbar={false}
               popup
               doShowMoreDrillDown={false}
-              components={{
-                dateHeader: CustomDateHeader as any,
-                dateCellWrapper: createDateCellWrapper(leaveByDate, (id) => setLeaveDetailId(id)) as any,
-                event: ScheduleCalendarEvent as any,
-              } as any}
+              components={calendarRbcComponents as any}
               dayPropGetter={(d: any) => {
                 const legal = isLegalHoliday(d);
-                const sat = getDay(d) === 6;
+                const dow = getDay(d as Date);
+                const sat = dow === 6;
+                const sun = dow === 0;
                 const isToday = isSameDay(d as Date, new Date());
                 const cls = cn(
-                  legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : "",
-                  isToday && "bg-blue-50 dark:bg-blue-950/20"
+                  legal ? "rbc-day--legal-holiday" : sat ? "rbc-day--saturday" : sun ? "rbc-day--sunday" : "",
+                  isToday && "schedule-gcal-day-today"
                 );
                 return cls ? { className: cls } : {};
               }}
@@ -1803,8 +1867,8 @@ function SchedulePageInner() {
               <div className="grid gap-1">
                 <p className="text-muted-foreground text-xs">기간 (한국 달력 기준)</p>
                 <p className="font-medium tabular-nums">
-                  {format(new Date(leaveDetail.startDate), "yyyy.MM.dd (EEE)", { locale: ko })} ~{" "}
-                  {format(new Date(leaveDetail.endDate), "yyyy.MM.dd (EEE)", { locale: ko })}
+                  {formatKstYmdLongKo(toKstYmd(leaveDetail.startDate))} ~{" "}
+                  {formatKstYmdLongKo(toKstYmd(leaveDetail.endDate))}
                 </p>
               </div>
               <div className="grid gap-1">

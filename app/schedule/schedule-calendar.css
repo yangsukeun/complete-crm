@@ -5,9 +5,10 @@
 
 .schedule-gcal-root {
   --gcal-text: #3c4043;
-  --gcal-border: #e5e7eb;
-  --gcal-cell-border: #f1f3f4;
-  --gcal-today-bg: #e8f0fe;
+  --gcal-border: #d1d5db;
+  --gcal-cell-border: #e2e8f0;
+  --gcal-row-sep: #cbd5e1;
+  --gcal-today-bg: #dbeafe;
   --gcal-primary: #1a73e8;
   --gcal-sun: #d93025;
   --gcal-sat: #1a73e8;
@@ -15,9 +16,10 @@
 
 .dark .schedule-gcal-root {
   --gcal-text: #e8eaed;
-  --gcal-border: #3c4043;
-  --gcal-cell-border: #3c4043;
-  --gcal-today-bg: rgba(26, 115, 232, 0.22);
+  --gcal-border: #4b5563;
+  --gcal-cell-border: #3d4556;
+  --gcal-row-sep: #525c6f;
+  --gcal-today-bg: rgba(26, 115, 232, 0.28);
   --gcal-sun: #f28b82;
   --gcal-sat: #8ab4f8;
 }
@@ -85,12 +87,17 @@
   border: none;
 }
 
-/* 주간 행: 최소 140px, 내용에 따라 높이 확장(기본 rbc의 균등 flex 분배 완화) */
-.schedule-gcal-viewport .rbc-month-row {
-  border-top: 1px solid var(--gcal-cell-border);
+/* 주간 행: 주 사이 경계를 헤더·셀 경계보다 한 단계 진하게 */
+.schedule-gcal-viewport .rbc-month-view .rbc-month-row {
+  border-top: 1px solid var(--gcal-row-sep);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
   flex: 0 0 auto !important;
   min-height: 140px !important;
   height: auto !important;
+}
+
+.dark .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .schedule-gcal-viewport .rbc-day-bg {
@@ -99,8 +106,34 @@
   min-width: 0;
 }
 
-.schedule-gcal-viewport .rbc-day-bg.rbc-today {
+/* 토·일 배경(다른 달 off-range 는 기존 톤 유지) */
+.schedule-gcal-viewport .rbc-day-bg.rbc-day--saturday:not(.rbc-off-range-bg),
+.schedule-gcal-viewport .rbc-day-bg.rbc-day--sunday:not(.rbc-off-range-bg) {
+  background: #f4f6f8 !important;
+}
+
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-day--saturday:not(.rbc-off-range-bg),
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-day--sunday:not(.rbc-off-range-bg) {
+  background: hsl(220 12% 16% / 0.55) !important;
+}
+
+.schedule-gcal-viewport .rbc-day-bg.rbc-day--legal-holiday:not(.rbc-off-range-bg) {
+  background: #fef2f2 !important;
+}
+
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-day--legal-holiday:not(.rbc-off-range-bg) {
+  background: hsl(0 25% 16% / 0.45) !important;
+}
+
+.schedule-gcal-viewport .rbc-day-bg.rbc-today,
+.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today {
   background: var(--gcal-today-bg) !important;
+  box-shadow: inset 0 0 0 1px rgba(26, 115, 232, 0.22);
+}
+
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-today,
+.dark .schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today {
+  box-shadow: inset 0 0 0 1px rgba(138, 180, 248, 0.35);
 }
 
 .schedule-gcal-viewport .rbc-off-range-bg {
@@ -327,7 +360,7 @@
     margin-bottom: -4px;
   }
 
-  .schedule-gcal-viewport .rbc-month-row {
+  .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
     min-height: 140px;
   }
 
@@ -369,12 +402,30 @@
   min-width: 0;
 }
 
+/* 휴가 푸터: 이벤트 레이어(z-index:4)보다 위에서 포인터 수신, 셀 안에만 보이도록 */
+.schedule-gcal-viewport .rbc-date-cell-leave-footer {
+  position: relative;
+  z-index: 5;
+  isolation: isolate;
+  pointer-events: auto;
+  max-height: 2.85rem;
+  overflow: hidden;
+  border-top-color: var(--gcal-border) !important;
+  box-shadow:
+    0 -1px 0 rgba(15, 23, 42, 0.06),
+    0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+.dark .schedule-gcal-viewport .rbc-date-cell-leave-footer {
+  box-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
 .rbc-date-cell-leave-footer {
   font-size: 0.65rem;
   line-height: 1.25;
   color: #1d4ed8;
-  max-height: 2.75rem;
-  overflow: hidden;
 }
 
 .dark .rbc-date-cell-leave-footer {

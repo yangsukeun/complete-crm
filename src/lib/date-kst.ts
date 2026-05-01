@@ -4,6 +4,23 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 const KST_WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
+/** UTC 시각 → KST 달력 yyyy-MM-dd (한국은 일광절약 없음, ICU/런타임과 무관하게 동일 결과) */
+function utcMsToKstYmd(ms: number): string {
+  const kst = new Date(ms + KST_OFFSET_MS);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(kst.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+const kstYmdLongFormatter = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "short",
+});
+
 /**
  * ISO/Date 시각을 KST 기준 `M/d (요일) HH:mm` 문자열로 (서버 TZ·브라우저 TZ와 무관, 하이드레이션 안전).
  */
@@ -34,11 +51,25 @@ export function todayYmdKst(): string {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 }
 
-/** 임의 시각이 속한 한국 날짜 `YYYY-MM-DD` (스케줄 셀·휴가 구간 키 정렬용) */
+/**
+ * 한국 달력 기준 `YYYY-MM-DD` (스케줄 셀 키·휴가 구간).
+ * - `YYYY-MM-DD` 문자열만 오는 값(날짜 전용)은 그대로 키로 사용(의미=한국 영업일).
+ * - 그 외 ISO/Date 는 UTC 에폭 + KST 오프셋으로 일자 산출(toLocaleDateString 미사용, 환경 편차 방지).
+ */
 export function toKstYmd(value: string | Date): string {
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  }
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  return utcMsToKstYmd(d.getTime());
+}
+
+/** `yyyy-MM-dd` 한 줄을 한국 로케일로 읽기 쉬운 한 줄로 (다이얼로그 등) */
+export function formatKstYmdLongKo(ymd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+  return kstYmdLongFormatter.format(new Date(`${ymd}T12:00:00+09:00`));
 }
 
 /**
@@ -55,7 +86,7 @@ export function eachKstYmdInclusive(start: string | Date, end: string | Date): s
     out.push(cur);
     if (cur === b) break;
     const { end: nextDayStart } = kstDateBoundsUtc(cur);
-    cur = nextDayStart.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+    cur = toKstYmd(nextDayStart);
   }
   return out;
 }
@@ -89,7 +120,7 @@ export function previousKstYmd(dateStr: string): string {
   const start = new Date(`${dateStr}T00:00:00+09:00`);
   if (Number.isNaN(start.getTime())) return dateStr;
   const prev = new Date(start.getTime() - 24 * 60 * 60 * 1000);
-  return prev.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  return toKstYmd(prev);
 }
 
 /** 관리자가 고른 YYYY-MM-DD(한국 기준)에 해당하는 Attendance.date 등에 쓰는 UTC 시각 (KST 그날 00:00) */
