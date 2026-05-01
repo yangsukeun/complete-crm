@@ -31,6 +31,13 @@ import { ScheduleDetailModal } from "@/components/schedule-detail-modal";
 import { CreateScheduleModal } from "@/components/create-schedule-modal";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -309,13 +316,13 @@ function calendarLeaveTypeLabel(type: string): string {
   return CALENDAR_LEAVE_LABELS[type] ?? "휴가";
 }
 
-type LeaveDayEntry = { userId: string; type: string; display: string };
+type LeaveDayEntry = { leaveId: string; userId: string; type: string; display: string };
 
 function dedupeLeaveDayEntries(arr: LeaveDayEntry[]): LeaveDayEntry[] {
   const seen = new Set<string>();
   const out: LeaveDayEntry[] = [];
   for (const e of arr) {
-    const k = `${e.userId}:${e.display}`;
+    const k = e.leaveId;
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(e);
@@ -333,24 +340,25 @@ function LeaveTypeIcon({ type }: { type: string }) {
   return <Palmtree className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
 }
 
-function DateCellLeaveFooter({ entries }: { entries: LeaveDayEntry[] }) {
-  const router = useRouter();
+function DateCellLeaveFooter({
+  entries,
+  onLeaveClick,
+}: {
+  entries: LeaveDayEntry[];
+  onLeaveClick: (leaveId: string) => void;
+}) {
   const [moreOpen, setMoreOpen] = useState(false);
-
-  const goLeave = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (typeof window !== "undefined" && window.confirm("연차/근태 페이지로 이동하시겠습니까?")) {
-      router.push("/leave");
-    }
-  };
 
   const lineBtn = (entry: LeaveDayEntry, key: string) => (
     <button
       key={key}
       type="button"
       className="rbc-date-cell-leave-line flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded px-0.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
-      onClick={goLeave}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onLeaveClick(entry.leaveId);
+      }}
     >
       <LeaveTypeIcon type={entry.type} />
       <span className="min-w-0 flex-1 truncate text-center">{entry.display}</span>
@@ -396,7 +404,10 @@ function DateCellLeaveFooter({ entries }: { entries: LeaveDayEntry[] }) {
   );
 }
 
-function createDateCellWrapper(leaveByDate: Record<string, LeaveDayEntry[]>) {
+function createDateCellWrapper(
+  leaveByDate: Record<string, LeaveDayEntry[]>,
+  onLeaveClick: (leaveId: string) => void
+) {
   return function DateCellWrapper({ value, children }: { value: Date; children: React.ReactNode; range?: Date[] }) {
     const key = toKstYmd(value);
     const entries = leaveByDate[key] ?? [];
@@ -407,10 +418,20 @@ function createDateCellWrapper(leaveByDate: Record<string, LeaveDayEntry[]>) {
         style={{ flex: "1 0 0%" }}
       >
         <div className="rbc-date-cell-bg-area min-h-0 flex-1 overflow-hidden">{children}</div>
-        {entries.length > 0 ? <DateCellLeaveFooter entries={entries} /> : null}
+        {entries.length > 0 ? <DateCellLeaveFooter entries={entries} onLeaveClick={onLeaveClick} /> : null}
       </div>
     );
   };
+}
+
+function scheduleLeaveStatusLabel(s: string): string {
+  if (s === "PENDING") return "1차 대기";
+  if (s === "TEAM_LEAD_APPROVED") return "2차 대기";
+  if (s === "APPROVED") return "승인";
+  if (s === "CANCEL_REQUESTED") return "취소 요청";
+  if (s === "CANCELLED") return "취소 완료";
+  if (s === "REJECTED") return "반려";
+  return s;
 }
 
 function getDday(
@@ -546,6 +567,7 @@ type LeaveRequestItem = {
   startDate: string;
   endDate: string;
   status: string;
+  reason?: string | null;
   user: { id: string; name: string; position?: string | null };
 };
 
@@ -824,6 +846,7 @@ function SchedulePageInner() {
   const [defaultInviteUserIdsForCreate, setDefaultInviteUserIdsForCreate] = useState<string[] | null>(null);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [leaveDetailId, setLeaveDetailId] = useState<string | null>(null);
   const [googleEvents, setGoogleEvents] = useState<ScheduleEvent[]>([]);
   /** 서버·클라이언트 초기값 동일(localStorage는 마운트 후에만 읽기) → 하이드레이션 불일치 방지 */
   const [visibleCalendars, setVisibleCalendars] = useState<Record<CalendarLayerId, boolean>>(
@@ -1187,6 +1210,7 @@ function SchedulePageInner() {
         if (!key) continue;
         if (!map[key]) map[key] = [];
         map[key].push({
+          leaveId: r.id,
           userId: r.user.id,
           type: r.type,
           display: `${name} (${kind})`,
@@ -1198,6 +1222,11 @@ function SchedulePageInner() {
     }
     return map;
   }, [leaveRequests]);
+
+  const leaveDetail = useMemo(
+    () => (leaveDetailId ? leaveRequests.find((r) => r.id === leaveDetailId) ?? null : null),
+    [leaveDetailId, leaveRequests]
+  );
 
   const setVisibleCalendar = useCallback((layer: CalendarLayerId, visible: boolean) => {
     setVisibleCalendars((prev: any) => {
@@ -1501,7 +1530,7 @@ function SchedulePageInner() {
               doShowMoreDrillDown={false}
               components={{
                 dateHeader: CustomDateHeader as any,
-                dateCellWrapper: createDateCellWrapper(leaveByDate) as any,
+                dateCellWrapper: createDateCellWrapper(leaveByDate, (id) => setLeaveDetailId(id)) as any,
                 event: ScheduleCalendarEvent as any,
               } as any}
               dayPropGetter={(d: any) => {
@@ -1733,6 +1762,63 @@ function SchedulePageInner() {
         }}
         defaultAssignedToId={session?.user?.id ?? null}
       />
+
+      <Dialog
+        open={leaveDetailId != null}
+        onOpenChange={(open) => {
+          if (!open) setLeaveDetailId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>휴가 정보</DialogTitle>
+          </DialogHeader>
+          {leaveDetail ? (
+            <div className="space-y-3 text-sm">
+              <div className="grid gap-1">
+                <p className="text-muted-foreground text-xs">신청자</p>
+                <p className="font-medium">{formatUserName(leaveDetail.user)}</p>
+              </div>
+              <div className="grid gap-1">
+                <p className="text-muted-foreground text-xs">유형</p>
+                <p className="font-medium">{calendarLeaveTypeLabel(leaveDetail.type)}</p>
+              </div>
+              <div className="grid gap-1">
+                <p className="text-muted-foreground text-xs">기간 (한국 달력 기준)</p>
+                <p className="font-medium tabular-nums">
+                  {format(new Date(leaveDetail.startDate), "yyyy.MM.dd (EEE)", { locale: ko })} ~{" "}
+                  {format(new Date(leaveDetail.endDate), "yyyy.MM.dd (EEE)", { locale: ko })}
+                </p>
+              </div>
+              <div className="grid gap-1">
+                <p className="text-muted-foreground text-xs">상태</p>
+                <p className="font-medium">{scheduleLeaveStatusLabel(leaveDetail.status)}</p>
+              </div>
+              {(leaveDetail.reason ?? "").trim() ? (
+                <div className="grid gap-1">
+                  <p className="text-muted-foreground text-xs">사유</p>
+                  <p className="whitespace-pre-wrap break-words rounded border bg-muted/30 p-2 text-xs leading-relaxed">
+                    {(leaveDetail.reason ?? "").trim()}
+                  </p>
+                </div>
+              ) : null}
+              <p className="text-muted-foreground font-mono text-[11px]">ID: {leaveDetail.id}</p>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">해당 휴가를 목록에서 찾을 수 없습니다. 연차/근태에서 확인해 주세요.</p>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setLeaveDetailId(null)}>
+              닫기
+            </Button>
+            <Button type="button" asChild className="sm:ml-0">
+              <Link href="/leave" prefetch={false} onClick={() => setLeaveDetailId(null)}>
+                연차/근태로 이동
+              </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
