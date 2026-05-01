@@ -330,6 +330,11 @@ function dedupeLeaveDayEntries(arr: LeaveDayEntry[]): LeaveDayEntry[] {
   return out.sort((a, b) => a.display.localeCompare(b.display, "ko"));
 }
 
+/** RBC가 document에 건 슬롯 선택(mousedown/touchstart)이 휴가 줄까지 이어져 일정 생성이 같이 뜨는 것 방지 */
+function stopCalendarSlotPointerChain(e: React.SyntheticEvent) {
+  e.stopPropagation();
+}
+
 function LeaveTypeIcon({ type }: { type: string }) {
   if (type === "SICK_PAID" || type === "SICK_UNPAID") {
     return <Stethoscope className="size-3 shrink-0 text-blue-600 opacity-90" aria-hidden />;
@@ -354,6 +359,8 @@ function DateCellLeaveFooter({
       key={key}
       type="button"
       className="rbc-date-cell-leave-line flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded px-0.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
+      onMouseDown={stopCalendarSlotPointerChain}
+      onTouchStart={stopCalendarSlotPointerChain}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -369,8 +376,10 @@ function DateCellLeaveFooter({
 
   return (
     <div
-      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-100/80 pt-1 dark:border-blue-900/40"
+      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-200/90 bg-blue-50/80 pt-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-blue-800/70 dark:bg-blue-950/35 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
       aria-label={entries.map((x) => x.display).join(", ")}
+      onMouseDown={stopCalendarSlotPointerChain}
+      onTouchStart={stopCalendarSlotPointerChain}
     >
       {entries.length <= 2 ? (
         <div className="flex max-h-[2.6rem] w-full max-w-full flex-col gap-0.5 overflow-hidden">
@@ -384,12 +393,20 @@ function DateCellLeaveFooter({
               <button
                 type="button"
                 className="mx-auto inline-flex max-w-full cursor-pointer items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100 dark:hover:bg-blue-900/60"
+                onMouseDown={stopCalendarSlotPointerChain}
+                onTouchStart={stopCalendarSlotPointerChain}
                 onClick={(e) => e.stopPropagation()}
               >
                 +{entries.length - 1}명 더
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="center" onClick={(e) => e.stopPropagation()}>
+            <PopoverContent
+              className="w-64 p-2"
+              align="center"
+              onMouseDown={stopCalendarSlotPointerChain}
+              onTouchStart={stopCalendarSlotPointerChain}
+              onClick={(e) => e.stopPropagation()}
+            >
               <p className="text-muted-foreground mb-2 text-xs">해당일 휴가</p>
               <ul className="max-h-56 space-y-1 overflow-y-auto">
                 {entries.map((en, i) => (
