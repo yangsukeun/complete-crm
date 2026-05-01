@@ -38,8 +38,9 @@ import { formatUserName } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
   postUploadFile,
-  UPLOAD_ERROR_MESSAGE,
+  type PostUploadFileOptions,
   UPLOAD_TOAST_DURATION_MS,
+  validateUploadFile,
 } from "@/lib/upload-client-validate";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
@@ -165,6 +166,7 @@ export default function TaskDetailPage() {
   const [pageFullWidth, setPageFullWidth] = useState(true);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadFilesProgressLabel, setUploadFilesProgressLabel] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useAutoReadOnEnter(
@@ -302,9 +304,9 @@ export default function TaskDetailPage() {
   };
 
   const uploadAndAddAttachment = useCallback(
-    async (file: File) => {
+    async (file: File, uploadOpts?: PostUploadFileOptions) => {
       if (!taskId) return;
-      const data = await postUploadFile(file);
+      const data = await postUploadFile(file, uploadOpts);
       const res = await fetch(`/api/tasks/${taskId}/attachments`, {
         method: "POST",
         credentials: "include",
@@ -327,21 +329,53 @@ export default function TaskDetailPage() {
     async (files: FileList | null) => {
       if (!taskId || !files?.length) return;
       setUploadingFiles(true);
+      setUploadFilesProgressLabel(null);
+      const list = Array.from(files);
+      const results: { status: "success" | "failed" | "skipped" }[] = [];
       try {
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          if (!file.size) continue;
-          await uploadAndAddAttachment(file);
+        for (let i = 0; i < list.length; i++) {
+          const file = list[i]!;
+          setUploadFilesProgressLabel(`${i + 1}/${list.length} 업로드 중…`);
+          if (!file.size) {
+            results.push({ status: "skipped" });
+            continue;
+          }
+          const v = validateUploadFile(file);
+          if (!v.ok) {
+            results.push({ status: "failed" });
+            continue;
+          }
+          try {
+            await uploadAndAddAttachment(file, {
+              onUploadProgress: (loaded, tot) => {
+                const pct = tot > 0 ? Math.round((100 * loaded) / tot) : 0;
+                setUploadFilesProgressLabel(`${i + 1}/${list.length} · ${pct}%`);
+              },
+            });
+            results.push({ status: "success" });
+          } catch {
+            results.push({ status: "failed" });
+          }
         }
-        toast.success("첨부가 추가되었습니다.");
-        fetchTask();
+        const ok = results.filter((r) => r.status === "success").length;
+        const failed = results.filter((r) => r.status === "failed").length;
+        const skipped = results.filter((r) => r.status === "skipped").length;
+        if (ok > 0) fetchTask();
+        if (failed > 0) {
+          toast.warning(`${ok}개 성공, ${failed}개 실패. 실패한 파일은 다시 시도해 주세요.`, {
+            duration: UPLOAD_TOAST_DURATION_MS,
+          });
+        } else if (skipped > 0 && ok > 0) {
+          toast.success(`${ok}개 성공 (${skipped}개 빈 파일 제외)`);
+        } else if (skipped > 0 && ok === 0) {
+          toast.message(`빈 파일 ${skipped}개는 건너뛰었습니다.`);
+        } else if (ok > 0) {
+          toast.success("첨부가 추가되었습니다.");
+        }
         if (fileInputRef.current) fileInputRef.current.value = "";
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : UPLOAD_ERROR_MESSAGE.server, {
-          duration: UPLOAD_TOAST_DURATION_MS,
-        });
       } finally {
         setUploadingFiles(false);
+        setUploadFilesProgressLabel(null);
       }
     },
     [taskId, uploadAndAddAttachment, fetchTask]
@@ -718,7 +752,7 @@ export default function TaskDetailPage() {
                   type="file"
                   multiple
                   className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.rar,.7z,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.txt,.csv"
+                  accept="*/*"
                   onChange={(e: any) => void handleFiles(e.target.files)}
                 />
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -743,7 +777,7 @@ export default function TaskDetailPage() {
                       disabled={uploadingFiles}
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      {uploadingFiles ? "업로드 중..." : "파일 선택"}
+                      {uploadingFiles ? uploadFilesProgressLabel ?? "업로드 중…" : "파일 선택"}
                     </Button>
                   </div>
                 ) : (
@@ -792,7 +826,7 @@ export default function TaskDetailPage() {
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploadingFiles}
                           >
-                            {uploadingFiles ? "업로드 중..." : "파일 선택"}
+                            {uploadingFiles ? uploadFilesProgressLabel ?? "업로드 중…" : "파일 선택"}
                           </Button>
                           <Button size="sm" onClick={handleAddAttachment} disabled={addingAttach}>
                             추가
@@ -827,7 +861,7 @@ export default function TaskDetailPage() {
                           disabled={uploadingFiles}
                           onClick={() => fileInputRef.current?.click()}
                         >
-                          {uploadingFiles ? "업로드 중..." : "파일 선택"}
+                          {uploadingFiles ? uploadFilesProgressLabel ?? "업로드 중…" : "파일 선택"}
                         </Button>
                       </div>
                     )}

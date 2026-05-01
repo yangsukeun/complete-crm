@@ -152,12 +152,7 @@ export function LogoUploadForm() {
               : "border-gray-200 bg-gray-50/50 hover:border-gray-300 hover:bg-gray-50"
           )}
         >
-          <input
-            type="file"
-            accept={ALLOWED_TYPES.join(",")}
-            onChange={handleFileChange}
-            className="sr-only"
-          />
+          <input type="file" accept="*/*" onChange={handleFileChange} className="sr-only" />
           <Upload className="size-8 text-gray-400" />
           <span className="text-center text-sm text-gray-600">
             이미지를 드래그하여 놓거나, 클릭하여 선택하세요.

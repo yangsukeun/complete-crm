@@ -224,7 +224,21 @@ model User {
   aiHubHistories         AiHubHistory[]
   taskMindmapStates      UserTaskMindmapState[]
   taskAuditLogs          TaskAuditLog[]          @relation("TaskAuditActor")
+  userDailyUploadUsages  UserDailyUploadUsage[]
   @@index([currentProjectId])
+}
+
+/// /api/upload 기준 UTC 일일 누적 바이트 (사용자당 일 한도 — 5GB+ 누적 대비 BigInt)
+model UserDailyUploadUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  dayKey    String
+  bytes     BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayKey])
+  @@index([userId, dayKey])
 }
 
 // AI 허브: 클라이언트 히스토리/CRM 저장용

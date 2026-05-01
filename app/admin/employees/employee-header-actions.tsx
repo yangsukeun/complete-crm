@@ -118,7 +118,8 @@ export function EmployeeHeaderActions() {
               <input
                 ref={inputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                multiple
+                accept="*/*"
                 onChange={handleFileChange}
                 className="text-sm file:mr-2 file:rounded file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
               />

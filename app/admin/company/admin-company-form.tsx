@@ -252,11 +252,19 @@ export function AdminCompanyForm() {
         <input
           ref={stampInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
+          accept="*/*"
           className="hidden"
           onChange={async (e: any) => {
             const file = e.target.files?.[0];
             if (!file) return;
+            const isImg =
+              file.type.startsWith("image/") ||
+              /\.(jpe?g|png|gif|webp)$/i.test(file.name);
+            if (!isImg) {
+              toast.error("도장은 이미지 파일(JPEG, PNG, GIF, WebP)만 등록할 수 있습니다.");
+              e.target.value = "";
+              return;
+            }
             setUploadingStamp(true);
             try {
               const fd = new FormData();

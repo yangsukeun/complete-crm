@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
 import { toast } from "sonner";
 import {
-  postUploadFile,
-  UPLOAD_ERROR_MESSAGE,
+  summarizeSequentialUploadResults,
+  uploadEachFileSequentially,
   UPLOAD_TOAST_DURATION_MS,
 } from "@/lib/upload-client-validate";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -54,6 +54,7 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
   const [rawNote, setRawNote] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgressLabel, setUploadProgressLabel] = useState<string | null>(null);
   const [urlLink, setUrlLink] = useState("");
   const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,18 +150,42 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
       return;
     }
     setUploading(true);
+    setUploadProgressLabel(null);
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const data = await postUploadFile(file);
-        setAttachments((prev) => [...prev, { url: data.url, name: data.name ?? file.name }]);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
-        duration: UPLOAD_TOAST_DURATION_MS,
+      const results = await uploadEachFileSequentially(files, {
+        onProgress: (cur, total, partL, partT) => {
+          if (partL != null && partT != null && partT > 0) {
+            setUploadProgressLabel(`${cur}/${total} · ${Math.round((100 * partL) / partT)}%`);
+          } else {
+            setUploadProgressLabel(`${cur}/${total} 업로드 중…`);
+          }
+        },
       });
+      const successes = results.filter((r) => r.status === "success");
+      if (successes.length > 0) {
+        setAttachments((prev) => [
+          ...prev,
+          ...successes.map((r) => ({
+            url: r.url,
+            name: r.name ?? r.file.name,
+          })),
+        ]);
+      }
+      const { ok, failed, skipped } = summarizeSequentialUploadResults(results);
+      if (failed > 0) {
+        toast.warning(`${ok}개 성공, ${failed}개 실패. 실패한 파일은 다시 시도해 주세요.`, {
+          duration: UPLOAD_TOAST_DURATION_MS,
+        });
+      } else if (skipped > 0 && ok > 0) {
+        toast.success(`${ok}개 성공 (${skipped}개 빈 파일 제외)`);
+      } else if (skipped > 0 && ok === 0) {
+        toast.message(`빈 파일 ${skipped}개는 건너뛰었습니다.`);
+      } else if (ok > 0) {
+        toast.success(`${ok}개 모두 업로드 완료`);
+      }
     } finally {
       setUploading(false);
+      setUploadProgressLabel(null);
       e.target.value = "";
     }
   };
@@ -310,7 +335,7 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
               type="file"
               className="hidden"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.rar,.7z,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.txt,.csv,image/*,video/*,.webm,.ogg"
+              accept="*/*"
               onChange={handleFileSelect}
             />
             <Button
@@ -322,7 +347,7 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
               className="gap-1"
             >
               <FileText className="size-4" />
-              {uploading ? "업로드 중..." : "파일 선택"}
+              {uploading ? uploadProgressLabel ?? "업로드 중…" : "파일 선택"}
             </Button>
             <div className="flex min-w-[200px] flex-1 items-center gap-2">
               <Input

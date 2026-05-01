@@ -3,6 +3,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { getDriveDownloadUrl } from "@/lib/google-drive-url";
+import { secureDownloadHeaders } from "@/lib/download-response-headers";
 import { getWebdavBufferByPublicUrl } from "@/lib/storage/webdav-storage";
 
 export const runtime = "nodejs";
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
   const fileName = sanitizeDownloadName(nameRaw || "download");
 
   if (/drive\.google\.com/i.test(rawUrl)) {
+    /** Google이 직접 응답 — Content-Disposition 제어 불가. 필요 시 Drive 프록시 도입 검토. */
     return NextResponse.redirect(getDriveDownloadUrl(rawUrl));
   }
 
@@ -68,10 +70,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "파일을 찾을 수 없습니다." }, { status: 404 });
     }
     const buf = fs.readFileSync(fp);
+    const h = secureDownloadHeaders(fileName, "application/octet-stream");
     return new NextResponse(asResponseBody(buf), {
       headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        ...h,
         "Content-Length": String(buf.length),
       },
     });
@@ -79,10 +81,10 @@ export async function GET(req: Request) {
 
   const webdavBuf = await getWebdavBufferByPublicUrl(rawUrl);
   if (webdavBuf) {
+    const h = secureDownloadHeaders(fileName, null);
     return new NextResponse(asResponseBody(webdavBuf), {
       headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        ...h,
         "Content-Length": String(webdavBuf.length),
       },
     });
@@ -94,11 +96,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "파일을 찾을 수 없습니다." }, { status: 404 });
     }
     const buf = Buffer.from(await res.arrayBuffer());
-    const ct = res.headers.get("content-type") || "application/octet-stream";
+    const ct = res.headers.get("content-type");
+    const h = secureDownloadHeaders(fileName, ct);
     return new NextResponse(asResponseBody(buf), {
       headers: {
-        "Content-Type": ct,
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        ...h,
         "Content-Length": String(buf.length),
       },
     });

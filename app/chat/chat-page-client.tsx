@@ -27,10 +27,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
-  getUploadClientRejectReason,
   postUploadFile,
   UPLOAD_ERROR_MESSAGE,
   UPLOAD_TOAST_DURATION_MS,
+  validateUploadFile,
 } from "@/lib/upload-client-validate";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -935,11 +935,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     }, 0);
   }, [newMessage]);
 
-  const uploadFileAndAppend = useCallback(async (file: File) => {
-    if (!session?.user) return;
-    const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/i.test(file.name);
-    setPasteUploading(true);
-    try {
+  const appendUploadedFileToNewMessage = useCallback(
+    async (file: File) => {
+      if (!session?.user) return;
+      const isImage = file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp)$/i.test(file.name);
       // [PERF-claude-code] 이미지가 2048px 초과하거나 1MB 넘으면 클라이언트에서 리사이즈
       let uploadFile = file;
       if (isImage && (file.size > 1024 * 1024 || file.name.match(/\.(jpe?g|png|webp)$/i))) {
@@ -966,44 +965,77 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
           const baseName = file.name.replace(/\.[^.]+$/, "");
           uploadFile = new File([blob], `${baseName}.${ext}`, { type: outMime });
         } catch {
-          // 리사이즈 실패 시 원본 사용
+          /* 리사이즈 실패 시 원본 사용 */
         }
       }
       const { url, name } = await postUploadFile(uploadFile);
       const displayName = name || file.name;
       const append = isImage ? `\n![](${url})` : `\n[${displayName}](${url})`;
       setNewMessage((prev: any) => prev + append);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
-        duration: UPLOAD_TOAST_DURATION_MS,
-      });
-    } finally {
-      setPasteUploading(false);
-    }
-  }, [session?.user]);
+    },
+    [session?.user]
+  );
 
-  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
-    const files = e.clipboardData?.files;
-    if (!files?.length || !session?.user) return;
-    const file = files[0];
-    const reject = getUploadClientRejectReason(file);
-    if (reject) {
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent) => {
+      const files = e.clipboardData?.files;
+      if (!files?.length || !session?.user) return;
+      const list = Array.from(files);
+      for (const file of list) {
+        const v = validateUploadFile(file);
+        if (!v.ok) {
+          e.preventDefault();
+          toast.error(v.error, { duration: UPLOAD_TOAST_DURATION_MS });
+          return;
+        }
+      }
       e.preventDefault();
-      toast.error(UPLOAD_ERROR_MESSAGE[reject], { duration: UPLOAD_TOAST_DURATION_MS });
-      return;
-    }
-    e.preventDefault();
-    uploadFileAndAppend(file);
-  }, [session?.user, uploadFileAndAppend]);
+      setPasteUploading(true);
+      try {
+        for (const file of list) {
+          await appendUploadedFileToNewMessage(file);
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
+          duration: UPLOAD_TOAST_DURATION_MS,
+        });
+      } finally {
+        setPasteUploading(false);
+      }
+    },
+    [session?.user, appendUploadedFileToNewMessage]
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) uploadFileAndAppend(file);
-      e.target.value = "";
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files?.length || !session?.user) {
+        e.target.value = "";
+        return;
+      }
+      setPasteUploading(true);
+      try {
+        for (const file of Array.from(files)) {
+          const v = validateUploadFile(file);
+          if (!v.ok) {
+            toast.warning(v.error, { duration: UPLOAD_TOAST_DURATION_MS });
+            continue;
+          }
+          try {
+            await appendUploadedFileToNewMessage(file);
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
+              duration: UPLOAD_TOAST_DURATION_MS,
+            });
+          }
+        }
+      } finally {
+        setPasteUploading(false);
+        e.target.value = "";
+      }
     },
-    [uploadFileAndAppend]
+    [session?.user, appendUploadedFileToNewMessage]
   );
 
   const selectedChat = chats.find((c: any) => c.id === selectedChatId);
@@ -1517,7 +1549,8 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp,application/pdf,.pdf"
+                      multiple
+                      accept="*/*"
                       className="hidden"
                       onChange={handleFileSelect}
                     />

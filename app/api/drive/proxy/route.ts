@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
+import { secureDownloadHeaders } from "@/lib/download-response-headers";
 import { google } from "googleapis";
 import { Readable } from "stream";
 
@@ -84,12 +85,11 @@ export async function GET(req: Request) {
 
     const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream;
 
+    const baseHeaders = secureDownloadHeaders(name, mimeType);
     return new Response(webStream, {
       headers: {
-        "Content-Type": mimeType || "application/octet-stream",
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+        ...baseHeaders,
         ...(size ? { "Content-Length": size } : {}),
-        "Cache-Control": "private, max-age=0, no-store",
       },
     });
   } catch (e) {

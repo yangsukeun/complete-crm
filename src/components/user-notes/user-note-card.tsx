@@ -21,8 +21,8 @@ import { cn } from "@/lib/utils";
 import type { BoardCategory } from "@/lib/board-category";
 import { isBoardCategory } from "@/lib/board-category";
 import {
-  postUploadFile,
-  UPLOAD_ERROR_MESSAGE,
+  summarizeSequentialUploadResults,
+  uploadEachFileSequentially,
   UPLOAD_TOAST_DURATION_MS,
 } from "@/lib/upload-client-validate";
 
@@ -91,6 +91,7 @@ export function UserNoteCard({
   const [htmlContent, setHtmlContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgressLabel, setUploadProgressLabel] = useState<string | null>(null);
   const [urlLink, setUrlLink] = useState("");
   const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,20 +153,44 @@ export function UserNoteCard({
       return;
     }
     setUploading(true);
+    setUploadProgressLabel(null);
     let list = [...attachments];
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const data = await postUploadFile(file);
-        list = [...list, { url: data.url, name: data.name ?? file.name }];
-      }
-      await persistAttachments(list);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : UPLOAD_ERROR_MESSAGE.server, {
-        duration: UPLOAD_TOAST_DURATION_MS,
+      const results = await uploadEachFileSequentially(files, {
+        onProgress: (cur, total, partL, partT) => {
+          if (partL != null && partT != null && partT > 0) {
+            setUploadProgressLabel(`${cur}/${total} · ${Math.round((100 * partL) / partT)}%`);
+          } else {
+            setUploadProgressLabel(`${cur}/${total} 업로드 중…`);
+          }
+        },
       });
+      const successes = results.filter((r) => r.status === "success");
+      if (successes.length > 0) {
+        list = [
+          ...list,
+          ...successes.map((r) => ({
+            url: r.url,
+            name: r.name ?? r.file.name,
+          })),
+        ];
+        await persistAttachments(list);
+      }
+      const { ok, failed, skipped } = summarizeSequentialUploadResults(results);
+      if (failed > 0) {
+        toast.warning(`${ok}개 성공, ${failed}개 실패. 실패한 파일은 다시 시도해 주세요.`, {
+          duration: UPLOAD_TOAST_DURATION_MS,
+        });
+      } else if (skipped > 0 && ok > 0) {
+        toast.success(`${ok}개 성공 (${skipped}개 빈 파일 제외)`);
+      } else if (skipped > 0 && ok === 0) {
+        toast.message(`빈 파일 ${skipped}개는 건너뛰었습니다.`);
+      } else if (ok > 0) {
+        toast.success(`${ok}개 모두 업로드 완료`);
+      }
     } finally {
       setUploading(false);
+      setUploadProgressLabel(null);
       e.target.value = "";
     }
   };
@@ -372,7 +397,7 @@ export function UserNoteCard({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.rar,.7z,.txt,.csv,.heic,.heif,.avif,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,image/*,video/*,.webm,.ogg"
+            accept="*/*"
             onChange={(e) => void handleFileSelect(e)}
           />
           <Button
@@ -384,7 +409,7 @@ export function UserNoteCard({
             onClick={() => fileInputRef.current?.click()}
           >
             <FileText className="mr-1 size-3.5" />
-            {uploading ? "업로드 중…" : "파일"}
+            {uploading ? uploadProgressLabel ?? "업로드 중…" : "파일"}
           </Button>
           <Input
             placeholder="URL"

@@ -1433,8 +1433,8 @@ export default function FinanceRequestsPage() {
                 <div className="grid gap-2">
                   <Input
                     type="file"
-                    accept="image/*,.pdf,.xls,.xlsx,.csv"
                     multiple
+                    accept="*/*"
                     disabled={orderUploading || submitting}
                     onChange={(e: any) => {
                       const files = Array.from((e.target.files as FileList | null) ?? []);
