@@ -300,6 +300,17 @@
   min-height: 0;
 }
 
+/* 월 뷰: 기본 RBC에서 .rbc-row-content 가 z-index:4 로 배경(.rbc-row-bg) 전체를 덮음.
+ * 커스텀 휴가 푸터는 row-bg 하단에 있어 클릭이 이벤트 레이어에만 닿음 → 투명 영역 통과, 칩·더보기만 포인터 수신 */
+.schedule-gcal-viewport .rbc-month-view .rbc-row-content {
+  pointer-events: none;
+}
+
+.schedule-gcal-viewport .rbc-month-view .rbc-row-content .rbc-event,
+.schedule-gcal-viewport .rbc-month-view .rbc-row-content .rbc-show-more {
+  pointer-events: auto;
+}
+
 .schedule-gcal-viewport .rbc-show-more {
   font-size: 11px;
   font-weight: 600;
