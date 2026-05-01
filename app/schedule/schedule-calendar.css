@@ -136,12 +136,45 @@
   box-shadow: inset 0 0 0 1px rgba(138, 180, 248, 0.35);
 }
 
+/* 다른 달(월 그리드 padding 일): 배경을 본 달과 확실히 구분 */
 .schedule-gcal-viewport .rbc-off-range-bg {
-  background: #fafafa !important;
+  background: #eceff4 !important;
 }
 
 .dark .schedule-gcal-viewport .rbc-off-range-bg {
-  background: hsl(220 15% 12% / 0.5) !important;
+  background: hsl(220 14% 11% / 0.92) !important;
+}
+
+/* dateCellWrapper 전체(휴가 푸터 포함) — day-bg 투명으로 래퍼 톤이 비치게 */
+.schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-off-month {
+  background: #e8edf5;
+}
+
+.dark .schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-off-month {
+  background: hsl(220 14% 12% / 0.98);
+}
+
+.schedule-gcal-viewport .schedule-gcal-off-month .rbc-day-bg,
+.schedule-gcal-viewport .schedule-gcal-off-month .rbc-day-bg.rbc-off-range-bg {
+  background: transparent !important;
+}
+
+.schedule-gcal-viewport .schedule-gcal-off-month .rbc-date-cell-leave-footer {
+  opacity: 0.66;
+  filter: saturate(0.88);
+}
+
+.dark .schedule-gcal-viewport .schedule-gcal-off-month .rbc-date-cell-leave-footer {
+  opacity: 0.62;
+}
+
+/* 보고 있는 달의 1일: 좌측으로 “여기서부터 이번 달” 강조 */
+.schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-month-start {
+  box-shadow: inset 3px 0 0 0 var(--gcal-primary);
+}
+
+.dark .schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-month-start {
+  box-shadow: inset 3px 0 0 0 #8ab4f8;
 }
 
 .schedule-gcal-viewport .rbc-day-bg:hover {
@@ -186,12 +219,14 @@
 }
 
 .schedule-gcal-viewport .rbc-off-range .rbc-button-link {
-  color: #b0b0b0;
+  color: #9ca3af;
   font-weight: 400;
+  font-size: 12px;
 }
 
 .dark .schedule-gcal-viewport .rbc-off-range .rbc-button-link {
-  color: #80868b;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 /* 토/일 숫자 색 (오늘은 위 원형 스타일 유지) */
@@ -248,6 +283,12 @@
 .schedule-gcal-event-chip:hover {
   filter: brightness(0.97);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* 월 뷰: 보고 있는 달 밖 슬롯에 그려진 일정 칩 */
+.schedule-gcal-viewport .schedule-gcal-event-chip.schedule-gcal-event-chip--off-month {
+  opacity: 0.58;
+  filter: saturate(0.8);
 }
 
 .dark .schedule-gcal-event-chip:hover {

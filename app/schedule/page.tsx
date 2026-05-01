@@ -29,6 +29,7 @@ import {
   endOfWeek,
   isBefore,
   isAfter,
+  isSameMonth,
 } from "date-fns";
 import { ko } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -268,11 +269,13 @@ function CustomDateHeader({
   date,
   drilldownView,
   onDrillDown,
+  isOffRange,
 }: {
   label: string;
   date: Date;
   drilldownView?: string;
   onDrillDown?: (e: React.MouseEvent) => void;
+  isOffRange?: boolean;
 }) {
   const isToday = isSameDay(date, new Date());
   const dow = getDay(date);
@@ -285,7 +288,8 @@ function CustomDateHeader({
       className={cn(
         "relative inline-flex items-center justify-center w-6 h-6 rounded-full text-sm",
         className,
-        isToday ? "bg-blue-600 text-white font-bold" : ""
+        isToday ? "bg-blue-600 text-white font-bold" : "",
+        isOffRange && !isToday && "scale-[0.92] text-[#9aa0a6] dark:text-[#80868b]"
       )}
     >
       {label}
@@ -463,14 +467,21 @@ function DateCellLeaveFooter({
 function createDateCellWrapper(
   leaveByDate: Record<string, LeaveDayEntry[]>,
   onLeaveClick: (leaveId: string) => void,
-  onLeavePointerSession?: () => void
+  onLeavePointerSession: (() => void) | undefined,
+  calendarMonthDate: Date
 ) {
   return function DateCellWrapper({ value, children }: { value: Date; children: React.ReactNode; range?: Date[] }) {
     const key = toKstYmd(value);
     const entries = leaveByDate[key] ?? [];
+    const offMonth = !isSameMonth(value, calendarMonthDate);
+    const monthStart = isSameMonth(value, calendarMonthDate) && value.getDate() === 1;
     return (
       <div
-        className="rbc-date-cell-wrapper-inner flex h-full min-h-[140px] min-w-0 flex-col overflow-hidden"
+        className={cn(
+          "rbc-date-cell-wrapper-inner flex h-full min-h-[140px] min-w-0 flex-col overflow-hidden",
+          offMonth && "schedule-gcal-off-month",
+          monthStart && "schedule-gcal-month-start"
+        )}
         /* rbc-row-bg 의 flex 자식은 원래 .rbc-day-bg 가 flex:1 0 0% — 래퍼가 그 역할을 해야 요일별로 셀이 갈라짐 */
         style={{ flex: "1 0 0%" }}
       >
@@ -546,6 +557,7 @@ function ScheduleCalendarEvent({
   event,
   title,
   isAllDay: allDayAccessor,
+  dimOffMonth,
 }: {
   event: ScheduleEvent;
   title: string;
@@ -555,6 +567,8 @@ function ScheduleCalendarEvent({
   localizer?: unknown;
   slotStart?: Date;
   slotEnd?: Date;
+  /** 월 뷰에서 슬롯 날짜가 보고 있는 달 밖이면 흐리게 */
+  dimOffMonth?: boolean;
 }) {
   const pal = paletteForEvent(event);
   const isAllDay = Boolean(allDayAccessor || event.allDay);
@@ -574,7 +588,8 @@ function ScheduleCalendarEvent({
       className={cn(
         "schedule-gcal-event-chip",
         isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed",
-        isAllDay && isTaskDueChip && "schedule-gcal-event-chip--task-due-allday"
+        isAllDay && isTaskDueChip && "schedule-gcal-event-chip--task-due-allday",
+        dimOffMonth && "schedule-gcal-event-chip--off-month"
       )}
       style={{
         background: isAllDay ? pal.bg : pal.light,
@@ -1293,17 +1308,37 @@ function SchedulePageInner() {
   }, [leaveRequests]);
 
   const dateCellWrapperComponent = useMemo(
-    () => createDateCellWrapper(leaveByDate, (id) => setLeaveDetailId(id), markLeavePointerSession),
-    [leaveByDate, markLeavePointerSession]
+    () => createDateCellWrapper(leaveByDate, (id) => setLeaveDetailId(id), markLeavePointerSession, date),
+    [leaveByDate, markLeavePointerSession, date]
   );
+
+  const monthEventComponent = useMemo(() => {
+    function MonthAwareScheduleEvent(props: {
+      event: ScheduleEvent;
+      title: string;
+      isAllDay?: boolean;
+      continuesPrior?: boolean;
+      continuesAfter?: boolean;
+      localizer?: unknown;
+      slotStart?: Date;
+      slotEnd?: Date;
+    }) {
+      const dim =
+        view === "month" &&
+        props.slotStart != null &&
+        !isSameMonth(props.slotStart, date);
+      return <ScheduleCalendarEvent {...props} dimOffMonth={dim} />;
+    }
+    return MonthAwareScheduleEvent;
+  }, [date, view]);
 
   const calendarRbcComponents = useMemo(
     () => ({
       dateHeader: CustomDateHeader as any,
       dateCellWrapper: dateCellWrapperComponent as any,
-      event: ScheduleCalendarEvent as any,
+      event: monthEventComponent as any,
     }),
-    [dateCellWrapperComponent]
+    [dateCellWrapperComponent, monthEventComponent]
   );
 
   const leaveDetail = useMemo(
