@@ -2,8 +2,12 @@
 
 self.addEventListener("notificationclick", (event) => {
   event.notification?.close?.();
-  const data = event.notification?.data as any;
-  const targetUrl = new URL(data?.url || "/", self.location.origin).href;
+  const data = event.notification && event.notification.data;
+  const urlFromData =
+    data && typeof data === "object" && data !== null && "url" in data && typeof data.url === "string"
+      ? data.url
+      : "/";
+  const targetUrl = new URL(urlFromData || "/", self.location.origin).href;
 
   event.waitUntil(
     (async () => {

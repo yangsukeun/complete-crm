@@ -26,10 +26,11 @@ export async function reserveDailyUploadBytes(userId: string, addBytes: number):
       if (used + addBytes > UPLOAD_DAILY_BYTES_PER_USER) {
         throw new DailyUploadQuotaError();
       }
+      const add = BigInt(addBytes);
       await tx.userDailyUploadUsage.upsert({
         where: { userId_dayKey: { userId, dayKey } },
-        create: { userId, dayKey, bytes: addBytes },
-        update: { bytes: { increment: addBytes } },
+        create: { userId, dayKey, bytes: add },
+        update: { bytes: { increment: add } },
       });
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 }
@@ -52,7 +53,7 @@ export async function releaseDailyUploadBytes(userId: string, subBytes: number):
         const next = Math.max(0, cur - subBytes);
         await tx.userDailyUploadUsage.update({
           where: { userId_dayKey: { userId, dayKey } },
-          data: { bytes: next },
+          data: { bytes: BigInt(next) },
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 15000 }

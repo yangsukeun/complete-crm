@@ -57,9 +57,16 @@ export async function POST(req: Request) {
       }
     }
 
-    await reserveDailyUploadBytes(userId, buffer.byteLength);
-    reservedBytes = buffer.byteLength;
-    reservedUserId = userId;
+    try {
+      await reserveDailyUploadBytes(userId, buffer.byteLength);
+      reservedBytes = buffer.byteLength;
+      reservedUserId = userId;
+    } catch (quotaErr) {
+      if (quotaErr instanceof DailyUploadQuotaError) {
+        throw quotaErr;
+      }
+      console.error("[upload] 일일 업로드 한도 집계 실패 — 업로드는 계속합니다.", quotaErr);
+    }
 
     const result = await storeUploadedFile({
       buffer,
