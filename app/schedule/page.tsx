@@ -1054,7 +1054,7 @@ function SchedulePageInner() {
     session?.user && (tab === "tasks" || tab === "schedule") ? SWR_KEYS.scheduleStandaloneTasks : null;
   const diaryTasksKey =
     session?.user && tab === "diary"
-      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}&projectId=null&status=TODO,IN_PROGRESS`
+      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}&projectId=null&status=TODO,IN_PROGRESS&excludeProjectTitleMatch=1`
       : null;
   const { data: tasksRaw, mutate: mutateTasks } = useSWR(tasksAllKey, jsonFetcher, {
     dedupingInterval: 300_000,
@@ -1505,8 +1505,9 @@ function SchedulePageInner() {
                 </CardTitle>
                 <p className="text-muted-foreground mt-1 text-sm font-normal">
                   여기와 캘린더 <strong className="text-foreground">「할일 마감」</strong>에는{" "}
-                  <strong className="text-foreground">할일 메뉴에서 만든 업무</strong>(프로젝트에 붙지 않은 항목)만 보이며, 완료된 항목은
-                  넣지 않습니다. 아래 <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
+                  <strong className="text-foreground">할일 메뉴에서 만든 업무</strong>(프로젝트에 붙지 않은 항목)만 보이며, 제목이 팀
+                  프로젝트명과 같은 항목·완료된 항목은 넣지 않습니다. 아래{" "}
+                  <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
                 </p>
               </div>
               <Button size="sm" className="shrink-0 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600" onClick={() => setCreateTaskOpen(true)}>
@@ -1789,8 +1790,8 @@ function SchedulePageInner() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">할일 목록</CardTitle>
               <p className="text-muted-foreground text-sm font-normal">
-                할일 메뉴에서 만든 업무 중, 프로젝트에 연결되지 않은 항목만 표시합니다. 완료된 항목은 여기에 나오지 않습니다. 브랜드 프로젝트는
-                일정 탭 보라색 구역에서 안내합니다.
+                프로젝트에 연결되지 않은 업무이면서, 제목이 팀 프로젝트명과 겹치지 않는 항목만 표시합니다. 완료된 항목은 나오지 않습니다. 브랜드
+                프로젝트는 일정 탭 보라색 구역에서 안내합니다.
               </p>
             </div>
             <Button size="sm" onClick={() => setCreateTaskOpen(true)}>

@@ -16,6 +16,45 @@ import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
 import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
 import { taskDefaultCollapsed } from "@/lib/task-visibility";
 
+const MAX_PROJECT_NAMES_FOR_TITLE_EXCLUDE = 500;
+
+/**
+ * 스케줄 전용: `Task.projectId`가 비어 있어도 제목이 팀에서 보이는 프로젝트명과 같으면
+ * (대소문자·앞뒤 공백 무시) CRM 프로젝트와 동일 명칭으로 취급해 목록에서 제외한다.
+ */
+async function taskWhereExcludeTitleMatchingVisibleProject(sessionUser: {
+  id: string;
+  email?: string | null;
+  role?: string | null;
+}): Promise<Prisma.TaskWhereInput> {
+  const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
+  const isMaster = String(sessionUser.email ?? "").trim().toLowerCase() === masterEmail;
+  const isAdmin = sessionUser.role === "EXECUTIVE" || sessionUser.role === "ADMIN";
+  const memberFilter = isAdmin || isMaster ? {} : { users: { some: { id: sessionUser.id } } };
+
+  const projects = await prisma.project.findMany({
+    where: { deletedAt: null, ...memberFilter },
+    select: { name: true },
+  });
+  const byLower = new Map<string, string>();
+  for (const p of projects) {
+    const trimmed = p.name.trim();
+    if (!trimmed) continue;
+    const k = trimmed.toLowerCase();
+    if (!byLower.has(k)) byLower.set(k, trimmed);
+  }
+  const names = [...byLower.values()].slice(0, MAX_PROJECT_NAMES_FOR_TITLE_EXCLUDE);
+  if (names.length === 0) return {};
+
+  return {
+    NOT: {
+      OR: names.map((name) => ({
+        title: { equals: name, mode: Prisma.QueryMode.insensitive },
+      })),
+    },
+  };
+}
+
 /** null·비배열·숫자 id 등 클라이언트/직렬화 불일치 시 400 방지 */
 const assigneeIdsInCreate = z.preprocess((val: unknown) => {
   if (val == null) return undefined;
@@ -260,6 +299,14 @@ export async function GET(req: Request) {
         ? { title: { contains: searchQuery, mode: Prisma.QueryMode.insensitive } }
         : {};
 
+    const excludeProjectTitleMatch = searchParams.get("excludeProjectTitleMatch") === "1";
+    const scheduleStandaloneTitleExclude =
+      excludeProjectTitleMatch &&
+      hasProjectIdParam &&
+      (projectIdParamRaw ?? "").trim().toLowerCase() === "null"
+        ? await taskWhereExcludeTitleMatchingVisibleProject(session.user)
+        : ({} as Prisma.TaskWhereInput);
+
     const baseWhere: Prisma.TaskWhereInput = {
       deletedAt: null,
       ...archivedFilter,
@@ -268,6 +315,7 @@ export async function GET(req: Request) {
       ...employeeScopeFilter,
       ...statusShelfWhere,
       ...titleSearchWhere,
+      ...scheduleStandaloneTitleExclude,
     };
 
     const calendarDue = searchParams.get("calendarDue") === "1";
@@ -314,6 +362,13 @@ export async function GET(req: Request) {
         where.projectId = null;
         where.status = { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] };
         where.isCompleted = false;
+        const titleEx = await taskWhereExcludeTitleMatchingVisibleProject(session.user);
+        if (Object.keys(titleEx).length > 0) {
+          const prevAnd = where.AND;
+          const andArr = Array.isArray(prevAnd) ? [...prevAnd] : prevAnd != null ? [prevAnd] : [];
+          andArr.push(titleEx);
+          where.AND = andArr;
+        }
       }
       const tasks = await prisma.task.findMany({
         where,
