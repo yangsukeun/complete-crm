@@ -34,6 +34,8 @@ export const SWR_KEYS = {
   announcements: "/api/announcements",
   /** 전체 업무 트리(목록·마인드맵 필터용) — 호출처에서 dedupingInterval 300_000 권장 [PERF-auto] */
   tasksAll: "/api/tasks?all=1",
+  /** 스케줄(/schedule): 브랜드 프로젝트에 연결된 Task 제외, 미완료만 */
+  scheduleStandaloneTasks: "/api/tasks?projectId=null&status=TODO,IN_PROGRESS",
   /** Projects 네비: 미읽음 업무 배정 알림 수(Task 링크만) */
   tasksAssignedNewCount: "/api/tasks?assignedToMe=1&isNew=1",
   scheduleInvites: "/api/schedules/invites",

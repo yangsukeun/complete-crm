@@ -302,13 +302,19 @@ export async function GET(req: Request) {
     ) {
       // [PERF-2차] 캘린더 마감 레이어: 최소 컬럼만 조회
       const scopeFilter = scope === "PERSONAL" ? { scope: "PERSONAL" as const } : { scope: "TEAM" as const };
-      const where = {
+      const standalone = searchParams.get("standalone") === "1";
+      const where: Prisma.TaskWhereInput = {
         deletedAt: null,
         archivedAt: null,
         ...scopeFilter,
         dueDate: { not: null, gte: calStart, lte: calEnd },
         OR: [{ assignedToId: session.user.id }, { assignees: { some: { userId: session.user.id } } }],
       };
+      if (standalone) {
+        where.projectId = null;
+        where.status = { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] };
+        where.isCompleted = false;
+      }
       const tasks = await prisma.task.findMany({
         where,
         select: {

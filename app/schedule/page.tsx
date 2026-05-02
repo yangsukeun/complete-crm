@@ -1009,8 +1009,8 @@ function SchedulePageInner() {
   const calendarDueKey =
     session?.user && tab === "schedule"
       ? view === "month"
-        ? `/api/tasks?calendarDue=1&monthKey=${format(date, "yyyy-MM")}`
-        : `/api/tasks?calendarDue=1&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
+        ? `/api/tasks?calendarDue=1&standalone=1&monthKey=${format(date, "yyyy-MM")}`
+        : `/api/tasks?calendarDue=1&standalone=1&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
       : null;
   const { data: calendarDueRaw = [], mutate: mutateCalendarDueTasks } = useSWR(
     calendarDueKey,
@@ -1049,11 +1049,12 @@ function SchedulePageInner() {
 
   const schedulesLoading = Boolean(session?.user) && bundleLoading;
 
-  // [PERF-auto] tasks?all=1 — 할일 탭 + 일정 탭 상단 목록에서 활성
-  const tasksAllKey = session?.user && (tab === "tasks" || tab === "schedule") ? SWR_KEYS.tasksAll : null;
+  // 프로젝트 미연결 할일만 + 미완료 — 할일 탭·일정 상단·일기 해당일
+  const tasksAllKey =
+    session?.user && (tab === "tasks" || tab === "schedule") ? SWR_KEYS.scheduleStandaloneTasks : null;
   const diaryTasksKey =
     session?.user && tab === "diary"
-      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}`
+      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}&projectId=null&status=TODO,IN_PROGRESS`
       : null;
   const { data: tasksRaw, mutate: mutateTasks } = useSWR(tasksAllKey, jsonFetcher, {
     dedupingInterval: 300_000,
@@ -1503,8 +1504,9 @@ function SchedulePageInner() {
                   할일 목록
                 </CardTitle>
                 <p className="text-muted-foreground mt-1 text-sm font-normal">
-                  캘린더의 <strong className="text-foreground">「할일 마감」</strong> 칩은 개별 업무(Task) 마감입니다. 아래{" "}
-                  <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
+                  여기와 캘린더 <strong className="text-foreground">「할일 마감」</strong>에는{" "}
+                  <strong className="text-foreground">할일 메뉴에서 만든 업무</strong>(프로젝트에 붙지 않은 항목)만 보이며, 완료된 항목은
+                  넣지 않습니다. 아래 <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
                 </p>
               </div>
               <Button size="sm" className="shrink-0 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600" onClick={() => setCreateTaskOpen(true)}>
@@ -1547,7 +1549,9 @@ function SchedulePageInner() {
                 </ul>
               )}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-900/10 pt-3 dark:border-emerald-900/30">
-                <p className="text-muted-foreground text-xs">전체 목록·완료 처리는 할일(프로젝트) 화면에서 이어서 할 수 있습니다.</p>
+                <p className="text-muted-foreground text-xs">
+                  프로젝트에 연결된 업무·완료 목록은 할일 페이지에서 확인하세요.
+                </p>
                 <Link href="/tasks" prefetch={false} className="text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300">
                   할일 페이지로 →
                 </Link>
@@ -1785,7 +1789,8 @@ function SchedulePageInner() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">할일 목록</CardTitle>
               <p className="text-muted-foreground text-sm font-normal">
-                업무(Task) 목록입니다. 일정 탭 상단에서도 동일하게 볼 수 있으며, 브랜드 프로젝트는 스케줄 화면의 보라색 구역에서만 따로 안내합니다.
+                할일 메뉴에서 만든 업무 중, 프로젝트에 연결되지 않은 항목만 표시합니다. 완료된 항목은 여기에 나오지 않습니다. 브랜드 프로젝트는
+                일정 탭 보라색 구역에서 안내합니다.
               </p>
             </div>
             <Button size="sm" onClick={() => setCreateTaskOpen(true)}>
