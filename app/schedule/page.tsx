@@ -662,7 +662,8 @@ const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   team: "팀/회사 일정",
   holiday: "공휴일",
   google: "Google 캘린더",
-  taskDue: "프로젝트 마감",
+  /** 캘린더 칩: Task 마감일(프로젝트에 연결된 할일 포함). 브랜드 ‘프로젝트’ 엔티티와 구분 */
+  taskDue: "할일 마감",
 };
 
 const CALENDAR_CHIP_COLORS: Record<CalendarLayerId, string> = {
@@ -1048,8 +1049,8 @@ function SchedulePageInner() {
 
   const schedulesLoading = Boolean(session?.user) && bundleLoading;
 
-  // [PERF-auto] tasks?all=1 — 할일 탭에서만 활성 (isPaused로 탭·하이드레이션 타이밍 이중 방어)
-  const tasksAllKey = session?.user ? SWR_KEYS.tasksAll : null;
+  // [PERF-auto] tasks?all=1 — 할일 탭 + 일정 탭 상단 목록에서 활성
+  const tasksAllKey = session?.user && (tab === "tasks" || tab === "schedule") ? SWR_KEYS.tasksAll : null;
   const diaryTasksKey =
     session?.user && tab === "diary"
       ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}`
@@ -1058,7 +1059,6 @@ function SchedulePageInner() {
     dedupingInterval: 300_000,
     revalidateOnFocus: false,
     revalidateIfStale: false, // [PERF-claude-code] 캐시 존재 시 리마운트로 재검증 안 함
-    isPaused: () => tab !== "tasks",
   });
   const { data: diaryTasksRaw, mutate: mutateDiaryTasks } = useSWR(
     diaryTasksKey,
@@ -1066,7 +1066,7 @@ function SchedulePageInner() {
     { dedupingInterval: 60_000, revalidateOnFocus: false }
   );
   const tasks = useMemo((): TaskItem[] => {
-    const rawSource = tab === "diary" ? diaryTasksRaw : tab === "tasks" ? tasksRaw : null;
+    const rawSource = tab === "diary" ? diaryTasksRaw : tab === "tasks" || tab === "schedule" ? tasksRaw : null;
     if (rawSource == null) return [];
     const raw = rawSource as unknown[] | { items?: unknown[] };
     const list = (Array.isArray(raw) ? raw : raw.items ?? []) as {
@@ -1475,7 +1475,7 @@ function SchedulePageInner() {
         <div className="space-y-1">
           <PageHeadline
             title="스케줄"
-            description="일정과 할일을 구분해 보고, Daily Report로 자동 정리할 수 있습니다."
+            description="일정(캘린더)과 할일(Task) 목록을 함께 보고, 브랜드 프로젝트(마감일 없음)는 별도 구역에서 확인할 수 있습니다."
           />
           {session?.user?.role &&
             ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
@@ -1495,6 +1495,66 @@ function SchedulePageInner() {
 
       {tab === "schedule" && (
         <>
+          <Card className="border-l-4 border-l-emerald-600 shadow-sm dark:border-l-emerald-500">
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-2">
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ListTodo className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+                  할일 목록
+                </CardTitle>
+                <p className="text-muted-foreground mt-1 text-sm font-normal">
+                  캘린더의 <strong className="text-foreground">「할일 마감」</strong> 칩은 개별 업무(Task) 마감입니다. 아래{" "}
+                  <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
+                </p>
+              </div>
+              <Button size="sm" className="shrink-0 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600" onClick={() => setCreateTaskOpen(true)}>
+                <Plus className="mr-1.5 size-4" />
+                할일 추가
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {tasks.length === 0 ? (
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  표시할 할일이 없습니다. 위 <span className="font-medium text-foreground">「할일 추가」</span>로 등록하거나{" "}
+                  <Link href="/tasks" prefetch={false} className="font-medium text-primary underline underline-offset-4 hover:no-underline">
+                    할일 페이지
+                  </Link>
+                  에서 관리하세요.
+                </p>
+              ) : (
+                <ul className="max-h-[min(40vh,320px)] space-y-2 overflow-y-auto pr-1">
+                  {tasks.map((t: TaskItem) => (
+                    <li
+                      key={t.id}
+                      className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-900/10 bg-emerald-50/40 px-3 py-2 dark:border-emerald-900/30 dark:bg-emerald-950/20"
+                    >
+                      <input type="checkbox" checked={t.isCompleted} readOnly className="size-4 shrink-0 rounded" />
+                      <span className={cn("min-w-0 flex-1 text-sm", t.isCompleted && "text-muted-foreground line-through")}>{t.title}</span>
+                      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                        {t.dueDate ? format(new Date(t.dueDate), "MM/dd", { locale: ko }) : "마감 미정"}
+                        {" · "}
+                        {t.assignees && t.assignees.length > 0
+                          ? t.assignees.map((a) => formatUserName(a)).join(", ")
+                          : t.assignedTo
+                            ? formatUserName(t.assignedTo)
+                            : "—"}
+                      </span>
+                      <Link href={`/tasks/${t.id}`} prefetch={false} className="shrink-0 text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300">
+                        상세
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-900/10 pt-3 dark:border-emerald-900/30">
+                <p className="text-muted-foreground text-xs">전체 목록·완료 처리는 할일(프로젝트) 화면에서 이어서 할 수 있습니다.</p>
+                <Link href="/tasks" prefetch={false} className="text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300">
+                  할일 페이지로 →
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="sticky top-0 z-10 -mx-4 border-b border-[#e5e7eb] bg-background/95 px-4 py-2 backdrop-blur-md dark:border-border dark:bg-background/95 md:-mx-5 md:px-5">
             <div className="schedule-gcal-filter-chips flex flex-wrap items-center gap-2 px-0">
               {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer) => {
@@ -1627,6 +1687,42 @@ function SchedulePageInner() {
             </Card>
           )}
 
+          {noDeadlineProjects.length > 0 && (
+            <Card className="border-l-4 border-l-violet-600 shadow-sm dark:border-l-violet-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base text-violet-950 dark:text-violet-100">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-violet-100 text-xs font-bold text-violet-800 dark:bg-violet-900/60 dark:text-violet-100">
+                    PJ
+                  </span>
+                  브랜드 프로젝트 · 마감일 없음
+                </CardTitle>
+                <p className="text-muted-foreground text-sm font-normal">
+                  견적과 연결된 <strong className="text-foreground">브랜드 프로젝트</strong> 중 캘린더 마감이 비어 있는 항목입니다. 위 초록색 카드의 &quot;할일&quot;과는 다른 종류입니다.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ul className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                  {noDeadlineProjects.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        href={`/projects/${p.id}`}
+                        prefetch={false}
+                        className="flex items-center gap-2 rounded-md border border-violet-200/80 bg-violet-50/60 px-3 py-2 text-sm text-violet-950 hover:bg-violet-100/80 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-50 dark:hover:bg-violet-950/50"
+                      >
+                        <span className="size-2 shrink-0 rounded-full bg-violet-500" aria-hidden />
+                        <span className="min-w-0 truncate">
+                          <span className="text-muted-foreground text-xs">{p.brand.name}</span>
+                          {" · "}
+                          <span className="font-medium">{p.name}</span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="schedule-gcal-viewport min-h-[520px] h-[min(70vh,900px)] w-full">
             <Calendar
               localizer={localizer}
@@ -1680,35 +1776,6 @@ function SchedulePageInner() {
               }}
             />
           </div>
-
-          {noDeadlineProjects.length > 0 && (
-            <div className="mt-4 rounded-lg border border-[#e5e7eb] bg-[#fafafa] px-4 py-3 dark:border-border dark:bg-muted/30">
-              <h3 className="mb-2 text-sm font-medium text-[#3c4043] dark:text-foreground">
-                마감일 없는 프로젝트
-              </h3>
-              <p className="text-muted-foreground mb-3 text-xs">
-                브랜드 프로젝트 중 마감일이 비어 있는 항목입니다. 상세는 프로젝트 페이지에서 확인하세요.
-              </p>
-              <ul className="max-h-48 space-y-1.5 overflow-y-auto">
-                {noDeadlineProjects.map((p) => (
-                  <li key={p.id}>
-                    <Link
-                      href={`/projects/${p.id}`}
-                      prefetch={false}
-                      className="flex items-center gap-2 rounded-md px-1 py-1 text-sm text-[#1a73e8] hover:underline dark:text-primary"
-                    >
-                      <span className="size-2 shrink-0 rounded-full bg-blue-400" aria-hidden />
-                      <span className="min-w-0 truncate">
-                        <span className="text-muted-foreground text-xs">{p.brand.name}</span>
-                        {" · "}
-                        {p.name}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </>
       )}
 
@@ -1718,7 +1785,7 @@ function SchedulePageInner() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">할일 목록</CardTitle>
               <p className="text-muted-foreground text-sm font-normal">
-                담당·지시한 프로젝트입니다. 본인 할일을 추가하거나 Projects 페이지에서 상세·완료 처리할 수 있습니다.
+                업무(Task) 목록입니다. 일정 탭 상단에서도 동일하게 볼 수 있으며, 브랜드 프로젝트는 스케줄 화면의 보라색 구역에서만 따로 안내합니다.
               </p>
             </div>
             <Button size="sm" onClick={() => setCreateTaskOpen(true)}>
@@ -1758,7 +1825,7 @@ function SchedulePageInner() {
               </ul>
             )}
             <Link href="/tasks" prefetch={false} className="text-primary mt-3 inline-block text-sm font-medium hover:underline">
-              Projects에서 전체 관리 →
+              할일 전체 보기·완료 처리 →
             </Link>
           </CardContent>
         </Card>
