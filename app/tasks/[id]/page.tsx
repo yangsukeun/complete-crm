@@ -45,6 +45,7 @@ import {
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { CreateTaskModal } from "@/components/create-task-modal";
+import { TaskCreationSource } from "@prisma/client";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
@@ -919,6 +920,10 @@ export default function TaskDetailPage() {
                 : task.assignedTo?.id
                   ? [task.assignedTo.id]
                   : null
+            }
+            defaultProjectId={task.projectId ?? null}
+            creationSourceSubmit={
+              task.projectId ? TaskCreationSource.PROJECT : TaskCreationSource.SCHEDULE
             }
             onCreated={() => {
               fetchTask();

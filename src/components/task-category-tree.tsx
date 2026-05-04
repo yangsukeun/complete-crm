@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { formatUserName } from "@/lib/utils";
 import { CreateTaskModal } from "@/components/create-task-modal";
+import { TaskCreationSource } from "@prisma/client";
 import { TaskDetailDrawer } from "@/components/task-detail-drawer";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
@@ -581,6 +582,7 @@ export function TaskCategoryTree({
         orderIndex={0}
         defaultAssignedToId={defaultAssignedToId}
         categoryId={createCategoryId}
+        creationSourceSubmit={TaskCreationSource.PROJECT}
       />
       <TaskDetailDrawer taskId={detailTaskId} onClose={() => setDetailTaskId(null)} onUpdate={onRefresh} />
     </div>

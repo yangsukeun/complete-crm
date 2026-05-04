@@ -48,6 +48,7 @@ import {
   startOfDay,
 } from "date-fns";
 import { ko } from "date-fns/locale";
+import { TaskCreationSource } from "@prisma/client";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -187,6 +188,7 @@ type Task = {
   assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
+  creationSource?: string | null;
   projectId?: string | null;
   color?: string | null;
   completedAt?: string | null;
@@ -613,7 +615,7 @@ function TasksPageInner() {
 
   const tasksFullKey =
     authStatus === "authenticated" && needsFullTaskList
-      ? `/api/tasks?all=1&${taskShelfQs}${adminTasksUserId ? `&userId=${encodeURIComponent(adminTasksUserId)}` : ""}`
+      ? `/api/tasks?all=1&${taskShelfQs}&creationSource=PROJECT${adminTasksUserId ? `&userId=${encodeURIComponent(adminTasksUserId)}` : ""}`
       : null;
   const {
     data: tasksFullData,
@@ -636,6 +638,7 @@ function TasksPageInner() {
       const q = new URLSearchParams();
       q.set("limit", "20");
       q.set("offset", String(pageIndex * 20));
+      q.set("creationSource", "PROJECT");
       if (isTasksAdmin && adminTasksUserId) q.set("userId", adminTasksUserId);
       new URLSearchParams(taskShelfQs).forEach((v, k) => q.set(k, v));
       return `/api/tasks?${q.toString()}`;
@@ -676,9 +679,9 @@ function TasksPageInner() {
     view === "mindmap" &&
     mindmapMode === "project" &&
     mindmapProjectId
-      ? `/api/tasks?projectId=${encodeURIComponent(mindmapProjectId)}${mindmapAdminSuffix}&${taskShelfQs}`
+      ? `/api/tasks?projectId=${encodeURIComponent(mindmapProjectId)}${mindmapAdminSuffix}&${taskShelfQs}&creationSource=PROJECT,MINDMAP`
       : authStatus === "authenticated" && view === "mindmap" && mindmapMode === "unassigned"
-        ? `/api/tasks?projectId=null${mindmapAdminSuffix}&${taskShelfQs}`
+        ? `/api/tasks?projectId=null${mindmapAdminSuffix}&${taskShelfQs}&creationSource=PROJECT,MINDMAP`
         : null;
 
   const {
@@ -773,6 +776,14 @@ function TasksPageInner() {
 
   const canDeleteTask = useCallback(
     (t: Task) => {
+      const cid = t.createdById ?? t.createdBy?.id ?? null;
+      return isTaskDeleteAdmin || (!!cid && cid === currentUserId);
+    },
+    [isTaskDeleteAdmin, currentUserId]
+  );
+
+  const canChangeTaskCreationSource = useCallback(
+    (t: { createdById?: string | null; createdBy?: { id: string } | null }) => {
       const cid = t.createdById ?? t.createdBy?.id ?? null;
       return isTaskDeleteAdmin || (!!cid && cid === currentUserId);
     },
@@ -985,7 +996,7 @@ function TasksPageInner() {
           description={
             view === "log"
               ? "Record your daily work"
-              : "프로젝트를 목록·Mindmap·Daily Report로 관리합니다. 카드 클릭 시 오른쪽에서 미리 볼 수 있고, Ctrl·⌘·Shift 클릭은 새 탭으로 열립니다."
+              : "프로젝트만 표시됩니다. 일반 할일은 일정 탭에서, 마인드맵 노드는 Mindmap 탭에서 확인하세요. 카드 클릭 시 오른쪽에서 미리 볼 수 있고, Ctrl·⌘·Shift 클릭은 새 탭으로 열립니다."
           }
         />
         <div className="flex flex-wrap items-center gap-3">
@@ -1386,6 +1397,7 @@ function TasksPageInner() {
                 contextProjectId={mindmapMode === "project" ? mindmapProjectId : null}
                 taskCompletionShelf={taskCompletionShelf}
                 onTaskCompletionShelfChange={setTaskCompletionShelf}
+                canChangeTaskCreationSource={canChangeTaskCreationSource}
               />
             </div>
           )
@@ -1406,18 +1418,25 @@ function TasksPageInner() {
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
-            <p className="mb-4 text-sm">조건에 맞는 프로젝트가 없습니다.</p>
-            <Button
-              onClick={() => {
-                setCreateParentId(null);
-                setCreateOpen(true);
-              }}
-              variant="outline"
-              size="sm"
-            >
-              <Plus className="mr-2 size-4" />
-              새 프로젝트
-            </Button>
+            <p className="mb-4 text-sm">표시할 프로젝트가 없습니다. 새 프로젝트를 만들거나 일정 탭에서 일반 할일을 확인하세요.</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                onClick={() => {
+                  setCreateParentId(null);
+                  setCreateOpen(true);
+                }}
+                variant="outline"
+                size="sm"
+              >
+                <Plus className="mr-2 size-4" />
+                새 프로젝트
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/schedule" prefetch={false}>
+                  일정 탭으로
+                </Link>
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -1660,6 +1679,7 @@ function TasksPageInner() {
         orderIndex={tasksTotalCount}
         defaultAssignedToId={(session?.user as any)?.id ?? null}
         defaultProjectId={view === "mindmap" && mindmapMode === "project" ? mindmapProjectId : null}
+        creationSourceSubmit={TaskCreationSource.PROJECT}
       />
       <TaskDetailDrawer
         taskId={peekTaskId}

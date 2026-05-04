@@ -14,6 +14,8 @@ import { serializeAssigneesFromRows, taskAssigneeUserSelect } from "@/lib/task-a
 import { PROJECT_TASK_COLOR_SET } from "@/lib/project-task-colors";
 import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
 import type { Prisma } from "@prisma/client";
+import { TaskCreationSource } from "@prisma/client";
+import { z } from "zod";
 
 /** Prisma·DB는 Node 런타임 전제 (Edge에서 cookies/Prisma 이슈 방지) */
 export const runtime = "nodejs";
@@ -88,6 +90,7 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
     recurringRule: true,
     recurringMemo: true,
     projectId: true,
+    creationSource: true,
     parentId: true,
     categoryId: true,
     orderIndex: true,
@@ -409,6 +412,7 @@ export async function PATCH(
         completedAt: true,
         assignedToId: true,
         createdById: true,
+        creationSource: true,
         assignees: { select: { userId: true } },
         assignedTo: { select: { name: true } },
       },
@@ -444,6 +448,30 @@ export async function PATCH(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const creationSourceFieldSchema = z.enum([
+      "PROJECT",
+      "MINDMAP",
+      "SCHEDULE",
+      "MEMO",
+      "UNKNOWN",
+    ]);
+    let nextCreationSource: TaskCreationSource | undefined;
+    if ("creationSource" in body && body.creationSource !== undefined && body.creationSource !== null) {
+      const parsed = creationSourceFieldSchema.safeParse(body.creationSource);
+      if (!parsed.success) {
+        return NextResponse.json({ error: "유효하지 않은 creationSource입니다." }, { status: 400 });
+      }
+      nextCreationSource = parsed.data;
+      const canChangeCreationSource =
+        isAdmin || (existing.createdById != null && existing.createdById === session.user.id);
+      if (!canChangeCreationSource) {
+        return NextResponse.json(
+          { error: "출처(creationSource)는 작성자 또는 관리자만 변경할 수 있습니다." },
+          { status: 403 }
+        );
+      }
+    }
+
     let assigneeIdsUpdate: string[] | undefined;
     if (Array.isArray(body.assigneeIds)) {
       const arr = body.assigneeIds as unknown[];
@@ -475,6 +503,7 @@ export async function PATCH(
       recurringMemo?: string | null;
       color?: string | null;
       projectId?: string | null;
+      creationSource?: TaskCreationSource;
       archivedAt?: Date | null;
       completedAt?: Date | null;
     } = {};
@@ -566,6 +595,9 @@ export async function PATCH(
       } else if (typeof body.projectId === "string" && body.projectId.trim()) {
         data.projectId = body.projectId.trim();
       }
+    }
+    if (nextCreationSource !== undefined) {
+      data.creationSource = nextCreationSource;
     }
     if ("archivedAt" in body) {
       if (body.archivedAt === null || body.archivedAt === "") {
@@ -678,6 +710,13 @@ export async function PATCH(
         newValue: data.isCompleted ? "완료" : "미완료",
       });
     }
+    if (data.creationSource !== undefined && data.creationSource !== existing.creationSource) {
+      revisions.push({
+        field: "creationSource",
+        oldValue: existing.creationSource ?? "(없음)",
+        newValue: data.creationSource,
+      });
+    }
 
     /** DEBUG_TASK_MENTION=1 일 때 응답 헤더용 (알림을 보낸 멘션 대상 수) */
     let mentionNotifyCountForDebug: number | undefined;
@@ -723,6 +762,7 @@ export async function PATCH(
       recurringRule: true,
       recurringMemo: true,
       projectId: true,
+      creationSource: true,
       parentId: true,
       categoryId: true,
       orderIndex: true,
@@ -846,6 +886,7 @@ export async function PATCH(
     await auditIf("assignedToId", existing.assignedToId, taskRow.assignedToId);
     await auditIf("dueDate", existing.dueDate, taskRow.dueDate);
     await auditIf("projectId", existing.projectId, taskRow.projectId);
+    await auditIf("creationSource", existing.creationSource, taskRow.creationSource);
     await auditIf("archivedAt", existing.archivedAt, taskRow.archivedAt);
     await auditIf("completedAt", existing.completedAt, taskRow.completedAt);
 

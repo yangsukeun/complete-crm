@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { formatUserName, cn } from "@/lib/utils";
 import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
+import { TaskCreationSource } from "@prisma/client";
 
 type User = {
   id: string;
@@ -49,6 +50,8 @@ type Props = {
   categoryId?: string | null;
   /** 마인드맵 등: 생성 시 브랜드 프로젝트(Task.projectId)에 연결 */
   defaultProjectId?: string | null;
+  /** POST /api/tasks 시 creationSource (기본: 일정·할일 = SCHEDULE) */
+  creationSourceSubmit?: TaskCreationSource;
 };
 
 export function CreateTaskModal({
@@ -61,6 +64,7 @@ export function CreateTaskModal({
   defaultAssigneeIds = null,
   categoryId = null,
   defaultProjectId = null,
+  creationSourceSubmit = TaskCreationSource.SCHEDULE,
 }: Props) {
   const [users, setUsers] = useState<User[]>([]);
   const [title, setTitle] = useState("");
@@ -142,7 +146,7 @@ export function CreateTaskModal({
           description: description.trim() || undefined,
           dueDate: dueDate.trim() ? new Date(dueDate).toISOString() : null,
           priority,
-          creationSource: "SCHEDULE",
+          creationSource: creationSourceSubmit,
           assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
           parentId: parentId ?? undefined,
           categoryId: categoryId ?? undefined,

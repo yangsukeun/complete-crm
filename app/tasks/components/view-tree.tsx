@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  type DragEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
+import { useSWRConfig } from "swr";
 import { createPortal } from "react-dom";
 import "./mindmap-toolbar.css";
 import {
@@ -56,6 +66,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor } from "@/lib/project-task-colors";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
+import { TaskCreationSource } from "@prisma/client";
 import type { MindmapShellMode } from "@/lib/mindmap-canvas-keys";
 import { MINDMAP_CANVAS_ALL } from "@/lib/mindmap-canvas-keys";
 import type { TaskCompletionShelf } from "@/lib/task-visibility";
@@ -82,6 +93,7 @@ type TaskData = {
   archivedAt?: string | null;
   /** 서버 계산: 완료 후 3일 경과 시 기본 접힘 */
   defaultCollapsed?: boolean;
+  creationSource?: string | null;
 };
 
 type TaskLink = {
@@ -128,6 +140,8 @@ type TreeViewProps = {
   /** 완료·아카이브 표시 범위 (목록과 동일 키로 localStorage 공유) */
   taskCompletionShelf?: TaskCompletionShelf;
   onTaskCompletionShelfChange?: (shelf: TaskCompletionShelf) => void;
+  /** 마인드맵 노드 creationSource 변경(예: MINDMAP→PROJECT) — 작성자·임원/관리자 */
+  canChangeTaskCreationSource?: (task: TaskData) => boolean;
 };
 
 // Style settings for tree customization
@@ -376,7 +390,18 @@ function getPriorityBadge(priority: string) {
 
 // Custom Task Node
 function TaskNode({ data, id, selected }: NodeProps) {
-  const { task, onToggleCollapse, onTitleChange, onAddChild, onAddParent, onTaskClick, onTaskHover, nodeStyle } = data as {
+  const {
+    task,
+    onToggleCollapse,
+    onTitleChange,
+    onAddChild,
+    onAddParent,
+    onTaskClick,
+    onTaskHover,
+    nodeStyle,
+    onMindmapTaskContextMenu,
+    canChangeTaskCreationSource,
+  } = data as {
     task: TaskData;
     hasChildren: boolean;
     isCollapsed: boolean;
@@ -387,6 +412,8 @@ function TaskNode({ data, id, selected }: NodeProps) {
     onTaskClick: (taskId: string, projectId?: string | null) => void;
     onTaskHover?: (taskId: string) => void;
     nodeStyle: NodeStyle;
+    onMindmapTaskContextMenu?: (task: TaskData, clientX: number, clientY: number) => void;
+    canChangeTaskCreationSource?: (task: TaskData) => boolean;
   };
 
   const [isEditing, setIsEditing] = useState(false);
@@ -441,7 +468,14 @@ function TaskNode({ data, id, selected }: NodeProps) {
   const priority = getPriorityBadge(task.priority);
   const hasChildren = data.hasChildren as boolean;
   const isCollapsed = data.isCollapsed as boolean;
-  
+  const handleNodeContextMenu = (e: MouseEvent) => {
+    if (task.creationSource !== "MINDMAP") return;
+    if (!canChangeTaskCreationSource?.(task) || !onMindmapTaskContextMenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onMindmapTaskContextMenu(task, e.clientX, e.clientY);
+  };
+
   const style = nodeStyle || DEFAULT_NODE_STYLE;
   const fontSizeClass = style.fontSize === "lg" ? "text-base" : style.fontSize === "base" ? "text-sm" : "text-xs";
   const titleFontSizeClass = style.fontSize === "lg" ? "text-lg" : style.fontSize === "base" ? "text-base" : "text-sm";
@@ -468,6 +502,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onMouseEnter={() => onTaskHover?.(task.id)}
+      onContextMenu={handleNodeContextMenu}
       data-node-id={id}
     >
       {/* Top Handle */}
@@ -650,10 +685,14 @@ function UncategorizedTaskItem({
   task,
   onTaskClick,
   onTaskHover,
+  onMindmapTaskContextMenu,
+  canChangeTaskCreationSource,
 }: {
   task: TaskData;
   onTaskClick: (id: string, projectId?: string | null) => void;
   onTaskHover?: (id: string) => void;
+  onMindmapTaskContextMenu?: (task: TaskData, clientX: number, clientY: number) => void;
+  canChangeTaskCreationSource?: (task: TaskData) => boolean;
 }) {
   const priority = getPriorityBadge(task.priority);
 
@@ -663,12 +702,20 @@ function UncategorizedTaskItem({
     e.dataTransfer.effectAllowed = "move";
   };
 
+  const handleUncategorizedContextMenu = (e: MouseEvent<HTMLDivElement>) => {
+    if (task.creationSource !== "MINDMAP") return;
+    if (!canChangeTaskCreationSource?.(task) || !onMindmapTaskContextMenu) return;
+    e.preventDefault();
+    onMindmapTaskContextMenu(task, e.clientX, e.clientY);
+  };
+
   return (
     <div
       draggable
       onDragStart={handleDragStart}
       onClick={() => onTaskClick(task.id, task.projectId ?? null)}
       onMouseEnter={() => onTaskHover?.(task.id)}
+      onContextMenu={handleUncategorizedContextMenu}
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg border bg-card cursor-grab active:cursor-grabbing",
         "hover:shadow-md hover:border-violet-300 transition-all",
@@ -717,7 +764,9 @@ function TreeViewInner({
   contextProjectId = null,
   taskCompletionShelf = "active",
   onTaskCompletionShelfChange,
+  canChangeTaskCreationSource,
 }: TreeViewProps) {
+  const { mutate } = useSWRConfig();
   const mindmapCanvasKey = mindmapCanvasId;
   const { fitView, getNodes } = useReactFlow();
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -735,6 +784,11 @@ function TreeViewInner({
   const [mindmapReloadKey, setMindmapReloadKey] = useState(0);
   const [saveUi, setSaveUi] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isAddingParent, setIsAddingParent] = useState(false);
+  const [taskContextMenu, setTaskContextMenu] = useState<{
+    x: number;
+    y: number;
+    task: TaskData;
+  } | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const quickInputRef = useRef<HTMLInputElement>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1299,6 +1353,37 @@ function TreeViewInner({
     [deleteSelectedTasks, deletableSelectedIds.length]
   );
 
+  const openMindmapTaskMenu = useCallback((task: TaskData, clientX: number, clientY: number) => {
+    setTaskContextMenu({ x: clientX, y: clientY, task });
+  }, []);
+
+  const handlePromoteMindmapTaskToProject = useCallback(
+    async (t: TaskData) => {
+      setTaskContextMenu(null);
+      if (!confirm(`"${t.title}"을(를) 프로젝트로 변경하시겠습니까?`)) return;
+      try {
+        const res = await fetch(`/api/tasks/${t.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...workspaceFetchHeaders() },
+          credentials: "include",
+          body: JSON.stringify({ creationSource: TaskCreationSource.PROJECT }),
+        });
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+          throw new Error(err.error ?? err.message ?? `HTTP ${res.status}`);
+        }
+        toast.success("프로젝트로 변경되었습니다.");
+        await mutate((key) => typeof key === "string" && key.startsWith("/api/tasks"), undefined, {
+          revalidate: true,
+        });
+        onRefresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "변경에 실패했습니다.");
+      }
+    },
+    [mutate, onRefresh]
+  );
+
   // Split tasks: tree tasks (have parent OR have children OR staged as root OR has additional links) vs uncategorized
   const { treeTasks, uncategorizedTasks } = useMemo(() => {
     const parentIds = new Set(tasks.filter((t: any) => t.parentId).map((t: any) => t.parentId!));
@@ -1377,6 +1462,8 @@ function TreeViewInner({
           onTaskClick,
           onTaskHover,
           nodeStyle: getNodeStyle(task.id),
+          onMindmapTaskContextMenu: openMindmapTaskMenu,
+          canChangeTaskCreationSource,
         },
       };
     });
@@ -1430,6 +1517,8 @@ function TreeViewInner({
     handleAddParentNode,
     getVisibleTasks,
     getNodeStyle,
+    openMindmapTaskMenu,
+    canChangeTaskCreationSource,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
@@ -1954,7 +2043,7 @@ function TreeViewInner({
         <p className="text-muted-foreground hidden max-w-md text-xs lg:block">
           {mindmapMode === "all"
             ? "💡 프로젝트 카드를 드래그해 배치할 수 있습니다. 카드를 클릭하면 해당 프로젝트 업무 마인드맵으로 들어갑니다."
-            : "💡 노드 드래그로 위치 자유 배치 · 하위/상위 추가 · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 프로젝트 또는 관리자)"}
+            : "💡 노드 드래그로 위치 자유 배치 · 하위/상위 추가 · 마인드맵 노드 우클릭 → 프로젝트로 변경(작성자·관리자) · 선택 후 스타일 변경 · Delete 키로 삭제(본인 작성 또는 관리자)"}
         </p>
       </div>
     </div>
@@ -2073,12 +2162,36 @@ function TreeViewInner({
                 task={task}
                 onTaskClick={onTaskClick}
                 onTaskHover={onTaskHover}
+                onMindmapTaskContextMenu={openMindmapTaskMenu}
+                canChangeTaskCreationSource={canChangeTaskCreationSource}
               />
             ))}
           </div>
         )}
       </div>
       )}
+
+      {taskContextMenu &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[100]" onMouseDown={() => setTaskContextMenu(null)}>
+            <div
+              role="menu"
+              className="bg-popover text-popover-foreground absolute z-[101] min-w-[220px] rounded-md border p-1 shadow-md"
+              style={{ left: taskContextMenu.x, top: taskContextMenu.y }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="hover:bg-accent focus:bg-accent flex w-full rounded-sm px-2 py-1.5 text-left text-sm"
+                onClick={() => void handlePromoteMindmapTaskToProject(taskContextMenu.task)}
+              >
+                프로젝트로 변경
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

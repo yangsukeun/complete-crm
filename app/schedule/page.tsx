@@ -1009,8 +1009,8 @@ function SchedulePageInner() {
   const calendarDueKey =
     session?.user && tab === "schedule"
       ? view === "month"
-        ? `/api/tasks?calendarDue=1&standalone=1&creationSource=SCHEDULE,UNKNOWN&monthKey=${format(date, "yyyy-MM")}`
-        : `/api/tasks?calendarDue=1&standalone=1&creationSource=SCHEDULE,UNKNOWN&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
+        ? `/api/tasks?calendarDue=1&standalone=1&creationSource=SCHEDULE,PROJECT,UNKNOWN,MINDMAP&monthKey=${format(date, "yyyy-MM")}`
+        : `/api/tasks?calendarDue=1&standalone=1&creationSource=SCHEDULE,PROJECT,UNKNOWN,MINDMAP&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
       : null;
   const { data: calendarDueRaw = [], mutate: mutateCalendarDueTasks } = useSWR(
     calendarDueKey,
@@ -1476,7 +1476,7 @@ function SchedulePageInner() {
         <div className="space-y-1">
           <PageHeadline
             title="스케줄"
-            description="일정(캘린더)과 할일(Task) 목록을 함께 보고, 브랜드 프로젝트(마감일 없음)는 별도 구역에서 확인할 수 있습니다."
+            description="여기에는 직접 만든 할일과 출처 미정 데이터만 목록에 보입니다. 마인드맵·프로젝트는 각자 영역에서 관리하되, 마감일은 캘린더에 함께 표시됩니다."
           />
           {session?.user?.role &&
             ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
@@ -1504,10 +1504,11 @@ function SchedulePageInner() {
                   할일 목록
                 </CardTitle>
                 <p className="text-muted-foreground mt-1 text-sm font-normal">
-                  여기와 캘린더 <strong className="text-foreground">「할일 마감」</strong>에는{" "}
-                  <strong className="text-foreground">할일·스케줄 화면에서 직접 만든 업무</strong>와, 출처가 아직 정해지지 않은 기존
-                  데이터(UNKNOWN)만 보입니다. 마인드맵·프로젝트에서 생긴 업무·메모에서 만든 업무는 각 영역에서 확인해 주세요. 완료된 항목은
-                  표시되지 않습니다. 아래 <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
+                  이 목록에는 <strong className="text-foreground">직접 만든 할일(SCHEDULE)</strong>과{" "}
+                  <strong className="text-foreground">출처 미정(UNKNOWN)</strong>만 나옵니다. 캘린더의{" "}
+                  <strong className="text-foreground">할일 마감</strong> 칩에는 프로젝트·마인드맵 등 마감일이 있는 업무도 함께 표시됩니다.
+                  완료된 항목은 목록에 나오지 않습니다. 아래 <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일
+                  없음)입니다.
                 </p>
               </div>
               <Button size="sm" className="shrink-0 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600" onClick={() => setCreateTaskOpen(true)}>
@@ -1520,9 +1521,9 @@ function SchedulePageInner() {
                 <p className="text-muted-foreground py-4 text-center text-sm">
                   표시할 할일이 없습니다. 위 <span className="font-medium text-foreground">「할일 추가」</span>로 등록하거나{" "}
                   <Link href="/tasks" prefetch={false} className="font-medium text-primary underline underline-offset-4 hover:no-underline">
-                    할일 페이지
+                    프로젝트 페이지
                   </Link>
-                  에서 전체 목록(마인드맵·프로젝트 업무 포함)을 확인하세요.
+                  로 이동하세요.
                 </p>
               ) : (
                 <ul className="max-h-[min(40vh,320px)] space-y-2 overflow-y-auto pr-1">

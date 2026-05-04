@@ -383,16 +383,14 @@ export async function GET(req: Request) {
         OR: [{ assignedToId: session.user.id }, { assignees: { some: { userId: session.user.id } } }],
       };
       if (standalone) {
-        where.projectId = null;
+        /** 일정 캘린더: CRM 프로젝트에 연결된 Task 마감도 표시 — projectId 제한 없음 */
         where.status = { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] };
         where.isCompleted = false;
-        const titleEx = await taskWhereExcludeTitleMatchingVisibleProject(session.user);
         const csEx = buildCreationSourceWhere(new URL(req.url).searchParams);
-        const extras = [titleEx, csEx].filter((x) => Object.keys(x).length > 0);
-        if (extras.length > 0) {
+        if (Object.keys(csEx).length > 0) {
           const prevAnd = where.AND;
           const andArr = Array.isArray(prevAnd) ? [...prevAnd] : prevAnd != null ? [prevAnd] : [];
-          andArr.push(...extras);
+          andArr.push(csEx);
           where.AND = andArr;
         }
       }
