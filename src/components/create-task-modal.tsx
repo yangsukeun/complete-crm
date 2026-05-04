@@ -45,9 +45,9 @@ type Props = {
   defaultAssignedToId?: string | null;
   /** 여러 담당자 미선택 */
   defaultAssigneeIds?: string[] | null;
-  /** 이 카테고리 아래에 프로젝트 추가 */
+  /** 이 카테고리 아래에 할일 추가 */
   categoryId?: string | null;
-  /** 마인드맵 프로젝트 뷰 등: 생성 시 CRM 프로젝트 연결 */
+  /** 마인드맵 등: 생성 시 브랜드 프로젝트(Task.projectId)에 연결 */
   defaultProjectId?: string | null;
 };
 
@@ -174,15 +174,15 @@ export function CreateTaskModal({
         const msg =
           (data as { error?: string; details?: string }).error ||
           (data as { error?: string; details?: string }).details ||
-          `프로젝트 생성에 실패했습니다. (HTTP ${res.status})`;
+          `할일을 추가하지 못했습니다. (HTTP ${res.status})`;
         throw new Error(msg);
       }
-      toast.success("프로젝트가 할당되었습니다.");
+      toast.success("할일이 추가되었습니다.");
       onCreated();
       onOpenChange(false);
     } catch (e) {
       console.error("[CreateTaskModal] submit failed", e);
-      toast.error(e instanceof Error ? e.message : "프로젝트 생성에 실패했습니다.");
+      toast.error(e instanceof Error ? e.message : "할일 추가에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -194,7 +194,7 @@ export function CreateTaskModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90vh,calc(100dvh-2rem))] gap-0 overflow-hidden p-0 sm:max-w-md [@media(max-height:700px)]:max-h-[min(95dvh,calc(100dvh-1rem))]">
         <DialogHeader className="shrink-0 border-b px-6 pt-6 pb-4 pr-14 text-left sm:text-left">
-          <DialogTitle>새 프로젝트 만들기</DialogTitle>
+          <DialogTitle>새 할일 만들기</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={handleSubmit}
@@ -242,7 +242,7 @@ export function CreateTaskModal({
                   id="task-title"
                   value={title}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-                  placeholder="프로젝트 제목"
+                  placeholder="할일 제목"
                   required
                 />
               </div>
@@ -257,7 +257,7 @@ export function CreateTaskModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="task-due">프로젝트 마감일 (선택)</Label>
+                <Label htmlFor="task-due">마감일 (선택)</Label>
                 <Input
                   id="task-due"
                   type="datetime-local"
@@ -425,7 +425,7 @@ export function CreateTaskModal({
               취소
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "저장 중..." : "할당"}
+              {loading ? "저장 중..." : "추가"}
             </Button>
           </DialogFooter>
         </form>
