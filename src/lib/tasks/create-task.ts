@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import { todayYmdKst } from "@/lib/date-kst";
-import type { Prisma, TaskPriority, TaskStatus } from "@prisma/client";
+import type { Prisma, TaskCreationSource, TaskPriority, TaskStatus } from "@prisma/client";
 import type { WorkspaceScope } from "@/lib/workspace";
 import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback";
 import { appendWorkLogOnceForTaskStatus, createActivityLog } from "@/lib/activity-log";
@@ -30,6 +30,7 @@ export type CreateTaskInput = {
   recurringRule?: any;
   recurringMemo?: string | null;
   color?: string | null;
+  creationSource?: TaskCreationSource;
 };
 
 const taskInclude = {
@@ -48,6 +49,7 @@ const taskInclude = {
 const taskReloadSelectNoColor = {
   id: true,
   title: true,
+  creationSource: true,
   description: true,
   dueDate: true,
   isCompleted: true,
@@ -109,6 +111,7 @@ export async function createTaskWithNotifications(params: {
 
   const taskCreateInner = {
     title: data.title,
+    creationSource: data.creationSource ?? "UNKNOWN",
     description: data.description ?? null,
     dueDate: dueDateValue,
     priority: data.priority ?? "MEDIUM",

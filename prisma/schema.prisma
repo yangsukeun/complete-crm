@@ -32,6 +32,15 @@ enum TaskStatus {
   DONE
 }
 
+/// 업무(Task) 생성 경로 — 기존 행은 UNKNOWN, 신규는 호출부에서 명시
+enum TaskCreationSource {
+  PROJECT
+  MINDMAP
+  SCHEDULE
+  MEMO
+  UNKNOWN
+}
+
 /// 브랜드 프로젝트(일정 캘린더 마감 칩 등)
 enum ProjectStatus {
   PREPARING
@@ -460,6 +469,8 @@ model TaskCategory {
 model Task {
   id           String         @id @default(cuid())
   title        String
+  /// 생성 UI 출처(스케줄 할일 목록 필터 등)
+  creationSource TaskCreationSource @default(UNKNOWN)
   description  String?
   /// 목록·보드 카드 왼쪽 강조색 (#RRGGBB, 팔레트만 허용)
   color        String?
@@ -522,6 +533,8 @@ model Task {
   @@index([projectId])
   @@index([archivedAt])
   @@index([status, completedAt])
+  @@index([creationSource])
+  @@index([assignedToId, creationSource, status])
 }
 
 // 업무 다중 담당자 (assignedToId 는 호환용으로 첫 담당자와 동기화)

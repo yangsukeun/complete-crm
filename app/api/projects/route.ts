@@ -5,6 +5,7 @@ import { ProjectStatus } from "@prisma/client";
 import { z } from "zod";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
+import { TaskCreationSource } from "@prisma/client";
 import { createTaskWithNotifications } from "@/lib/tasks/create-task";
 import { revalidatePath } from "next/cache";
 
@@ -270,6 +271,7 @@ export async function POST(req: Request) {
           dueDate: dueIso,
           assigneeIds: [session.user.id],
           projectId: project.id,
+          creationSource: TaskCreationSource.PROJECT,
         },
       });
     }

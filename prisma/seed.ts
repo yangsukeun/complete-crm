@@ -72,6 +72,7 @@ async function main() {
         const parent = await prisma.task.create({
           data: {
             title: "비지니스",
+            creationSource: "MINDMAP",
             description: null,
             dueDate: childTask.dueDate,
             scope: childTask.scope,

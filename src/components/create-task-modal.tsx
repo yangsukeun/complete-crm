@@ -142,6 +142,7 @@ export function CreateTaskModal({
           description: description.trim() || undefined,
           dueDate: dueDate.trim() ? new Date(dueDate).toISOString() : null,
           priority,
+          creationSource: "SCHEDULE",
           assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
           parentId: parentId ?? undefined,
           categoryId: categoryId ?? undefined,

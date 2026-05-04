@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
-import { Prisma, TaskStatus } from "@prisma/client";
+import { Prisma, TaskCreationSource, TaskStatus } from "@prisma/client";
 import { createTaskWithNotifications, jsonSerializeCreatedTask } from "@/lib/tasks/create-task";
 import {
   serializeAssigneesFromRows,
@@ -108,11 +108,32 @@ const createSchema = z.object({
   recurringRule: z.any().optional(),
   recurringMemo: z.union([z.string(), z.null()]).optional(),
   color: z.union([z.string(), z.null()]).optional(),
+  creationSource: z.enum(["PROJECT", "MINDMAP", "SCHEDULE", "MEMO", "UNKNOWN"]).optional(),
 });
+
+const TASK_CREATION_SOURCE_SET = new Set<string>([
+  TaskCreationSource.PROJECT,
+  TaskCreationSource.MINDMAP,
+  TaskCreationSource.SCHEDULE,
+  TaskCreationSource.MEMO,
+  TaskCreationSource.UNKNOWN,
+]);
+
+function buildCreationSourceWhere(searchParams: URLSearchParams): Prisma.TaskWhereInput {
+  const raw = (searchParams.get("creationSource") ?? "").trim();
+  if (!raw) return {};
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is TaskCreationSource => TASK_CREATION_SOURCE_SET.has(s));
+  if (!parts.length) return {};
+  return { creationSource: { in: parts } };
+}
 
 const listSelect = {
   id: true,
   title: true,
+  creationSource: true,
   dueDate: true,
   isCompleted: true,
   status: true,
@@ -307,6 +328,8 @@ export async function GET(req: Request) {
         ? await taskWhereExcludeTitleMatchingVisibleProject(session.user)
         : ({} as Prisma.TaskWhereInput);
 
+    const creationSourceWhere = buildCreationSourceWhere(searchParams);
+
     const baseWhere: Prisma.TaskWhereInput = {
       deletedAt: null,
       ...archivedFilter,
@@ -316,6 +339,7 @@ export async function GET(req: Request) {
       ...statusShelfWhere,
       ...titleSearchWhere,
       ...scheduleStandaloneTitleExclude,
+      ...creationSourceWhere,
     };
 
     const calendarDue = searchParams.get("calendarDue") === "1";
@@ -363,10 +387,12 @@ export async function GET(req: Request) {
         where.status = { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] };
         where.isCompleted = false;
         const titleEx = await taskWhereExcludeTitleMatchingVisibleProject(session.user);
-        if (Object.keys(titleEx).length > 0) {
+        const csEx = buildCreationSourceWhere(new URL(req.url).searchParams);
+        const extras = [titleEx, csEx].filter((x) => Object.keys(x).length > 0);
+        if (extras.length > 0) {
           const prevAnd = where.AND;
           const andArr = Array.isArray(prevAnd) ? [...prevAnd] : prevAnd != null ? [prevAnd] : [];
-          andArr.push(titleEx);
+          andArr.push(...extras);
           where.AND = andArr;
         }
       }
@@ -519,6 +545,7 @@ export async function POST(req: Request) {
         recurringDays: parsed.data.recurringDays,
         recurringRule: parsed.data.recurringRule,
         recurringMemo: parsed.data.recurringMemo,
+        creationSource: parsed.data.creationSource ?? TaskCreationSource.UNKNOWN,
         ...(colorForCreate !== undefined ? { color: colorForCreate } : {}),
       },
     });

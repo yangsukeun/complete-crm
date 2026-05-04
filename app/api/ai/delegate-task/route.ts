@@ -94,6 +94,7 @@ export async function POST(req: Request) {
           description: null,
           dueDate,
           assignedToId: assigneeUserId,
+          creationSource: "UNKNOWN",
         },
       });
 
@@ -288,6 +289,7 @@ ${userText}
         description: null,
         dueDate: parsedPayload.dueDate,
         assignedToId: assigneeUserId,
+        creationSource: "UNKNOWN",
       },
     });
 

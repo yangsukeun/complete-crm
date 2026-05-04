@@ -1009,8 +1009,8 @@ function SchedulePageInner() {
   const calendarDueKey =
     session?.user && tab === "schedule"
       ? view === "month"
-        ? `/api/tasks?calendarDue=1&standalone=1&monthKey=${format(date, "yyyy-MM")}`
-        : `/api/tasks?calendarDue=1&standalone=1&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
+        ? `/api/tasks?calendarDue=1&standalone=1&creationSource=SCHEDULE,UNKNOWN&monthKey=${format(date, "yyyy-MM")}`
+        : `/api/tasks?calendarDue=1&standalone=1&creationSource=SCHEDULE,UNKNOWN&weekKey=${format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")}`
       : null;
   const { data: calendarDueRaw = [], mutate: mutateCalendarDueTasks } = useSWR(
     calendarDueKey,
@@ -1054,7 +1054,7 @@ function SchedulePageInner() {
     session?.user && (tab === "tasks" || tab === "schedule") ? SWR_KEYS.scheduleStandaloneTasks : null;
   const diaryTasksKey =
     session?.user && tab === "diary"
-      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}&projectId=null&status=TODO,IN_PROGRESS&excludeProjectTitleMatch=1`
+      ? `/api/tasks?dueDay=${encodeURIComponent(diaryDate)}&projectId=null&status=TODO,IN_PROGRESS&excludeProjectTitleMatch=1&creationSource=SCHEDULE,UNKNOWN`
       : null;
   const { data: tasksRaw, mutate: mutateTasks } = useSWR(tasksAllKey, jsonFetcher, {
     dedupingInterval: 300_000,
@@ -1505,9 +1505,9 @@ function SchedulePageInner() {
                 </CardTitle>
                 <p className="text-muted-foreground mt-1 text-sm font-normal">
                   여기와 캘린더 <strong className="text-foreground">「할일 마감」</strong>에는{" "}
-                  <strong className="text-foreground">할일 메뉴에서 만든 업무</strong>(프로젝트에 붙지 않은 항목)만 보이며, 제목이 팀
-                  프로젝트명과 같은 항목·완료된 항목은 넣지 않습니다. 아래{" "}
-                  <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
+                  <strong className="text-foreground">할일·스케줄 화면에서 직접 만든 업무</strong>와, 출처가 아직 정해지지 않은 기존
+                  데이터(UNKNOWN)만 보입니다. 마인드맵·프로젝트에서 생긴 업무·메모에서 만든 업무는 각 영역에서 확인해 주세요. 완료된 항목은
+                  표시되지 않습니다. 아래 <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일 없음)입니다.
                 </p>
               </div>
               <Button size="sm" className="shrink-0 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600" onClick={() => setCreateTaskOpen(true)}>
@@ -1522,7 +1522,7 @@ function SchedulePageInner() {
                   <Link href="/tasks" prefetch={false} className="font-medium text-primary underline underline-offset-4 hover:no-underline">
                     할일 페이지
                   </Link>
-                  에서 관리하세요.
+                  에서 전체 목록(마인드맵·프로젝트 업무 포함)을 확인하세요.
                 </p>
               ) : (
                 <ul className="max-h-[min(40vh,320px)] space-y-2 overflow-y-auto pr-1">
@@ -1790,8 +1790,8 @@ function SchedulePageInner() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">할일 목록</CardTitle>
               <p className="text-muted-foreground text-sm font-normal">
-                프로젝트에 연결되지 않은 업무이면서, 제목이 팀 프로젝트명과 겹치지 않는 항목만 표시합니다. 완료된 항목은 나오지 않습니다. 브랜드
-                프로젝트는 일정 탭 보라색 구역에서 안내합니다.
+                할일·스케줄에서 직접 만든 항목과 기존(UNKNOWN) 데이터만 표시합니다. 마인드맵·프로젝트·메모 출처 업무는 제외되며, 완료된 항목은
+                나오지 않습니다. 브랜드 프로젝트는 일정 탭 보라색 구역에서 안내합니다.
               </p>
             </div>
             <Button size="sm" onClick={() => setCreateTaskOpen(true)}>

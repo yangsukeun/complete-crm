@@ -56,6 +56,7 @@ export async function copyTaskToPersonal(taskId: string): Promise<{ ok: true } |
       categoryId: null,
       orderIndex: 0,
       scope: "PERSONAL",
+      creationSource: "UNKNOWN",
       assignedToId: session.user.id,
       createdById: session.user.id,
       assignees: {

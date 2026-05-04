@@ -1169,6 +1169,7 @@ function TreeViewInner({
         title,
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         priority: "MEDIUM",
+        creationSource: "MINDMAP",
       };
       if (child.parentId != null) createBody.parentId = child.parentId;
       if (child.projectId != null && child.projectId !== "") {
@@ -1247,6 +1248,7 @@ function TreeViewInner({
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 일주일 후
         priority: "MEDIUM",
         parentId,
+        creationSource: "MINDMAP",
       };
       if (contextProjectId != null && contextProjectId !== "") {
         body.projectId = contextProjectId;

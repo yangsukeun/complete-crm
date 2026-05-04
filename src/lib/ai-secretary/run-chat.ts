@@ -323,6 +323,7 @@ async function executeTool(
           status: "TODO",
           isCompleted: false,
           scope: "PERSONAL",
+          creationSource: "UNKNOWN",
           assignees: {
             create: { userId },
           },
@@ -464,6 +465,7 @@ async function executeTool(
           dueDate: dueIso,
           status,
           assigneeIds: [userId],
+          creationSource: "UNKNOWN",
         },
       });
       const dueLabel = task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "미정";
