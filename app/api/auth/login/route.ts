@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findFirst({
       where: { email: { equals: email, mode: "insensitive" } },
-      select: { id: true, email: true, name: true, password: true },
+      select: { id: true, email: true, name: true, password: true, accountDisabled: true },
     });
 
     if (!user) {
@@ -78,6 +78,16 @@ export async function POST(req: Request) {
         return NextResponse.redirect(new URL("/login?error=CredentialsSignin", req.url));
       }
       return NextResponse.json({ error: "로그인에 실패했습니다." }, { status: 401 });
+    }
+
+    if (user.accountDisabled) {
+      if (isForm) {
+        return NextResponse.redirect(new URL("/login?error=AccountDisabled", req.url));
+      }
+      return NextResponse.json(
+        { error: "비활성화된 계정입니다. 관리자에게 문의하세요." },
+        { status: 403 }
+      );
     }
 
     const loginToken = createLoginToken(user.id);
