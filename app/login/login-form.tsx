@@ -3,7 +3,6 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
 import {
   Card,
   CardContent,
@@ -49,27 +48,26 @@ function LoginFormInner() {
       return;
     }
     try {
-      const res = await signIn("credentials", {
-        email: email.toLowerCase(),
-        password,
-        callbackUrl,
-        redirect: false,
-      });
-      const resObj = typeof res === "string" ? { url: res, error: undefined } : res ?? {};
-      const successUrl = resObj.url ?? (typeof res === "string" ? res : null);
-      const err = resObj.error;
-
-      if (err) {
-        setLoading(false);
-        setSubmitError("이메일 또는 비밀번호가 올바르지 않습니다.");
-        return;
-      }
-      if (successUrl) {
-        window.location.href = successUrl;
-        return;
-      }
-      setLoading(false);
-      window.location.href = callbackUrl;
+      /**
+       * 클라이언트 signIn(redirect:false)는 프로덕션에서 쿠키·호스트 조합으로 세션이 안 잡히는 사례가 있어,
+       * 서버 /api/auth/login 으로 폼 POST → 302 리다이렉트와 Set-Cookie 를 브라우저가 그대로 처리하게 함.
+       */
+      const submitForm = document.createElement("form");
+      submitForm.method = "POST";
+      submitForm.action = "/api/auth/login";
+      submitForm.style.display = "none";
+      const addField = (name: string, value: string) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        submitForm.appendChild(input);
+      };
+      addField("email", email.toLowerCase());
+      addField("password", password);
+      addField("callbackUrl", callbackUrl);
+      document.body.appendChild(submitForm);
+      submitForm.submit();
     } catch (err) {
       setLoading(false);
       setSubmitError("로그인 요청에 실패했습니다. 네트워크와 서버를 확인한 뒤 다시 시도해 주세요.");
