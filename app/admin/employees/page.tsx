@@ -4,6 +4,7 @@ import { AdminEmployeesClient, type Employee } from "./admin-employees-client";
 import { EmployeeHeaderActions } from "./employee-header-actions";
 import { PageHeadline } from "@/components/page-headline";
 import prisma from "@/lib/prisma";
+import { isPrismaMissingUserAccountDisabledColumn } from "@/lib/prisma-account-disabled";
 
 export default async function AdminEmployeesPage() {
   const session = await getAppSession();
@@ -11,26 +12,38 @@ export default async function AdminEmployeesPage() {
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 
   // 직원(USER, TEAM_LEAD) + 관리자(ADMIN, EXECUTIVE) 모두 표시 (DB에 있는 계정이 목록에 보이도록)
-  const rows = await prisma.user.findMany({
-    where: {},
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      department: true,
-      position: true,
-      bankAccount: true,
-      address: true,
-      workPhone: true,
-      workEmail: true,
-      joinDate: true,
-      currentProjectId: true,
-      permissions: true,
-      accountDisabled: true,
-    },
-    orderBy: { joinDate: "desc" },
-  });
+  const employeeSelectBase = {
+    id: true,
+    name: true,
+    email: true,
+    role: true,
+    department: true,
+    position: true,
+    bankAccount: true,
+    address: true,
+    workPhone: true,
+    workEmail: true,
+    joinDate: true,
+    currentProjectId: true,
+    permissions: true,
+  } as const;
+
+  let rows;
+  try {
+    rows = await prisma.user.findMany({
+      where: {},
+      select: { ...employeeSelectBase, accountDisabled: true },
+      orderBy: { joinDate: "desc" },
+    });
+  } catch (e) {
+    if (!isPrismaMissingUserAccountDisabledColumn(e)) throw e;
+    const list = await prisma.user.findMany({
+      where: {},
+      select: employeeSelectBase,
+      orderBy: { joinDate: "desc" },
+    });
+    rows = list.map((r) => ({ ...r, accountDisabled: false }));
+  }
 
   type Row = (typeof rows)[number];
   const projectIds = [...new Set(rows.map((r: Row) => r.currentProjectId).filter(Boolean))] as string[];

@@ -6,6 +6,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { compare, hash } from "bcryptjs";
 import { authConfig } from "@/auth.config";
 import prisma from "@/lib/prisma";
+import { isPrismaMissingUserAccountDisabledColumn } from "@/lib/prisma-account-disabled";
 import { consumeLoginToken } from "@/lib/login-token-store";
 import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
@@ -24,6 +25,79 @@ const authSecret =
 
 /** 레거시 dev_user_id 쿠키명 — 로그아웃 시 정리용 */
 export const DEV_SESSION_COOKIE = "dev_user_id";
+
+type AuthUserRow = {
+  id: string;
+  email: string;
+  name: string;
+  image: string | null;
+  password: string | null;
+  role: string;
+  permissions: string | null;
+  accountDisabled: boolean;
+};
+
+async function findUserByEmailForCredentials(emailRaw: string): Promise<AuthUserRow | null> {
+  const where = { email: { equals: emailRaw, mode: "insensitive" as const } };
+  const withFlag = {
+    id: true,
+    email: true,
+    name: true,
+    image: true,
+    password: true,
+    role: true,
+    permissions: true,
+    accountDisabled: true,
+  } as const;
+  try {
+    const u = await prisma.user.findFirst({ where, select: withFlag });
+    return u ? { ...u, accountDisabled: u.accountDisabled ?? false } : null;
+  } catch (e) {
+    if (!isPrismaMissingUserAccountDisabledColumn(e)) throw e;
+    const u = await prisma.user.findFirst({
+      where,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        password: true,
+        role: true,
+        permissions: true,
+      },
+    });
+    return u ? { ...u, accountDisabled: false } : null;
+  }
+}
+
+async function findUserByIdForLoginToken(tokenUserId: string) {
+  const withFlag = {
+    id: true,
+    email: true,
+    name: true,
+    image: true,
+    role: true,
+    permissions: true,
+    accountDisabled: true,
+  } as const;
+  try {
+    return await prisma.user.findUnique({ where: { id: tokenUserId }, select: withFlag });
+  } catch (e) {
+    if (!isPrismaMissingUserAccountDisabledColumn(e)) throw e;
+    const u = await prisma.user.findUnique({
+      where: { id: tokenUserId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        role: true,
+        permissions: true,
+      },
+    });
+    return u ? { ...u, accountDisabled: false as boolean } : null;
+  }
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -99,18 +173,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const tokenUserId = consumeLoginToken(passwordRaw);
         if (tokenUserId) {
           try {
-            const user = await prisma.user.findUnique({
-              where: { id: tokenUserId },
-              select: {
-                id: true,
-                email: true,
-                name: true,
-                image: true,
-                role: true,
-                permissions: true,
-                accountDisabled: true,
-              },
-            });
+            const user = await findUserByIdForLoginToken(tokenUserId);
             if (user && !user.accountDisabled) {
               return {
                 id: user.id,
@@ -128,19 +191,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!emailRaw || !passwordRaw) return null;
         try {
-          const user = await prisma.user.findFirst({
-            where: { email: { equals: emailRaw, mode: "insensitive" } },
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              image: true,
-              password: true,
-              role: true,
-              permissions: true,
-              accountDisabled: true,
-            },
-          });
+          const user = await findUserByEmailForCredentials(emailRaw);
           if (!user) {
             if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 해당 이메일 사용자 없음", emailRaw);
             return null;
@@ -185,11 +236,18 @@ async function getAppSessionImpl(): Promise<Session | null> {
   try {
     const s = await auth();
     if (!s?.user?.id) return s ?? null;
-    const row = await prisma.user.findUnique({
-      where: { id: s.user.id },
-      select: { accountDisabled: true },
-    });
-    if (row?.accountDisabled) return null;
+    let disabled = false;
+    try {
+      const row = await prisma.user.findUnique({
+        where: { id: s.user.id },
+        select: { accountDisabled: true },
+      });
+      disabled = row?.accountDisabled ?? false;
+    } catch (e) {
+      if (!isPrismaMissingUserAccountDisabledColumn(e)) throw e;
+      disabled = false;
+    }
+    if (disabled) return null;
     return s;
   } catch (e) {
     console.error("[getAppSession]", e);
