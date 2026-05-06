@@ -1,9 +1,18 @@
 import {
-  createClient,
+  RealtimeClient,
   type RealtimeChannel,
   type RealtimePostgresChangesPayload,
-  type SupabaseClient,
-} from "@supabase/supabase-js";
+} from "@supabase/realtime-js";
+
+/** @supabase/supabase-js 의 createClient 대신 Realtime 전용 클라이언트만 사용 — PostgREST·Auth 가 rest/v1/users 등을 호출해 401 나는 것을 방지 */
+function toSupabaseRealtimeWsUrl(projectUrl: string): string {
+  const base = new URL(projectUrl);
+  const realtimeUrl = new URL("realtime/v1", base);
+  realtimeUrl.protocol = realtimeUrl.protocol.replace("http", "ws");
+  return realtimeUrl.href;
+}
+
+export type { RealtimePostgresChangesPayload };
 
 function browserAppIsLocalhost(): boolean {
   if (typeof window === "undefined") return false;
@@ -35,7 +44,7 @@ export type RealtimeSubscriptionHandle = { unsubscribe: () => void };
 
 type Singleton = {
   userId: string;
-  client: SupabaseClient;
+  client: RealtimeClient;
   exp: number;
 } | null;
 
@@ -44,7 +53,9 @@ let singleton: Singleton = null;
 export function resetSharedSupabaseRealtime(): void {
   if (singleton?.client) {
     try {
-      singleton.client.removeAllChannels();
+      void singleton.client.removeAllChannels().catch(() => {
+        /* */
+      });
     } catch {
       /* */
     }
@@ -55,7 +66,7 @@ export function resetSharedSupabaseRealtime(): void {
 /**
  * Realtime 구독용 클라이언트 (NextAuth 사용자 JWT). 만료 임박 시 setAuth만 갱신해 채널 유지.
  */
-export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<SupabaseClient | null> {
+export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<RealtimeClient | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !anon) return null;
@@ -80,7 +91,7 @@ export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<
   if (!body.accessToken || typeof body.exp !== "number") return null;
 
   if (singleton && singleton.userId === sessionUserId) {
-    await singleton.client.realtime.setAuth(body.accessToken);
+    await singleton.client.setAuth(body.accessToken);
     singleton = { userId: sessionUserId, client: singleton.client, exp: body.exp };
     return singleton.client;
   }
@@ -89,22 +100,10 @@ export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<
     resetSharedSupabaseRealtime();
   }
 
-  const client = createClient(url, anon, {
-    /**
-     * 로그인은 NextAuth 전용. Supabase Auth(refresh_token) 세션은 없으므로
-     * persist/autoRefresh 를 켜 두면 api.supabase.com / auth/token 401 과 REST 401 이 반복된다.
-     */
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      storageKey: "crm-realtime-no-auth",
-    },
-    global: {
-      headers: { Authorization: `Bearer ${body.accessToken}` },
-    },
+  const client = new RealtimeClient(toSupabaseRealtimeWsUrl(url), {
+    params: { apikey: anon },
   });
-  await client.realtime.setAuth(body.accessToken);
+  await client.setAuth(body.accessToken);
 
   singleton = { userId: sessionUserId, client, exp: body.exp };
   return client;
