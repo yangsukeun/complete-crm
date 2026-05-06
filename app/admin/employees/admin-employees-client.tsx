@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Table,
@@ -49,7 +50,6 @@ export type Employee = {
   currentProject?: { id: string; name: string; brand?: { name: string } | null } | null;
   joinDate?: string;
   permissions?: string | null;
-  accountDisabled?: boolean;
 };
 
 type AppRole = "USER" | "TEAM_LEAD" | "EXECUTIVE" | "ADMIN";
@@ -112,8 +112,6 @@ export function AdminEmployeesClient({
     totalAvailable?: number;
   } | null>(null);
   const [annualCarryOver, setAnnualCarryOver] = useState("");
-  /** 퇴사 등: 로그인만 막음 (본인 편집 시에는 사용 안 함) */
-  const [accountBlocked, setAccountBlocked] = useState(false);
   const saveSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -153,7 +151,6 @@ export function AdminEmployeesClient({
     setJoinDate(e?.joinDate ?? "");
     setManualDeduction("");
     setAnnualCarryOver("");
-    setAccountBlocked(Boolean(e?.accountDisabled));
     setLeaveBalance(null);
     if (e?.permissions != null && e?.permissions !== "") {
       try {
@@ -241,9 +238,6 @@ export function AdminEmployeesClient({
       if (carryNum !== undefined && !Number.isNaN(carryNum) && carryNum >= 0) {
         (body as { annualCarryOver?: number }).annualCarryOver = carryNum;
       }
-      if (editing.id !== myId) {
-        (body as { accountDisabled?: boolean }).accountDisabled = accountBlocked;
-      }
       const res = await fetch(`/api/users/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -275,7 +269,6 @@ export function AdminEmployeesClient({
                   ? new Date((updated as any).joinDate).toISOString().slice(0, 10)
                   : p.joinDate,
                 permissions: (updated as any).permissions ?? null,
-                accountDisabled: Boolean((updated as any).accountDisabled),
               } as any)
             : p
         )
@@ -342,11 +335,6 @@ export function AdminEmployeesClient({
                         <Badge variant="default" className="shrink-0 gap-0.5 text-[10px] font-normal">
                           <Shield className="size-3" />
                           {emp.role === "ADMIN" ? "관리자" : "대표"}
-                        </Badge>
-                      )}
-                      {emp.accountDisabled && (
-                        <Badge variant="secondary" className="shrink-0 text-[10px] font-normal text-muted-foreground">
-                          접속 차단
                         </Badge>
                       )}
                     </span>
@@ -445,11 +433,7 @@ export function AdminEmployeesClient({
                 <span className="font-medium">{formatUserName(deleting)}</span> 계정을 삭제하시겠습니까?
               </p>
               <p className="text-muted-foreground text-xs">
-                삭제하면 DB에서 계정이 제거되며, 연관 기록은 스키마에 따라 유지되거나 참조가 끊길 수 있습니다. 퇴사 직원은 먼저 직원 정보 수정에서
-                「접속 차단」을 켜는 것을 권장합니다.
-              </p>
-              <p className="text-muted-foreground text-xs">
-                마지막 대표/관리자 계정은 삭제할 수 없습니다.
+                삭제하면 로그인/데이터 접근이 불가능해집니다. (마지막 관리자 계정은 삭제할 수 없습니다.)
               </p>
             </div>
           )}
@@ -516,25 +500,6 @@ export function AdminEmployeesClient({
                   </>
                 )}
               </div>
-              {editing.id !== myId && (
-                <div className="flex items-start gap-3 rounded-md border border-border bg-muted/25 p-3">
-                  <input
-                    type="checkbox"
-                    id="accountBlocked"
-                    className="mt-1 size-4 shrink-0 accent-primary"
-                    checked={accountBlocked}
-                    onChange={(ev: React.ChangeEvent<HTMLInputElement>) => setAccountBlocked(ev.target.checked)}
-                  />
-                  <div className="min-w-0 space-y-1">
-                    <Label htmlFor="accountBlocked" className="text-sm font-medium">
-                      접속 차단 (퇴사 등)
-                    </Label>
-                    <p className="text-muted-foreground text-xs leading-relaxed">
-                      로그인과 시스템 사용이 불가능해집니다. 업무·연차 등 데이터는 그대로 두고 계정만 막습니다.
-                    </p>
-                  </div>
-                </div>
-              )}
               <div className="space-y-2">
                 <Label>부서</Label>
                 <Select value={department || "none"} onValueChange={(v: any) => setDepartment(v === "none" ? "" : v)}>

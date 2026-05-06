@@ -27,7 +27,6 @@ export default async function AdminEmployeesPage() {
       joinDate: true,
       currentProjectId: true,
       permissions: true,
-      accountDisabled: true,
     },
     orderBy: { joinDate: "desc" },
   });
@@ -70,7 +69,6 @@ export default async function AdminEmployeesPage() {
       currentProject,
       joinDate: e?.joinDate != null ? (e.joinDate instanceof Date ? e.joinDate.toISOString().slice(0, 10) : String(e.joinDate).slice(0, 10)) : "",
       permissions: e?.permissions ?? null,
-      accountDisabled: Boolean((e as { accountDisabled?: boolean }).accountDisabled),
     };
   });
 

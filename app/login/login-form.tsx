@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
 import {
   Card,
   CardContent,
@@ -31,13 +32,10 @@ function LoginFormInner() {
   const displayError =
     urlError === "CredentialsSignin"
       ? "이메일 또는 비밀번호가 올바르지 않습니다."
-      : urlError === "AccountDisabled"
-        ? "비활성화된 계정입니다. 퇴사 처리 등으로 접속이 차단된 경우 관리자에게 문의하세요."
-        : urlError
-          ? decodeURIComponent(String(urlError))
-          : submitError || "";
-  const isCredentialError =
-    (urlError === "CredentialsSignin" || submitError.includes("이메일 또는 비밀번호")) && urlError !== "AccountDisabled";
+      : urlError
+        ? decodeURIComponent(String(urlError))
+        : submitError || "";
+  const isCredentialError = urlError === "CredentialsSignin" || submitError.includes("이메일 또는 비밀번호");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -51,32 +49,27 @@ function LoginFormInner() {
       return;
     }
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          email: email.toLowerCase(),
-          password,
-          callbackUrl,
-        }),
-        credentials: "include",
-        redirect: "follow",
+      const res = await signIn("credentials", {
+        email: email.toLowerCase(),
+        password,
+        callbackUrl,
+        redirect: false,
       });
-      const finalUrl = res.url;
-      if (finalUrl.includes("/login")) {
-        const u = new URL(finalUrl, window.location.origin);
-        const err = u.searchParams.get("error");
+      const resObj = typeof res === "string" ? { url: res, error: undefined } : res ?? {};
+      const successUrl = resObj.url ?? (typeof res === "string" ? res : null);
+      const err = resObj.error;
+
+      if (err) {
         setLoading(false);
-        if (err === "AccountDisabled") {
-          setSubmitError(
-            "비활성화된 계정입니다. 퇴사 처리 등으로 접속이 차단된 경우 관리자에게 문의하세요."
-          );
-          return;
-        }
         setSubmitError("이메일 또는 비밀번호가 올바르지 않습니다.");
         return;
       }
-      window.location.assign(finalUrl);
+      if (successUrl) {
+        window.location.href = successUrl;
+        return;
+      }
+      setLoading(false);
+      window.location.href = callbackUrl;
     } catch (err) {
       setLoading(false);
       setSubmitError("로그인 요청에 실패했습니다. 네트워크와 서버를 확인한 뒤 다시 시도해 주세요.");

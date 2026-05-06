@@ -28,8 +28,6 @@ const updateSchema = z.object({
   manualDeduction: z.number().min(0).optional(),
   /** 전년도 이월 연차 일수 */
   annualCarryOver: z.number().min(0).optional(),
-  /** true: 로그인·API 차단(퇴사 등). 행은 유지 */
-  accountDisabled: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -62,31 +60,6 @@ export async function PATCH(
       );
     }
 
-    if (parsed.data.accountDisabled === true) {
-      if (id === session.user.id) {
-        return NextResponse.json({ error: "본인 계정은 비활성화할 수 없습니다." }, { status: 400 });
-      }
-      const targetMeta = await prisma.user.findUnique({
-        where: { id },
-        select: { role: true, accountDisabled: true },
-      });
-      const targetRoleUpper = String(targetMeta?.role ?? "").toUpperCase();
-      if (!targetMeta?.accountDisabled && (targetRoleUpper === "ADMIN" || targetRoleUpper === "EXECUTIVE")) {
-        const activeExecOrAdmin = await prisma.user.count({
-          where: {
-            role: { in: ["ADMIN", "EXECUTIVE"] },
-            accountDisabled: false,
-          },
-        });
-        if (activeExecOrAdmin <= 1) {
-          return NextResponse.json(
-            { error: "마지막 대표/관리자 계정은 비활성화할 수 없습니다." },
-            { status: 400 }
-          );
-        }
-      }
-    }
-
     if (parsed.data.role != null && sessionRole !== "ADMIN") {
       return NextResponse.json(
         { error: "역할 변경은 시스템 관리자(ADMIN)만 할 수 있습니다." },
@@ -114,9 +87,6 @@ export async function PATCH(
           ? null
           : JSON.stringify(parsed.data.permissions);
     }
-    if (parsed.data.accountDisabled !== undefined) {
-      data.accountDisabled = parsed.data.accountDisabled;
-    }
 
     const user = await prisma.user.update({
       where: { id },
@@ -135,7 +105,6 @@ export async function PATCH(
         joinDate: true,
         role: true,
         permissions: true,
-        accountDisabled: true,
       },
     });
 

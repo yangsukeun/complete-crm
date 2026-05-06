@@ -8,7 +8,6 @@ export const getCachedUsersMinimal = unstable_cache(
   async () => {
     try {
       return await prisma.user.findMany({
-        where: { accountDisabled: false },
         select: {
           id: true,
           name: true,
@@ -24,7 +23,6 @@ export const getCachedUsersMinimal = unstable_cache(
       });
     } catch {
       const list = await prisma.user.findMany({
-        where: { accountDisabled: false },
         select: {
           id: true,
           name: true,
@@ -46,7 +44,7 @@ export const getCachedUsersMinimal = unstable_cache(
 export const getCachedUsersWithProject = unstable_cache(
   async () =>
     prisma.user.findMany({
-      where: { accountDisabled: false },
+      where: {},
       select: {
         id: true,
         name: true,

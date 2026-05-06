@@ -101,17 +101,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           try {
             const user = await prisma.user.findUnique({
               where: { id: tokenUserId },
-              select: {
-                id: true,
-                email: true,
-                name: true,
-                image: true,
-                role: true,
-                permissions: true,
-                accountDisabled: true,
-              },
+              select: { id: true, email: true, name: true, image: true, role: true, permissions: true },
             });
-            if (user && !user.accountDisabled) {
+            if (user) {
               return {
                 id: user.id,
                 email: user.email,
@@ -130,16 +122,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const user = await prisma.user.findFirst({
             where: { email: { equals: emailRaw, mode: "insensitive" } },
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              image: true,
-              password: true,
-              role: true,
-              permissions: true,
-              accountDisabled: true,
-            },
+            select: { id: true, email: true, name: true, image: true, password: true, role: true, permissions: true },
           });
           if (!user) {
             if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 해당 이메일 사용자 없음", emailRaw);
@@ -158,10 +141,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
           if (!ok) {
             if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 비밀번호 불일치", emailRaw);
-            return null;
-          }
-          if (user.accountDisabled) {
-            if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 비활성화 계정", emailRaw);
             return null;
           }
           return {
@@ -184,13 +163,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 async function getAppSessionImpl(): Promise<Session | null> {
   try {
     const s = await auth();
-    if (!s?.user?.id) return s ?? null;
-    const row = await prisma.user.findUnique({
-      where: { id: s.user.id },
-      select: { accountDisabled: true },
-    });
-    if (row?.accountDisabled) return null;
-    return s;
+    return s ?? null;
   } catch (e) {
     console.error("[getAppSession]", e);
     return null;
