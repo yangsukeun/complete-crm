@@ -90,6 +90,16 @@ export async function getSharedSupabaseRealtime(sessionUserId: string): Promise<
   }
 
   const client = createClient(url, anon, {
+    /**
+     * 로그인은 NextAuth 전용. Supabase Auth(refresh_token) 세션은 없으므로
+     * persist/autoRefresh 를 켜 두면 api.supabase.com / auth/token 401 과 REST 401 이 반복된다.
+     */
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: "crm-realtime-no-auth",
+    },
     global: {
       headers: { Authorization: `Bearer ${body.accessToken}` },
     },
