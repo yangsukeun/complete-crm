@@ -62,17 +62,6 @@ function LoginFormInner() {
         credentials: "include",
         redirect: "follow",
       });
-      if (!res.ok) {
-        setLoading(false);
-        const ct = res.headers.get("content-type") ?? "";
-        if (ct.includes("application/json")) {
-          const j = (await res.json().catch(() => ({}))) as { error?: string };
-          setSubmitError(typeof j.error === "string" ? j.error : "로그인 처리 중 오류가 발생했습니다.");
-        } else {
-          setSubmitError("로그인 처리 중 오류가 발생했습니다.");
-        }
-        return;
-      }
       const finalUrl = res.url;
       if (finalUrl.includes("/login")) {
         const u = new URL(finalUrl, window.location.origin);

@@ -24,10 +24,8 @@ export async function POST(req: Request) {
     }
 
     const emailNormalized = email.toLowerCase();
-    /** 전체 User를 읽으면 스키마에만 있고 DB에 없는 컬럼이 있을 때 조회가 실패할 수 있음 */
     const user = await prisma.user.findFirst({
       where: { email: { equals: emailNormalized, mode: "insensitive" } },
-      select: { id: true },
     });
     if (!user) {
       return NextResponse.json({ error: "해당 이메일로 등록된 사용자가 없습니다." }, { status: 404 });

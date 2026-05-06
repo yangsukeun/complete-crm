@@ -26,7 +26,6 @@ export async function resetPassword(formData: FormData) {
     const emailNormalized = email.trim().toLowerCase();
     const user = await prisma.user.findFirst({
       where: { email: { equals: emailNormalized, mode: "insensitive" } },
-      select: { id: true },
     });
     if (!user) {
       return { error: "해당 이메일로 등록된 사용자가 없습니다." };

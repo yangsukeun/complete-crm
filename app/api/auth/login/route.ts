@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { signIn } from "@/auth";
 import prisma from "@/lib/prisma";
-import { isPrismaMissingUserAccountDisabledColumn } from "@/lib/prisma-account-disabled";
 import { compare, hash } from "bcryptjs";
 import { createLoginToken } from "@/lib/login-token-store";
 
@@ -45,28 +44,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "비밀번호를 입력하세요." }, { status: 400 });
     }
 
-    const whereEmail = { email: { equals: email, mode: "insensitive" as const } };
-    let user: {
-      id: string;
-      email: string;
-      name: string;
-      password: string | null;
-      accountDisabled: boolean;
-    } | null;
-    try {
-      const row = await prisma.user.findFirst({
-        where: whereEmail,
-        select: { id: true, email: true, name: true, password: true, accountDisabled: true },
-      });
-      user = row ? { ...row, accountDisabled: row.accountDisabled ?? false } : null;
-    } catch (e) {
-      if (!isPrismaMissingUserAccountDisabledColumn(e)) throw e;
-      const row = await prisma.user.findFirst({
-        where: whereEmail,
-        select: { id: true, email: true, name: true, password: true },
-      });
-      user = row ? { ...row, accountDisabled: false } : null;
-    }
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true, email: true, name: true, password: true, accountDisabled: true },
+    });
 
     if (!user) {
       if (isForm) {

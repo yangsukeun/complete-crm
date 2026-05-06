@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { isPrismaMissingUserAccountDisabledColumn } from "@/lib/prisma-account-disabled";
 import { getAnnualLeaveEntitlement } from "@/lib/leave";
 import { z } from "zod";
 
@@ -63,15 +62,7 @@ export async function PATCH(
       );
     }
 
-    let dbHasAccountDisabledColumn = true;
-    try {
-      await prisma.user.findFirst({ select: { id: true, accountDisabled: true }, take: 1 });
-    } catch (probeErr) {
-      if (isPrismaMissingUserAccountDisabledColumn(probeErr)) dbHasAccountDisabledColumn = false;
-      else throw probeErr;
-    }
-
-    if (dbHasAccountDisabledColumn && parsed.data.accountDisabled === true) {
+    if (parsed.data.accountDisabled === true) {
       if (id === session.user.id) {
         return NextResponse.json({ error: "본인 계정은 비활성화할 수 없습니다." }, { status: 400 });
       }
@@ -123,31 +114,29 @@ export async function PATCH(
           ? null
           : JSON.stringify(parsed.data.permissions);
     }
-    if (dbHasAccountDisabledColumn && parsed.data.accountDisabled !== undefined) {
+    if (parsed.data.accountDisabled !== undefined) {
       data.accountDisabled = parsed.data.accountDisabled;
     }
-
-    const responseSelect = {
-      id: true,
-      name: true,
-      email: true,
-      department: true,
-      position: true,
-      bankAccount: true,
-      address: true,
-      workPhone: true,
-      workEmail: true,
-      currentProject: { select: { id: true, name: true, brand: { select: { name: true } } } },
-      joinDate: true,
-      role: true,
-      permissions: true,
-      ...(dbHasAccountDisabledColumn ? { accountDisabled: true as const } : {}),
-    } as const;
 
     const user = await prisma.user.update({
       where: { id },
       data,
-      select: responseSelect,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+        position: true,
+        bankAccount: true,
+        address: true,
+        workPhone: true,
+        workEmail: true,
+        currentProject: { select: { id: true, name: true, brand: { select: { name: true } } } },
+        joinDate: true,
+        role: true,
+        permissions: true,
+        accountDisabled: true,
+      },
     });
 
     // 휴가 소진(실제 사용 차감): 일반 관리자는 최초 1회만, 마스터(EXECUTIVE)는 언제든 수정·되돌리기 가능
@@ -207,9 +196,7 @@ export async function PATCH(
 
     revalidateTag("users-list", "max");
 
-    return NextResponse.json(
-      dbHasAccountDisabledColumn ? user : { ...user, accountDisabled: false }
-    );
+    return NextResponse.json(user);
   } catch (e) {
     console.error(e);
     const err = e as { code?: string; message?: string };
