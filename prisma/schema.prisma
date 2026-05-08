@@ -1050,6 +1050,10 @@ model CompanyInfo {
   stampImageUrl        String?  // 도장 이미지 URL (견적서 발행용)
   logoUrl              String?  // 헤더 로고 이미지 URL (관리자 설정)
   transferExecutorIds   String?  // 이체 담당자 user id 목록 (JSON array: ["id1","id2"])
+  /// 근로기준법 간이 「1년 미만 월차」상한 일수 (미설정 시 앱 기본 11일, 2026 기준 회사 신규 권장)
+  annualLeaveMonthlyMaxUnderOneYear Int?
+  /// 「1년 이상」연차 간이 발생 일수 (미설정 시 앱 기본 15일)
+  annualLeaveDaysAfterFirstFullYear   Int?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }

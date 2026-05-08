@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import { toKstYmd } from "@/lib/date-kst";
+import {
+  getAnnualLeaveEntitlement,
+  resolveAnnualLeaveLaborRule,
+} from "@/lib/leave";
 import { createNotificationWithOptions } from "@/lib/notifications";
 
 const leaveTypeDays: Record<string, number> = {
@@ -154,6 +158,20 @@ export async function PATCH(
 
     // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED), 최종 승인 시에만 연차 차감
     if (isExecutive(role)) {
+      const companyRow = await prisma.companyInfo.findFirst({
+        orderBy: { updatedAt: "desc" },
+        select: {
+          annualLeaveMonthlyMaxUnderOneYear: true,
+          annualLeaveDaysAfterFirstFullYear: true,
+        },
+      });
+      const laborRule = resolveAnnualLeaveLaborRule(companyRow);
+      const balanceYearStart = (): number => {
+        const ymd = toKstYmd(leave.startDate);
+        const y = Number(ymd.slice(0, 4));
+        return Number.isFinite(y) ? y : leave.startDate.getFullYear();
+      };
+
       // 취소 요청 처리 (CANCEL_REQUESTED → CANCELLED). APPROVED 취소면 연차 사용 복구
       if (leave.status === "CANCEL_REQUESTED") {
         if (requestedStatus !== "CANCELLED") {
@@ -169,8 +187,13 @@ export async function PATCH(
             leave.type === "ANNUAL"
               ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
               : (leaveTypeDays[leave.type] ?? 0);
-          const year = leave.startDate.getFullYear();
-          const entitlement = getAnnualLeaveEntitlement(leave.user.joinDate, year);
+          const year = balanceYearStart();
+          const entitlement = getAnnualLeaveEntitlement(
+            leave.user.joinDate,
+            year,
+            new Date(),
+            laborRule
+          );
           await prisma.leaveBalance.upsert({
             where: { userId_year: { userId: leave.userId, year } },
             create: {
@@ -205,8 +228,13 @@ export async function PATCH(
           leave.type === "ANNUAL"
             ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
             : (leaveTypeDays[leave.type] ?? 0);
-        const year = leave.startDate.getFullYear();
-        const entitlement = getAnnualLeaveEntitlement(leave.user.joinDate, year);
+        const year = balanceYearStart();
+        const entitlement = getAnnualLeaveEntitlement(
+          leave.user.joinDate,
+          year,
+          new Date(),
+          laborRule
+        );
         await prisma.leaveBalance.upsert({
           where: { userId_year: { userId: leave.userId, year } },
           create: { userId: leave.userId, year, annualTotal: entitlement, annualUsed: days, manualDeduction: 0, annualCarryOver: 0 },

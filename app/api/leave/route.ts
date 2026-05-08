@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import {
+  getAnnualLeaveEntitlement,
+  getCurrentLeaveCalendarYearKst,
+  resolveAnnualLeaveLaborRule,
+} from "@/lib/leave";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import {
   leaveRequestListWhere,
@@ -45,10 +49,15 @@ export async function GET() {
     }
 
     const role = session.user.role;
-    const year = new Date().getFullYear();
+    const year = getCurrentLeaveCalendarYearKst();
     const uid = session.user.id;
 
-    const [rawRequests, user, balanceFound] = await Promise.all([
+    const companyLeaveSelect = {
+      annualLeaveMonthlyMaxUnderOneYear: true,
+      annualLeaveDaysAfterFirstFullYear: true,
+    } as const;
+
+    const [rawRequests, user, balanceFound, companyRow] = await Promise.all([
       prisma.leaveRequest.findMany({
         where: leaveRequestListWhere(uid, role),
         include: {
@@ -72,10 +81,15 @@ export async function GET() {
       prisma.leaveBalance.findUnique({
         where: { userId_year: { userId: uid, year } },
       }),
+      prisma.companyInfo.findFirst({
+        orderBy: { updatedAt: "desc" },
+        select: companyLeaveSelect,
+      }),
     ]);
 
     const joinDate = user?.joinDate ?? new Date();
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
+    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
+    const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
 
     let balance = balanceFound;
     if (!balance) {
@@ -138,13 +152,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const year = new Date().getFullYear();
+    const year = getCurrentLeaveCalendarYearKst();
+    const companyRow = await prisma.companyInfo.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: {
+        annualLeaveMonthlyMaxUnderOneYear: true,
+        annualLeaveDaysAfterFirstFullYear: true,
+      },
+    });
+    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { joinDate: true },
     });
     const joinDate = user?.joinDate ?? new Date();
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
+    const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
 
     let balance = await prisma.leaveBalance.findUnique({
       where: { userId_year: { userId: session.user.id, year } },

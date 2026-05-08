@@ -19,6 +19,8 @@ type CompanyInfo = {
   fax: string | null;
   stampImageUrl: string | null;
   transferExecutorIds: string | null;
+  annualLeaveMonthlyMaxUnderOneYear: number | null;
+  annualLeaveDaysAfterFirstFullYear: number | null;
 };
 
 type UserOption = { id: string; name: string; email: string; position: string | null };
@@ -33,6 +35,9 @@ const emptyForm = {
   fax: "",
   stampImageUrl: "" as string,
   transferExecutorIds: [] as string[],
+  /** 빈 문자열 = 앱 기본(근기법 권장 11·15), 숫자 입력 시 회사 고정 */
+  annualLeaveMonthlyMaxUnderOneYear: "",
+  annualLeaveDaysAfterFirstFullYear: "",
 };
 
 export function AdminCompanyForm() {
@@ -77,6 +82,14 @@ export function AdminCompanyForm() {
           fax: data?.fax ?? "",
           stampImageUrl: data?.stampImageUrl ?? "",
           transferExecutorIds: ids,
+          annualLeaveMonthlyMaxUnderOneYear:
+            data?.annualLeaveMonthlyMaxUnderOneYear != null
+              ? String(data.annualLeaveMonthlyMaxUnderOneYear)
+              : "",
+          annualLeaveDaysAfterFirstFullYear:
+            data?.annualLeaveDaysAfterFirstFullYear != null
+              ? String(data.annualLeaveDaysAfterFirstFullYear)
+              : "",
         });
       }
       setLoading(false);
@@ -114,6 +127,28 @@ export function AdminCompanyForm() {
     }
     setSaving(true);
     try {
+      const parseLeaveField = (raw: string, label: string): number | null => {
+        const t = raw.trim();
+        if (t === "") return null;
+        const n = Number(t);
+        if (!Number.isFinite(n) || !Number.isInteger(n)) {
+          throw new Error(`${label}은(는) 0~31 사이 정수만 입력하거나 비워 앱 기본값을 쓸 수 있습니다.`);
+        }
+        if (n < 0 || n > 31) {
+          throw new Error(`${label}은(는) 0~31 사이여야 합니다.`);
+        }
+        return n;
+      };
+
+      const monthlyCap = parseLeaveField(
+        form.annualLeaveMonthlyMaxUnderOneYear,
+        "1년 미만 월차 상한"
+      );
+      const daysAfterYear = parseLeaveField(
+        form.annualLeaveDaysAfterFirstFullYear,
+        "1년 이상 연차 일수"
+      );
+
       const res = await fetch("/api/settings/company", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -127,6 +162,8 @@ export function AdminCompanyForm() {
           fax: form.fax.trim() || null,
           stampImageUrl: form.stampImageUrl.trim() || null,
           transferExecutorIds: form.transferExecutorIds,
+          annualLeaveMonthlyMaxUnderOneYear: monthlyCap,
+          annualLeaveDaysAfterFirstFullYear: daysAfterYear,
         }),
       });
       if (!res.ok) {
@@ -215,6 +252,40 @@ export function AdminCompanyForm() {
           onChange={(e: any) => setForm((f: any) => ({ ...f, email: e.target.value }))}
           placeholder="contact@company.com"
         />
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3 dark:border-slate-800 dark:bg-slate-900/30">
+        <h3 className="text-sm font-semibold">연차·월차 (근로기준법 간이 산정, 2026 권장 기본)</h3>
+        <p className="text-muted-foreground text-sm">
+          비워 두면 앱 기본값(1년 미만 월차 상한 <strong>11일</strong>, 1년 이상 <strong>15일</strong>)을 씁니다. 입사일은
+          직원 프로필의 입사일이며, 산정은 <strong>한국 표준시(KST)</strong> 달력 기준입니다.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="annualLeaveMonthlyMax">1년 미만 월차 상한 (일)</Label>
+            <Input
+              id="annualLeaveMonthlyMax"
+              inputMode="numeric"
+              value={form.annualLeaveMonthlyMaxUnderOneYear}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setForm((f) => ({ ...f, annualLeaveMonthlyMaxUnderOneYear: e.target.value }))
+              }
+              placeholder="11 (비우면 앱 기본)"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="annualLeaveDaysAfterYear">1년 이상 연차 일수</Label>
+            <Input
+              id="annualLeaveDaysAfterYear"
+              inputMode="numeric"
+              value={form.annualLeaveDaysAfterFirstFullYear}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setForm((f) => ({ ...f, annualLeaveDaysAfterFirstFullYear: e.target.value }))
+              }
+              placeholder="15 (비우면 앱 기본)"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-2">

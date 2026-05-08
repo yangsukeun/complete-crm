@@ -42,6 +42,25 @@ export async function PATCH(req: Request) {
     const transferExecutorIdsJson =
       transferExecutorIds !== undefined ? JSON.stringify(transferExecutorIds) : undefined;
 
+    const clampLeaveInt = (v: unknown): number | undefined => {
+      if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
+      return Math.round(Math.min(31, Math.max(0, v)));
+    };
+
+    /** undefined: 요청에 없음 · null: DB 필드 비움(앱 기본 11·15) */
+    let annualLeaveMonthlyMaxUnderOneYear: number | null | undefined;
+    if ("annualLeaveMonthlyMaxUnderOneYear" in body) {
+      annualLeaveMonthlyMaxUnderOneYear =
+        body.annualLeaveMonthlyMaxUnderOneYear === null
+          ? null
+          : clampLeaveInt(body.annualLeaveMonthlyMaxUnderOneYear);
+    }
+    let annualLeaveDaysAfterFirstFullYear: number | null | undefined;
+    if ("annualLeaveDaysAfterFirstFullYear" in body) {
+      annualLeaveDaysAfterFirstFullYear =
+        body.annualLeaveDaysAfterFirstFullYear === null ? null : clampLeaveInt(body.annualLeaveDaysAfterFirstFullYear);
+    }
+
     const data: {
       name: string;
       businessNumber: string | null;
@@ -51,6 +70,8 @@ export async function PATCH(req: Request) {
       email: string | null;
       fax: string | null;
       stampImageUrl: string | null;
+      annualLeaveMonthlyMaxUnderOneYear?: number | null;
+      annualLeaveDaysAfterFirstFullYear?: number | null;
       transferExecutorIds?: string | null;
     } = {
       name,
@@ -60,16 +81,33 @@ export async function PATCH(req: Request) {
       phone: typeof body.phone === "string" ? body.phone.trim() || null : null,
       email: typeof body.email === "string" ? body.email.trim() || null : null,
       fax: typeof body.fax === "string" ? body.fax.trim() || null : null,
-      stampImageUrl: body.stampImageUrl === undefined ? null : (body.stampImageUrl === null || body.stampImageUrl === "" ? null : String(body.stampImageUrl)),
+      stampImageUrl:
+        body.stampImageUrl === undefined
+          ? null
+          : body.stampImageUrl === null || body.stampImageUrl === ""
+            ? null
+            : String(body.stampImageUrl),
     };
     if (transferExecutorIdsJson !== undefined) {
       data.transferExecutorIds = transferExecutorIdsJson;
+    }
+    if (annualLeaveMonthlyMaxUnderOneYear !== undefined) {
+      data.annualLeaveMonthlyMaxUnderOneYear = annualLeaveMonthlyMaxUnderOneYear;
+    }
+    if (annualLeaveDaysAfterFirstFullYear !== undefined) {
+      data.annualLeaveDaysAfterFirstFullYear = annualLeaveDaysAfterFirstFullYear;
     }
 
     const existing = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
     const company = existing
       ? await prisma.companyInfo.update({ where: { id: existing.id }, data })
-      : await prisma.companyInfo.create({ data });
+      : await prisma.companyInfo.create({
+          data: {
+            ...data,
+            annualLeaveMonthlyMaxUnderOneYear: data.annualLeaveMonthlyMaxUnderOneYear ?? 11,
+            annualLeaveDaysAfterFirstFullYear: data.annualLeaveDaysAfterFirstFullYear ?? 15,
+          },
+        });
 
     return NextResponse.json(company);
   } catch (e) {

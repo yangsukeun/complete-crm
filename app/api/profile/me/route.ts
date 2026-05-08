@@ -4,7 +4,11 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { z } from "zod";
-import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import {
+  getAnnualLeaveEntitlement,
+  getCurrentLeaveCalendarYearKst,
+  resolveAnnualLeaveLaborRule,
+} from "@/lib/leave";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 
 export async function GET() {
@@ -111,7 +115,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const year = new Date().getFullYear();
+    const year = getCurrentLeaveCalendarYearKst();
+    const companyRow = await prisma.companyInfo.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: {
+        annualLeaveMonthlyMaxUnderOneYear: true,
+        annualLeaveDaysAfterFirstFullYear: true,
+      },
+    });
+    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
     let balance: { annualUsed: number; manualDeduction: number; annualCarryOver?: number } | null = null;
     try {
       balance = await prisma.leaveBalance.findUnique({
@@ -122,7 +134,7 @@ export async function GET() {
       // leaveBalance 없어도 진행
     }
     const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-    const annualTotal = getAnnualLeaveEntitlement(joinDateObj, year);
+    const annualTotal = getAnnualLeaveEntitlement(joinDateObj, year, new Date(), laborRule);
     const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
@@ -462,9 +474,17 @@ export async function PATCH(req: Request) {
       }
     }
 
-    const year = new Date().getFullYear();
+    const year = getCurrentLeaveCalendarYearKst();
+    const companyRow = await prisma.companyInfo.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: {
+        annualLeaveMonthlyMaxUnderOneYear: true,
+        annualLeaveDaysAfterFirstFullYear: true,
+      },
+    });
+    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
     const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-    const entitlement = getAnnualLeaveEntitlement(joinDateObj, year);
+    const entitlement = getAnnualLeaveEntitlement(joinDateObj, year, new Date(), laborRule);
 
     if (isAdmin && (parsed.data as any).leaveRemaining !== undefined) {
       try {

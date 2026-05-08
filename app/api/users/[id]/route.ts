@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import {
+  getAnnualLeaveEntitlement,
+  getCurrentLeaveCalendarYearKst,
+  resolveAnnualLeaveLaborRule,
+} from "@/lib/leave";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -108,12 +112,30 @@ export async function PATCH(
       },
     });
 
+    /** 연차 간이 발생액 계산 시 1회만 회사 규칙 조회(PATCH 에 manual·carryOver 둘 다 있을 때 중복 호출 방지) */
+    let leaveCalcMemo: Promise<{ year: number; entitlement: number }> | null = null;
+    const loadLeaveTotals = (): Promise<{ year: number; entitlement: number }> => {
+      leaveCalcMemo ??= (async (): Promise<{ year: number; entitlement: number }> => {
+        const yr = getCurrentLeaveCalendarYearKst();
+        const companyRow = await prisma.companyInfo.findFirst({
+          orderBy: { updatedAt: "desc" },
+          select: {
+            annualLeaveMonthlyMaxUnderOneYear: true,
+            annualLeaveDaysAfterFirstFullYear: true,
+          },
+        });
+        const laborRule = resolveAnnualLeaveLaborRule(companyRow);
+        const joinDateVal = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
+        const entitlement = getAnnualLeaveEntitlement(joinDateVal, yr, new Date(), laborRule);
+        return { year: yr, entitlement };
+      })();
+      return leaveCalcMemo;
+    };
+
     // 휴가 소진(실제 사용 차감): 일반 관리자는 최초 1회만, 마스터(EXECUTIVE)는 언제든 수정·되돌리기 가능
     if (parsed.data.manualDeduction !== undefined && parsed.data.manualDeduction >= 0) {
       try {
-        const year = new Date().getFullYear();
-        const joinDateVal = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-        const entitlement = getAnnualLeaveEntitlement(joinDateVal, year);
+        const { year, entitlement } = await loadLeaveTotals();
         const balance = await prisma.leaveBalance.findUnique({
           where: { userId_year: { userId: id, year } },
         });
@@ -143,9 +165,7 @@ export async function PATCH(
 
     if (parsed.data.annualCarryOver !== undefined && parsed.data.annualCarryOver >= 0) {
       try {
-        const year = new Date().getFullYear();
-        const joinDateVal = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-        const entitlement = getAnnualLeaveEntitlement(joinDateVal, year);
+        const { year, entitlement } = await loadLeaveTotals();
         await prisma.leaveBalance.upsert({
           where: { userId_year: { userId: id, year } },
           create: {

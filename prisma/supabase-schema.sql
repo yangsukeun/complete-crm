@@ -125,6 +125,8 @@ CREATE TABLE "CompanyInfo" (
   "stampImageUrl" TEXT,
   "logoUrl" TEXT,
   "transferExecutorIds" TEXT,
+  "annualLeaveMonthlyMaxUnderOneYear" INTEGER,
+  "annualLeaveDaysAfterFirstFullYear" INTEGER,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "CompanyInfo_pkey" PRIMARY KEY ("id")

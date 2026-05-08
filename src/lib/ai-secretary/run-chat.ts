@@ -20,7 +20,11 @@ import {
 import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
 import { getProductKnowledge } from "@/lib/ai-secretary/product-knowledge";
 import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
-import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import {
+  getAnnualLeaveEntitlement,
+  getCurrentLeaveCalendarYearKst,
+  resolveAnnualLeaveLaborRule,
+} from "@/lib/leave";
 import { createActivityLog } from "@/lib/activity-log";
 import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
 
@@ -361,13 +365,23 @@ async function executeTool(
         throw new Error("종료일은 시작일 이후여야 합니다.");
       }
 
-      const year = new Date().getFullYear();
-      const userRec = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { joinDate: true },
-      });
+      const year = getCurrentLeaveCalendarYearKst();
+      const [userRec, companyRow] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { joinDate: true },
+        }),
+        prisma.companyInfo.findFirst({
+          orderBy: { updatedAt: "desc" },
+          select: {
+            annualLeaveMonthlyMaxUnderOneYear: true,
+            annualLeaveDaysAfterFirstFullYear: true,
+          },
+        }),
+      ]);
       const joinDate = userRec?.joinDate ?? new Date();
-      const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
+      const laborRule = resolveAnnualLeaveLaborRule(companyRow);
+      const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
 
       let balance = await prisma.leaveBalance.findUnique({
         where: { userId_year: { userId, year } },

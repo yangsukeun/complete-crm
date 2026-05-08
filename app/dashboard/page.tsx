@@ -10,7 +10,11 @@ import prisma from "@/lib/prisma";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { formatUserName } from "@/lib/utils";
-import { getAnnualLeaveEntitlement } from "@/lib/leave";
+import {
+  getAnnualLeaveEntitlement,
+  getCurrentLeaveCalendarYearKst,
+  resolveAnnualLeaveLaborRule,
+} from "@/lib/leave";
 import {
   prefetchCompanyDashboardAdmin,
   prefetchCompanyDashboardUser,
@@ -191,7 +195,12 @@ export default async function DashboardPage() {
   }
 
   if (isAdmin) {
-    const year = new Date().getFullYear();
+    const year = getCurrentLeaveCalendarYearKst();
+
+    const companyLeaveSelect = {
+      annualLeaveMonthlyMaxUnderOneYear: true,
+      annualLeaveDaysAfterFirstFullYear: true,
+    } as const;
 
     const [
       adminUser,
@@ -199,6 +208,7 @@ export default async function DashboardPage() {
       todayAttendances,
       adminTodayAttendance,
       adminLeaveBalance,
+      companyLeaveRow,
       dashPrefetch,
     ] = await Promise.all([
       prisma.user.findUnique({
@@ -223,6 +233,10 @@ export default async function DashboardPage() {
           return null;
         }
       })(),
+      prisma.companyInfo.findFirst({
+        orderBy: { updatedAt: "desc" },
+        select: companyLeaveSelect,
+      }),
       prefetchCompanyDashboardAdmin(session.user.id),
     ]);
 
@@ -234,7 +248,8 @@ export default async function DashboardPage() {
     } = dashPrefetch;
 
     const joinDate = adminUser?.joinDate ?? new Date();
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
+    const laborRule = resolveAnnualLeaveLaborRule(companyLeaveRow);
+    const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
 
     const completedTasks = tasksCreatedByMe.filter((t: any) => t.isCompleted);
     const progressPercent =
@@ -427,9 +442,15 @@ export default async function DashboardPage() {
   }
 
   // 회사 모드 · User: 일정·업무·남은 연차·목표 + 출퇴근
-  const year = new Date().getFullYear();
+  const year = getCurrentLeaveCalendarYearKst();
 
-  const [userForLeave, myTodayAttendance, leaveBalance, dashPrefetchUser] = await Promise.all([
+  const companyLeaveSelect = {
+    annualLeaveMonthlyMaxUnderOneYear: true,
+    annualLeaveDaysAfterFirstFullYear: true,
+  } as const;
+
+  const [userForLeave, myTodayAttendance, leaveBalance, companyLeaveRowUser, dashPrefetchUser] =
+    await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
       select: { joinDate: true },
@@ -447,6 +468,10 @@ export default async function DashboardPage() {
         return null;
       }
     })(),
+    prisma.companyInfo.findFirst({
+      orderBy: { updatedAt: "desc" },
+      select: companyLeaveSelect,
+    }),
     prefetchCompanyDashboardUser(session.user.id),
   ]);
 
@@ -458,7 +483,8 @@ export default async function DashboardPage() {
   } = dashPrefetchUser;
 
   const joinDate = userForLeave?.joinDate ?? new Date();
-  const annualTotal = getAnnualLeaveEntitlement(joinDate, year);
+  const laborRuleUser = resolveAnnualLeaveLaborRule(companyLeaveRowUser);
+  const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRuleUser);
 
   const carryOver = leaveBalance?.annualCarryOver ?? 0;
   const used = leaveBalance?.annualUsed ?? 0;
