@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
 import { TASK_BODY_DOC_PREFIX } from "@/lib/task-body-description";
+import { contentToPlainText } from "@/lib/export/plain-from-content";
+import { ExportDocumentButtons } from "@/components/export-document-buttons";
 import type { UserNoteAttachment, UserNoteDto } from "./types";
 import { cn } from "@/lib/utils";
 import type { BoardCategory } from "@/lib/board-category";
@@ -302,6 +304,17 @@ export function UserNoteCard({
 
   const bg = note.colorHex ?? "#fef9c3";
 
+  const exportRaw =
+    editorMode === "html" || editorMode === "preview"
+      ? htmlContent.trim()
+        ? htmlContent
+        : note.content
+      : note.content;
+  const exportContentType =
+    editorMode === "html" || editorMode === "preview" ? "html" : (note.contentType ?? null);
+  const exportTitle = title.trim() || "메모";
+  const exportBodyPlain = contentToPlainText(exportRaw, exportContentType);
+
   return (
     <div
       className={cn(
@@ -310,7 +323,7 @@ export function UserNoteCard({
       )}
       style={{ backgroundColor: bg }}
     >
-      <div className="mb-2 flex items-start gap-1">
+      <div className="mb-2 flex items-start gap-2">
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -318,34 +331,43 @@ export function UserNoteCard({
           placeholder="제목"
           className="h-auto min-w-0 flex-1 border-none bg-transparent px-0 py-0.5 text-sm font-semibold shadow-none focus-visible:ring-0"
         />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0 text-foreground/70 opacity-70 hover:opacity-100"
-              aria-label="메모 메뉴"
-            >
-              <MoreVertical className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {showConvertToProject ? (
-              <DropdownMenuItem onSelect={() => onRequestConvert(note)}>
-                <FolderKanban className="mr-2 size-4" />
-                프로젝트로 만들기
+        <div className="flex shrink-0 items-center gap-1">
+          <ExportDocumentButtons
+            title={exportTitle}
+            bodyPlain={exportBodyPlain}
+            fileBase={`memo_${note.id}`}
+            size="sm"
+            variant="ghost"
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-foreground/70 opacity-70 hover:opacity-100"
+                aria-label="메모 메뉴"
+              >
+                <MoreVertical className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {showConvertToProject ? (
+                <DropdownMenuItem onSelect={() => onRequestConvert(note)}>
+                  <FolderKanban className="mr-2 size-4" />
+                  프로젝트로 만들기
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => void onDelete(note.id)}
+              >
+                <Trash2 className="mr-2 size-4" />
+                삭제
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onSelect={() => void onDelete(note.id)}
-            >
-              <Trash2 className="mr-2 size-4" />
-              삭제
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div className="mb-2 space-y-1.5">

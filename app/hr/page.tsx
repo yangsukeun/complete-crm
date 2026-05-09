@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import useSWR from "swr";
+import Link from "next/link";
 import { jsonFetcher } from "@/lib/api-swr";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "lucide-react";
+import { leaveDisplayDays } from "@/lib/leave-request-serialize";
 
 const OFFICE_START_HOUR = 9;
 const OFFICE_START_MINUTE = 0;
@@ -22,33 +24,56 @@ type AttendanceRecord = {
   user?: { id: string; name: string | null; email: string };
 };
 
-type MyLeaves = {
-  hireDate: string | null;
-  totalLeaves: number;
-  usedLeaves: number;
-  remainingLeaves: number;
+type LeaveApiBalance = {
+  year: number;
+  total: number;
+  annualTotal: number;
+  carryOver: number;
+  used: number;
+  manualDeduction: number;
+  remaining: number;
 };
 
 type LeaveRequestRow = {
   id: string;
+  userId: string;
   startDate: string;
   endDate: string;
-  days: number;
   type: string;
-  reason: string;
+  reason: string | null;
   status: string;
-  createdAt: string;
+  createdAt?: string;
 };
 
-type AdminLeaveRow = {
-  id: string;
-  name: string;
-  email: string;
-  hireDate: string | null;
-  totalLeaves: number;
-  usedLeaves: number;
-  remainingLeaves: number;
+type LeaveBundle = {
+  balance: LeaveApiBalance;
+  requests: LeaveRequestRow[];
+  /** 프로필 API의 입사일 (YYYY-MM-DD) */
+  joinDate: string | null;
 };
+
+function leaveTypeLabel(t: string): string {
+  const m: Record<string, string> = {
+    ANNUAL: "연차",
+    HALF_AM: "반차(오전)",
+    HALF_PM: "반차(오후)",
+    QUARTER_AM: "반반차(오전)",
+    QUARTER_PM: "반반차(오후)",
+    SICK_PAID: "병가(유급)",
+    SICK_UNPAID: "병가(무급)",
+  };
+  return m[t] ?? t;
+}
+
+function leaveStatusLabel(s: string): string {
+  if (s === "APPROVED") return "승인";
+  if (s === "REJECTED") return "반려";
+  if (s === "PENDING") return "대기";
+  if (s === "TEAM_LEAD_APPROVED") return "팀장승인";
+  if (s === "CANCEL_REQUESTED") return "취소요청";
+  if (s === "CANCELLED") return "취소";
+  return s;
+}
 
 function formatTime(iso: string | null): string {
   if (!iso) return "-";
@@ -106,7 +131,8 @@ export default function HrPage() {
   /** SSR 시각 ≠ 클라이언트 시각이면 시계 텍스트 하이드레이션 불일치 → 마운트 후에만 갱신 */
   const [now, setNow] = useState<Date | null>(null);
 
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
+  const roleUpper = String((session?.user as { role?: string } | undefined)?.role ?? "").toUpperCase();
+  const isAdmin = roleUpper === "EXECUTIVE" || roleUpper === "ADMIN";
 
   const loadToday = async () => {
     const res = await fetch("/api/attendance?scope=today");
@@ -205,19 +231,13 @@ export default function HrPage() {
         : 0;
 
   // ---- 연차 탭 state ----
-  const [leaveData, setLeaveData] = useState<{
-    kind: "user";
-    myLeaves: MyLeaves | null;
-    requests: LeaveRequestRow[];
-  } | { kind: "admin"; list: AdminLeaveRow[] } | null>(null);
+  const [leaveData, setLeaveData] = useState<LeaveBundle | null>(null);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [leaveType, setLeaveType] = useState<"FULL" | "HALF" | "QUARTER">("FULL");
   const [leaveStart, setLeaveStart] = useState("");
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
-  const [adminHireDateEdit, setAdminHireDateEdit] = useState<Record<string, string>>({});
-  const [adminSaving, setAdminSaving] = useState<string | null>(null);
   const [myHireDateEditing, setMyHireDateEditing] = useState(false);
   const [myHireDateInput, setMyHireDateInput] = useState("");
   const [myHireDateSaving, setMyHireDateSaving] = useState(false);
@@ -225,20 +245,25 @@ export default function HrPage() {
   const loadLeave = useCallback(async () => {
     setLeaveLoading(true);
     try {
-      const res = await fetch("/api/leave");
-      if (!res.ok) {
+      const [leaveRes, profRes] = await Promise.all([fetch("/api/leave"), fetch("/api/profile/me")]);
+      if (!leaveRes.ok) {
         setLeaveData(null);
         return;
       }
-      const data = await res.json();
-      setLeaveData(data);
-      if (data.kind === "admin" && data.list) {
-        const edit: Record<string, string> = {};
-        data.list.forEach((u: AdminLeaveRow) => {
-          edit[u.id] = u.hireDate ? u.hireDate.slice(0, 10) : "";
-        });
-        setAdminHireDateEdit(edit);
+      const leaveJson = (await leaveRes.json()) as {
+        balance?: LeaveApiBalance;
+        requests?: LeaveRequestRow[];
+      };
+      const profJson = profRes.ok ? ((await profRes.json()) as { joinDate?: string }) : {};
+      if (!leaveJson.balance) {
+        setLeaveData(null);
+        return;
       }
+      setLeaveData({
+        balance: leaveJson.balance,
+        requests: Array.isArray(leaveJson.requests) ? leaveJson.requests : [],
+        joinDate: typeof profJson.joinDate === "string" ? profJson.joinDate.slice(0, 10) : null,
+      });
     } finally {
       setLeaveLoading(false);
     }
@@ -251,10 +276,8 @@ export default function HrPage() {
 
   const handleLeaveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const option = LEAVE_TYPE_OPTIONS.find((o: any) => o.value === leaveType);
-    const days = option?.days ?? 1;
     const start = leaveStart.trim();
-    const end = leaveEnd.trim() || start;
+    const end = leaveType === "FULL" ? leaveEnd.trim() || start : start;
     if (!start) {
       alert("날짜를 선택해 주세요.");
       return;
@@ -262,15 +285,16 @@ export default function HrPage() {
     if (leaveSubmitting) return;
     setLeaveSubmitting(true);
     try {
+      const apiType =
+        leaveType === "FULL" ? "ANNUAL" : leaveType === "HALF" ? "HALF_AM" : "QUARTER_AM";
       const res = await fetch("/api/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           startDate: start,
           endDate: end,
-          reason: leaveReason.trim() || "(사유 없음)",
-          days,
-          type: leaveType,
+          reason: leaveReason.trim() || undefined,
+          type: apiType,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -284,29 +308,6 @@ export default function HrPage() {
       await loadLeave();
     } finally {
       setLeaveSubmitting(false);
-    }
-  };
-
-  const handleAdminSaveHireDate = async (userId: string) => {
-    const value = adminHireDateEdit[userId]?.trim();
-    setAdminSaving(userId);
-    try {
-      const res = await fetch("/api/users/update", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          hireDate: value || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(typeof data?.error === "string" ? data.error : "저장에 실패했습니다.");
-        return;
-      }
-      await loadLeave();
-    } finally {
-      setAdminSaving(null);
     }
   };
 
@@ -339,15 +340,19 @@ export default function HrPage() {
     );
   }
 
-  const myLeavesInfo = leaveData?.kind === "user" ? leaveData.myLeaves : null;
-  const adminList = leaveData?.kind === "admin" ? leaveData.list : [];
-  const noHireDateCount = adminList.filter((u: any) => !u.hireDate).length;
-  const myDisplayInfo =
-    leaveData?.kind === "user"
-      ? myLeavesInfo
-      : leaveData?.kind === "admin"
-        ? adminList.find((u: any) => u.id === session?.user?.id)
-        : null;
+  const myDisplayInfo = leaveData
+    ? {
+        hireDate: leaveData.joinDate,
+        totalLeaves: leaveData.balance.total,
+        usedLeaves: leaveData.balance.used,
+        remainingLeaves: leaveData.balance.remaining,
+      }
+    : null;
+
+  const myLeaveRequests =
+    leaveData && session?.user?.id
+      ? leaveData.requests.filter((r) => r.userId === session.user.id)
+      : [];
 
   return (
     <div className="min-h-screen bg-[#0a0f1a] text-slate-100">
@@ -560,26 +565,31 @@ export default function HrPage() {
                       )}
                     </div>
                     <div className="sm:border-l sm:border-slate-600/50 sm:pl-6 sm:min-w-[280px]">
-                      {myDisplayInfo?.hireDate ? (
+                      {myDisplayInfo ? (
                         <>
-                          <p className="text-slate-400 text-sm mb-3">연차 대시보드</p>
+                          {!myDisplayInfo.hireDate && (
+                            <p className="text-amber-400/90 text-sm mb-2">
+                              입사일이 비어 있으면 근로기준법 간이 부여가 부정확할 수 있습니다. 아래에서 설정해 주세요.
+                            </p>
+                          )}
+                          <p className="text-slate-400 text-sm mb-3">연차 대시보드 ({leaveData?.balance.year}년)</p>
                           <div className="grid grid-cols-3 gap-4 text-center">
                             <div>
-                              <p className="text-slate-500 text-xs">총 연차</p>
+                              <p className="text-slate-500 text-xs">총 사용가능</p>
                               <p className="text-2xl font-bold text-slate-200">
                                 {formatLeaves(myDisplayInfo.totalLeaves)}
                               </p>
                               <p className="text-slate-400 text-xs">일</p>
                             </div>
                             <div>
-                              <p className="text-slate-500 text-xs">사용 연차</p>
+                              <p className="text-slate-500 text-xs">사용(승인 반영)</p>
                               <p className="text-2xl font-bold text-amber-300">
                                 {formatLeaves(myDisplayInfo.usedLeaves)}
                               </p>
                               <p className="text-slate-400 text-xs">일</p>
                             </div>
                             <div>
-                              <p className="text-slate-500 text-xs">잔여 연차</p>
+                              <p className="text-slate-500 text-xs">잔여</p>
                               <p className="text-2xl font-bold text-emerald-400">
                                 {formatLeaves(myDisplayInfo.remainingLeaves)}
                               </p>
@@ -588,9 +598,7 @@ export default function HrPage() {
                           </div>
                         </>
                       ) : (
-                        <p className="text-amber-400/90 text-sm py-2">
-                          입사일을 먼저 설정해주세요.
-                        </p>
+                        <p className="text-slate-500 text-sm py-2">연차 정보를 불러오지 못했습니다.</p>
                       )}
                     </div>
                   </div>
@@ -672,7 +680,7 @@ export default function HrPage() {
                   </form>
                 </section>
 
-                {leaveData?.kind === "user" && (
+                {leaveData && (
                   <section className="rounded-2xl border border-slate-600/50 bg-slate-900/80 p-6">
                     <h2 className="text-lg font-semibold text-amber-200 mb-4">내 연차 사용 내역</h2>
                     <div className="overflow-x-auto rounded-lg border border-slate-600/50">
@@ -687,43 +695,42 @@ export default function HrPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {leaveData.requests.length === 0 ? (
+                          {myLeaveRequests.length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
                                 신청 내역이 없습니다.
                               </td>
                             </tr>
                           ) : (
-                            leaveData.requests.map((r: any) => (
-                              <tr key={r.id} className="border-b border-slate-700/50">
-                                <td className="px-4 py-3 text-slate-200">
-                                  {formatDateOnly(r.startDate)}
-                                  {r.startDate !== r.endDate ? ` ~ ${formatDateOnly(r.endDate)}` : ""}
-                                </td>
-                                <td className="px-4 py-3 text-slate-300">
-                                  {r.type === "FULL" && "연차"}
-                                  {r.type === "HALF" && "반차"}
-                                  {r.type === "QUARTER" && "반반차"}
-                                </td>
-                                <td className="px-4 py-3 font-mono">{formatLeaves(r.days)}일</td>
-                                <td className="px-4 py-3 text-slate-400">{r.reason}</td>
-                                <td className="px-4 py-3">
-                                  <span
-                                    className={
-                                      r.status === "APPROVED"
-                                        ? "text-emerald-400"
-                                        : r.status === "REJECTED"
-                                          ? "text-rose-400"
-                                          : "text-amber-400"
-                                    }
-                                  >
-                                    {r.status === "APPROVED" && "승인"}
-                                    {r.status === "REJECTED" && "반려"}
-                                    {r.status === "PENDING" && "대기"}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))
+                            myLeaveRequests.map((r) => {
+                              const days = leaveDisplayDays(r.type, new Date(r.startDate), new Date(r.endDate));
+                              return (
+                                <tr key={r.id} className="border-b border-slate-700/50">
+                                  <td className="px-4 py-3 text-slate-200">
+                                    {formatDateOnly(r.startDate)}
+                                    {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10)
+                                      ? ` ~ ${formatDateOnly(r.endDate)}`
+                                      : ""}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-300">{leaveTypeLabel(r.type)}</td>
+                                  <td className="px-4 py-3 font-mono">{formatLeaves(days)}일</td>
+                                  <td className="px-4 py-3 text-slate-400">{r.reason ?? "—"}</td>
+                                  <td className="px-4 py-3">
+                                    <span
+                                      className={
+                                        r.status === "APPROVED"
+                                          ? "text-emerald-400"
+                                          : r.status === "REJECTED"
+                                            ? "text-rose-400"
+                                            : "text-amber-400"
+                                      }
+                                    >
+                                      {leaveStatusLabel(r.status)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           )}
                         </tbody>
                       </table>
@@ -731,72 +738,20 @@ export default function HrPage() {
                   </section>
                 )}
 
-                {leaveData?.kind === "admin" && (
-                  <section className="rounded-2xl border border-slate-600/50 bg-slate-900/80 p-6">
-                    <h2 className="text-lg font-semibold text-amber-200 mb-4">전 직원 연차 현황</h2>
-                    {noHireDateCount > 0 && (
-                      <div className="mb-4 rounded-lg bg-amber-500/10 border border-amber-500/30 px-4 py-3 text-amber-200 text-sm">
-                        ⚠️ 입사일이 없는 직원이 {noHireDateCount}명 있습니다. 아래에서 입사일을 입력해 주세요.
-                      </div>
-                    )}
-                    <div className="overflow-x-auto rounded-lg border border-slate-600/50">
-                      <table className="w-full text-sm text-left">
-                        <thead>
-                          <tr className="border-b border-slate-600 bg-slate-800/80 text-slate-300">
-                            <th className="px-4 py-3">이름</th>
-                            <th className="px-4 py-3">입사일</th>
-                            <th className="px-4 py-3">총 연차</th>
-                            <th className="px-4 py-3">사용</th>
-                            <th className="px-4 py-3">남은 연차</th>
-                            <th className="px-4 py-3">관리</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {adminList.map((u: any) => (
-                            <tr
-                              key={u.id}
-                              className={`border-b border-slate-700/50 hover:bg-slate-800/50 ${!u.hireDate ? "bg-amber-500/5" : ""}`}
-                            >
-                              <td className="px-4 py-3 text-slate-200">{u.name}</td>
-                              <td className="px-4 py-3">
-                                <Input
-                                  type="date"
-                                  value={adminHireDateEdit[u.id] ?? ""}
-                                  onChange={(e: any) =>
-                                    setAdminHireDateEdit((prev: any) => ({
-                                      ...prev,
-                                      [u.id]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="입사일 입력"
-                                  className="h-8 w-40 bg-slate-800 border-slate-600 text-slate-100 text-xs"
-                                />
-                              </td>
-                              <td className="px-4 py-3 font-mono text-slate-300">
-                                {formatLeaves(u.totalLeaves)}
-                              </td>
-                              <td className="px-4 py-3 font-mono text-amber-300">
-                                {formatLeaves(u.usedLeaves)}
-                              </td>
-                              <td className="px-4 py-3 font-mono font-medium text-emerald-400">
-                                {formatLeaves(u.remainingLeaves)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-xs border-slate-600 text-slate-300 hover:bg-slate-700"
-                                  onClick={() => handleAdminSaveHireDate(u.id)}
-                                  disabled={adminSaving === u.id}
-                                >
-                                  {adminSaving === u.id ? "저장 중..." : "저장"}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                {isAdmin && (
+                  <section className="rounded-2xl border border-slate-600/50 bg-slate-900/80 p-6 text-slate-300 text-sm leading-relaxed">
+                    <h2 className="text-lg font-semibold text-amber-200 mb-3">전 직원 연차</h2>
+                    <p>
+                      전 직원의 부여·사용·잔여 일수는 관리 메뉴의{" "}
+                      <Link href="/admin/employee-leave-summary" className="text-cyan-300 underline-offset-2 hover:underline">
+                        직원 연차 현황
+                      </Link>
+                      에서 확인할 수 있습니다. 입사일 수정은{" "}
+                      <Link href="/admin/employees" className="text-cyan-300 underline-offset-2 hover:underline">
+                        직원 관리
+                      </Link>
+                      에서 할 수 있습니다.
+                    </p>
                   </section>
                 )}
               </>

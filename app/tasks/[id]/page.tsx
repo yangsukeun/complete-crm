@@ -52,6 +52,8 @@ import { Badge } from "@/components/ui/badge";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
+import { ExportDocumentButtons } from "@/components/export-document-buttons";
+import { contentToPlainText } from "@/lib/export/plain-from-content";
 
 /** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
 const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
@@ -564,6 +566,15 @@ export default function TaskDetailPage() {
             </Link>
           </Button>
           <div className="flex items-center gap-1">
+            {task ? (
+              <ExportDocumentButtons
+                title={task.title}
+                bodyPlain={contentToPlainText(task.description, null)}
+                fileBase={`task_${task.id}`}
+                variant="ghost"
+                size="sm"
+              />
+            ) : null}
             <Button
               type="button"
               variant="ghost"

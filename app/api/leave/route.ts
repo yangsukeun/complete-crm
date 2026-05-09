@@ -13,6 +13,7 @@ import {
   serializeLeaveRequestForViewer,
   type LeaveRequestWithUser,
 } from "@/lib/leave-request-serialize";
+import { syncLeaveBalanceAnnualTotalIfStale } from "@/lib/leave-balance-sync";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -48,7 +49,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const role = session.user.role;
+    const role = String(session.user.role ?? "").toUpperCase();
     const year = getCurrentLeaveCalendarYearKst();
     const uid = session.user.id;
 
@@ -99,6 +100,7 @@ export async function GET() {
     }
     const carryOver = balance.annualCarryOver ?? 0;
     const manualDeduction = balance.manualDeduction ?? 0;
+    await syncLeaveBalanceAnnualTotalIfStale(uid, year, annualTotal, balance);
     const totalAvailable = annualTotal + carryOver;
     const remaining = Math.max(0, totalAvailable - balance.annualUsed - manualDeduction);
 

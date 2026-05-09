@@ -39,6 +39,8 @@ import { ArrowLeft, FileText, Link2, Loader2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
+import { ExportDocumentButtons } from "@/components/export-document-buttons";
+import { contentToPlainText } from "@/lib/export/plain-from-content";
 
 const ContentBodyEditor = dynamic(
   () => import("@/components/content-body-editor").then((m) => ({ default: m.ContentBodyEditor })),
@@ -365,10 +367,21 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
             <FileText className="size-5" />
             프로젝트 본문
           </h2>
-          <Button type="button" variant="outline" size="sm" onClick={openBodyEdit} className="gap-1">
-            <Pencil className="size-4" />
-            편집
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {(data.description ?? "").trim() ? (
+              <ExportDocumentButtons
+                title={`${data.brand.name} / ${data.name}`}
+                bodyPlain={contentToPlainText(data.description, data.contentType)}
+                fileBase={`project_${data.id}`}
+                size="sm"
+                variant="outline"
+              />
+            ) : null}
+            <Button type="button" variant="outline" size="sm" onClick={openBodyEdit} className="gap-1">
+              <Pencil className="size-4" />
+              편집
+            </Button>
+          </div>
         </div>
         <p className="text-muted-foreground text-sm leading-relaxed">
           게시판 본문과 동일합니다. 텍스트 탭은 BlockNote이며{" "}

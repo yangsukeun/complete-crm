@@ -30,6 +30,8 @@ const ContentBodyEditor = dynamic(
   }
 );
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { ExportDocumentButtons } from "@/components/export-document-buttons";
+import { contentToPlainText } from "@/lib/export/plain-from-content";
 import { FileText, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -237,27 +239,37 @@ export function BoardPostActions({
     }
   };
 
-  if (!canEdit) return null;
-
   return (
     <>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
-          <Pencil className="size-4" />
-          수정
-        </Button>
-        <Button
-          variant="outline"
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportDocumentButtons
+          title={initialTitle}
+          bodyPlain={contentToPlainText(initialDescription, initialContentType)}
+          fileBase={`board_${postId}`}
           size="sm"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="gap-1 text-destructive hover:text-destructive"
-        >
-          {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-          삭제
-        </Button>
+          variant="outline"
+        />
+        {canEdit ? (
+          <>
+            <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
+              <Pencil className="size-4" />
+              수정
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="gap-1 text-destructive hover:text-destructive"
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              삭제
+            </Button>
+          </>
+        ) : null}
       </div>
 
+      {canEdit ? (
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent
           fullScreen
@@ -400,6 +412,7 @@ export function BoardPostActions({
           </form>
         </DialogContent>
       </Dialog>
+      ) : null}
     </>
   );
 }

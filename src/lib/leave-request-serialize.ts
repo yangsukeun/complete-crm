@@ -2,7 +2,8 @@ import type { Prisma } from "@prisma/client";
 
 /** 팀장·임원·관리자 — 전 직원·전 상태 목록 조회 */
 export function isLeaveManagementRole(role: string | undefined): boolean {
-  return role === "TEAM_LEAD" || role === "EXECUTIVE" || role === "ADMIN";
+  const r = String(role ?? "").toUpperCase();
+  return r === "TEAM_LEAD" || r === "EXECUTIVE" || r === "ADMIN";
 }
 
 /** 일반 직원: 승인된 건 전사 + 본인 신청 전부(대기·반려 등) */

@@ -9,6 +9,7 @@ import {
   getCurrentLeaveCalendarYearKst,
   resolveAnnualLeaveLaborRule,
 } from "@/lib/leave";
+import { syncLeaveBalanceAnnualTotalIfStale } from "@/lib/leave-balance-sync";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 
 export async function GET() {
@@ -124,17 +125,25 @@ export async function GET() {
       },
     });
     const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-    let balance: { annualUsed: number; manualDeduction: number; annualCarryOver?: number } | null = null;
+    let balance: {
+      annualTotal: number;
+      annualUsed: number;
+      manualDeduction: number;
+      annualCarryOver?: number;
+    } | null = null;
     try {
       balance = await prisma.leaveBalance.findUnique({
         where: { userId_year: { userId: session.user.id, year } },
-        select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
+        select: { annualTotal: true, annualUsed: true, manualDeduction: true, annualCarryOver: true },
       });
     } catch {
       // leaveBalance 없어도 진행
     }
     const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
     const annualTotal = getAnnualLeaveEntitlement(joinDateObj, year, new Date(), laborRule);
+    if (balance) {
+      await syncLeaveBalanceAnnualTotalIfStale(session.user.id, year, annualTotal, balance);
+    }
     const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
