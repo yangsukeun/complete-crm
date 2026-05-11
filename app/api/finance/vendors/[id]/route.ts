@@ -72,6 +72,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
+    const usedCount = await prisma.paymentRequest.count({ where: { vendorId: id } });
+    if (usedCount > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "이 거래처로 등록된 결제 요청이 있어 삭제할 수 없습니다. 계좌·업체 정보는 「수정」으로 바꿀 수 있습니다.",
+        },
+        { status: 409 }
+      );
+    }
     await prisma.vendor.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Wallet, Plus, CheckCircle, FileText, ListChecks } from "lucide-react";
+import { ArrowLeft, Wallet, Plus, CheckCircle, FileText, ListChecks, Pencil, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -47,6 +47,7 @@ type Vendor = {
   bankName: string;
   accountNumber: string;
   ownerName: string;
+  contactPerson?: string | null;
   category: string;
 };
 
@@ -178,7 +179,10 @@ export default function FinanceRequestsPage() {
   const [paymentAlertUnreadCount, setPaymentAlertUnreadCount] = useState<number | undefined>(undefined);
   const [transferExecutorIds, setTransferExecutorIds] = useState<string[]>([]);
   const [vendorModalOpen, setVendorModalOpen] = useState(false);
+  /** null = 신규 등록, 문자열 = 해당 id 수정 */
+  const [vendorEditingId, setVendorEditingId] = useState<string | null>(null);
   const [vendorSaving, setVendorSaving] = useState(false);
+  const [vendorDeleting, setVendorDeleting] = useState(false);
   const [vendorForm, setVendorForm] = useState({
     name: "",
     bankName: "",
@@ -361,6 +365,7 @@ export default function FinanceRequestsPage() {
   const visibleCompletedRequests = completedRequests.filter(matchesSearch);
 
   const openVendorCreate = () => {
+    setVendorEditingId(null);
     setVendorForm({
       name: "",
       bankName: "",
@@ -372,7 +377,25 @@ export default function FinanceRequestsPage() {
     setVendorModalOpen(true);
   };
 
-  const handleCreateVendor = async (e: React.FormEvent) => {
+  const openVendorEdit = () => {
+    const v = selectedVendor;
+    if (!v) {
+      toast.error("먼저 거래처를 선택하세요.");
+      return;
+    }
+    setVendorEditingId(v.id);
+    setVendorForm({
+      name: v.name,
+      bankName: v.bankName,
+      accountNumber: v.accountNumber,
+      ownerName: v.ownerName,
+      contactPerson: v.contactPerson?.trim() ?? "",
+      category: v.category ?? "기타",
+    });
+    setVendorModalOpen(true);
+  };
+
+  const handleSaveVendor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       !vendorForm.name.trim() ||
@@ -385,30 +408,60 @@ export default function FinanceRequestsPage() {
     }
     setVendorSaving(true);
     try {
-      const res = await fetch("/api/finance/vendors", {
-        method: "POST",
+      const editing = vendorEditingId;
+      const trimmedContact = vendorForm.contactPerson.trim();
+      const base = {
+        name: vendorForm.name.trim(),
+        bankName: vendorForm.bankName.trim(),
+        accountNumber: vendorForm.accountNumber.trim(),
+        ownerName: vendorForm.ownerName.trim(),
+        category: vendorForm.category,
+      };
+      const payload = editing
+        ? { ...base, contactPerson: trimmedContact || null }
+        : { ...base, ...(trimmedContact ? { contactPerson: trimmedContact } : {}) };
+      const res = await fetch(editing ? `/api/finance/vendors/${editing}` : "/api/finance/vendors", {
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: vendorForm.name.trim(),
-          bankName: vendorForm.bankName.trim(),
-          accountNumber: vendorForm.accountNumber.trim(),
-          ownerName: vendorForm.ownerName.trim(),
-          contactPerson: vendorForm.contactPerson.trim() || undefined,
-          category: vendorForm.category,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "등록 실패");
-      toast.success("거래처가 등록되었습니다.");
+      if (!res.ok) throw new Error(data.error ?? (editing ? "수정 실패" : "등록 실패"));
+      toast.success(editing ? "거래처 정보를 수정했습니다." : "거래처가 등록되었습니다.");
       setVendorModalOpen(false);
+      setVendorEditingId(null);
       await fetchVendors();
-      if (data?.id) {
-        setForm((f: any) => ({ ...f, vendorId: String(data.id) }));
+      const nextId = editing ?? data?.id;
+      if (nextId) {
+        setForm((f: any) => ({ ...f, vendorId: String(nextId) }));
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "거래처 등록에 실패했습니다.");
+      toast.error(err instanceof Error ? err.message : "거래처 저장에 실패했습니다.");
     } finally {
       setVendorSaving(false);
+    }
+  };
+
+  const handleDeleteSelectedVendor = async () => {
+    const id = form.vendorId;
+    if (!id) {
+      toast.error("삭제할 거래처를 선택하세요.");
+      return;
+    }
+    const name = vendors.find((v) => v.id === id)?.name ?? "이 거래처";
+    if (!confirm(`${name}을(를) 삭제할까요?\n(이미 결제 요청에 사용된 거래처는 삭제할 수 없습니다.)`)) return;
+    setVendorDeleting(true);
+    try {
+      const res = await fetch(`/api/finance/vendors/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `삭제 실패 (${res.status})`);
+      toast.success("거래처를 삭제했습니다.");
+      setForm((f: any) => ({ ...f, vendorId: "" }));
+      await fetchVendors();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "거래처 삭제에 실패했습니다.");
+    } finally {
+      setVendorDeleting(false);
     }
   };
 
@@ -1335,12 +1388,35 @@ export default function FinanceRequestsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmitRequest} className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label>거래처</Label>
-                <Button type="button" variant="outline" size="sm" onClick={openVendorCreate}>
-                  <Plus className="mr-1 size-4" />
-                  거래처 추가
-                </Button>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button type="button" variant="outline" size="sm" onClick={openVendorCreate}>
+                    <Plus className="mr-1 size-4" />
+                    추가
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={openVendorEdit}
+                    disabled={!form.vendorId}
+                  >
+                    <Pencil className="mr-1 size-4" />
+                    수정
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => void handleDeleteSelectedVendor()}
+                    disabled={!form.vendorId || vendorDeleting}
+                  >
+                    <Trash2 className="mr-1 size-4" />
+                    {vendorDeleting ? "삭제 중…" : "삭제"}
+                  </Button>
+                </div>
               </div>
               <Select value={form.vendorId} onValueChange={(v: any) => setForm((f: any) => ({ ...f, vendorId: v }))} required>
                 <SelectTrigger>
@@ -1357,9 +1433,9 @@ export default function FinanceRequestsPage() {
             </div>
             {selectedVendor && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900/50">
-                <p className="text-muted-foreground text-xs">계좌정보 (수정 불가)</p>
+                <p className="text-muted-foreground text-xs">계좌 정보 · 잘못 입력 시 위 「수정」에서 바꿀 수 있습니다</p>
                 <p className="font-medium">{selectedVendor.bankName} {selectedVendor.accountNumber}</p>
-                <p className="text-muted-foreground text-xs">예금주: {selectedVendor.ownerName}</p>
+                <p className="text-muted-foreground text-xs">예금주(입금자명): {selectedVendor.ownerName}</p>
               </div>
             )}
             <div className="grid gap-2">
@@ -1597,12 +1673,18 @@ export default function FinanceRequestsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={vendorModalOpen} onOpenChange={setVendorModalOpen}>
+      <Dialog
+        open={vendorModalOpen}
+        onOpenChange={(open) => {
+          setVendorModalOpen(open);
+          if (!open) setVendorEditingId(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>거래처 추가</DialogTitle>
+            <DialogTitle>{vendorEditingId ? "거래처 수정" : "거래처 추가"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreateVendor} className="grid gap-4 py-4">
+          <form onSubmit={handleSaveVendor} className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="vendor-create-name">업체명</Label>
               <Input
@@ -1667,11 +1749,18 @@ export default function FinanceRequestsPage() {
               </Select>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setVendorModalOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setVendorModalOpen(false);
+                  setVendorEditingId(null);
+                }}
+              >
                 취소
               </Button>
               <Button type="submit" disabled={vendorSaving}>
-                {vendorSaving ? "등록 중..." : "등록"}
+                {vendorSaving ? "저장 중..." : vendorEditingId ? "저장" : "등록"}
               </Button>
             </DialogFooter>
           </form>
