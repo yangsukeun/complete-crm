@@ -36,6 +36,7 @@ async function notifyExpiringSoon(asOf: Date): Promise<number> {
   return n;
 }
 
+/** Vercel Cron 은 UTC 기준. `30 15 * * *` = 매일 15:30 UTC = 한국 00:30 (KST, 일광절약 없음). */
 export async function GET(req: Request) {
   const unauthorized = verifyCronRequest(req);
   if (unauthorized) return unauthorized;

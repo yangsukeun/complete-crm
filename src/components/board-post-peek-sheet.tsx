@@ -72,7 +72,7 @@ export function BoardPostPeekSheet({ postId, onClose }: Props) {
         side="right"
         showCloseButton={true}
         ariaTitle="게시글 미리보기"
-        className="max-h-[100vh] w-full gap-0 overflow-hidden border-0 bg-background p-0 sm:max-w-[min(96vw,720px)]"
+        className="max-h-[100vh] w-full gap-0 overflow-hidden border-0 bg-background p-0 sm:max-w-[min(99vw,min(1600px,calc(100vw-1rem)))]"
       >
         <div className="flex shrink-0 items-center justify-end gap-1 border-b px-4 py-2">
           {data ? (
@@ -84,7 +84,7 @@ export function BoardPostPeekSheet({ postId, onClose }: Props) {
             </Button>
           ) : null}
         </div>
-        <div className="max-h-[calc(100vh-3rem)] min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        <div className="max-h-[calc(100vh-2.5rem)] min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
           {loading && (
             <div className="flex justify-center py-16">
               <Loader2 className="size-8 animate-spin text-muted-foreground" />

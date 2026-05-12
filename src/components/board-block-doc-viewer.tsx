@@ -55,7 +55,7 @@ export function BoardBlockDocViewer({ blocks }: Props) {
   }
 
   return (
-    <div className="board-bn-readonly rounded-lg border bg-white p-2 text-gray-900 dark:border-border">
+    <div className="board-bn-readonly w-full min-h-[min(88dvh,1600px)] rounded-lg border bg-white p-4 text-gray-900 dark:border-border [&_.bn-container]:min-h-[min(80dvh,1400px)] [&_.bn-editor]:min-h-[min(75dvh,1200px)]">
       <BlockNoteMantineShell>
         <BlockNoteView
           editor={editor}

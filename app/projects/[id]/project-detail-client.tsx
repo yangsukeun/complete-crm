@@ -394,6 +394,7 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
             description={data.description ?? ""}
             contentType={data.contentType ?? "text"}
             attachments={EMPTY_BOARD_ATTACHMENTS}
+            attachmentPreviewContext={{ type: "project", projectId }}
           />
         ) : (
           <p className="text-muted-foreground text-sm py-4">본문이 없습니다. 편집에서 내용을 추가하세요.</p>

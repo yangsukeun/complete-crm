@@ -30,6 +30,8 @@ const ContentBodyEditor = dynamic(
   }
 );
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { AttachmentDrivePreview } from "@/components/files/attachment-drive-preview";
+import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 import { ExportDocumentButtons } from "@/components/export-document-buttons";
 import { contentToPlainText } from "@/lib/export/plain-from-content";
 import { FileText, Loader2, Pencil, Trash2 } from "lucide-react";
@@ -379,13 +381,22 @@ export function BoardPostActions({
               {attachments.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {attachments.map((att, idx) => (
-                    <li key={idx} className="flex items-center gap-2 text-sm">
-                      <FilePreviewDialog
-                        url={att.url}
-                        name={att.name}
-                        triggerVariant="ghost"
-                        triggerClassName="h-7 px-2 justify-start text-sm"
-                      />
+                    <li key={idx} className="flex flex-wrap items-center gap-2 text-sm">
+                      {parseGoogleDriveFileIdFromUrl(att.url) ? (
+                        <AttachmentDrivePreview
+                          url={att.url}
+                          name={att.name}
+                          context={{ type: "board", postId }}
+                          className="flex-1 min-w-0"
+                        />
+                      ) : (
+                        <FilePreviewDialog
+                          url={att.url}
+                          name={att.name}
+                          triggerVariant="ghost"
+                          triggerClassName="h-7 px-2 justify-start text-sm"
+                        />
+                      )}
                       <Button
                         type="button"
                         variant="ghost"

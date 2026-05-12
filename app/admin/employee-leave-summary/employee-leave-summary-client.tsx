@@ -71,7 +71,7 @@ export function EmployeeLeaveSummaryClient() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[min(100%,1680px)] space-y-6 px-2 sm:px-0">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeadline
           title="직원 연차·월차 현황"
@@ -95,8 +95,8 @@ export function EmployeeLeaveSummaryClient() {
           <p className="text-muted-foreground text-sm">
             기준 연도: <strong>{data.year}</strong>년 · 직원 {data.rows.length}명
           </p>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
+          <div className="overflow-x-auto rounded-lg border shadow-sm">
+            <Table className="min-w-[1280px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>이름</TableHead>
@@ -119,7 +119,9 @@ export function EmployeeLeaveSummaryClient() {
                 {data.rows.map((r) => (
                   <TableRow key={r.userId}>
                     <TableCell className="font-medium">{r.name}</TableCell>
-                    <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">{r.email}</TableCell>
+                    <TableCell className="max-w-[min(280px,28vw)] truncate text-muted-foreground text-sm">
+                      {r.email}
+                    </TableCell>
                     <TableCell className="text-sm">
                       {[r.department, r.position].filter(Boolean).join(" · ") || "—"}
                     </TableCell>

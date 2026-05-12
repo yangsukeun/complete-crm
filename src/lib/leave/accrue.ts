@@ -2,16 +2,15 @@ import type { LeaveAccrual } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { toKstYmd } from "@/lib/date-kst";
 import { isAttendanceRateOk, monthlyAttendanceWindowYmd } from "@/lib/leave/attendance-rate";
+import { listLeaveAccrualSlots, type LeaveAccrualSlot } from "@/lib/leave/accrual-schedule";
 import {
   addCalendarDaysKst,
   addCalendarMonthsKst,
   expiresAtFromAccrualYmd,
-  startOfKstDay,
   startOfKstDayFromYmd,
 } from "@/lib/leave/kst-date";
-import { tenureBonusDeltaOnAnniversary } from "@/lib/leave/pure-pool";
 
-async function loadLaborConfig() {
+export async function loadLeaveLaborConfig() {
   const row = await prisma.companyInfo.findFirst({
     orderBy: { updatedAt: "desc" },
     select: {
@@ -81,6 +80,28 @@ async function yearBeforeAnniversaryOk(
   return isAttendanceRateOk(userId, startYmd, endYmd, threshold);
 }
 
+/** 백필·크론과 동일 출근율 판단 */
+export async function leaveAccrualSlotPassesAttendance(
+  userId: string,
+  joinYmd: string,
+  threshold: number,
+  slot: LeaveAccrualSlot
+): Promise<boolean> {
+  if (slot.type === "MONTHLY_UNDER_ONE_YEAR") {
+    const m = slot.monthIndex1Based;
+    if (!m) return false;
+    const win = monthlyAttendanceWindowYmd(joinYmd, m);
+    return isAttendanceRateOk(userId, win.startYmd, win.endYmd, threshold);
+  }
+  if (slot.type === "ANNUAL_AFTER_ONE_YEAR" || slot.type === "TENURE_BONUS") {
+    const y = slot.anniversaryYear ?? 0;
+    if (y < 1) return false;
+    if (y === 1) return firstYearAttendanceOk(userId, joinYmd, threshold);
+    return yearBeforeAnniversaryOk(userId, joinYmd, y, threshold);
+  }
+  return false;
+}
+
 /**
  * 입사일 기준 asOf까지 도래한 발생분을 idempotent 생성.
  */
@@ -94,46 +115,16 @@ export async function accrueIfDue(userId: string, asOf: Date = new Date()): Prom
   const joinYmd = toKstYmd(user.joinDate);
   if (!joinYmd) return [];
 
-  const asOfYmd = toKstYmd(asOf);
-  const asOfStart = startOfKstDay(asOf).getTime();
-  const { threshold, annualDays, monthlyCap } = await loadLaborConfig();
+  const { threshold, annualDays, monthlyCap } = await loadLeaveLaborConfig();
+  const slots = listLeaveAccrualSlots(user.joinDate, asOf, { monthlyCap, annualDays });
 
   const created: LeaveAccrual[] = [];
 
-  // 1..11 월차
-  for (let m = 1; m <= monthlyCap; m++) {
-    const accYmd = addCalendarMonthsKst(joinYmd, m);
-    if (startOfKstDayFromYmd(accYmd).getTime() > asOfStart) break;
-    const win = monthlyAttendanceWindowYmd(joinYmd, m);
-    const ok = await isAttendanceRateOk(userId, win.startYmd, win.endYmd, threshold);
+  for (const slot of slots) {
+    const ok = await leaveAccrualSlotPassesAttendance(userId, joinYmd, threshold, slot);
     if (!ok) continue;
-    const row = await upsertAccrual(userId, "MONTHLY_UNDER_ONE_YEAR", accYmd, 1, `§60② ${m}개월차`);
+    const row = await upsertAccrual(userId, slot.type, slot.accrualDateYmd, slot.days, slot.note);
     if (row) created.push(row);
-  }
-
-  // 1주년 정규 연차
-  const ann1Ymd = addCalendarMonthsKst(joinYmd, 12);
-  if (startOfKstDayFromYmd(ann1Ymd).getTime() <= asOfStart) {
-    const ok = await firstYearAttendanceOk(userId, joinYmd, threshold);
-    if (ok) {
-      const row = await upsertAccrual(userId, "ANNUAL_AFTER_ONE_YEAR", ann1Ymd, annualDays, "§60① 1주년");
-      if (row) created.push(row);
-    }
-  }
-
-  // 2주년 이후 매 기념일
-  for (let y = 2; y <= 50; y++) {
-    const annYmd = addCalendarMonthsKst(joinYmd, 12 * y);
-    if (startOfKstDayFromYmd(annYmd).getTime() > asOfStart) break;
-    const ok = await yearBeforeAnniversaryOk(userId, joinYmd, y, threshold);
-    if (!ok) continue;
-    const rowA = await upsertAccrual(userId, "ANNUAL_AFTER_ONE_YEAR", annYmd, annualDays, `§60① ${y}주년`);
-    if (rowA) created.push(rowA);
-    const bonus = tenureBonusDeltaOnAnniversary(y);
-    if (bonus > 0) {
-      const rowB = await upsertAccrual(userId, "TENURE_BONUS", annYmd, bonus, `§60④ ${y}주년 가산`);
-      if (rowB) created.push(rowB);
-    }
   }
 
   return created;

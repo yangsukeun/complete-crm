@@ -128,6 +128,7 @@ export default async function BoardPostPage({
         contentType={post.contentType ?? "text"}
         attachments={attachments}
         category={post.category}
+        attachmentPreviewContext={{ type: "board", postId: id }}
       />
       <BoardPostRevisionHistory
         edits={postRevisions.map((r) => ({

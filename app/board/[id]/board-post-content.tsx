@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { AttachmentDrivePreview } from "@/components/files/attachment-drive-preview";
+import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
+import type { AttachmentPreviewContext } from "@/lib/files/preview-access";
 import { BoardBlockDocViewer } from "@/components/board-block-doc-viewer";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import {
@@ -22,7 +25,7 @@ import { FileText, GraduationCap, Building2, MessageSquare, Ghost, ClipboardList
 function BoardBlockViewerGate({ blocks }: { blocks: unknown[] }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
   if (!mounted) {
     return (
@@ -46,11 +49,13 @@ function BoardStoredHtmlIframe({ html }: { html: string }) {
   );
 
   useEffect(() => {
-    setSrcDoc(
-      injectIframePreviewBaseStyle(sanitizeNoteHtml(html), {
-        documentOrigin: window.location.origin,
-      })
-    );
+    queueMicrotask(() => {
+      setSrcDoc(
+        injectIframePreviewBaseStyle(sanitizeNoteHtml(html), {
+          documentOrigin: window.location.origin,
+        })
+      );
+    });
   }, [html]);
 
   const openNewTab = () => {
@@ -104,7 +109,7 @@ function HydrationSafeRichBody({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
   if (!mounted) {
     return (
@@ -144,6 +149,8 @@ export type BoardPostContentProps = {
   attachments?: BoardPostAttachmentItem[];
   /** 없으면 카테고리 뱃지(게시판 구분)를 숨김 — 프로젝트 본문 등 */
   category?: string;
+  /** Drive 첨부 미리보기 API 접근용(게시글 id 또는 프로젝트 id) */
+  attachmentPreviewContext?: AttachmentPreviewContext | null;
 };
 
 export function BoardPostContent({
@@ -151,6 +158,7 @@ export function BoardPostContent({
   contentType = "text",
   attachments = [],
   category,
+  attachmentPreviewContext = null,
 }: BoardPostContentProps) {
   const isStoredHtml = contentType === "html";
   const structured = !isStoredHtml && description ? parseStoredTaskBody(description) : null;
@@ -211,15 +219,24 @@ export function BoardPostContent({
             첨부파일 ({attachments.length})
           </h3>
           <div className="flex flex-wrap gap-2">
-            {attachments.map((att, idx) => (
-              <FilePreviewDialog
-                key={idx}
-                url={att.url}
-                name={att.name}
-                triggerVariant="outline"
-                triggerClassName="h-9 px-3 py-2 text-sm"
-              />
-            ))}
+            {attachments.map((att, idx) =>
+              attachmentPreviewContext && parseGoogleDriveFileIdFromUrl(att.url) ? (
+                <AttachmentDrivePreview
+                  key={idx}
+                  url={att.url}
+                  name={att.name}
+                  context={attachmentPreviewContext}
+                />
+              ) : (
+                <FilePreviewDialog
+                  key={idx}
+                  url={att.url}
+                  name={att.name}
+                  triggerVariant="outline"
+                  triggerClassName="h-9 px-3 py-2 text-sm"
+                />
+              )
+            )}
           </div>
         </div>
       )}

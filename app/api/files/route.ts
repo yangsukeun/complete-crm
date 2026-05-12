@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import fs from "fs";
+import fs, { type Dirent } from "fs";
 import path from "path";
 import os from "os";
 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     }
 
     const names = fs.readdirSync(resolved, { withFileTypes: true });
-    const entries = names.map((dirent: any) => {
+    const entries = names.map((dirent: Dirent) => {
       const fullPath = path.join(resolved, dirent.name);
       let size = 0;
       let mtime: string | null = null;

@@ -170,6 +170,21 @@ enum WorkspaceScope {
   PERSONAL
 }
 
+/// 첨부 미리보기 파이프라인 분류 (Drive 기준)
+enum PreviewType {
+  INLINE_NATIVE
+  DRIVE_EMBED
+  CONVERTED_PDF
+  UNSUPPORTED
+}
+
+enum ConversionStatus {
+  NONE
+  PENDING
+  DONE
+  FAILED
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -927,6 +942,36 @@ model LinkPreviewCache {
   updatedAt   DateTime @updatedAt
 
   @@index([url])
+}
+
+/// HWP 등 변환 미리보기 캐시 (원본 driveFileId 기준 중복 방지)
+model FilePreviewCache {
+  id                 String             @id @default(cuid())
+  driveFileId        String             @unique
+  originalName       String
+  originalMime       String
+  previewType        PreviewType
+  convertedDriveId   String?
+  convertedAt        DateTime?
+  conversionStatus   ConversionStatus   @default(NONE)
+  conversionError    String?            @db.Text
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([driveFileId])
+  @@index([conversionStatus])
+}
+
+/// Drive `anyone` 미리보기 권한 — 만료 후 Cron으로 회수 (영구 공개 방지)
+model DrivePreviewPermissionExpiry {
+  id             String   @id @default(cuid())
+  driveFileId  String
+  permissionId String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([driveFileId])
+  @@index([expiresAt])
 }
 
 model Vendor {
