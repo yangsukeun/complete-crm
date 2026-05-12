@@ -75,6 +75,14 @@ enum LeaveRequestStatus {
   REJECTED
 }
 
+/// 근로기준법 §60·§61 정합 연차·월차 발생 단위
+enum LeaveAccrualType {
+  MONTHLY_UNDER_ONE_YEAR // §60② 1년차 월차
+  ANNUAL_AFTER_ONE_YEAR  // §60① 1년 만근 연차(매 입사기념일 15일)
+  TENURE_BONUS           // §60④ 근속 가산
+  CARRY_OVER             // 레거시 이월·실사용차감 호환
+}
+
 enum ScheduleInviteStatus {
   PENDING
   ACCEPTED
@@ -139,6 +147,7 @@ enum NotificationType {
   TASK_DUE_D1        // 마감 1일 전 Cron
   TASK_DUE_OVERDUE   // 마감일 경과(당일 윈도우) Cron
   DAILY_DIGEST       // 일일 업무 다이제스트 Cron
+  LEAVE_COMPENSATION // 연차 만료 시 수당 지급 필요(§61, 사용촉진 미실시)
 }
 
 /// 알림이 연결된 리소스(읽음 처리·백필용). 기존 type/link는 그대로 유지.
@@ -204,6 +213,7 @@ model User {
   createdTasks     Task[]             @relation("TaskCreator")
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]
+  leaveAccruals    LeaveAccrual[]
   taskComments     TaskComment[]
   chatParticipants ChatParticipant[]
   chatMessages     ChatMessage[]
@@ -645,9 +655,36 @@ model LeaveRequest {
   /// 취소 요청 시점의 기존 상태(PENDING|TEAM_LEAD_APPROVED|APPROVED). 승인 큐 라우팅/차감 복구에 사용
   cancelFromStatus String?
   reason    String?
+  /// 최종 승인 시 FIFO로 차감한 LeaveAccrual 단위 기록(JSON). 취소 시 복구에 사용
+  accrualAllocations Json?
   createdAt DateTime          @default(now())
   @@index([userId])
   @@index([startDate])
+}
+
+/// 입사기념일 기준 발생·소멸 단위(근기법 정합)
+model LeaveAccrual {
+  id                 String            @id @default(cuid())
+  userId             String
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type               LeaveAccrualType
+  days               Float
+  /// KST 기준 발생일(중복 방지·표시용)
+  accrualDateYmd     String            @db.VarChar(10)
+  accruedAt          DateTime
+  expiresAt          DateTime
+  consumedDays       Float             @default(0)
+  isExpired          Boolean           @default(false)
+  expiredAt          DateTime?
+  compensationOwed   Boolean           @default(false)
+  note               String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@unique([userId, type, accrualDateYmd])
+  @@index([userId, expiresAt])
+  @@index([userId, isExpired])
+  @@index([userId, type])
 }
 
 model LeaveBalance {
@@ -1054,6 +1091,10 @@ model CompanyInfo {
   annualLeaveMonthlyMaxUnderOneYear Int?
   /// 「1년 이상」연차 간이 발생 일수 (미설정 시 앱 기본 15일)
   annualLeaveDaysAfterFirstFullYear   Int?
+  /// §61 사용촉진 절차를 시행한 경우(true): 만료 시 소멸만 기록. false: 수당 지급 필요로 표시
+  useEncouragementEnabled             Boolean  @default(false)
+  /// 월별·연간 개근 판정용 출근율 하한 (기본 0.8 = 80%)
+  attendanceThreshold                 Float    @default(0.8)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }

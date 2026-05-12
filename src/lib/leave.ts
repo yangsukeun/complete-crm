@@ -62,7 +62,7 @@ function parseKstYmd(ymd: string): { y: number; m: number; d: number } | null {
  * 입사일(KST)과 기준일(KST) 사이의 **연·월 보정 만근 월수**
  * 입사 같은 날부터는 「다음달 같은 일」에 한 달 채워짐 (입사 다음날 시작이 아님).
  */
-function completedFullMonthsSinceJoinKst(joinYmd: string, asOfYmd: string): number {
+export function completedFullMonthsSinceJoinKst(joinYmd: string, asOfYmd: string): number {
   const a = parseKstYmd(joinYmd);
   const b = parseKstYmd(asOfYmd);
   if (!a || !b) return 0;

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { toKstYmd } from "@/lib/date-kst";
+import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import {
-  getAnnualLeaveEntitlement,
-  resolveAnnualLeaveLaborRule,
-} from "@/lib/leave";
+  applyApprovedLeaveConsumption,
+  reverseApprovedLeaveConsumption,
+} from "@/lib/leave/apply-approved-consumption";
 import { createNotificationWithOptions } from "@/lib/notifications";
 
 const leaveTypeDays: Record<string, number> = {
@@ -158,20 +158,6 @@ export async function PATCH(
 
     // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED), 최종 승인 시에만 연차 차감
     if (isExecutive(role)) {
-      const companyRow = await prisma.companyInfo.findFirst({
-        orderBy: { updatedAt: "desc" },
-        select: {
-          annualLeaveMonthlyMaxUnderOneYear: true,
-          annualLeaveDaysAfterFirstFullYear: true,
-        },
-      });
-      const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-      const balanceYearStart = (): number => {
-        const ymd = toKstYmd(leave.startDate);
-        const y = Number(ymd.slice(0, 4));
-        return Number.isFinite(y) ? y : leave.startDate.getFullYear();
-      };
-
       // 취소 요청 처리 (CANCEL_REQUESTED → CANCELLED). APPROVED 취소면 연차 사용 복구
       if (leave.status === "CANCEL_REQUESTED") {
         if (requestedStatus !== "CANCELLED") {
@@ -181,30 +167,9 @@ export async function PATCH(
           return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
         }
 
-        // 최종 승인(연차 차감)된 건을 취소할 때만 복구
         if (leave.cancelFromStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
-          const days =
-            leave.type === "ANNUAL"
-              ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-              : (leaveTypeDays[leave.type] ?? 0);
-          const year = balanceYearStart();
-          const entitlement = getAnnualLeaveEntitlement(
-            leave.user.joinDate,
-            year,
-            new Date(),
-            laborRule
-          );
-          await prisma.leaveBalance.upsert({
-            where: { userId_year: { userId: leave.userId, year } },
-            create: {
-              userId: leave.userId,
-              year,
-              annualTotal: entitlement,
-              annualUsed: 0,
-              manualDeduction: 0,
-              annualCarryOver: 0,
-            },
-            update: { annualUsed: { decrement: days } },
+          await prisma.$transaction(async (tx) => {
+            await reverseApprovedLeaveConsumption(tx, id);
           });
         }
 
@@ -228,18 +193,36 @@ export async function PATCH(
           leave.type === "ANNUAL"
             ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
             : (leaveTypeDays[leave.type] ?? 0);
-        const year = balanceYearStart();
-        const entitlement = getAnnualLeaveEntitlement(
-          leave.user.joinDate,
-          year,
-          new Date(),
-          laborRule
-        );
-        await prisma.leaveBalance.upsert({
-          where: { userId_year: { userId: leave.userId, year } },
-          create: { userId: leave.userId, year, annualTotal: entitlement, annualUsed: days, manualDeduction: 0, annualCarryOver: 0 },
-          update: { annualUsed: { increment: days } },
+
+        const pool = await calculateLeavePool(leave.userId, new Date());
+        if (days > pool.available + 1e-6) {
+          return NextResponse.json(
+            { error: `연차 잔여일(${pool.available.toFixed(1)}일)이 부족합니다.` },
+            { status: 400 }
+          );
+        }
+
+        try {
+          await prisma.$transaction(async (tx) => {
+            await applyApprovedLeaveConsumption(tx, leave.userId, id, days, new Date());
+            await tx.leaveRequest.update({
+              where: { id },
+              data: { status: "APPROVED" },
+            });
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("LEAVE_POOL_INSUFFICIENT")) {
+            return NextResponse.json({ error: "연차 잔여가 부족합니다." }, { status: 400 });
+          }
+          throw err;
+        }
+
+        const updated = await prisma.leaveRequest.findUnique({
+          where: { id },
+          include: { user: { select: { name: true, position: true } } },
         });
+        return NextResponse.json(updated);
       }
 
       const updated = await prisma.leaveRequest.update({

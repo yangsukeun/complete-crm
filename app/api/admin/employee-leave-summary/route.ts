@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import {
-  getAnnualLeaveEntitlement,
-  getCurrentLeaveCalendarYearKst,
-  resolveAnnualLeaveLaborRule,
-} from "@/lib/leave";
-import { syncLeaveBalanceAnnualTotalIfStale } from "@/lib/leave-balance-sync";
+import { getCurrentLeaveCalendarYearKst, completedFullMonthsSinceJoinKst } from "@/lib/leave";
+import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { toKstYmd } from "@/lib/date-kst";
 
 /**
- * 대표·시스템 관리자: 전 직원 당해연도 연차(부여·사용·잔여) 한눈에 조회.
+ * 대표·시스템 관리자: 전 직원 연차 풀(근기법 정합) 한눈에 조회.
  */
 export async function GET() {
   try {
@@ -23,14 +20,8 @@ export async function GET() {
     }
 
     const year = getCurrentLeaveCalendarYearKst();
-    const companyRow = await prisma.companyInfo.findFirst({
-      orderBy: { updatedAt: "desc" },
-      select: {
-        annualLeaveMonthlyMaxUnderOneYear: true,
-        annualLeaveDaysAfterFirstFullYear: true,
-      },
-    });
-    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
+    const asOf = new Date();
+    const asOfYmd = toKstYmd(asOf);
 
     const users = await prisma.user.findMany({
       orderBy: { name: "asc" },
@@ -45,29 +36,17 @@ export async function GET() {
       },
     });
 
-    const balances = await prisma.leaveBalance.findMany({
-      where: { year },
-      select: {
-        userId: true,
-        annualTotal: true,
-        annualCarryOver: true,
-        annualUsed: true,
-        manualDeduction: true,
-      },
-    });
-    const balMap = new Map(balances.map((b) => [b.userId, b]));
-
     const rows = await Promise.all(
       users.map(async (u) => {
         const joinDate = u.joinDate instanceof Date ? u.joinDate : new Date(u.joinDate);
-        const entitlement = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
-        const b = balMap.get(u.id) ?? null;
-        await syncLeaveBalanceAnnualTotalIfStale(u.id, year, entitlement, b);
-        const carryOver = b?.annualCarryOver ?? 0;
-        const used = b?.annualUsed ?? 0;
-        const manual = b?.manualDeduction ?? 0;
-        const totalAvailable = entitlement + carryOver;
-        const remaining = Math.max(0, totalAvailable - used - manual);
+        const joinYmd = toKstYmd(joinDate);
+        const fullMonths = joinYmd ? completedFullMonthsSinceJoinKst(joinYmd, asOfYmd) : 0;
+        const tenureYears = Math.floor(fullMonths / 12);
+        const tenureExtraMonths = fullMonths % 12;
+
+        const pool = await calculateLeavePool(u.id, asOf);
+        const b = pool.breakdown;
+
         return {
           userId: u.id,
           name: u.name,
@@ -77,12 +56,38 @@ export async function GET() {
           role: u.role,
           joinDate: joinDate.toISOString(),
           year,
-          annualGranted: entitlement,
-          annualCarryOver: carryOver,
-          annualUsed: used,
-          manualDeduction: manual,
-          totalAvailable,
-          remaining,
+          tenureYears,
+          tenureExtraMonths,
+          monthlyUnderOneYear: {
+            available: b.monthlyUnderOneYear.available,
+            entitled: b.monthlyUnderOneYear.entitled,
+            consumed: b.monthlyUnderOneYear.consumed,
+            expired: b.monthlyUnderOneYear.expired,
+          },
+          annualAfterOneYear: {
+            available: b.annualAfterOneYear.available,
+            entitled: b.annualAfterOneYear.entitled,
+            consumed: b.annualAfterOneYear.consumed,
+            expired: b.annualAfterOneYear.expired,
+          },
+          tenureBonus: {
+            available: b.tenureBonus.available,
+            entitled: b.tenureBonus.entitled,
+            consumed: b.tenureBonus.consumed,
+            expired: b.tenureBonus.expired,
+          },
+          carryOver: {
+            available: b.carryOver.available,
+            entitled: b.carryOver.entitled,
+            consumed: b.carryOver.consumed,
+            expired: b.carryOver.expired,
+          },
+          totalUsed: pool.totalConsumed,
+          totalExpired: pool.totalExpired,
+          remaining: pool.available,
+          compensationOwedDays: pool.compensationOwedDays,
+          nextAccrualDate: pool.nextAccrualDate?.toISOString() ?? null,
+          nextExpirationDate: pool.nextExpirationDate?.toISOString() ?? null,
         };
       })
     );

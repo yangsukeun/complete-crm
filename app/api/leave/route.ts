@@ -2,18 +2,14 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import {
-  getAnnualLeaveEntitlement,
-  getCurrentLeaveCalendarYearKst,
-  resolveAnnualLeaveLaborRule,
-} from "@/lib/leave";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import {
   leaveRequestListWhere,
   serializeLeaveRequestForViewer,
   type LeaveRequestWithUser,
 } from "@/lib/leave-request-serialize";
-import { syncLeaveBalanceAnnualTotalIfStale } from "@/lib/leave-balance-sync";
+import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -50,59 +46,42 @@ export async function GET() {
     }
 
     const role = String(session.user.role ?? "").toUpperCase();
-    const year = getCurrentLeaveCalendarYearKst();
     const uid = session.user.id;
+    const year = getCurrentLeaveCalendarYearKst();
 
-    const companyLeaveSelect = {
-      annualLeaveMonthlyMaxUnderOneYear: true,
-      annualLeaveDaysAfterFirstFullYear: true,
-    } as const;
-
-    const [rawRequests, user, balanceFound, companyRow] = await Promise.all([
-      prisma.leaveRequest.findMany({
-        where: leaveRequestListWhere(uid, role),
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              department: true,
-              position: true,
-              currentProject: { select: { name: true, brand: { select: { name: true } } } },
-            },
+    const rawRequests = await prisma.leaveRequest.findMany({
+      where: leaveRequestListWhere(uid, role),
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            department: true,
+            position: true,
+            currentProject: { select: { name: true, brand: { select: { name: true } } } },
           },
         },
-        orderBy: { startDate: "desc" },
-      }),
-      prisma.user.findUnique({
-        where: { id: uid },
-        select: { joinDate: true },
-      }),
-      prisma.leaveBalance.findUnique({
+      },
+      orderBy: { startDate: "desc" },
+    });
+
+    const pool = await calculateLeavePool(uid, new Date());
+
+    let balanceRow: { annualUsed: number; manualDeduction: number; annualCarryOver: number } | null = null;
+    try {
+      balanceRow = await prisma.leaveBalance.findUnique({
         where: { userId_year: { userId: uid, year } },
-      }),
-      prisma.companyInfo.findFirst({
-        orderBy: { updatedAt: "desc" },
-        select: companyLeaveSelect,
-      }),
-    ]);
-
-    const joinDate = user?.joinDate ?? new Date();
-    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
-
-    let balance = balanceFound;
-    if (!balance) {
-      balance = await prisma.leaveBalance.create({
-        data: { userId: uid, year, annualTotal, annualUsed: 0, manualDeduction: 0 },
+        select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
       });
+    } catch {
+      balanceRow = null;
     }
-    const carryOver = balance.annualCarryOver ?? 0;
-    const manualDeduction = balance.manualDeduction ?? 0;
-    await syncLeaveBalanceAnnualTotalIfStale(uid, year, annualTotal, balance);
-    const totalAvailable = annualTotal + carryOver;
-    const remaining = Math.max(0, totalAvailable - balance.annualUsed - manualDeduction);
+    const used = balanceRow?.annualUsed ?? 0;
+    const manualDeduction = balanceRow?.manualDeduction ?? 0;
+    const carryOver = balanceRow?.annualCarryOver ?? 0;
+    const remaining = pool.available;
+    const total = remaining + used + manualDeduction;
 
     const requests = (rawRequests as LeaveRequestWithUser[]).map((row) =>
       serializeLeaveRequestForViewer(row, uid, role)
@@ -112,12 +91,20 @@ export async function GET() {
       requests,
       balance: {
         year,
-        total: totalAvailable,
-        annualTotal,
+        total,
+        annualTotal: pool.totalEntitled,
         carryOver,
-        used: balance.annualUsed,
+        used,
         manualDeduction,
         remaining,
+        available: pool.available,
+        compensationOwedDays: pool.compensationOwedDays,
+        breakdown: pool.breakdown,
+        totalEntitled: pool.totalEntitled,
+        totalConsumed: pool.totalConsumed,
+        totalExpired: pool.totalExpired,
+        nextAccrualDate: pool.nextAccrualDate,
+        nextExpirationDate: pool.nextExpirationDate,
       },
     });
   } catch (e) {
@@ -154,35 +141,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const year = getCurrentLeaveCalendarYearKst();
-    const companyRow = await prisma.companyInfo.findFirst({
-      orderBy: { updatedAt: "desc" },
-      select: {
-        annualLeaveMonthlyMaxUnderOneYear: true,
-        annualLeaveDaysAfterFirstFullYear: true,
-      },
-    });
-    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { joinDate: true },
-    });
-    const joinDate = user?.joinDate ?? new Date();
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
-
-    let balance = await prisma.leaveBalance.findUnique({
-      where: { userId_year: { userId: session.user.id, year } },
-    });
-    if (!balance) {
-      balance = await prisma.leaveBalance.create({
-        data: { userId: session.user.id, year, annualTotal, annualUsed: 0, manualDeduction: 0 },
-      });
-    }
-    const carryOver = balance.annualCarryOver ?? 0;
-    const manualDeduction = balance.manualDeduction ?? 0;
-    const totalAvailable = annualTotal + carryOver;
-    const remaining = totalAvailable - balance.annualUsed - manualDeduction;
-
     let days = 0;
     const type = parsed.data.type;
     if (type === "ANNUAL" || isSickLeaveType(type)) {
@@ -192,11 +150,14 @@ export async function POST(req: Request) {
       days = leaveTypeDays[type] ?? 0;
     }
 
-    if (!isSickLeaveType(type) && days > remaining) {
-      return NextResponse.json(
-        { error: `연차 잔여일(${remaining.toFixed(1)}일)이 부족합니다.` },
-        { status: 400 }
-      );
+    if (!isSickLeaveType(type)) {
+      const pool = await calculateLeavePool(session.user.id, new Date());
+      if (days > pool.available + 1e-6) {
+        return NextResponse.json(
+          { error: `연차 잔여일(${pool.available.toFixed(1)}일)이 부족합니다.` },
+          { status: 400 }
+        );
+      }
     }
 
     const leave = await prisma.leaveRequest.create({

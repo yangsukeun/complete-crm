@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import {
-  getAnnualLeaveEntitlement,
-  getCurrentLeaveCalendarYearKst,
-  resolveAnnualLeaveLaborRule,
-} from "@/lib/leave";
+import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
+import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
 
 /**
- * GET: 관리자 전용 — 해당 직원의 당해 연도 연차 정보 (직원 수정 시 휴가 소진 필드 표시용)
+ * GET: 관리자 전용 — 해당 직원의 연차 풀(근기법 정합)
  */
 export async function GET(
   _req: Request,
@@ -25,27 +23,17 @@ export async function GET(
     }
 
     const { id } = await params;
-    const [user, companyRow] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id },
-        select: { id: true, joinDate: true },
-      }),
-      prisma.companyInfo.findFirst({
-        orderBy: { updatedAt: "desc" },
-        select: {
-          annualLeaveMonthlyMaxUnderOneYear: true,
-          annualLeaveDaysAfterFirstFullYear: true,
-        },
-      }),
-    ]);
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, joinDate: true },
+    });
     if (!user) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const year = getCurrentLeaveCalendarYearKst();
-    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-    const joinDate = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-    const annualTotal = getAnnualLeaveEntitlement(joinDate, year, new Date(), laborRule);
+    await ensureLegacyCarryAccrual(id);
+    const pool = await calculateLeavePool(id, new Date());
     const balance = await prisma.leaveBalance.findUnique({
       where: { userId_year: { userId: id, year } },
       select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
@@ -53,8 +41,9 @@ export async function GET(
     const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const totalAvailable = annualTotal + carryOver;
-    const leaveRemaining = Math.max(0, totalAvailable - annualUsed - manualDeduction);
+    const annualTotal = pool.totalEntitled;
+    const leaveRemaining = pool.available;
+    const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
 
     return NextResponse.json({
       annualTotal,
@@ -63,6 +52,7 @@ export async function GET(
       annualUsed,
       manualDeduction,
       leaveRemaining,
+      pool,
     });
   } catch (e) {
     console.error("GET /api/users/[id]/leave-balance", e);

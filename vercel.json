@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/cleanup-onesignal-subscriptions",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/leave-daily",
+      "schedule": "30 15 * * *"
     }
   ]
 }

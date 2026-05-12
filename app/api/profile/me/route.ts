@@ -4,12 +4,9 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { z } from "zod";
-import {
-  getAnnualLeaveEntitlement,
-  getCurrentLeaveCalendarYearKst,
-  resolveAnnualLeaveLaborRule,
-} from "@/lib/leave";
-import { syncLeaveBalanceAnnualTotalIfStale } from "@/lib/leave-balance-sync";
+import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
+import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 
 export async function GET() {
@@ -117,14 +114,6 @@ export async function GET() {
     }
 
     const year = getCurrentLeaveCalendarYearKst();
-    const companyRow = await prisma.companyInfo.findFirst({
-      orderBy: { updatedAt: "desc" },
-      select: {
-        annualLeaveMonthlyMaxUnderOneYear: true,
-        annualLeaveDaysAfterFirstFullYear: true,
-      },
-    });
-    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
     let balance: {
       annualTotal: number;
       annualUsed: number;
@@ -139,16 +128,14 @@ export async function GET() {
     } catch {
       // leaveBalance 없어도 진행
     }
-    const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-    const annualTotal = getAnnualLeaveEntitlement(joinDateObj, year, new Date(), laborRule);
-    if (balance) {
-      await syncLeaveBalanceAnnualTotalIfStale(session.user.id, year, annualTotal, balance);
-    }
+    await ensureLegacyCarryAccrual(session.user.id);
+    const pool = await calculateLeavePool(session.user.id, new Date());
     const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const totalAvailable = annualTotal + carryOver;
-    const leaveRemaining = Math.max(0, totalAvailable - annualUsed - manualDeduction);
+    const annualTotal = pool.totalEntitled;
+    const leaveRemaining = pool.available;
+    const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
     const joinDateStr =
       user.joinDate instanceof Date
         ? user.joinDate.toISOString().slice(0, 10)
@@ -484,16 +471,8 @@ export async function PATCH(req: Request) {
     }
 
     const year = getCurrentLeaveCalendarYearKst();
-    const companyRow = await prisma.companyInfo.findFirst({
-      orderBy: { updatedAt: "desc" },
-      select: {
-        annualLeaveMonthlyMaxUnderOneYear: true,
-        annualLeaveDaysAfterFirstFullYear: true,
-      },
-    });
-    const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-    const joinDateObj = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-    const entitlement = getAnnualLeaveEntitlement(joinDateObj, year, new Date(), laborRule);
+    const poolBefore = await calculateLeavePool(session.user.id, new Date());
+    const entitlement = poolBefore.totalEntitled;
 
     if (isAdmin && (parsed.data as any).leaveRemaining !== undefined) {
       try {
@@ -556,6 +535,9 @@ export async function PATCH(req: Request) {
       }
     }
 
+    await ensureLegacyCarryAccrual(session.user.id);
+    const pool = await calculateLeavePool(session.user.id, new Date());
+
     let balance: { annualUsed: number; manualDeduction?: number; annualCarryOver?: number } | null = null;
     try {
       balance = await prisma.leaveBalance.findUnique({
@@ -577,8 +559,9 @@ export async function PATCH(req: Request) {
     const carryOver = (balance as { annualCarryOver?: number } | null)?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = (balance as { manualDeduction?: number } | null)?.manualDeduction ?? 0;
-    const totalAvailable = entitlement + carryOver;
-    const leaveRemaining = Math.max(0, totalAvailable - annualUsed - manualDeduction);
+    const annualTotal = pool.totalEntitled;
+    const leaveRemaining = pool.available;
+    const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
 
     const joinDateStr =
       user.joinDate instanceof Date
@@ -588,7 +571,7 @@ export async function PATCH(req: Request) {
       ...user,
       joinDate: joinDateStr,
       leaveRemaining,
-      annualTotal: entitlement,
+      annualTotal,
       annualCarryOver: carryOver,
       totalAvailable,
       annualUsed,

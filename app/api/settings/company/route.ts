@@ -61,6 +61,18 @@ export async function PATCH(req: Request) {
         body.annualLeaveDaysAfterFirstFullYear === null ? null : clampLeaveInt(body.annualLeaveDaysAfterFirstFullYear);
     }
 
+    let useEncouragementEnabled: boolean | undefined;
+    if ("useEncouragementEnabled" in body) {
+      useEncouragementEnabled = Boolean(body.useEncouragementEnabled);
+    }
+    let attendanceThreshold: number | undefined;
+    if ("attendanceThreshold" in body) {
+      const v = body.attendanceThreshold;
+      if (typeof v === "number" && Number.isFinite(v)) {
+        attendanceThreshold = Math.min(1, Math.max(0.01, v));
+      }
+    }
+
     const data: {
       name: string;
       businessNumber: string | null;
@@ -72,6 +84,8 @@ export async function PATCH(req: Request) {
       stampImageUrl: string | null;
       annualLeaveMonthlyMaxUnderOneYear?: number | null;
       annualLeaveDaysAfterFirstFullYear?: number | null;
+      useEncouragementEnabled?: boolean;
+      attendanceThreshold?: number;
       transferExecutorIds?: string | null;
     } = {
       name,
@@ -97,6 +111,12 @@ export async function PATCH(req: Request) {
     if (annualLeaveDaysAfterFirstFullYear !== undefined) {
       data.annualLeaveDaysAfterFirstFullYear = annualLeaveDaysAfterFirstFullYear;
     }
+    if (useEncouragementEnabled !== undefined) {
+      data.useEncouragementEnabled = useEncouragementEnabled;
+    }
+    if (attendanceThreshold !== undefined) {
+      data.attendanceThreshold = attendanceThreshold;
+    }
 
     const existing = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
     const company = existing
@@ -106,6 +126,8 @@ export async function PATCH(req: Request) {
             ...data,
             annualLeaveMonthlyMaxUnderOneYear: data.annualLeaveMonthlyMaxUnderOneYear ?? 11,
             annualLeaveDaysAfterFirstFullYear: data.annualLeaveDaysAfterFirstFullYear ?? 15,
+            useEncouragementEnabled: data.useEncouragementEnabled ?? false,
+            attendanceThreshold: data.attendanceThreshold ?? 0.8,
           },
         });
 

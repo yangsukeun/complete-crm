@@ -3,10 +3,10 @@ import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import {
-  getAnnualLeaveEntitlement,
   getCurrentLeaveCalendarYearKst,
-  resolveAnnualLeaveLaborRule,
 } from "@/lib/leave";
+import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -117,16 +117,9 @@ export async function PATCH(
     const loadLeaveTotals = (): Promise<{ year: number; entitlement: number }> => {
       leaveCalcMemo ??= (async (): Promise<{ year: number; entitlement: number }> => {
         const yr = getCurrentLeaveCalendarYearKst();
-        const companyRow = await prisma.companyInfo.findFirst({
-          orderBy: { updatedAt: "desc" },
-          select: {
-            annualLeaveMonthlyMaxUnderOneYear: true,
-            annualLeaveDaysAfterFirstFullYear: true,
-          },
-        });
-        const laborRule = resolveAnnualLeaveLaborRule(companyRow);
-        const joinDateVal = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
-        const entitlement = getAnnualLeaveEntitlement(joinDateVal, yr, new Date(), laborRule);
+        await ensureLegacyCarryAccrual(id);
+        const pool = await calculateLeavePool(id, new Date());
+        const entitlement = pool.totalEntitled;
         return { year: yr, entitlement };
       })();
       return leaveCalcMemo;
@@ -182,6 +175,8 @@ export async function PATCH(
         console.error("PATCH users/[id] annualCarryOver:", carryErr);
       }
     }
+
+    await ensureLegacyCarryAccrual(id);
 
     revalidateTag("users-list", "max");
 
