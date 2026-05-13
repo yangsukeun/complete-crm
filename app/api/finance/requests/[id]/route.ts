@@ -196,42 +196,65 @@ export async function PATCH(
 
     const now = new Date();
 
-    // 이체대기 → 승인대기/반려 되돌리기: 해당 건 알람 전부 삭제
-    if (current.status === "TEAM_LEAD_APPROVED" && (parsed.data.status === "PENDING" || parsed.data.status === "REJECTED")) {
-      await prisma.paymentRequestAlert.deleteMany({ where: { requestId: id } });
+    /**
+     * 아래 알림/후처리는 "승인 상태 변경"의 부가 작업이므로 실패해도 PATCH 자체는 성공이어야 한다.
+     * (배포 환경에서 스키마 지연/권한/중복 알림 레이스 등으로 예외가 나면 UI는 실패로 뜨지만 DB는 이미 변경됨)
+     */
+    try {
+      // 이체대기 → 승인대기/반려 되돌리기: 해당 건 알람 전부 삭제
+      if (
+        current.status === "TEAM_LEAD_APPROVED" &&
+        (parsed.data.status === "PENDING" || parsed.data.status === "REJECTED")
+      ) {
+        await prisma.paymentRequestAlert.deleteMany({ where: { requestId: id } });
+      }
+    } catch (err) {
+      console.error("[PATCH /api/finance/requests/:id] alert cleanup failed", err);
     }
 
-    // 1차 승인 시: 이체 담당자에게 알람
-    if (canFirstLineApprove && parsed.data.status === "TEAM_LEAD_APPROVED" && transferExecutorIds.length > 0) {
-      for (const userId of transferExecutorIds) {
+    try {
+      // 1차 승인 시: 이체 담당자에게 알람
+      if (canFirstLineApprove && parsed.data.status === "TEAM_LEAD_APPROVED" && transferExecutorIds.length > 0) {
+        for (const userId of transferExecutorIds) {
+          try {
+            await prisma.paymentRequestAlert.create({
+              data: { id: cuidLike(), requestId: id, userId },
+            });
+          } catch (e: unknown) {
+            const err = e as { code?: string };
+            if (err?.code !== "P2002") throw e;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[PATCH /api/finance/requests/:id] alert create for transfer executors failed", err);
+    }
+
+    try {
+      // 이체완료 시: 요청자(담당자)에게 알람
+      if (parsed.data.status === "COMPLETED" && current.requesterId) {
         try {
           await prisma.paymentRequestAlert.create({
-            data: { id: cuidLike(), requestId: id, userId },
+            data: { id: cuidLike(), requestId: id, userId: current.requesterId },
           });
         } catch (e: unknown) {
           const err = e as { code?: string };
           if (err?.code !== "P2002") throw e;
         }
       }
+    } catch (err) {
+      console.error("[PATCH /api/finance/requests/:id] alert create for requester failed", err);
     }
 
-    // 이체완료 시: 요청자(담당자)에게 알람
-    if (parsed.data.status === "COMPLETED" && current.requesterId) {
-      try {
-        await prisma.paymentRequestAlert.create({
-          data: { id: cuidLike(), requestId: id, userId: current.requesterId },
-        });
-      } catch (e: unknown) {
-        const err = e as { code?: string };
-        if (err?.code !== "P2002") throw e;
-      }
+    try {
+      // 처리한 사람 본인 알람 읽음 처리
+      await prisma.paymentRequestAlert.updateMany({
+        where: { requestId: id, userId: session.user.id },
+        data: { readAt: now },
+      });
+    } catch (err) {
+      console.error("[PATCH /api/finance/requests/:id] alert readAt update failed", err);
     }
-
-    // 처리한 사람 본인 알람 읽음 처리
-    await prisma.paymentRequestAlert.updateMany({
-      where: { requestId: id, userId: session.user.id },
-      data: { readAt: now },
-    });
 
     return NextResponse.json({
       id: updated.id,
