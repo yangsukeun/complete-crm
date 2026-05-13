@@ -104,8 +104,9 @@ export async function leaveAccrualSlotPassesAttendance(
 
 /**
  * 입사일 기준 asOf까지 도래한 발생분을 idempotent 생성.
+ * 출근율은 발생 생성에 쓰지 않음(스케줄만 반영). 출근율 판정은 `leaveAccrualSlotPassesAttendance` 참고.
  */
-export async function accrueIfDue(userId: string, asOf: Date = new Date()): Promise<LeaveAccrual[]> {
+export async function ensureAccrualsUpTo(userId: string, asOf: Date = new Date()): Promise<LeaveAccrual[]> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { joinDate: true },
@@ -115,19 +116,20 @@ export async function accrueIfDue(userId: string, asOf: Date = new Date()): Prom
   const joinYmd = toKstYmd(user.joinDate);
   if (!joinYmd) return [];
 
-  const { threshold, annualDays, monthlyCap } = await loadLeaveLaborConfig();
+  const { annualDays, monthlyCap } = await loadLeaveLaborConfig();
   const slots = listLeaveAccrualSlots(user.joinDate, asOf, { monthlyCap, annualDays });
 
   const created: LeaveAccrual[] = [];
-
   for (const slot of slots) {
-    const ok = await leaveAccrualSlotPassesAttendance(userId, joinYmd, threshold, slot);
-    if (!ok) continue;
     const row = await upsertAccrual(userId, slot.type, slot.accrualDateYmd, slot.days, slot.note);
     if (row) created.push(row);
   }
-
   return created;
+}
+
+/** @deprecated 호환용 — `ensureAccrualsUpTo`와 동일 */
+export async function accrueIfDue(userId: string, asOf: Date = new Date()): Promise<LeaveAccrual[]> {
+  return ensureAccrualsUpTo(userId, asOf);
 }
 
 export async function accrueIfDueAllActiveUsers(asOf: Date = new Date()): Promise<number> {

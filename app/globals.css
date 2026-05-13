@@ -265,8 +265,10 @@ html.dark[data-workspace="MY"] {
    Sheet/Dialog 내부 에디터 - 툴바 탈출 허용
    ================================================ */
 
-/* Sheet 컨텐츠 - overflow 허용 */
-[data-state="open"][role="dialog"],
+/* Sheet·Drawer 및 BlockNote가 들어간 Dialog만 overflow visible.
+   전체 [role=dialog]에 적용하면 할일 추가 등 일반 모달의 overflow-hidden이 무시되어 상단이 하얗게 깨짐 */
+[data-state="open"][role="dialog"]:has(.notion-editor-wrapper),
+[data-state="open"][role="dialog"]:has(.bn-editor),
 .sheet-content,
 [vaul-drawer] {
   overflow: visible !important;

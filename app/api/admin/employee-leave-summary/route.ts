@@ -82,7 +82,7 @@ export async function GET() {
             consumed: b.carryOver.consumed,
             expired: b.carryOver.expired,
           },
-          totalUsed: pool.totalConsumed,
+          totalUsed: pool.totalConsumedDaysFromAccruals,
           totalExpired: pool.totalExpired,
           remaining: pool.available,
           compensationOwedDays: pool.compensationOwedDays,

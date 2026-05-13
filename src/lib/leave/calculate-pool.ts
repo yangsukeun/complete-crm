@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import { toKstYmd } from "@/lib/date-kst";
-import { accrueIfDue } from "@/lib/leave/accrue";
+import { ensureAccrualsUpTo } from "@/lib/leave/accrue";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
 import {
   buildLeavePoolFromAccruals,
@@ -11,6 +11,11 @@ import {
 
 export type { LeavePool, LeavePoolBreakdown } from "@/lib/leave/pure-pool";
 
+export type CalculatedLeavePool = LeavePool & {
+  /** 표시용: DB LeaveAccrual.consumedDays 합(버킷별 min(granted, consumed) 합과 다를 수 있음) */
+  totalConsumedDaysFromAccruals: number;
+};
+
 /**
  * LeaveAccrual + 레거시 LeaveBalance(읽기) 기반 연차 풀.
  * @param options.skipAccrue true면 발생 생성 생략(순수 조회·테스트용)
@@ -19,9 +24,9 @@ export async function calculateLeavePool(
   userId: string,
   asOf: Date = new Date(),
   options?: { skipAccrue?: boolean }
-): Promise<LeavePool> {
+): Promise<CalculatedLeavePool> {
   if (!options?.skipAccrue) {
-    await accrueIfDue(userId, asOf);
+    await ensureAccrualsUpTo(userId, asOf);
   }
   await ensureLegacyCarryAccrual(userId);
 
@@ -35,13 +40,14 @@ export async function calculateLeavePool(
     where: { userId },
     orderBy: { accruedAt: "asc" },
   });
+  const totalConsumedDaysFromAccruals = rows.reduce((s, r) => s + r.consumedDays, 0);
 
   const balances = await prisma.leaveBalance.findMany({
     where: { userId },
     select: { annualUsed: true },
   });
   const legacyUsed = balances.reduce((s, b) => s + (b.annualUsed ?? 0), 0);
-  const totalAccrualConsumed = rows.reduce((s, r) => s + r.consumedDays, 0);
+  const totalAccrualConsumed = totalConsumedDaysFromAccruals;
 
   const inputs: AccrualInput[] = rows.map((r) => ({
     type: r.type,
@@ -61,10 +67,11 @@ export async function calculateLeavePool(
     return {
       ...merged,
       available: Math.max(0, merged.available - extraLegacyUsed),
+      totalConsumedDaysFromAccruals,
     };
   }
 
-  return merged;
+  return { ...merged, totalConsumedDaysFromAccruals };
 }
 
 export async function getLeaveAvailableDays(userId: string, asOf?: Date): Promise<number> {

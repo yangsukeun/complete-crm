@@ -6,7 +6,7 @@
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
-import { accrueIfDue, leaveAccrualSlotPassesAttendance, loadLeaveLaborConfig } from "../src/lib/leave/accrue";
+import { accrueIfDue, loadLeaveLaborConfig } from "../src/lib/leave/accrue";
 import { ensureLegacyCarryAccrual } from "../src/lib/leave/legacy-carry-sync";
 import { listLeaveAccrualSlots } from "../src/lib/leave/accrual-schedule";
 import { expiresAtFromAccrualYmd, startOfKstDayFromYmd } from "../src/lib/leave/kst-date";
@@ -56,8 +56,6 @@ async function main() {
 
       for (const slot of slots) {
         if (have.has(key(slot.type, slot.accrualDateYmd))) continue;
-        const ok = await leaveAccrualSlotPassesAttendance(u.id, joinYmd, labor.threshold, slot);
-        if (!ok) continue;
 
         wouldInsert++;
         const label = `${u.name ?? u.email ?? u.id} · ${slot.type} · ${slot.accrualDateYmd} · ${slot.days}일`;
@@ -86,7 +84,7 @@ async function main() {
       }
     } else {
       if (dryRun) {
-        console.log(`[dry-run] accrueIfDue + ensureLegacyCarry: ${u.email ?? u.name ?? u.id}`);
+        console.log(`[dry-run] ensureAccrualsUpTo + ensureLegacyCarry: ${u.email ?? u.name ?? u.id}`);
         continue;
       }
       await accrueIfDue(u.id, asOf);
@@ -102,7 +100,7 @@ async function main() {
   }
 
   if (!dryRun && !missingOnly) {
-    console.log("백필 완료(accrueIfDue 전 사용자). 승인된 휴가 FIFO는 기존 consumedDays를 유지합니다.");
+    console.log("백필 완료(ensureAccrualsUpTo 전 사용자). 승인된 휴가 FIFO는 기존 consumedDays를 유지합니다.");
   }
 }
 

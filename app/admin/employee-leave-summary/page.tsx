@@ -8,7 +8,7 @@ export default async function EmployeeLeaveSummaryPage() {
   const role = String(session.user.role ?? "").toUpperCase();
   if (role !== "EXECUTIVE" && role !== "ADMIN") redirect("/dashboard");
   return (
-    <div className="mx-auto max-w-6xl p-4 md:p-6">
+    <div className="w-full px-4 py-4 md:px-6 md:py-6 xl:px-8">
       <EmployeeLeaveSummaryClient />
     </div>
   );
