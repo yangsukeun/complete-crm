@@ -1,56 +1,55 @@
 import prisma from "@/lib/prisma";
-import { startOfKstDayFromYmd } from "@/lib/leave/kst-date";
 
-const LEGACY_CARRY_YMD = "1900-01-01";
+/** 레거시 동기화용 CARRY_OVER 행 식별자 — 풀 계산에서 제외 */
+export const LEGACY_CARRY_ACCRUAL_YMD = "1900-01-01";
 
 /**
- * LeaveBalance 이월·실사용차감을 DB LeaveAccrual(CARRY_OVER) 1행으로 반영(생성 또는 갱신).
- * FIFO 차감이 실제 accrual id를 갖도록 한다.
+ * 레거시 LeaveBalance → CARRY_OVER(1900-01-01) 행이 남아 있으면,
+ * `manualDeduction` 합만큼 가장 오래된 발생분(FIFO)에 `consumedDays`를 반영한 뒤 행을 삭제합니다.
+ * (풀에는 포함하지 않음 — `calculateLeavePool`에서 동일 키는 필터링)
  */
 export async function ensureLegacyCarryAccrual(userId: string): Promise<void> {
+  const legacy = await prisma.leaveAccrual.findUnique({
+    where: {
+      userId_type_accrualDateYmd: {
+        userId,
+        type: "CARRY_OVER",
+        accrualDateYmd: LEGACY_CARRY_ACCRUAL_YMD,
+      },
+    },
+    select: { id: true },
+  });
+  if (!legacy) return;
+
   const balances = await prisma.leaveBalance.findMany({
     where: { userId },
-    select: { annualCarryOver: true, manualDeduction: true },
+    select: { manualDeduction: true },
   });
-  const legacyCarry = balances.reduce((s, b) => s + (b.annualCarryOver ?? 0), 0);
-  const legacyManual = balances.reduce((s, b) => s + (b.manualDeduction ?? 0), 0);
+  const priorTotal = balances.reduce((s, b) => s + (b.manualDeduction ?? 0), 0);
 
-  const existing = await prisma.leaveAccrual.findUnique({
-    where: { userId_type_accrualDateYmd: { userId, type: "CARRY_OVER", accrualDateYmd: LEGACY_CARRY_YMD } },
-  });
-
-  const days = legacyCarry + legacyManual;
-  if (days <= 0) {
-    if (existing) {
-      await prisma.leaveAccrual.delete({ where: { id: existing.id } });
-    }
-    return;
-  }
-
-  const accruedAt = startOfKstDayFromYmd(LEGACY_CARRY_YMD);
-  const expiresAt = new Date("2099-12-31T00:00:00+09:00");
-
-  if (existing) {
-    await prisma.leaveAccrual.update({
-      where: { id: existing.id },
-      data: {
-        days,
-        consumedDays: legacyManual,
+  await prisma.$transaction(async (tx) => {
+    const accruals = await tx.leaveAccrual.findMany({
+      where: {
+        userId,
+        type: { not: "CARRY_OVER" },
+        isExpired: false,
       },
+      orderBy: [{ accruedAt: "asc" }, { id: "asc" }],
     });
-    return;
-  }
 
-  await prisma.leaveAccrual.create({
-    data: {
-      userId,
-      type: "CARRY_OVER",
-      days,
-      accrualDateYmd: LEGACY_CARRY_YMD,
-      accruedAt,
-      expiresAt,
-      consumedDays: legacyManual,
-      note: "레거시 LeaveBalance 이월+실사용차감",
-    },
+    let left = priorTotal;
+    for (const a of accruals) {
+      if (left <= 1e-9) break;
+      const room = Math.max(0, a.days - a.consumedDays);
+      if (room <= 1e-9) continue;
+      const take = Math.min(room, left);
+      await tx.leaveAccrual.update({
+        where: { id: a.id },
+        data: { consumedDays: a.consumedDays + take },
+      });
+      left -= take;
+    }
+
+    await tx.leaveAccrual.delete({ where: { id: legacy.id } });
   });
 }

@@ -5,6 +5,13 @@ import { getCurrentLeaveCalendarYearKst, completedFullMonthsSinceJoinKst } from 
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { toKstYmd } from "@/lib/date-kst";
 
+type Bd = {
+  available: number;
+  entitled: number;
+  consumed: number;
+  expired: number;
+};
+
 /**
  * 대표·시스템 관리자: 전 직원 연차 풀(근기법 정합) 한눈에 조회.
  */
@@ -47,6 +54,13 @@ export async function GET() {
         const pool = await calculateLeavePool(u.id, asOf);
         const b = pool.breakdown;
 
+        const bd = (x: typeof b.monthlyUnderOneYear): Bd => ({
+          available: x.available,
+          entitled: x.entitled,
+          consumed: x.consumed,
+          expired: x.expired,
+        });
+
         return {
           userId: u.id,
           name: u.name,
@@ -58,36 +72,19 @@ export async function GET() {
           year,
           tenureYears,
           tenureExtraMonths,
-          monthlyUnderOneYear: {
-            available: b.monthlyUnderOneYear.available,
-            entitled: b.monthlyUnderOneYear.entitled,
-            consumed: b.monthlyUnderOneYear.consumed,
-            expired: b.monthlyUnderOneYear.expired,
-          },
-          annualAfterOneYear: {
-            available: b.annualAfterOneYear.available,
-            entitled: b.annualAfterOneYear.entitled,
-            consumed: b.annualAfterOneYear.consumed,
-            expired: b.annualAfterOneYear.expired,
-          },
-          tenureBonus: {
-            available: b.tenureBonus.available,
-            entitled: b.tenureBonus.entitled,
-            consumed: b.tenureBonus.consumed,
-            expired: b.tenureBonus.expired,
-          },
-          carryOver: {
-            available: b.carryOver.available,
-            entitled: b.carryOver.entitled,
-            consumed: b.carryOver.consumed,
-            expired: b.carryOver.expired,
-          },
+          monthlyUnderOneYear: bd(b.monthlyUnderOneYear),
+          annualAfterOneYear: bd(b.annualAfterOneYear),
+          tenureBonus: bd(b.tenureBonus),
+          priorCrmUsageDays: pool.priorCrmUsageDays,
+          annualCarryOverDaysReported: pool.annualCarryOverDaysReported,
           totalUsed: pool.totalConsumedDaysFromAccruals,
           totalExpired: pool.totalExpired,
           remaining: pool.available,
           compensationOwedDays: pool.compensationOwedDays,
           nextAccrualDate: pool.nextAccrualDate?.toISOString() ?? null,
           nextExpirationDate: pool.nextExpirationDate?.toISOString() ?? null,
+          poolMathConsistent: pool.poolMathConsistent,
+          accrualLines: pool.accrualLines,
         };
       })
     );
