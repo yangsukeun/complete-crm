@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { fifoAllocate, type AccrualRow } from "@/lib/leave/fifo";
+import { consumeLeaveDays } from "@/lib/leave/consume-leave-days";
 
 export async function applyApprovedLeaveConsumption(
   tx: Prisma.TransactionClient,
@@ -8,32 +8,7 @@ export async function applyApprovedLeaveConsumption(
   days: number,
   asOf: Date
 ): Promise<void> {
-  const rows = await tx.leaveAccrual.findMany({
-    where: { userId },
-    orderBy: { accruedAt: "asc" },
-    select: {
-      id: true,
-      type: true,
-      days: true,
-      consumedDays: true,
-      accruedAt: true,
-      expiresAt: true,
-      isExpired: true,
-      compensationOwed: true,
-    },
-  });
-
-  const alloc = fifoAllocate(rows as AccrualRow[], days, asOf);
-  if (!alloc) {
-    throw new Error("LEAVE_POOL_INSUFFICIENT");
-  }
-
-  for (const a of alloc) {
-    await tx.leaveAccrual.update({
-      where: { id: a.accrualId },
-      data: { consumedDays: { increment: a.days } },
-    });
-  }
+  const alloc = await consumeLeaveDays(tx, userId, days, asOf);
 
   await tx.leaveRequest.update({
     where: { id: leaveRequestId },

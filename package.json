@@ -18,6 +18,7 @@
     "db:seed": "prisma db seed",
     "db:backfill-notifications": "tsx scripts/backfill-notification-related.ts",
     "db:backfill-leave-accruals": "tsx scripts/backfill-leave-accruals.ts",
+    "db:backfill-accruals": "tsx scripts/run-accrual-backfill.ts",
     "test:leave": "vitest run src/lib/leave tests/leave-backfill.test.ts",
     "check-user": "tsx scripts/check-user.ts",
     "check-db": "tsx scripts/check-db-connection.ts",

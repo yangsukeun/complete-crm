@@ -6,7 +6,8 @@
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
-import { accrueIfDue, loadLeaveLaborConfig } from "../src/lib/leave/accrue";
+import { accrueIfDue } from "../src/lib/leave/accrue";
+import { loadLeaveLaborConfig } from "../src/lib/leave/labor-config";
 import { ensureLegacyCarryAccrual } from "../src/lib/leave/legacy-carry-sync";
 import { listLeaveAccrualSlots } from "../src/lib/leave/accrual-schedule";
 import { expiresAtFromAccrualYmd, startOfKstDayFromYmd } from "../src/lib/leave/kst-date";

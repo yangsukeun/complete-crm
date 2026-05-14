@@ -1,4 +1,3 @@
-import "server-only";
 import { PrismaClient } from "@prisma/client";
 
 // Vercel/Edge 등에서 globalThis가 null일 수 있어 .prisma 접근 시 TypeError 방지

@@ -16,7 +16,11 @@ export function fifoAllocate(accruals: AccrualRow[], amount: number, asOf: Date)
   const sorted = accruals
     .filter((r) => !r.isExpired && !isExpiredByAsOf(r.expiresAt, asOf))
     .slice()
-    .sort((a, b) => a.accruedAt.getTime() - b.accruedAt.getTime());
+    .sort((a, b) => {
+      const t = a.accruedAt.getTime() - b.accruedAt.getTime();
+      if (t !== 0) return t;
+      return a.id.localeCompare(b.id);
+    });
 
   const out: FifoAllocation[] = [];
   let left = amount;

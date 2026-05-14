@@ -71,7 +71,7 @@ export function EmployeeLeaveSummaryClient() {
   });
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeadline
           title="직원 연차·월차 현황"
@@ -95,24 +95,40 @@ export function EmployeeLeaveSummaryClient() {
           <p className="text-muted-foreground text-sm">
             기준 연도: <strong>{data.year}</strong>년 · 직원 {data.rows.length}명
           </p>
-          <div className="rounded-lg border shadow-sm">
-            <Table className="w-full min-w-[1200px] text-sm xl:min-w-0 xl:table-fixed">
+          <div className="w-full rounded-lg border shadow-sm">
+            <Table className="w-full min-w-[1500px] table-fixed border-collapse text-sm">
+              <colgroup>
+                <col className="w-[70px]" />
+                <col className="w-[180px]" />
+                <col className="w-[140px]" />
+                <col className="w-[90px]" />
+                <col className="w-[100px]" />
+                <col className="w-[80px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[80px]" />
+                <col className="w-[80px]" />
+                <col className="w-[70px]" />
+                <col className="w-[70px]" />
+                <col className="w-[70px]" />
+                <col className="w-[80px]" />
+              </colgroup>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[7%]">이름</TableHead>
-                  <TableHead className="w-[16%] min-w-[10rem]">이메일</TableHead>
-                  <TableHead className="w-[11%]">부서 / 직책</TableHead>
-                  <TableHead className="w-[7%]">역할</TableHead>
-                  <TableHead className="w-[7%]">입사일</TableHead>
-                  <TableHead className="w-[6%] text-right">근속</TableHead>
-                  <TableHead className="w-[7%] text-right">1년차월차</TableHead>
-                  <TableHead className="w-[7%] text-right">정규연차</TableHead>
-                  <TableHead className="hidden w-[7%] text-right xl:table-cell">근속가산</TableHead>
-                  <TableHead className="hidden w-[6%] text-right xl:table-cell">이월</TableHead>
-                  <TableHead className="w-[5%] text-right">사용계</TableHead>
-                  <TableHead className="w-[5%] text-right">소멸계</TableHead>
-                  <TableHead className="w-[5%] text-right font-semibold">잔여</TableHead>
-                  <TableHead className="w-[5%] text-right">수당대상</TableHead>
+                  <TableHead>이름</TableHead>
+                  <TableHead>이메일</TableHead>
+                  <TableHead>부서 / 직책</TableHead>
+                  <TableHead>역할</TableHead>
+                  <TableHead>입사일</TableHead>
+                  <TableHead className="text-right">근속</TableHead>
+                  <TableHead className="text-right">1년차월차</TableHead>
+                  <TableHead className="text-right">정규연차</TableHead>
+                  <TableHead className="text-right">근속가산</TableHead>
+                  <TableHead className="text-right">이월</TableHead>
+                  <TableHead className="text-right">사용계</TableHead>
+                  <TableHead className="text-right">소멸계</TableHead>
+                  <TableHead className="text-right font-semibold">잔여</TableHead>
+                  <TableHead className="text-right">수당대상</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -152,13 +168,13 @@ export function EmployeeLeaveSummaryClient() {
                       {fmtPair(r.annualAfterOneYear)}
                     </TableCell>
                     <TableCell
-                      className="hidden text-right tabular-nums text-sm xl:table-cell"
+                      className="text-right tabular-nums text-sm"
                       title={hoverDetail("60조④ 근속가산", r.tenureBonus, r.nextExpirationDate, r.nextAccrualDate)}
                     >
                       {fmtPair(r.tenureBonus)}
                     </TableCell>
                     <TableCell
-                      className="hidden text-right tabular-nums text-sm xl:table-cell"
+                      className="text-right tabular-nums text-sm"
                       title={hoverDetail("이월·실사용차감", r.carryOver, r.nextExpirationDate, r.nextAccrualDate)}
                     >
                       {fmtPair(r.carryOver)}
