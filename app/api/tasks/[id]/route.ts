@@ -953,17 +953,13 @@ export async function PATCH(
       }
     }
 
-    // 본문 @멘션: 본문이 실제로 바뀐 저장마다 현재 멘션된 전원에게 알림(본인 제외).
-    // Notification은 수신자 userId로만 저장되므로, 멘션 당시 수신자가 로그아웃이어도 이후 로그인 시 /notifications 에서 동일하게 조회됨.
+    // 본문 @멘션: 이번 저장에서 새로 추가된 멘션만 알림(자동 저장·본문 수정 시 기존 멘션 재알림 방지).
     if (data.description !== undefined) {
       const prev = new Set(extractMentionedUserIdsFromTaskDescription(existing.description));
       const nextList = extractMentionedUserIdsFromTaskDescription(data.description);
       const nextUnique = [...new Set(nextList)];
       const descChanged = (data.description ?? null) !== (existing.description ?? null);
-      /** 저장할 때마다 알림: 본문 변경 시 멘션된 모든 사용자(작성자 제외) */
-      const toNotifyRaw = descChanged
-        ? nextUnique.filter((uid) => uid !== session.user.id)
-        : [];
+      const toNotifyRaw = nextUnique.filter((uid) => uid !== session.user.id && !prev.has(uid));
       /** FK·무결성: User 테이블에 없는 id는 알림 생성 스킵 (로그만) */
       let toNotify = toNotifyRaw;
       if (toNotifyRaw.length > 0) {

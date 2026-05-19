@@ -136,16 +136,24 @@ export async function markChatNotificationsRead(userId: string, chatId: string):
   return result.count;
 }
 
+/** 동일 링크·미읽음 알림을 갱신만 하고 푸시는 다시 보내지 않음 (자동 저장·중복 POST 방지) */
+const DEDUP_UNREAD_BY_LINK_TYPES: NotificationTypeEnum[] = [
+  "CHAT_MESSAGE",
+  "BOARD_MENTION",
+  "TASK_BODY_MENTION",
+];
+
 export async function createNotificationWithOptions(input: CreateNotificationInput): Promise<void> {
   const { userId, type, message, link = "", actorId = null, pushTitle } = input;
   const priority: NotificationPriority = input.priority ?? DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
 
   let persisted = false;
   let notificationId: string | null = null;
+  let mergedExistingUnread = false;
   try {
-    if (type === "CHAT_MESSAGE" && link) {
+    if (link && DEDUP_UNREAD_BY_LINK_TYPES.includes(type)) {
       const existing = await prisma.notification.findFirst({
-        where: { userId, type: "CHAT_MESSAGE", link, isRead: false },
+        where: { userId, type, link, isRead: false },
       });
       if (existing) {
         await prisma.notification.update({
@@ -154,6 +162,7 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
         });
         persisted = true;
         notificationId = existing.id;
+        mergedExistingUnread = true;
       } else {
         const created = await prisma.notification.create({
           data: { userId, type, message, link },
@@ -177,8 +186,11 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
   if (!persisted) return;
 
   /** 푸시: high/medium 이고 본인이 행한 알림(actor === 수신자)이 아닐 때 (수동 발송과 동일하게 CRM 이벤트도 전송) */
+  const skipPushOnMerge = mergedExistingUnread && type !== "CHAT_MESSAGE";
   const shouldSendPush =
-    (priority === "high" || priority === "medium") && (actorId == null || actorId !== userId);
+    !skipPushOnMerge &&
+    (priority === "high" || priority === "medium") &&
+    (actorId == null || actorId !== userId);
 
   if (!shouldSendPush) {
     console.log("[Notification→push] 스킵 (푸시 미발송)", {
@@ -226,7 +238,6 @@ export async function sendDigestToUser(input: {
 
 /**
  * 업무 본문 @멘션 알림. DB에 TASK_BODY_MENTION enum이 없으면 BOARD_MENTION으로 폴백(마이그레이션 전 배포 대비).
- * 수신자(userId) 기준으로 Notification 행만 생성하므로, 멘션 시점에 해당 사용자가 로그아웃이어도 이후 로그인하면 목록에 그대로 나온다.
  */
 export async function createTaskBodyMentionNotification(input: {
   userId: string;
@@ -235,60 +246,25 @@ export async function createTaskBodyMentionNotification(input: {
   actorId: string | null;
 }): Promise<void> {
   const { userId, message, link = "", actorId } = input;
-  const priority: NotificationPriority = DEFAULT_PRIORITY_BY_TYPE.TASK_BODY_MENTION;
-  let inserted = false;
-  let notificationId: string | null = null;
   try {
-    const created = await prisma.notification.create({
-      data: { userId, type: "TASK_BODY_MENTION", message, link },
-      select: { id: true },
+    await createNotificationWithOptions({
+      userId,
+      type: "TASK_BODY_MENTION",
+      message,
+      link,
+      actorId,
     });
-    inserted = true;
-    notificationId = created.id;
     if (process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1") {
-      console.info("[Notification] 업무 본문 호출 알림 저장됨 (TASK_BODY_MENTION)", { userId });
+      console.info("[Notification] 업무 본문 호출 알림 (TASK_BODY_MENTION)", { userId });
     }
   } catch (e) {
-    console.warn("[Notification] TASK_BODY_MENTION 저장 실패 → BOARD_MENTION 시도(DB enum/마이그레이션 확인):", e);
-    try {
-      const created = await prisma.notification.create({
-        data: { userId, type: "BOARD_MENTION", message, link },
-        select: { id: true },
-      });
-      inserted = true;
-      notificationId = created.id;
-      if (process.env.NODE_ENV === "development" || process.env.DEBUG_TASK_MENTION === "1") {
-        console.info("[Notification] 업무 본문 호출 알림 저장됨 (BOARD_MENTION 폴백)", { userId });
-      }
-    } catch (e2) {
-      console.error("[Notification] 멘션 알림(DB) 생성 실패:", e2);
-    }
-  }
-  const shouldSendPushMention =
-    inserted &&
-    (priority === "high" || priority === "medium") &&
-    actorId != null &&
-    actorId !== userId;
-
-  if (!shouldSendPushMention) {
-    console.log("[Notification→push] (멘션) 스킵", {
+    console.warn("[Notification] TASK_BODY_MENTION 실패 → BOARD_MENTION 폴백:", e);
+    await createNotificationWithOptions({
       userId,
-      inserted,
-      priority,
-      actorId: actorId ?? null,
-    });
-  } else {
-    console.log("[Notification→push] (멘션) sendPushToUser", { userId, actorId });
-  }
-
-  if (shouldSendPushMention) {
-    await sendPushToUser({
-      userId,
-      title: "새 알림",
+      type: "BOARD_MENTION",
       message,
-      url: link || undefined,
-      priority,
-      notificationDbId: notificationId ?? undefined,
+      link,
+      actorId,
     });
   }
 }
