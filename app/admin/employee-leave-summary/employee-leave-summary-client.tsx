@@ -319,7 +319,7 @@ export function EmployeeLeaveSummaryClient() {
                   <TableRow key={r.userId}>
                     <TableCell
                       className="cursor-help align-top"
-                      title={r.email ? `이메일: ${r.email}` : undefined}
+                      title={r.email || undefined}
                     >
                       <div className="font-medium">{r.name}</div>
                     </TableCell>
