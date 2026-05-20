@@ -252,7 +252,19 @@ export function EmployeeLeaveSummaryClient() {
             기준 연도: <strong>{data.year}</strong>년 · 직원 {data.rows.length}명
           </p>
           <div className="w-full rounded-lg border shadow-sm">
-            <Table className="w-full min-w-[920px] text-sm">
+            <Table className="w-full min-w-[880px] table-fixed text-sm">
+              <colgroup>
+                <col style={{ width: 90 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 80 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 48 }} />
+              </colgroup>
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[7rem]">이름</TableHead>
@@ -288,11 +300,8 @@ export function EmployeeLeaveSummaryClient() {
               <TableBody>
                 {data.rows.map((r) => (
                   <TableRow key={r.userId}>
-                    <TableCell className="align-top">
+                    <TableCell className="cursor-help align-top" title={r.email}>
                       <div className="font-medium">{r.name}</div>
-                      <div className="text-muted-foreground max-w-[10rem] truncate text-xs" title={r.email}>
-                        {r.email}
-                      </div>
                     </TableCell>
                     <TableCell className="max-w-[11rem] whitespace-normal align-top text-sm">
                       {[r.department, r.position].filter(Boolean).join(" · ") || "—"}

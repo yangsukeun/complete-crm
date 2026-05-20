@@ -1,7 +1,8 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { toKstYmd } from "@/lib/date-kst";
-import { fifoAllocate, type AccrualRow } from "@/lib/leave/fifo";
+import { ensureBalanceCarryAccrual } from "@/lib/leave/ensure-carry-accrual";
+import { fifoAllocate, type FifoAllocation, type AccrualRow } from "@/lib/leave/fifo";
 import { LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 import { leaveRequestDays, isSickLeaveType } from "@/lib/leave/leave-request-days";
 
@@ -49,8 +50,8 @@ async function applyFifo(
   dryRun: boolean,
   log: ReapplyLogLine[],
   label: string
-): Promise<number> {
-  if (days <= 1e-9) return 0;
+): Promise<FifoAllocation[] | null> {
+  if (days <= 1e-9) return [];
   const rows = await tx.leaveAccrual.findMany({
     where: { userId, isExpired: false },
     orderBy: [{ accruedAt: "asc" }, { id: "asc" }],
@@ -82,7 +83,7 @@ async function applyFifo(
   const alloc = fifoAllocate(accruals, days, asOf);
   if (!alloc) {
     log.push(`⚠ ${label}: FIFO 부족 ${days}일`);
-    return 0;
+    return null;
   }
   for (const a of alloc) {
     const row = accruals.find((r) => r.id === a.accrualId);
@@ -95,7 +96,7 @@ async function applyFifo(
       row.consumedDays += a.days;
     }
   }
-  return alloc.reduce((s, x) => s + x.days, 0);
+  return alloc;
 }
 
 async function applyStoredAllocations(
@@ -142,6 +143,10 @@ export async function reapplyLeaveConsumptionForUser(
       where: { userId },
       data: { consumedDays: 0 },
     });
+    await prisma.leaveRequest.updateMany({
+      where: { userId, status: "APPROVED" },
+      data: { accrualAllocations: Prisma.JsonNull },
+    });
     await prisma.leaveAccrual.deleteMany({
       where: {
         userId,
@@ -149,6 +154,7 @@ export async function reapplyLeaveConsumptionForUser(
         accrualDateYmd: LEGACY_CARRY_ACCRUAL_YMD,
       },
     });
+    await ensureBalanceCarryAccrual(userId);
   } else {
     log.push("[dry-run] consumedDays→0, 레거시 CARRY 삭제 생략");
   }
@@ -161,8 +167,8 @@ export async function reapplyLeaveConsumptionForUser(
 
   const run = async (tx: Prisma.TransactionClient) => {
     if (priorTotal > 1e-6) {
-      log.push(`이전 사용분(CRM 전) ${priorTotal}일`);
-      await applyFifo(tx, userId, priorTotal, new Date("1970-01-01"), dryRun, log, "PRIOR");
+      log.push(`이전 사용분(CRM 전) ${priorTotal}일 (FIFO 기준일 ${asOfYmd})`);
+      await applyFifo(tx, userId, priorTotal, asOf, dryRun, log, "PRIOR");
     }
 
     const requests = await tx.leaveRequest.findMany({
@@ -192,7 +198,13 @@ export async function reapplyLeaveConsumptionForUser(
         );
       } else {
         log.push(`승인 ${r.startDate.toISOString().slice(0, 10)} ${days}일 (FIFO)`);
-        await applyFifo(tx, userId, days, r.startDate, dryRun, log, `LeaveRequest:${r.id.slice(0, 8)}`);
+        const alloc = await applyFifo(tx, userId, days, r.startDate, dryRun, log, `LeaveRequest:${r.id.slice(0, 8)}`);
+        if (!dryRun && alloc && alloc.length > 0) {
+          await tx.leaveRequest.update({
+            where: { id: r.id },
+            data: { accrualAllocations: alloc as unknown as Prisma.InputJsonValue },
+          });
+        }
       }
     }
   };

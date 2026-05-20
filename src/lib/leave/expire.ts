@@ -2,6 +2,8 @@ import prisma from "@/lib/prisma";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { startOfKstDay } from "@/lib/leave/kst-date";
 
+export { markExpiredAccrualsPlain } from "@/lib/leave/expire-plain";
+
 /**
  * 만료 도래분 처리. useEncouragementEnabled=false 이고 잔여가 있으면 compensationOwed + 임원 알림.
  */

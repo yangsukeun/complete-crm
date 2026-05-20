@@ -37,6 +37,10 @@
       "schedule": "30 15 * * *"
     },
     {
+      "path": "/api/cron/expire-leaves",
+      "schedule": "0 16 * * *"
+    },
+    {
       "path": "/api/cron/revoke-drive-preview-permissions",
       "schedule": "15 * * * *"
     }

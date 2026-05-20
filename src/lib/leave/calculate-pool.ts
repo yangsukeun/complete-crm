@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { toKstYmd } from "@/lib/date-kst";
 import { ensureAccrualsUpTo } from "@/lib/leave/accrue";
 import { ensureApprovedLeavesConsumedUpTo } from "@/lib/leave/ensure-approved-consumption";
+import { ensureBalanceCarryAccrual } from "@/lib/leave/ensure-carry-accrual";
 import { ensureLegacyCarryAccrual, LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 import {
   buildLeavePoolFromAccruals,
@@ -84,6 +85,7 @@ export async function calculateLeavePool(
     await ensureAccrualsUpTo(userId, asOf);
   }
   await ensureLegacyCarryAccrual(userId);
+  await ensureBalanceCarryAccrual(userId);
   if (!options?.skipAccrue) {
     await ensureApprovedLeavesConsumedUpTo(userId, asOf);
   }
