@@ -49,6 +49,7 @@ type Row = {
   monthlyUnderOneYear: Bd;
   annualAfterOneYear: Bd;
   tenureBonus: Bd;
+  carryOver: Bd;
   priorCrmUsageDays: number;
   annualCarryOverDaysReported: number;
   totalUsed: number;
@@ -60,6 +61,17 @@ type Row = {
   poolMathConsistent: boolean;
   accrualLines: AccrualLinesByBucket;
 };
+
+const ROLE_LABEL: Record<string, string> = {
+  EXECUTIVE: "대표",
+  ADMIN: "관리자",
+  TEAM_LEAD: "팀장",
+  USER: "직원",
+};
+
+function roleLabel(role: string): string {
+  return ROLE_LABEL[role.toUpperCase()] ?? role;
+}
 
 type Api = { year: number; rows: Row[] };
 
@@ -252,24 +264,30 @@ export function EmployeeLeaveSummaryClient() {
             기준 연도: <strong>{data.year}</strong>년 · 직원 {data.rows.length}명
           </p>
           <div className="w-full rounded-lg border shadow-sm">
-            <Table className="w-full min-w-[880px] table-fixed text-sm">
+            <Table className="w-full max-w-[1280px] table-fixed text-sm">
               <colgroup>
                 <col style={{ width: 90 }} />
                 <col style={{ width: 180 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 110 }} />
                 <col style={{ width: 90 }} />
                 <col style={{ width: 100 }} />
                 <col style={{ width: 100 }} />
                 <col style={{ width: 90 }} />
                 <col style={{ width: 100 }} />
                 <col style={{ width: 80 }} />
+                <col style={{ width: 80 }} />
+                <col style={{ width: 80 }} />
                 <col style={{ width: 90 }} />
-                <col style={{ width: 48 }} />
+                <col style={{ width: 40 }} />
               </colgroup>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[7rem]">이름</TableHead>
-                  <TableHead className="min-w-[8rem]">부서 / 직책</TableHead>
-                  <TableHead className="w-[5.5rem] text-right">근속</TableHead>
+                  <TableHead>이름</TableHead>
+                  <TableHead>부서 / 직책</TableHead>
+                  <TableHead>역할</TableHead>
+                  <TableHead>입사일</TableHead>
+                  <TableHead className="text-right">근속</TableHead>
                   <TableHead className="text-right">
                     1년차 월차
                     <div className="text-muted-foreground font-normal">(월별 1일)</div>
@@ -283,33 +301,34 @@ export function EmployeeLeaveSummaryClient() {
                     <div className="text-muted-foreground font-normal">(3년+)</div>
                   </TableHead>
                   <TableHead className="text-right">
-                    이전 사용분
-                    <div className="text-muted-foreground font-normal">(CRM 전)</div>
+                    이월
+                    <div className="text-muted-foreground font-normal">(CARRY)</div>
                   </TableHead>
-                  <TableHead className="text-right font-semibold">
-                    사용 가능 잔여
-                    <div className="text-muted-foreground font-normal">(일)</div>
-                  </TableHead>
+                  <TableHead className="text-right">사용계</TableHead>
+                  <TableHead className="text-right">소멸계</TableHead>
+                  <TableHead className="text-right font-semibold">잔여</TableHead>
                   <TableHead className="text-right">
-                    보상 대상
+                    수당대상
                     <div className="text-muted-foreground font-normal">(만료)</div>
                   </TableHead>
-                  <TableHead className="w-[3rem] text-center">검증</TableHead>
+                  <TableHead className="text-center">검증</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.rows.map((r) => (
                   <TableRow key={r.userId}>
-                    <TableCell className="cursor-help align-top" title={r.email}>
+                    <TableCell
+                      className="cursor-help align-top"
+                      title={r.email ? `이메일: ${r.email}` : undefined}
+                    >
                       <div className="font-medium">{r.name}</div>
                     </TableCell>
-                    <TableCell className="max-w-[11rem] whitespace-normal align-top text-sm">
+                    <TableCell className="whitespace-normal align-top text-sm">
                       {[r.department, r.position].filter(Boolean).join(" · ") || "—"}
                     </TableCell>
-                    <TableCell
-                      className="text-right text-sm tabular-nums align-top"
-                      title={`입사 ${r.joinDate.slice(0, 10)} · ${r.role}`}
-                    >
+                    <TableCell className="align-top text-sm">{roleLabel(r.role)}</TableCell>
+                    <TableCell className="tabular-nums align-top text-sm">{r.joinDate.slice(0, 10)}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums align-top">
                       {r.tenureYears}년{r.tenureExtraMonths > 0 ? ` ${r.tenureExtraMonths}개월` : ""}
                     </TableCell>
                     <TableCell className="align-top">
@@ -336,8 +355,31 @@ export function EmployeeLeaveSummaryClient() {
                         lines={r.accrualLines.tenureBonus}
                       />
                     </TableCell>
-                    <TableCell className="align-top text-right">
-                      <PriorUsageCell days={r.priorCrmUsageDays} />
+                    <TableCell className="align-top">
+                      <BucketHoverCell
+                        label="이월 (CARRY_OVER)"
+                        employeeName={r.name}
+                        b={r.carryOver ?? { available: 0, entitled: 0, consumed: 0, expired: 0 }}
+                        lines={[]}
+                        extraFooter={
+                          r.annualCarryOverDaysReported > 0.0001
+                            ? `LeaveBalance 표기 이월: ${fmt1(r.annualCarryOverDaysReported)}일`
+                            : undefined
+                        }
+                      />
+                    </TableCell>
+                    <TableCell
+                      className="text-right tabular-nums align-top text-sm"
+                      title={
+                        r.priorCrmUsageDays > 0.0001
+                          ? `이전 사용분(CRM 전) ${fmt1(r.priorCrmUsageDays)}일 포함 안 됨`
+                          : undefined
+                      }
+                    >
+                      {fmt1(r.totalUsed)}일
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums align-top text-sm">
+                      {fmt1(r.totalExpired)}일
                     </TableCell>
                     <TableCell className="align-top">
                       <RowTotalsHover employeeName={r.name} r={r} />

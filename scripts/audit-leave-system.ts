@@ -108,15 +108,72 @@ async function runAudit(write: (line: string) => void) {
       }
     }
 
-    // === 검사 2: 1년 미만 CARRY_OVER LeaveAccrual ===
-    if (monthsWorked < 12 && legacyCarry.length > 0) {
-      const d = legacyCarry.reduce((s, a) => s + a.days, 0);
-      report(
-        "ERROR",
-        "1년미만_레거시이월행",
-        u,
-        `CARRY_OVER(1900) ${legacyCarry.length}건 days=${d} — 1년 미만 이월 데이터 오류 가능`
-      );
+    const manualDedTotal = u.leaveBalances.reduce((s, b) => s + (b.manualDeduction ?? 0), 0);
+
+    // === 검사 2: 레거시 CARRY(1900) — 의도된 prior/이월 vs 잔재 ===
+    for (const lc of legacyCarry) {
+      if (lc.isExpired) continue;
+      const remaining = lc.days - lc.consumedDays;
+      const matchesPrior =
+        manualDedTotal > 0.01 &&
+        Math.abs(lc.days - manualDedTotal) < 0.01 &&
+        Math.abs(lc.consumedDays - manualDedTotal) < 0.01;
+      const priorFullyConsumed =
+        manualDedTotal > 0.01 &&
+        Math.abs(lc.days - manualDedTotal) < 0.01 &&
+        remaining <= 0.001;
+
+      if (monthsWorked < 12 && matchesPrior) {
+        report(
+          "INFO",
+          "레거시CARRY_의도된이전사용분",
+          u,
+          `days=${lc.days} consumed=${lc.consumedDays} (manualDeduction=${manualDedTotal}, 정상)`
+        );
+        continue;
+      }
+      if (monthsWorked < 12 && priorFullyConsumed) {
+        report(
+          "INFO",
+          "레거시CARRY_의도된이전사용분",
+          u,
+          `days=${lc.days} consumed=${lc.consumedDays} (1년 미만 prior 매핑)`
+        );
+        continue;
+      }
+      if (monthsWorked < 12) {
+        report(
+          "ERROR",
+          "1년미만_레거시이월행",
+          u,
+          `CARRY_OVER(1900) days=${lc.days} consumed=${lc.consumedDays} manual=${manualDedTotal}`
+        );
+        continue;
+      }
+      if (monthsWorked >= 12 && remaining > 0.001) {
+        report(
+          "INFO",
+          "레거시CARRY_정상이월",
+          u,
+          `days=${lc.days} 잔여=${remaining.toFixed(2)} (사장님 확인 권장)`
+        );
+        continue;
+      }
+      if (remaining <= 0.001) {
+        report(
+          "WARN",
+          "레거시CARRY_잔존",
+          u,
+          `days=${lc.days} consumed=${lc.consumedDays} 잔여=0 (cleanup-legacy-carry 대상)`
+        );
+      } else {
+        report(
+          "WARN",
+          "레거시CARRY_잔존",
+          u,
+          `days=${lc.days} consumed=${lc.consumedDays} 잔여=${remaining.toFixed(2)}`
+        );
+      }
     }
 
     if (monthsWorked < 12 && carryAccruals.length > 0) {
@@ -126,18 +183,6 @@ async function runAudit(write: (line: string) => void) {
         "1년미만_CARRY_OVER레코드",
         u,
         `${carryAccruals.length}건 합 ${total}일 (${carryAccruals.map((a) => a.accrualDateYmd).join(", ")})`
-      );
-    }
-
-    // === 검사 2b: 레거시 CARRY(1900) 잔존 ===
-    if (legacyCarry.length > 0) {
-      const c = legacyCarry.reduce((s, a) => s + a.consumedDays, 0);
-      const d = legacyCarry.reduce((s, a) => s + a.days, 0);
-      report(
-        "WARN",
-        "레거시_CARRY_잔존",
-        u,
-        `${legacyCarry.length}건 days=${d} consumed=${c} (ensureLegacyCarryAccrual 미정리)`
       );
     }
 

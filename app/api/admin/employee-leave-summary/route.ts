@@ -75,6 +75,7 @@ export async function GET() {
           monthlyUnderOneYear: bd(b.monthlyUnderOneYear),
           annualAfterOneYear: bd(b.annualAfterOneYear),
           tenureBonus: bd(b.tenureBonus),
+          carryOver: bd(b.carryOver),
           priorCrmUsageDays: pool.priorCrmUsageDays,
           annualCarryOverDaysReported: pool.annualCarryOverDaysReported,
           totalUsed: pool.totalConsumedDaysFromAccruals,
