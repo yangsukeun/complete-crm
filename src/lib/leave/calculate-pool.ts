@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { toKstYmd } from "@/lib/date-kst";
 import { ensureAccrualsUpTo } from "@/lib/leave/accrue";
+import { ensureApprovedLeavesConsumedUpTo } from "@/lib/leave/ensure-approved-consumption";
 import { ensureLegacyCarryAccrual, LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 import {
   buildLeavePoolFromAccruals,
@@ -83,6 +84,9 @@ export async function calculateLeavePool(
     await ensureAccrualsUpTo(userId, asOf);
   }
   await ensureLegacyCarryAccrual(userId);
+  if (!options?.skipAccrue) {
+    await ensureApprovedLeavesConsumedUpTo(userId, asOf);
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -92,9 +96,8 @@ export async function calculateLeavePool(
 
   const balances = await prisma.leaveBalance.findMany({
     where: { userId },
-    select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
+    select: { manualDeduction: true, annualCarryOver: true },
   });
-  const legacyUsed = balances.reduce((s, b) => s + (b.annualUsed ?? 0), 0);
   const priorCrmUsageDays = balances.reduce((s, b) => s + (b.manualDeduction ?? 0), 0);
   const annualCarryOverDaysReported = balances.reduce((s, b) => s + (b.annualCarryOver ?? 0), 0);
 
@@ -105,7 +108,6 @@ export async function calculateLeavePool(
 
   const poolRows = rows.filter((r) => !isLegacyCarryRow(r.type, r.accrualDateYmd));
   const totalConsumedDaysFromAccruals = poolRows.reduce((s, r) => s + r.consumedDays, 0);
-  const totalAccrualConsumed = totalConsumedDaysFromAccruals;
 
   const inputs: AccrualInput[] = poolRows.map((r) => ({
     type: r.type,
@@ -122,24 +124,12 @@ export async function calculateLeavePool(
 
   const sumParts = merged.totalConsumed + merged.totalExpired + merged.available;
   const poolMathConsistent = Math.abs(merged.totalEntitled - sumParts) < 1e-4;
-
-  const extraLegacyUsed = Math.max(0, legacyUsed - totalAccrualConsumed);
   const accrualLines = groupAccrualLines(poolRows);
-
-  if (extraLegacyUsed > 0.00001) {
-    return {
-      ...merged,
-      available: Math.max(0, merged.available - extraLegacyUsed),
-      totalConsumedDaysFromAccruals,
-      priorCrmUsageDays,
-      annualCarryOverDaysReported,
-      poolMathConsistent,
-      accrualLines,
-    };
-  }
 
   return {
     ...merged,
+    /** 표시 사용계 = LeaveAccrual.consumedDays 합만 (이전 사용분·승인 이중 합산 금지) */
+    totalConsumed: totalConsumedDaysFromAccruals,
     totalConsumedDaysFromAccruals,
     priorCrmUsageDays,
     annualCarryOverDaysReported,

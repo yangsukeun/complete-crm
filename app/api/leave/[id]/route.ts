@@ -7,18 +7,8 @@ import {
   reverseApprovedLeaveConsumption,
 } from "@/lib/leave/apply-approved-consumption";
 import { createNotificationWithOptions } from "@/lib/notifications";
-
-const leaveTypeDays: Record<string, number> = {
-  ANNUAL: 1,
-  HALF_AM: 0.5,
-  HALF_PM: 0.5,
-  QUARTER_AM: 0.25,
-  QUARTER_PM: 0.25,
-};
-
-function isSickLeaveType(t: string): boolean {
-  return t === "SICK_PAID" || t === "SICK_UNPAID";
-}
+import { toKstYmd } from "@/lib/date-kst";
+import { isSickLeaveType, leaveRequestDays } from "@/lib/leave/leave-request-days";
 
 function isTeamLead(role: string | undefined) {
   return role === "TEAM_LEAD";
@@ -189,12 +179,11 @@ export async function PATCH(
       }
 
       if (requestedStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
-        const days =
-          leave.type === "ANNUAL"
-            ? Math.ceil((leave.endDate.getTime() - leave.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-            : (leaveTypeDays[leave.type] ?? 0);
+        const days = leaveRequestDays(leave.type, leave.startDate, leave.endDate);
+        const asOf = new Date();
+        const consumeNow = toKstYmd(leave.startDate) <= toKstYmd(asOf);
 
-        const pool = await calculateLeavePool(leave.userId, new Date());
+        const pool = await calculateLeavePool(leave.userId, asOf);
         if (days > pool.available + 1e-6) {
           return NextResponse.json(
             { error: `연차 잔여일(${pool.available.toFixed(1)}일)이 부족합니다.` },
@@ -204,7 +193,9 @@ export async function PATCH(
 
         try {
           await prisma.$transaction(async (tx) => {
-            await applyApprovedLeaveConsumption(tx, leave.userId, id, days, new Date());
+            if (consumeNow) {
+              await applyApprovedLeaveConsumption(tx, leave.userId, id, days, leave.startDate);
+            }
             await tx.leaveRequest.update({
               where: { id },
               data: { status: "APPROVED" },

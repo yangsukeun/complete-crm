@@ -20,6 +20,7 @@
     "db:backfill-leave-accruals": "tsx scripts/backfill-leave-accruals.ts",
     "db:backfill-accruals": "tsx scripts/run-accrual-backfill.ts",
     "db:migrate-prior-usage": "tsx scripts/migrate-prior-usage-to-accruals.ts",
+    "db:reapply-leave-consumption": "tsx scripts/reapply-all-consumption.ts",
     "test:leave": "vitest run src/lib/leave tests/leave-backfill.test.ts",
     "check-user": "tsx scripts/check-user.ts",
     "check-db": "tsx scripts/check-db-connection.ts",
