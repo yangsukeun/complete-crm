@@ -51,7 +51,17 @@ export async function GET() {
         const tenureYears = Math.floor(fullMonths / 12);
         const tenureExtraMonths = fullMonths % 12;
 
-        const pool = await calculateLeavePool(u.id, asOf);
+        let pool;
+        try {
+          pool = await calculateLeavePool(u.id, asOf);
+        } catch (perUser) {
+          // [DIAG] 어느 직원의 풀 계산에서 터지는지 식별 (배포 후 Vercel 로그용)
+          console.error(
+            `[employee-leave-summary] calculateLeavePool failed userId=${u.id} name=${u.name}`,
+            perUser
+          );
+          throw perUser;
+        }
         const b = pool.breakdown;
 
         const bd = (x: typeof b.monthlyUnderOneYear): Bd => ({
@@ -92,7 +102,22 @@ export async function GET() {
 
     return NextResponse.json({ year, rows });
   } catch (e) {
-    console.error("[employee-leave-summary]", e);
-    return NextResponse.json({ error: "목록을 불러올 수 없습니다." }, { status: 500 });
+    // [DIAG] 실제 예외를 명확히 출력 (name/message/code/stack) — 배포 후 Vercel Functions 로그에서 확인
+    const err = e as { name?: string; message?: string; code?: string; meta?: unknown; stack?: string };
+    console.error("[employee-leave-summary] 500", {
+      name: err?.name,
+      message: err?.message,
+      code: err?.code,
+      meta: err?.meta,
+    });
+    console.error("[employee-leave-summary] stack", err?.stack);
+    // 관리자 전용 라우트이므로 진단 동안 실제 에러 요지를 응답에도 포함(임시)
+    return NextResponse.json(
+      {
+        error: "목록을 불러올 수 없습니다.",
+        diag: { name: err?.name, message: err?.message, code: err?.code, meta: err?.meta },
+      },
+      { status: 500 }
+    );
   }
 }
