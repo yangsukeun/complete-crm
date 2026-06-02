@@ -36,6 +36,9 @@ export type CalculatedLeavePool = LeavePool & {
   /** 총발생 ≈ 사용 + 만료 + 잔여 (근사) */
   poolMathConsistent: boolean;
   accrualLines: AccrualLinesByBucket;
+  /** 승인 휴가 중 풀 부족으로 차감하지 못한 건이 있는지 (조회 시 throw 대신 플래그) */
+  leaveShortage: boolean;
+  shortageLeaveRequestIds: string[];
 };
 
 function isLegacyCarryRow(type: string, accrualDateYmd: string): boolean {
@@ -81,20 +84,25 @@ export async function calculateLeavePool(
   asOf: Date = new Date(),
   options?: { skipAccrue?: boolean }
 ): Promise<CalculatedLeavePool> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { joinDate: true, name: true },
+  });
+  const joinYmd = user?.joinDate ? toKstYmd(user.joinDate) : "";
+
   if (!options?.skipAccrue) {
     await ensureAccrualsUpTo(userId, asOf);
   }
   await ensureLegacyCarryAccrual(userId);
   await ensureBalanceCarryAccrual(userId);
-  if (!options?.skipAccrue) {
-    await ensureApprovedLeavesConsumedUpTo(userId, asOf);
-  }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { joinDate: true },
-  });
-  const joinYmd = user?.joinDate ? toKstYmd(user.joinDate) : "";
+  let leaveShortage = false;
+  let shortageLeaveRequestIds: string[] = [];
+  if (!options?.skipAccrue) {
+    const res = await ensureApprovedLeavesConsumedUpTo(userId, asOf, user?.name ?? null);
+    shortageLeaveRequestIds = res.shortageRequestIds;
+    leaveShortage = res.shortageRequestIds.length > 0;
+  }
 
   const balances = await prisma.leaveBalance.findMany({
     where: { userId },
@@ -137,6 +145,8 @@ export async function calculateLeavePool(
     annualCarryOverDaysReported,
     poolMathConsistent,
     accrualLines,
+    leaveShortage,
+    shortageLeaveRequestIds,
   };
 }
 

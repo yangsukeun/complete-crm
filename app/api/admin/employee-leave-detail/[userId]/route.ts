@@ -128,6 +128,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
         priorCrmUsageDays: pool.priorCrmUsageDays,
         annualCarryOverDaysReported: pool.annualCarryOverDaysReported,
         poolMathConsistent: pool.poolMathConsistent,
+        leaveShortage: pool.leaveShortage,
+        shortageLeaveRequestIds: pool.shortageLeaveRequestIds,
         breakdown: pool.breakdown,
         nextAccrualDate: pool.nextAccrualDate?.toISOString() ?? null,
         nextExpirationDate: pool.nextExpirationDate?.toISOString() ?? null,

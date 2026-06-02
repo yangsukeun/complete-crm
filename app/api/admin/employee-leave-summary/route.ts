@@ -95,6 +95,7 @@ export async function GET() {
           nextAccrualDate: pool.nextAccrualDate?.toISOString() ?? null,
           nextExpirationDate: pool.nextExpirationDate?.toISOString() ?? null,
           poolMathConsistent: pool.poolMathConsistent,
+          shortage: pool.leaveShortage,
           accrualLines: pool.accrualLines,
         };
       })
@@ -111,13 +112,6 @@ export async function GET() {
       meta: err?.meta,
     });
     console.error("[employee-leave-summary] stack", err?.stack);
-    // 관리자 전용 라우트이므로 진단 동안 실제 에러 요지를 응답에도 포함(임시)
-    return NextResponse.json(
-      {
-        error: "목록을 불러올 수 없습니다.",
-        diag: { name: err?.name, message: err?.message, code: err?.code, meta: err?.meta },
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "목록을 불러올 수 없습니다." }, { status: 500 });
   }
 }

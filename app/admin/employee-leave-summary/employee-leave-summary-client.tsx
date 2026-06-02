@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
 type Row = {
@@ -24,6 +25,7 @@ type Row = {
   tenureExtraMonths: number;
   remaining: number;
   compensationOwedDays: number;
+  shortage?: boolean;
 };
 
 type Api = { year: number; rows: Row[] };
@@ -91,9 +93,16 @@ export function EmployeeLeaveSummaryClient() {
               </TableHeader>
               <TableBody>
                 {data.rows.map((r) => (
-                  <TableRow key={r.userId} className="hover:bg-muted/50">
+                  <TableRow key={r.userId} className={r.shortage ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/50"}>
                     <TableCell>
-                      <div className="font-medium">{r.name}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium">{r.name}</span>
+                        {r.shortage && (
+                          <Badge variant="destructive" className="text-[10px]" title="승인된 휴가가 발생분으로 차감되지 않았습니다. 상세에서 데이터를 점검하세요.">
+                            차감 정합 필요
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground whitespace-normal text-sm">
                       {r.department || "—"}

@@ -61,6 +61,8 @@ type PoolPayload = {
   priorCrmUsageDays: number;
   annualCarryOverDaysReported: number;
   poolMathConsistent: boolean;
+  leaveShortage?: boolean;
+  shortageLeaveRequestIds?: string[];
 };
 
 type DetailApi = {
@@ -355,6 +357,19 @@ export function LeaveDetailClient({ userId }: { userId: string }) {
           <div>역할: {roleLabel(user.role)}</div>
         </CardContent>
       </Card>
+
+      {pool.leaveShortage && (
+        <div className="border-destructive/40 bg-destructive/5 text-destructive flex flex-wrap items-center gap-2 rounded-lg border p-4 text-sm">
+          <Badge variant="destructive" className="text-[10px]">차감 정합 필요</Badge>
+          <span>
+            승인된 휴가 중 발생분(accrual)으로 차감되지 못한 건이 있습니다
+            {pool.shortageLeaveRequestIds && pool.shortageLeaveRequestIds.length > 0
+              ? ` (요청 ${pool.shortageLeaveRequestIds.length}건)`
+              : ""}
+            . 아래 발생/신청 내역을 대조해 데이터를 점검하세요.
+          </span>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard label="사용 가능 잔여" value={`${fmt1(pool.available)}일`} highlight />
