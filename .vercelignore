@@ -1,0 +1,23 @@
+node_modules
+.next
+out
+.git
+.vercel
+coverage
+
+# 대용량 로컬 동기화 폴더 (배포 불필요)
+synology 드라이브
+*ynology*
+*Synology*
+
+# 로컬 DB / 빌드 로그 / 감사 산출물
+prisma/dev.db
+build-out.txt
+leave-audit-report.txt
+
+# 로컬 업로드 파일
+public/uploads/content/
+
+# env
+.env
+.env*.local

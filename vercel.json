@@ -42,7 +42,7 @@
     },
     {
       "path": "/api/cron/revoke-drive-preview-permissions",
-      "schedule": "15 * * * *"
+      "schedule": "15 4 * * *"
     }
   ]
 }
