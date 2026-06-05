@@ -7,7 +7,6 @@ import {
   reverseApprovedLeaveConsumption,
 } from "@/lib/leave/apply-approved-consumption";
 import { createNotificationWithOptions } from "@/lib/notifications";
-import { toKstYmd } from "@/lib/date-kst";
 import { isSickLeaveType, leaveRequestDays } from "@/lib/leave/leave-request-days";
 
 function isTeamLead(role: string | undefined) {
@@ -181,7 +180,6 @@ export async function PATCH(
       if (requestedStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
         const days = leaveRequestDays(leave.type, leave.startDate, leave.endDate);
         const asOf = new Date();
-        const consumeNow = toKstYmd(leave.startDate) <= toKstYmd(asOf);
 
         const pool = await calculateLeavePool(leave.userId, asOf);
         if (days > pool.available + 1e-6) {
@@ -193,9 +191,8 @@ export async function PATCH(
 
         try {
           await prisma.$transaction(async (tx) => {
-            if (consumeNow) {
-              await applyApprovedLeaveConsumption(tx, leave.userId, id, days, leave.startDate);
-            }
+            // 승인 확정 시 항상 발생분에 FIFO 차감 연결 (미래 일자 포함, 미차감 승인 방지)
+            await applyApprovedLeaveConsumption(tx, leave.userId, id, days, leave.startDate);
             await tx.leaveRequest.update({
               where: { id },
               data: { status: "APPROVED" },
