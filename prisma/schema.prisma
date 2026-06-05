@@ -253,6 +253,8 @@ model User {
   notificationLogs      NotificationLog[]
   oneSignalSubscriptions OneSignalSubscription[]
   projectsDeletedByMe   Project[]       @relation("ProjectDeletedBy")
+  projectsCreated       Project[]       @relation("ProjectCreatedBy")
+  projectsLastEdited    Project[]       @relation("ProjectLastEditedBy")
   tasksDeletedByMe      Task[]          @relation("TaskDeletedBy")
   aiSecretaryConversations AiConversation[]
   aiHubHistories         AiHubHistory[]
@@ -352,12 +354,18 @@ model Project {
   deletedAt DateTime?
   deletedById String?
   deletedBy User? @relation("ProjectDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy User? @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lastEditedById String?
+  lastEditedBy User? @relation("ProjectLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
   userNotes UserNote[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([brandId, name])
   @@index([brandId])
   @@index([deletedAt])
+  @@index([createdById])
+  @@index([lastEditedById])
 }
 
 model Account {

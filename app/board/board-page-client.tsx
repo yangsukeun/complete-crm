@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import Link from "next/link";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 import dynamic from "next/dynamic";
 import {
   FolderOpen,
@@ -93,6 +94,8 @@ type BoardItem = {
   createdById?: string;
   createdByName: string;
   createdByPosition: string | null;
+  lastEditedByName?: string | null;
+  updatedAt?: string;
   isAuthorSelf?: boolean;
 };
 
@@ -601,10 +604,12 @@ export function BoardPageClient({
                           )}
                         </div>
                       )}
-                      <p className="text-muted-foreground mt-1.5 text-[11px]">
-                        {b.createdByName}
-                        {b.createdByPosition ? ` · ${b.createdByPosition}` : ""}
-                      </p>
+                      <AuthorMetaLine
+                        authorName={b.createdByName}
+                        editorName={b.lastEditedByName}
+                        dateIso={b.updatedAt ?? b.createdAt}
+                        className="mt-1.5 block text-[11px]"
+                      />
                     </div>
                   </Link>
                 </li>

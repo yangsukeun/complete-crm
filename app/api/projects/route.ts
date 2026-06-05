@@ -163,7 +163,10 @@ export async function GET(req: Request) {
         status: true,
         dueDate: true,
         completedAt: true,
+        updatedAt: true,
         brand: { select: { id: true, name: true } },
+        createdBy: { select: { name: true } },
+        lastEditedBy: { select: { name: true } },
       },
       orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
     });
@@ -222,6 +225,7 @@ export async function POST(req: Request) {
         data: {
           brandId: parsed.data.brandId,
           name: parsed.data.name.trim(),
+          createdById: session.user.id,
         },
         select: {
           id: true,
@@ -253,6 +257,7 @@ export async function POST(req: Request) {
           brandId: parsed.data.brandId,
           name: nameTrim,
           quoteAmount: 0,
+          createdById: session.user.id,
           users: { connect: { id: session.user.id } },
         },
         select: { id: true, name: true },

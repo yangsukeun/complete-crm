@@ -54,6 +54,7 @@ import { getTaskCardAccentColor, PROJECT_TASK_COLORS, taskHasPaletteColor } from
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 
 type User = { id: string; name: string; email?: string; department?: string | null; position?: string | null };
 
@@ -73,6 +74,8 @@ type TaskDetail = {
   assignees?: { id: string; name: string; email: string; position?: string | null; image?: string | null }[];
   assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null } | null;
+  updatedAt?: string | null;
+  revisions?: { user: { id: string; name: string; position?: string | null } }[];
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
 };
@@ -822,6 +825,15 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                 </Button>
               </PopoverContent>
             </Popover>
+          </div>
+
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-muted-foreground flex w-16 items-center gap-1.5">기록</span>
+            <AuthorMetaLine
+              authorName={task.createdBy?.name}
+              editorName={task.revisions?.at(-1)?.user?.name}
+              dateIso={task.updatedAt}
+            />
           </div>
 
           <div className="flex items-center gap-3 text-sm">

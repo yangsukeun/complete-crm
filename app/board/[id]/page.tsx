@@ -8,6 +8,7 @@ import { canUserViewBoardPost } from "@/lib/board-access";
 import { boardCategoryIsAnonymous } from "@/lib/board-category";
 import { safeParseAttachments } from "@/lib/board-attachments";
 import { PageHeadline } from "@/components/page-headline";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 import { BoardPostContent } from "./board-post-content";
 import { BoardCommentsSuspense } from "./board-comments-loader";
 import { BoardPostActions } from "./board-post-actions";
@@ -94,6 +95,12 @@ export default async function BoardPostPage({
   const initialHistoryName =
     postAnonymous && role !== "EXECUTIVE" ? "익명" : post.createdBy?.name ?? "삭제된 사용자";
 
+  const hideIdentity = postAnonymous && role !== "EXECUTIVE";
+  const lastRevision = postRevisions[0] ?? null;
+  const metaAuthorName = hideIdentity ? "익명" : post.createdBy?.name ?? "삭제된 사용자";
+  const metaEditorName = hideIdentity ? null : lastRevision?.userName ?? null;
+  const metaUpdatedIso = (lastRevision?.createdAt ?? post.createdAt).toISOString();
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="flex items-center gap-3">
@@ -107,10 +114,18 @@ export default async function BoardPostPage({
         </Link>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeadline
-          title={post.title}
-          description={`${authorForHeadline} · ${new Date(post.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
-        />
+        <div>
+          <PageHeadline
+            title={post.title}
+            description={`${authorForHeadline} · ${new Date(post.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+          />
+          <AuthorMetaLine
+            authorName={metaAuthorName}
+            editorName={metaEditorName}
+            dateIso={metaUpdatedIso}
+            className="mt-1 block"
+          />
+        </div>
         <BoardPostActions
           postId={id}
           canEdit={canEditPost}

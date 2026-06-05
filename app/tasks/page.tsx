@@ -19,6 +19,7 @@ import useSWRInfinite from "swr/infinite";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -188,6 +189,8 @@ type Task = {
   assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
+  lastEditedBy?: { id: string; name: string } | null;
+  updatedAt?: string | null;
   creationSource?: string | null;
   projectId?: string | null;
   color?: string | null;
@@ -1554,6 +1557,13 @@ function TasksPageInner() {
                                       ? formatUserName(task.assignedTo)
                                       : "미지정"}
                                 </span>
+                              </div>
+                              <div className="mt-1">
+                                <AuthorMetaLine
+                                  authorName={task.createdBy?.name}
+                                  editorName={task.lastEditedBy?.name}
+                                  dateIso={task.updatedAt}
+                                />
                               </div>
                             </Link>
                             <div className="mt-3 flex items-center gap-2 px-3 pb-3">

@@ -49,6 +49,7 @@ import { TaskCreationSource } from "@prisma/client";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
@@ -81,6 +82,7 @@ type TaskDetail = {
   assignedTo: AssigneeUser | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
+  updatedAt?: string | null;
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
   children?: {
@@ -705,6 +707,13 @@ export default function TaskDetailPage() {
             <span className="text-muted-foreground mx-1">·</span>
             <span className="text-muted-foreground">지시</span>
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.createdBy ? formatUserName(task.createdBy) : "삭제된 사용자"}</span>
+          </div>
+          <div className="mt-2">
+            <AuthorMetaLine
+              authorName={task.createdBy?.name}
+              editorName={task.revisions?.at(-1)?.user?.name}
+              dateIso={task.updatedAt}
+            />
           </div>
 
           {canEditAssignees && workspaceUsers.length > 0 && (

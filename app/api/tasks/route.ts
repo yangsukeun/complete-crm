@@ -149,6 +149,13 @@ const listSelect = {
   projectId: true,
   completedAt: true,
   archivedAt: true,
+  updatedAt: true,
+  /** 최종수정자(가장 최근 개정 1건) */
+  revisions: {
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    select: { user: { select: { id: true, name: true } } },
+  },
   /** 목록·all=1·페이지네이션: 상세/WorkLog 등은 별도 API에서 로드 (페이로드·Row 폭 축소) */
   assignedTo: {
     select: {
@@ -202,11 +209,29 @@ function mapListItem(task: Record<string, unknown>) {
   const assigneesRows = (task as { assignees?: { user: TaskAssigneeUser }[] }).assignees ?? [];
   const legacy = (task as { assignedTo?: TaskAssigneeUser | null }).assignedTo;
   const { assignees, assignedTo } = serializeAssigneesFromRows(assigneesRows, legacy);
-  const { assignees: _a, completedAt: rawCompleted, archivedAt: rawArchived, ...rest } = task as {
+  const {
+    assignees: _a,
+    completedAt: rawCompleted,
+    archivedAt: rawArchived,
+    updatedAt: rawUpdated,
+    revisions: rawRevisions,
+    ...rest
+  } = task as {
     assignees?: unknown;
     completedAt?: unknown;
     archivedAt?: unknown;
+    updatedAt?: unknown;
+    revisions?: { user?: { id: string; name: string } | null }[];
   };
+  const updatedAtDate =
+    rawUpdated instanceof Date
+      ? rawUpdated
+      : typeof rawUpdated === "string"
+        ? new Date(rawUpdated)
+        : null;
+  const updatedAtIso =
+    updatedAtDate && !Number.isNaN(updatedAtDate.getTime()) ? updatedAtDate.toISOString() : null;
+  const lastEditor = rawRevisions?.[0]?.user ?? null;
   const completedAtDate =
     rawCompleted instanceof Date
       ? rawCompleted
@@ -228,6 +253,8 @@ function mapListItem(task: Record<string, unknown>) {
     ...rest,
     completedAt: completedAtIso,
     archivedAt: archivedAtIso,
+    updatedAt: updatedAtIso,
+    lastEditedBy: lastEditor ? { id: lastEditor.id, name: lastEditor.name } : null,
     assignees,
     assignedTo,
     defaultCollapsed: taskDefaultCollapsed({

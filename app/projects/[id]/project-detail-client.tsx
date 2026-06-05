@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -105,6 +106,9 @@ type ProjectPayload = {
     description: string | null;
   }[];
   paymentSummary: { quoted: number; paid: number; outstanding: number };
+  updatedAt?: string | null;
+  createdBy?: { name: string } | null;
+  lastEditedBy?: { name: string } | null;
 };
 
 export function ProjectDetailClient({ projectId, embed }: { projectId: string; embed?: boolean }) {
@@ -307,6 +311,12 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
           <PageHeadline
             title={`${data.brand.name} / ${data.name}`}
             description="연결된 견적서와 이체(입금) 요약을 확인합니다."
+          />
+          <AuthorMetaLine
+            authorName={data.createdBy?.name}
+            editorName={data.lastEditedBy?.name}
+            dateIso={data.updatedAt}
+            className="mt-1 block"
           />
         </div>
       </div>

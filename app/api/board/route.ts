@@ -93,6 +93,11 @@ async function boardGetHandler(req: Request) {
       createdAt: true,
       createdById: true,
       createdBy: { select: { name: true, position: true } },
+      revisions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { userName: true, createdAt: true },
+      },
     } as const;
 
     const mapRowList = (p: {
@@ -106,9 +111,11 @@ async function boardGetHandler(req: Request) {
       createdAt: Date;
       createdById: string;
       createdBy: { name: string; position: string | null } | null;
+      revisions: { userName: string; createdAt: Date }[];
     }) => {
       const anon = boardCategoryIsAnonymous(p.category);
       const listPreview = buildBoardListPreview(p.description, p.contentType, p.attachments);
+      const lastRev = p.revisions?.[0] ?? null;
       return {
         id: p.id,
         title: p.title,
@@ -120,6 +127,8 @@ async function boardGetHandler(req: Request) {
         createdById: anon ? undefined : p.createdById,
         createdByName: anon ? "익명" : p.createdBy?.name ?? "삭제된 사용자",
         createdByPosition: anon ? null : p.createdBy?.position ?? null,
+        lastEditedByName: anon ? null : lastRev?.userName ?? null,
+        updatedAt: (lastRev?.createdAt ?? p.createdAt).toISOString(),
         workspaceScope: p.workspaceScope,
         isAuthorSelf: p.createdById === session.user.id,
       };

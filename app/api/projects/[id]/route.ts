@@ -37,6 +37,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         where: { id, deletedAt: null },
         include: {
           brand: { select: { id: true, name: true } },
+          createdBy: { select: { name: true } },
+          lastEditedBy: { select: { name: true } },
           quote: {
             select: {
               id: true,
@@ -160,8 +162,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             ? "html"
             : "text";
 
-      const data: { description?: string | null; contentType?: string; mentionedUserIds?: string } =
-        {};
+      const data: {
+        description?: string | null;
+        contentType?: string;
+        mentionedUserIds?: string;
+        lastEditedById?: string;
+      } = {};
       if (descriptionRaw !== undefined) {
         try {
           data.description = normalizeBoardDescriptionForStore(descriptionRaw, typeForNorm) || null;
@@ -182,6 +188,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const mentionIds = extractMentionedUserIdsFromTaskDescription(nextDesc ?? "");
         const mentionJson = serializeMentionUserIdsJson(mentionIds);
         data.mentionedUserIds = mentionJson;
+        data.lastEditedById = session.user.id;
         const prevM = parseMentionUserIdsJson(existing?.mentionedUserIds);
         const newOnes = mentionIds.filter((x) => !prevM.includes(x));
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AuthorMetaLine } from "@/components/author-meta-line";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -352,7 +353,15 @@ export function AdminProjectsClient() {
                         splitPreviewProjectId === p.id && "border-l-4 border-l-primary bg-primary/5"
                       )}
                     >
-                      <div className="text-sm font-medium">{projectLabel(p)}</div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{projectLabel(p)}</div>
+                        <AuthorMetaLine
+                          authorName={p.createdBy?.name}
+                          editorName={p.lastEditedBy?.name}
+                          dateIso={p.updatedAt}
+                          className="mt-0.5 block text-[11px]"
+                        />
+                      </div>
                       <Button
                         variant="outline"
                         size="sm"
