@@ -1,3 +1,5 @@
+import { isTaskHtmlPage, stripTaskHtmlPage } from "@/lib/task-body-description";
+
 /**
  * 프로젝트 본문(HTML/텍스트)·업무 BlockNote JSON 등을 PDF/PPT용 평문으로 축약.
  */
@@ -52,7 +54,11 @@ export function plainTextFromBlockNoteJson(raw: string): string {
  */
 export function contentToPlainText(raw: string | null | undefined, contentType?: string | null): string {
   if (raw == null || String(raw).trim() === "") return "";
-  const s = String(raw);
+  let s = String(raw);
+  if (isTaskHtmlPage(s)) {
+    s = stripTaskHtmlPage(s);
+    return stripHtml(s);
+  }
   if (contentType === "html") return stripHtml(s);
   if (s.trim().startsWith("{") || s.trim().startsWith("[")) return plainTextFromBlockNoteJson(s);
   return s.trim();

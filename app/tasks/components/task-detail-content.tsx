@@ -52,7 +52,7 @@ import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor, PROJECT_TASK_COLORS, taskHasPaletteColor } from "@/lib/project-task-colors";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
-import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
+import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { AuthorMetaLine } from "@/components/author-meta-line";
 
@@ -1048,7 +1048,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
       </div>
 
       <div className="border-t border-border/50 px-10 py-4">
-        <TaskBodyEditorDynamic
+        <TaskBodyEditorWithTabs
           taskId={task.id}
           initialDescription={task.description}
           onSaved={afterBodyAutoSave}

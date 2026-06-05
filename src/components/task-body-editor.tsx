@@ -135,6 +135,60 @@ function TaskSlashMenu() {
   const editor = useBlockNoteEditor();
   const getItems = useMemo(
     () => async (query: string) => {
+      const htmlItem = {
+        title: "HTML 블록",
+        subtext: "HTML 코드 작성 및 미리보기",
+        aliases: ["html", "HTML", "html block", "마크업", "웹"],
+        group: "기본 블록",
+        icon: <span className="text-base leading-none">🖥️</span>,
+        onItemClick: () => {
+          insertOrUpdateBlockForSlashMenu(editor, {
+            type: "htmlBlock",
+            props: { html: "" },
+          } as never);
+        },
+      };
+      const youtubeItem = {
+        title: "YouTube 임베드",
+        subtext: "URL 입력 또는 본문에 주소 한 줄 붙여넣기",
+        aliases: ["youtube", "유튜브", "영상", "video", "embed"],
+        group: "미디어",
+        icon: <span className="text-base leading-none">▶️</span>,
+        onItemClick: () => {
+          const raw =
+            typeof window !== "undefined"
+              ? window.prompt(
+                  "YouTube URL (취소하면 빈 블록만 추가)",
+                  "https://www.youtube.com/watch?v="
+                )
+              : null;
+          if (raw === null) return;
+          const url = raw.trim();
+          insertOrUpdateBlockForSlashMenu(editor, {
+            type: "youtube",
+            props: { url },
+          } as never);
+        },
+      };
+      const linkPreviewItem = {
+        title: "링크 미리보기",
+        subtext: "URL 입력 또는 일반 링크 한 줄 붙여넣기",
+        aliases: ["link", "preview", "url", "링크", "미리보기"],
+        group: "미디어",
+        icon: <span className="text-base leading-none">🔗</span>,
+        onItemClick: () => {
+          const raw =
+            typeof window !== "undefined"
+              ? window.prompt("미리보기할 페이지 URL", "https://")
+              : null;
+          if (raw === null) return;
+          const url = raw.trim();
+          insertOrUpdateBlockForSlashMenu(editor, {
+            type: "linkPreview",
+            props: { url },
+          } as never);
+        },
+      };
       const wideCols = [4, 5, 6].map((n) => ({
         title: `${n}열`,
         subtext: `${n}개 열을 나란히 배치합니다. 블록을 옆 가장자리로 드래그하면 열을 더 나눌 수 있어요.`,
@@ -155,6 +209,7 @@ function TaskSlashMenu() {
         combineByGroup(
           getDefaultReactSlashMenuItems(editor),
           getMultiColumnSlashMenuItems(editor),
+          [youtubeItem, linkPreviewItem, htmlItem],
           wideCols
         ),
         query

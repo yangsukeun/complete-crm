@@ -43,7 +43,7 @@ import {
   validateUploadFile,
 } from "@/lib/upload-client-validate";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
-import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
+import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { TaskCreationSource } from "@prisma/client";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
@@ -55,6 +55,7 @@ import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 import { ExportDocumentButtons } from "@/components/export-document-buttons";
 import { contentToPlainText } from "@/lib/export/plain-from-content";
+import { taskDescriptionContentType } from "@/lib/task-body-description";
 
 /** 업무 상세 본문 영역: 전체 뷰포트 너비 vs 좁은 읽기 너비 (localStorage) */
 const TASK_PAGE_WIDTH_KEY = "crm-task-page-full-width";
@@ -571,7 +572,10 @@ export default function TaskDetailPage() {
             {task ? (
               <ExportDocumentButtons
                 title={task.title}
-                bodyPlain={contentToPlainText(task.description, null)}
+                bodyPlain={contentToPlainText(
+                  task.description,
+                  taskDescriptionContentType(task.description)
+                )}
                 fileBase={`task_${task.id}`}
                 variant="ghost"
                 size="sm"
@@ -753,7 +757,7 @@ export default function TaskDetailPage() {
           <div className="border-t border-border/40 px-0 py-8">
             <ClientErrorBoundary>
               {mountEditor ? (
-                <TaskBodyEditorDynamic
+                <TaskBodyEditorWithTabs
                   taskId={task.id}
                   initialDescription={task.description}
                   onSaved={afterBodyAutoSave}

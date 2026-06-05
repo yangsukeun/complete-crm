@@ -6,6 +6,26 @@ import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-yo
  */
 export const TASK_BODY_DOC_PREFIX = "__BN_DOC_V1__\n";
 
+/** 글 전체를 HTML 페이지로 저장할 때 description 접두 (Task.contentType 없이 구분) */
+export const TASK_HTML_PAGE_PREFIX = "__HTML_PAGE_V1__\n";
+
+export function isTaskHtmlPage(raw: string | null | undefined): boolean {
+  return (raw ?? "").trim().startsWith(TASK_HTML_PAGE_PREFIX);
+}
+
+export function stripTaskHtmlPage(raw: string): string {
+  if (!isTaskHtmlPage(raw)) return raw;
+  return raw.slice(TASK_HTML_PAGE_PREFIX.length);
+}
+
+export function wrapTaskHtmlPage(html: string): string {
+  return TASK_HTML_PAGE_PREFIX + html;
+}
+
+export function taskDescriptionContentType(raw: string | null | undefined): "text" | "html" {
+  return isTaskHtmlPage(raw) ? "html" : "text";
+}
+
 export type ParsedStoredTaskBody =
   | { format: "blocks"; blocks: unknown[] }
   | { format: "markdown"; markdown: string };
