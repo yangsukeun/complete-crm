@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
+import { isMasterSession } from "@/lib/master-account";
 
 export const runtime = "nodejs";
 
@@ -38,10 +39,10 @@ export async function POST(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isMaster = isMasterSession(session);
     const isAssignee =
       task.assignedToId === session.user.id || task.assignees.some((a) => a.userId === session.user.id);
-    if (!isAdmin && !isAssignee && row.userId !== session.user.id) {
+    if (!isMaster && !isAssignee && row.userId !== session.user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { logAudit } from "@/lib/audit";
+import { isMasterSession } from "@/lib/master-account";
 
 export const runtime = "nodejs";
 
@@ -34,9 +35,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isMaster = isMasterSession(session);
     const isCreator = row.createdById === session.user.id;
-    if (!isAdmin && !isCreator) {
+    if (!isMaster && !isCreator) {
       return NextResponse.json({ error: "복구 권한이 없습니다." }, { status: 403 });
     }
 

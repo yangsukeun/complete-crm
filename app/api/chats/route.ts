@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { isMasterSession } from "@/lib/master-account";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -22,9 +23,10 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    // 직원 전체 대화 열람은 마스터 계정 전용 (대표/관리자는 본인 참여 방만)
+    const isMaster = isMasterSession(session);
 
-    if (isAdmin) {
+    if (isMaster) {
       const allChats = await prisma.chat.findMany({
         take: 80,
         include: {

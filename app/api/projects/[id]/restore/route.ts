@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { isMasterSession } from "@/lib/master-account";
 
 export const runtime = "nodejs";
 
@@ -21,12 +22,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isMaster = isMasterSession(session);
     const isMember = await prisma.project.findFirst({
       where: { id, users: { some: { id: session.user.id } } },
       select: { id: true },
     });
-    if (!isAdmin && !isMember) {
+    if (!isMaster && !isMember) {
       return NextResponse.json({ error: "복구 권한이 없습니다." }, { status: 403 });
     }
 

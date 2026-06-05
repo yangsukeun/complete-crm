@@ -4,13 +4,10 @@ import prisma from "@/lib/prisma";
 import { collectGoogleDriveFileIdsFromText, parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
 import { deleteFile } from "@/lib/storage/google-drive-storage";
 import { collectDriveImageFileIdsFromTaskDescription } from "@/lib/task-body-drive-images";
+import { isMasterSession } from "@/lib/master-account";
 import { z } from "zod";
 
 export const runtime = "nodejs";
-
-function isTrashAdmin(role: string | undefined) {
-  return role === "EXECUTIVE" || role === "ADMIN";
-}
 
 function safeParseBoardAttachments(raw: string | null | undefined): { url: string; name: string }[] {
   try {
@@ -37,7 +34,7 @@ const mutateSchema = z.object({
 export async function GET() {
   try {
     const session = await getAppSession();
-    if (!session?.user?.id || !isTrashAdmin(session.user.role)) {
+    if (!session?.user?.id || !isMasterSession(session)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -102,7 +99,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const session = await getAppSession();
-    if (!session?.user?.id || !isTrashAdmin(session.user.role)) {
+    if (!session?.user?.id || !isMasterSession(session)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

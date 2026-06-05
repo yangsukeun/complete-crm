@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { isMasterSession } from "@/lib/master-account";
 
 export async function GET(
   _req: Request,
@@ -62,8 +63,7 @@ export async function POST(
       return NextResponse.json({ error: "채팅방을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const isAdmin =
-      session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isMaster = isMasterSession(session);
 
     const existing = await prisma.chatParticipant.findFirst({
       where: { chatId, userId: session.user.id },
@@ -73,7 +73,7 @@ export async function POST(
       return NextResponse.json({ ok: true, alreadyMember: true });
     }
 
-    if (isAdmin) {
+    if (isMaster) {
       await prisma.chatParticipant.create({
         data: { chatId, userId: session.user.id },
       });
@@ -105,15 +105,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Bad Request" }, { status: 400 });
     }
 
-    const isAdmin =
-      session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isMaster = isMasterSession(session);
 
     const participant = await prisma.chatParticipant.findFirst({
       where: { chatId, userId: session.user.id },
       select: { id: true },
     });
 
-    if (!participant && !isAdmin) {
+    if (!participant && !isMaster) {
       return NextResponse.json(
         { error: "채팅방에 참여 중인 사용자만 나갈 수 있습니다." },
         { status: 403 }

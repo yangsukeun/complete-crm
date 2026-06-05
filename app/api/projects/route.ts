@@ -153,7 +153,6 @@ export async function GET(req: Request) {
     const masterEmail = (process.env.MASTER_EMAIL ?? "admin@complete.co.kr").trim().toLowerCase();
     const isMaster = String((session.user as any)?.email ?? "").trim().toLowerCase() === masterEmail;
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     const baseWhere: Record<string, unknown> = brandId ? { brandId } : {};
     const projects = await prisma.project.findMany({
       where: { ...baseWhere, deletedAt: null, ...statusWhere },
@@ -170,7 +169,7 @@ export async function GET(req: Request) {
       },
       orderBy: [{ brand: { name: "asc" } }, { name: "asc" }],
     });
-    if (includeDeleted && (isAdmin || isMaster)) {
+    if (includeDeleted && isMaster) {
       const deletedProjects = await prisma.project.findMany({
         where: { ...baseWhere, deletedAt: { not: null } },
         select: {

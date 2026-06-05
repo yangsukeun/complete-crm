@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { cancelOneSignalPush, syncBadgeCount } from "@/lib/onesignal/cancel";
+import { isMasterSession } from "@/lib/master-account";
 
 const bodySchema = z.object({
   chatIds: z.array(z.string().min(1)).max(80),
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
 
     const { chatIds } = parsed.data;
     const userId = session.user.id;
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const isMaster = isMasterSession(session);
 
     const participantRows = await prisma.chatParticipant.findMany({
       where: { userId, chatId: { in: chatIds } },
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     });
     const participantChatIds = [...new Set(participantRows.map((r) => r.chatId))];
 
-    const notifyChatIds = isAdmin ? [...new Set(chatIds)] : participantChatIds;
+    const notifyChatIds = isMaster ? [...new Set(chatIds)] : participantChatIds;
     const links = notifyChatIds.flatMap((id) => [`/chat/${id}`, `/chats/${id}`]);
 
     if (links.length > 0) {
@@ -97,7 +98,7 @@ export async function POST(req: Request) {
     const unreadCount = await prisma.notification.count({ where: { userId, isRead: false } });
     await syncBadgeCount(userId, unreadCount);
 
-    const synced = isAdmin ? chatIds.length : participantChatIds.length;
+    const synced = isMaster ? chatIds.length : participantChatIds.length;
     return NextResponse.json({ ok: true, synced });
   } catch (e) {
     console.error(e);

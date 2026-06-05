@@ -39,6 +39,7 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useLayoutShared } from "@/components/layout-shared-context";
 import { cn } from "@/lib/utils";
 import { userHasPermission } from "@/lib/permissions";
+import { isMasterEmail } from "@/lib/master-account";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -88,6 +89,8 @@ const ADMIN_MENU_DEFS: {
   label: string;
   icon: typeof Settings;
   executiveOnly?: boolean;
+  /** 마스터 계정 전용(감사용 화면). 대표/관리자에게도 숨김 */
+  masterOnly?: boolean;
   feature?: string;
 }[] = [
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
@@ -97,7 +100,7 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
   { href: "/admin/departments-positions", label: "부서·직책", icon: Layers, feature: "admin_departments" },
   { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban, feature: "admin_projects" },
-  { href: "/admin/trash", label: "삭제된 항목", icon: Trash2, executiveOnly: true },
+  { href: "/admin/trash", label: "삭제된 항목", icon: Trash2, masterOnly: true },
   { href: "/admin/company", label: "회사 정보", icon: Building2, feature: "admin_company" },
   { href: "/admin/settings/logo", label: "로고 설정", icon: Image, executiveOnly: true },
 ];
@@ -310,6 +313,7 @@ export function AppNav() {
   const isCompany = effectiveMode === "company";
   const isExecutive = session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
   const isTeamLead = session?.user?.role === "TEAM_LEAD";
+  const isMaster = isMasterEmail(session?.user?.email);
 
   const userForPermission = session?.user as { role?: string; permissions?: string | null } | undefined;
   const can = (featureKey: string) => {
@@ -330,6 +334,7 @@ export function AppNav() {
   const financeLinks = financeGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
 
   const adminLinks = ADMIN_MENU_DEFS.filter((d) => {
+    if (d.masterOnly) return isMaster;
     if (d.executiveOnly) return isExecutive;
     if (d.feature) return isExecutive || can(d.feature);
     return isExecutive;

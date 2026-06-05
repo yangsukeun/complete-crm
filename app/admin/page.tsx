@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
+import { isMasterSession } from "@/lib/master-account";
 import Link from "next/link";
 import { PageHeadline } from "@/components/page-headline";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,8 @@ type MenuItem = {
   description: string;
   icon: ComponentType<{ className?: string }>;
   adminOnly?: boolean;
+  /** 마스터 계정 전용(감사용). 대표/관리자에게도 숨김 */
+  masterOnly?: boolean;
 };
 
 const menuItems: MenuItem[] = [
@@ -29,7 +32,7 @@ const menuItems: MenuItem[] = [
   { href: "/admin/logs", label: "Daily Report 조회", description: "직원별 Daily Report 조회", icon: FileText },
   { href: "/admin/departments-positions", label: "부서·직책", description: "부서·직책 마스터 관리", icon: Layers },
   { href: "/admin/projects", label: "브랜드/프로젝트", description: "브랜드·프로젝트 관리", icon: FolderKanban },
-  { href: "/admin/trash", label: "삭제된 항목", description: "휴지통: 프로젝트·게시물 복원·영구 삭제", icon: Trash2 },
+  { href: "/admin/trash", label: "삭제된 항목", description: "휴지통: 프로젝트·게시물 복원·영구 삭제", icon: Trash2, masterOnly: true },
   { href: "/admin/company", label: "회사 정보", description: "견적서용 회사 정보·도장", icon: Building2 },
   { href: "/admin/settings/logo", label: "로고 설정", description: "헤더 로고 이미지 변경", icon: Image },
 ];
@@ -39,7 +42,10 @@ export default async function AdminPage() {
   if (!session?.user) redirect("/login");
   if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
 
-  const visibleMenu = menuItems.filter((item) => !item.adminOnly || session.user.role === "ADMIN");
+  const isMaster = isMasterSession(session);
+  const visibleMenu = menuItems.filter(
+    (item) => (!item.adminOnly || session.user.role === "ADMIN") && (!item.masterOnly || isMaster)
+  );
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 max-w-4xl mx-auto">

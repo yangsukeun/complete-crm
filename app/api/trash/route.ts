@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
+import { isMasterSession } from "@/lib/master-account";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,8 @@ export async function GET(req: Request) {
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
     const tab = new URL(req.url).searchParams.get("tab") ?? "tasks";
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    // 전체 삭제 항목(타인 포함) 열람은 마스터 전용. 그 외는 본인 관련 항목만.
+    const isMaster = isMasterSession(session);
     const since = new Date();
     since.setDate(since.getDate() - RETENTION_DAYS);
 
@@ -26,7 +28,7 @@ export async function GET(req: Request) {
       const where: Prisma.TaskWhereInput = {
         deletedAt: { not: null, gte: since },
         scope,
-        ...(isAdmin
+        ...(isMaster
           ? {}
           : {
               OR: [
@@ -61,7 +63,7 @@ export async function GET(req: Request) {
     if (tab === "projects") {
       const where: Prisma.ProjectWhereInput = {
         deletedAt: { not: null, gte: since },
-        ...(isAdmin ? {} : { users: { some: { id: session.user.id } } }),
+        ...(isMaster ? {} : { users: { some: { id: session.user.id } } }),
       };
       const rows = await prisma.project.findMany({
         where,
@@ -88,7 +90,7 @@ export async function GET(req: Request) {
     if (tab === "comments") {
       const where: Prisma.TaskCommentWhereInput = {
         deletedAt: { not: null, gte: since },
-        ...(isAdmin
+        ...(isMaster
           ? {}
           : {
               userId: session.user.id,

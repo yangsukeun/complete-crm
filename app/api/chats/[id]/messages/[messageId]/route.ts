@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { isMasterSession } from "@/lib/master-account";
 
 const DELETE_ALLOWED_SECONDS = 600; // 10분
 
@@ -20,9 +21,8 @@ export async function DELETE(
       where: { chatId, userId: session.user.id },
       select: { id: true },
     });
-    const role = (session.user as { role?: string }).role;
-    const isAdmin = role === "EXECUTIVE" || role === "ADMIN";
-    if (!participant && !isAdmin) {
+    const isMaster = isMasterSession(session);
+    if (!participant && !isMaster) {
       return NextResponse.json({ error: "채팅방에 접근할 수 없습니다." }, { status: 403 });
     }
 
