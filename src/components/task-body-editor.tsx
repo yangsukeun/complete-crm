@@ -43,7 +43,8 @@ import {
   createPastedImageBlock,
   getClipboardImageFile,
   getFirstImageFileFromDataTransfer,
-  isParagraphEffectivelyEmpty,
+  insertBlockAtDropCoords,
+  insertBlockAtTextCursor,
   uploadImageViaApi,
 } from "@/lib/editor-image-upload";
 import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
@@ -389,18 +390,12 @@ export function TaskBodyEditor({
         if (imageFile) {
           e.preventDefault();
           e.stopPropagation();
-          const cur = editor.getTextCursorPosition();
-          const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+          const cursorBlock = editor.getTextCursorPosition().block;
           void toast.promise(
             (async () => {
               const url = await uploadImageViaApi(imageFile);
-              if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
               const block = createPastedImageBlock(url, imageFile.name || "pasted-image.png");
-              if (isParagraphEffectivelyEmpty(refBlock)) {
-                editor.replaceBlocks([refBlock], [block as never]);
-              } else {
-                editor.insertBlocks([block as never], refBlock, "after");
-              }
+              insertBlockAtTextCursor(editor, block, cursorBlock);
             })(),
             {
               loading: "이미지 업로드 중…",
@@ -426,15 +421,7 @@ export function TaskBodyEditor({
           ? { type: "youtube" as const, props: { url: urlText } }
           : { type: "linkPreview" as const, props: { url: urlText } };
 
-        const cur = editor.getTextCursorPosition();
-        const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
-        if (!refBlock) return;
-
-        if (isParagraphEffectivelyEmpty(refBlock)) {
-          editor.replaceBlocks([refBlock], [block as never]);
-        } else {
-          editor.insertBlocks([block as never], refBlock, "after");
-        }
+        insertBlockAtTextCursor(editor, block, editor.getTextCursorPosition().block);
       } catch {
         // ignore
       }
@@ -449,18 +436,12 @@ export function TaskBodyEditor({
         if (!file) return;
         e.preventDefault();
         e.stopPropagation();
-        const cur = editor.getTextCursorPosition();
-        const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
+        const { clientX, clientY } = e;
         void toast.promise(
           (async () => {
             const url = await uploadImageViaApi(file);
-            if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
             const block = createPastedImageBlock(url, file.name || "image.png");
-            if (isParagraphEffectivelyEmpty(refBlock)) {
-              editor.replaceBlocks([refBlock], [block as never]);
-            } else {
-              editor.insertBlocks([block as never], refBlock, "after");
-            }
+            insertBlockAtDropCoords(editor, block, clientX, clientY);
           })(),
           {
             loading: "이미지 업로드 중…",

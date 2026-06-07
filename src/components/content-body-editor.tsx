@@ -18,6 +18,11 @@ import {
 import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteMantineShell } from "@/components/blocknote-mantine-shell";
 import { ko } from "@blocknote/core/locales";
+import {
+  withMultiColumn,
+  multiColumnDropCursor,
+  locales as multiColumnLocales,
+} from "@blocknote/xl-multi-column";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { toast } from "sonner";
@@ -30,7 +35,8 @@ import {
   createPastedImageBlock,
   getClipboardImageFile,
   getFirstImageFileFromDataTransfer,
-  isParagraphEffectivelyEmpty,
+  insertBlockAtDropCoords,
+  insertBlockAtTextCursor,
   uploadImageViaApi,
 } from "@/lib/editor-image-upload";
 import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
@@ -43,6 +49,7 @@ const DEBOUNCE_MS = 800;
 
 const koreanDictionary = {
   ...ko,
+  multi_column: multiColumnLocales.ko,
   placeholders: {
     ...ko.placeholders,
     default: "내용을 입력하세요. '/' 를 누르면 토글·제목·목록을 넣을 수 있어요.",
@@ -159,10 +166,11 @@ export function ContentBodyEditor({
   const dictionary = useMemo(() => koreanDictionary, []);
 
   const editor = useCreateBlockNote({
-    schema: taskBodySchema,
+    schema: withMultiColumn(taskBodySchema),
     uploadFile,
     dictionary,
     defaultStyles: true,
+    dropCursor: multiColumnDropCursor,
     tables: BLOCKNOTE_TABLES_OPTIONS,
   });
 
@@ -218,22 +226,6 @@ export function ContentBodyEditor({
     }, DEBOUNCE_MS);
   }, [emitChange]);
 
-  const insertUploadedImageAtCursor = useCallback(
-    async (file: File) => {
-      const cur = editor.getTextCursorPosition();
-      const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
-      if (!refBlock) throw new Error("삽입 위치를 찾을 수 없습니다.");
-      const url = await uploadImageViaApi(file);
-      const block = createPastedImageBlock(url, file.name || "image.png");
-      if (isParagraphEffectivelyEmpty(refBlock)) {
-        editor.replaceBlocks([refBlock], [block as never]);
-      } else {
-        editor.insertBlocks([block as never], refBlock, "after");
-      }
-    },
-    [editor]
-  );
-
   const handlePasteCapture = useCallback(
     (e: React.ClipboardEvent) => {
       try {
@@ -243,14 +235,22 @@ export function ContentBodyEditor({
         if (imageFile) {
           e.preventDefault();
           e.stopPropagation();
-          void toast.promise(insertUploadedImageAtCursor(imageFile), {
-            loading: "이미지 업로드 중…",
-            success: "이미지를 넣었습니다.",
-            error: (err) => ({
-              message: err instanceof Error ? err.message : "이미지 업로드 실패",
-              duration: UPLOAD_TOAST_DURATION_MS,
-            }),
-          });
+          const cursorBlock = editor.getTextCursorPosition().block;
+          void toast.promise(
+            (async () => {
+              const url = await uploadImageViaApi(imageFile);
+              const block = createPastedImageBlock(url, imageFile.name || "image.png");
+              insertBlockAtTextCursor(editor, block, cursorBlock);
+            })(),
+            {
+              loading: "이미지 업로드 중…",
+              success: "이미지를 넣었습니다.",
+              error: (err) => ({
+                message: err instanceof Error ? err.message : "이미지 업로드 실패",
+                duration: UPLOAD_TOAST_DURATION_MS,
+              }),
+            }
+          );
           return;
         }
 
@@ -266,20 +266,12 @@ export function ContentBodyEditor({
           ? { type: "youtube" as const, props: { url: urlText } }
           : { type: "linkPreview" as const, props: { url: urlText } };
 
-        const cur = editor.getTextCursorPosition();
-        const refBlock = cur?.block ?? editor.document[editor.document.length - 1];
-        if (!refBlock) return;
-
-        if (isParagraphEffectivelyEmpty(refBlock)) {
-          editor.replaceBlocks([refBlock], [block as never]);
-        } else {
-          editor.insertBlocks([block as never], refBlock, "after");
-        }
+        insertBlockAtTextCursor(editor, block, editor.getTextCursorPosition().block);
       } catch {
         /* ignore */
       }
     },
-    [editor, insertUploadedImageAtCursor]
+    [editor]
   );
 
   const handleDropCapture = useCallback(
@@ -289,19 +281,27 @@ export function ContentBodyEditor({
         if (!file) return;
         e.preventDefault();
         e.stopPropagation();
-        void toast.promise(insertUploadedImageAtCursor(file), {
-          loading: "이미지 업로드 중…",
-          success: "이미지를 넣었습니다.",
-          error: (err) => ({
-            message: err instanceof Error ? err.message : "이미지 업로드 실패",
-            duration: UPLOAD_TOAST_DURATION_MS,
-          }),
-        });
+        const { clientX, clientY } = e;
+        void toast.promise(
+          (async () => {
+            const url = await uploadImageViaApi(file);
+            const block = createPastedImageBlock(url, file.name || "image.png");
+            insertBlockAtDropCoords(editor, block, clientX, clientY);
+          })(),
+          {
+            loading: "이미지 업로드 중…",
+            success: "이미지를 넣었습니다.",
+            error: (err) => ({
+              message: err instanceof Error ? err.message : "이미지 업로드 실패",
+              duration: UPLOAD_TOAST_DURATION_MS,
+            }),
+          }
+        );
       } catch {
         /* ignore */
       }
     },
-    [insertUploadedImageAtCursor]
+    [editor]
   );
 
   return (
