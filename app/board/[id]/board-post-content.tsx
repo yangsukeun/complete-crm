@@ -43,7 +43,7 @@ function BoardBlockViewerGate({ blocks }: { blocks: unknown[] }) {
  */
 /** DB에 contentType=html로 저장된 전체 HTML 본문 — iframe으로 격리 렌더 */
 function BoardStoredHtmlIframe({ html }: { html: string }) {
-  const sanitized = sanitizeNoteHtml(html);
+  const sanitized = sanitizeNoteHtml(html, { asHtmlPage: true });
   const [srcDoc, setSrcDoc] = useState(() =>
     injectIframePreviewBaseStyle(sanitized)
   );
@@ -51,7 +51,7 @@ function BoardStoredHtmlIframe({ html }: { html: string }) {
   useEffect(() => {
     queueMicrotask(() => {
       setSrcDoc(
-        injectIframePreviewBaseStyle(sanitizeNoteHtml(html), {
+        injectIframePreviewBaseStyle(sanitizeNoteHtml(html, { asHtmlPage: true }), {
           documentOrigin: window.location.origin,
         })
       );
@@ -59,7 +59,7 @@ function BoardStoredHtmlIframe({ html }: { html: string }) {
   }, [html]);
 
   const openNewTab = () => {
-    const doc = injectIframePreviewBaseStyle(sanitizeNoteHtml(html), {
+    const doc = injectIframePreviewBaseStyle(sanitizeNoteHtml(html, { asHtmlPage: true }), {
       documentOrigin: window.location.origin,
     });
     const blob = new Blob([doc], { type: "text/html;charset=utf-8" });

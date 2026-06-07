@@ -122,6 +122,7 @@ export function TaskBodyEditorWithTabs({
         htmlContent={htmlContent}
         setHtmlContent={handleHtmlChange}
         onHtmlBlur={() => void saveHtml(htmlContent)}
+        htmlPageMode
         emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
         textEditor={
           editorMode === "text" ? (

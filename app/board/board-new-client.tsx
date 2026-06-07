@@ -316,6 +316,7 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
             setEditorMode={setEditorMode}
             htmlContent={htmlContent}
             setHtmlContent={setHtmlContent}
+            htmlPageMode
             textEditor={
               <ContentBodyEditor
                 key="board-new-rich"

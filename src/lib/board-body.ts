@@ -52,7 +52,7 @@ export function boardDescriptionLooksLikeHtml(s: string): boolean {
 export function normalizeBoardDescriptionForStore(raw: string, explicitType?: "text" | "html"): string {
   const t = (raw ?? "").trim();
   if (!t) return "";
-  if (explicitType === "html") return sanitizeNoteHtml(t);
+  if (explicitType === "html") return sanitizeNoteHtml(t, { asHtmlPage: true });
   if (explicitType === "text") return t;
   if (boardDescriptionLooksLikeHtml(t)) return sanitizeNoteHtml(t);
   return t;

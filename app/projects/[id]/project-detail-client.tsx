@@ -488,6 +488,7 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
                 setEditorMode={setEditorMode}
                 htmlContent={htmlContent}
                 setHtmlContent={setHtmlContent}
+                htmlPageMode
                 textEditor={
                   <ContentBodyEditor
                     key={bodyEditorKey}

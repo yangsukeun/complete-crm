@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { injectIframePreviewBaseStyle } from "@/lib/html-iframe-preview";
+import { sanitizeNoteHtml } from "@/lib/sanitize-note-html";
 import { ScaledHtmlIframe } from "@/components/scaled-html-iframe";
 
 export type HtmlEditorMode = "text" | "html" | "preview";
@@ -17,11 +18,12 @@ type Props = {
   emptyPreviewMessage?: string;
   /** HTML 탭 textarea blur 시 저장 등 */
   onHtmlBlur?: () => void;
+  /** true면 미리보기에 저장과 동일한 HTML 페이지 sanitize 적용(WYSIWYG) */
+  htmlPageMode?: boolean;
 };
 
 /**
  * 게시판·메모 본문용: 텍스트 / HTML / 미리보기 탭
- * 미리보기 iframe은 원본 htmlContent 사용(XSS 주의).
  */
 export function HtmlEditorModeTabs({
   editorMode,
@@ -31,6 +33,7 @@ export function HtmlEditorModeTabs({
   textEditor,
   emptyPreviewMessage = "HTML 탭에서 코드를 입력하세요",
   onHtmlBlur,
+  htmlPageMode = false,
 }: Props) {
   const fallbackInner = useMemo(
     () =>
@@ -41,20 +44,28 @@ export function HtmlEditorModeTabs({
     [emptyPreviewMessage]
   );
 
+  const previewHtml = useMemo(() => {
+    const raw = htmlContent.trim();
+    if (!raw) return "";
+    return htmlPageMode
+      ? sanitizeNoteHtml(raw, { asHtmlPage: true })
+      : sanitizeNoteHtml(raw);
+  }, [htmlContent, htmlPageMode]);
+
   const [previewSrcDoc, setPreviewSrcDoc] = useState(() =>
-    htmlContent.trim()
-      ? injectIframePreviewBaseStyle(htmlContent)
+    previewHtml
+      ? injectIframePreviewBaseStyle(previewHtml)
       : injectIframePreviewBaseStyle(fallbackInner)
   );
 
   useEffect(() => {
     const o = window.location.origin;
     setPreviewSrcDoc(
-      htmlContent.trim()
-        ? injectIframePreviewBaseStyle(htmlContent, { documentOrigin: o })
+      previewHtml
+        ? injectIframePreviewBaseStyle(previewHtml, { documentOrigin: o })
         : injectIframePreviewBaseStyle(fallbackInner, { documentOrigin: o })
     );
-  }, [htmlContent, fallbackInner]);
+  }, [previewHtml, fallbackInner]);
 
   return (
     <div className="space-y-2">
@@ -155,7 +166,7 @@ export function HtmlEditorModeTabs({
 
       {editorMode === "preview" && (
         <ScaledHtmlIframe
-          key={htmlContent || "empty"}
+          key={previewHtml || "empty"}
           title="미리보기"
           srcDoc={previewSrcDoc}
           className="bg-white"

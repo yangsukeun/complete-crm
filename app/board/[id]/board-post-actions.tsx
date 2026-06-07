@@ -323,6 +323,7 @@ export function BoardPostActions({
                 setEditorMode={setEditorMode}
                 htmlContent={htmlContent}
                 setHtmlContent={setHtmlContent}
+                htmlPageMode
                 textEditor={
                   <ContentBodyEditor
                     key={editOpen ? "edit-rich-open" : "edit-rich-closed"}

@@ -396,6 +396,7 @@ export function UserNoteCard({
         htmlContent={htmlContent}
         setHtmlContent={setHtmlContent}
         onHtmlBlur={() => void flushHtmlIfDirty()}
+        htmlPageMode
         textEditor={
           <ContentBodyEditor
             key={`${note.id}-${note.contentType}-${note.updatedAt}`}
