@@ -413,6 +413,7 @@ export async function PATCH(
         assignedToId: true,
         createdById: true,
         creationSource: true,
+        updatedAt: true,
         assignees: { select: { userId: true } },
         assignedTo: { select: { name: true } },
       },
@@ -515,7 +516,29 @@ export async function PATCH(
     if (body.status === "TODO" || body.status === "IN_PROGRESS" || body.status === "DONE") data.status = body.status;
     if (typeof body.orderIndex === "number") data.orderIndex = body.orderIndex;
     if (typeof body.title === "string" && body.title.trim()) data.title = body.title.trim();
-    if ("description" in body) data.description = body.description ?? null;
+    if ("description" in body) {
+      const expectedRaw = body.expectedUpdatedAt;
+      if (expectedRaw != null && typeof expectedRaw === "string" && expectedRaw.trim()) {
+        const expectedMs = new Date(expectedRaw).getTime();
+        const serverUpdated = existing.updatedAt;
+        if (
+          !Number.isNaN(expectedMs) &&
+          serverUpdated instanceof Date &&
+          !Number.isNaN(serverUpdated.getTime()) &&
+          serverUpdated.getTime() !== expectedMs
+        ) {
+          return NextResponse.json(
+            {
+              error: "conflict",
+              message: "다른 곳에서 본문이 수정되었습니다. 새로고침 후 다시 시도해 주세요.",
+              serverUpdatedAt: serverUpdated.toISOString(),
+            },
+            { status: 409 }
+          );
+        }
+      }
+      data.description = body.description ?? null;
+    }
     if (assigneeIdsUpdate !== undefined) {
       data.assignedToId = assigneeIdsUpdate[0] ?? null;
     }

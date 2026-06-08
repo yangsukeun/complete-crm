@@ -25,7 +25,10 @@ const TaskBodyEditor = dynamic(
 type TaskBodyEditorDynamicProps = TaskBodyEditorProps;
 
 export const TaskBodyEditorDynamic = forwardRef<TaskBodyEditorHandle, TaskBodyEditorDynamicProps>(
-  function TaskBodyEditorDynamic({ taskId, initialDescription, onSaved, className }, ref) {
+  function TaskBodyEditorDynamic(
+    { taskId, initialDescription, bodyVersionRef, onSaved, className },
+    ref
+  ) {
     return (
       <div className={cn("w-full", className)}>
         <TaskBodyEditor
@@ -33,6 +36,7 @@ export const TaskBodyEditorDynamic = forwardRef<TaskBodyEditorHandle, TaskBodyEd
           key={taskId}
           taskId={taskId}
           initialDescription={initialDescription}
+          bodyVersionRef={bodyVersionRef}
           onSaved={onSaved}
           className={className}
         />

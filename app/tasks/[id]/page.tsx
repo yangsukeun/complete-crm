@@ -760,6 +760,7 @@ export default function TaskDetailPage() {
                 <TaskBodyEditorWithTabs
                   taskId={task.id}
                   initialDescription={task.description}
+                  bodyUpdatedAt={task.updatedAt ?? null}
                   onSaved={afterBodyAutoSave}
                 />
               ) : (

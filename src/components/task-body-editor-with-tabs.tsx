@@ -21,6 +21,7 @@ const HTML_SAVE_DEBOUNCE_MS = 1200;
 type Props = {
   taskId: string;
   initialDescription: string | null;
+  bodyUpdatedAt: string | null;
   onSaved: () => void;
   className?: string;
 };
@@ -32,6 +33,7 @@ type Props = {
 export function TaskBodyEditorWithTabs({
   taskId,
   initialDescription,
+  bodyUpdatedAt,
   onSaved,
   className,
 }: Props) {
@@ -52,6 +54,11 @@ export function TaskBodyEditorWithTabs({
   htmlContentRef.current = htmlContent;
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  const bodyVersionRef = useRef<string | null>(bodyUpdatedAt);
+
+  useEffect(() => {
+    bodyVersionRef.current = bodyUpdatedAt;
+  }, [taskId, bodyUpdatedAt]);
   const patcherRef = useRef(
     createSequencedDescriptionPatcher(() => ({
       url: `/api/tasks/${taskId}`,
@@ -82,12 +89,21 @@ export function TaskBodyEditorWithTabs({
         const stored = html.trim() ? wrapTaskHtmlPage(html.trim()) : null;
         const result = await patcherRef.current.patch(stored, {
           keepalive: options?.keepalive,
+          expectedUpdatedAt: bodyVersionRef.current,
         });
         if (result.ok === false) {
-          if (result.reason === "error" && !options?.silent) {
+          if (result.reason === "conflict" && !options?.silent) {
+            toast.error(
+              result.error?.message ??
+                "다른 곳에서 본문이 수정되었습니다. 새로고침 후 다시 시도해 주세요."
+            );
+          } else if (result.reason === "error" && !options?.silent) {
             toast.error("HTML 본문 저장에 실패했습니다.");
           }
           return;
+        }
+        if (result.updatedAt) {
+          bodyVersionRef.current = result.updatedAt;
         }
         lastSavedHtmlRef.current = html;
         onSavedRef.current();
@@ -192,6 +208,7 @@ export function TaskBodyEditorWithTabs({
               key={`${taskId}-${initialIsHtml ? "fresh" : "doc"}`}
               taskId={taskId}
               initialDescription={blockNoteInitial}
+              bodyVersionRef={bodyVersionRef}
               onSaved={onSaved}
             />
           ) : (

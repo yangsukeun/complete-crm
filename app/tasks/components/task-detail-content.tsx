@@ -1051,6 +1051,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         <TaskBodyEditorWithTabs
           taskId={task.id}
           initialDescription={task.description}
+          bodyUpdatedAt={task.updatedAt ?? null}
           onSaved={afterBodyAutoSave}
         />
       </div>

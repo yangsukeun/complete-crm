@@ -238,12 +238,17 @@ export type TaskBodyEditorHandle = {
 export type TaskBodyEditorProps = {
   taskId: string;
   initialDescription: string | null;
+  /** 다탭 충돌 검증용 — 부모·with-tabs와 공유 ref */
+  bodyVersionRef: React.MutableRefObject<string | null>;
   onSaved: () => void;
   className?: string;
 };
 
 export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorProps>(
-  function TaskBodyEditor({ taskId, initialDescription, onSaved, className }, ref) {
+  function TaskBodyEditor(
+    { taskId, initialDescription, bodyVersionRef, onSaved, className },
+    ref
+  ) {
   const uploadFile = useCallback(async (file: File): Promise<string> => {
     return uploadImageViaApi(file);
   }, []);
@@ -377,13 +382,22 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
       if (!unmountedRef.current) setSaveStatus("saving");
       const result = await patcherRef.current.patch(stored, {
         keepalive: options?.keepalive,
+        expectedUpdatedAt: bodyVersionRef.current,
       });
       if (result.ok === false) {
-        if (result.reason === "error" && !options?.silent) {
+        if (result.reason === "conflict" && !options?.silent) {
+          toast.error(
+            result.error?.message ??
+              "다른 곳에서 본문이 수정되었습니다. 새로고침 후 다시 시도해 주세요."
+          );
+        } else if (result.reason === "error" && !options?.silent) {
           toast.error("본문 자동 저장에 실패했습니다.");
         }
         if (!unmountedRef.current) setSaveStatus("idle");
         return;
+      }
+      if (result.updatedAt) {
+        bodyVersionRef.current = result.updatedAt;
       }
       lastSavedSerializedRef.current = stored;
       if (!unmountedRef.current) {
@@ -394,7 +408,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
         }, 2000);
       }
     },
-    [editor]
+    [editor, bodyVersionRef]
   );
   performSaveRef.current = performSave;
 
