@@ -18,6 +18,7 @@ import {
 } from "@/lib/upload-client-validate";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { BOARD_NEW_POST_EVENT } from "@/lib/board-last-seen";
+import type { ContentBodyEditorHandle } from "@/components/content-body-editor";
 import { FilePreviewDialog } from "@/components/file-preview-dialog";
 
 const ContentBodyEditor = dynamic(
@@ -58,6 +59,7 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
   const [urlLink, setUrlLink] = useState("");
   const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const contentEditorRef = useRef<ContentBodyEditorHandle | null>(null);
   const meetingTemplateAppliedRef = useRef(false);
 
   useEffect(() => {
@@ -101,6 +103,15 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
     meetingTemplateAppliedRef.current = true;
   }, [category, bodyContent, htmlContent]);
 
+  const handleEditorModeChange = (m: HtmlEditorMode) => {
+    if (m === editorMode) return;
+    if (editorMode === "text" && m !== "text") {
+      const flushed = contentEditorRef.current?.flushPendingChange();
+      if (flushed !== undefined) setBodyContent(flushed);
+    }
+    setEditorMode(m);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -110,12 +121,14 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
     setSubmitLoading(true);
     try {
       const isHtmlPayload = editorMode === "html" || editorMode === "preview";
+      const flushedBody =
+        !isHtmlPayload ? (contentEditorRef.current?.flushPendingChange() ?? bodyContent) : bodyContent;
       const res = await fetch("/api/board", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          description: (isHtmlPayload ? htmlContent : bodyContent).trim() || "",
+          description: (isHtmlPayload ? htmlContent : flushedBody).trim() || "",
           contentType: isHtmlPayload ? "html" : "text",
           category,
           workspaceScope:
@@ -313,12 +326,13 @@ export function BoardNewClient({ initialCategory }: { initialCategory: string | 
           )}
           <HtmlEditorModeTabs
             editorMode={editorMode}
-            setEditorMode={setEditorMode}
+            setEditorMode={handleEditorModeChange}
             htmlContent={htmlContent}
             setHtmlContent={setHtmlContent}
             htmlPageMode
             textEditor={
               <ContentBodyEditor
+                ref={contentEditorRef}
                 key="board-new-rich"
                 initialContent={bodyContent}
                 onChange={setBodyContent}

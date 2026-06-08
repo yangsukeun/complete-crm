@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import { jsonFetcher, SWR_KEYS } from "@/lib/api-swr";
 import Link from "next/link";
@@ -54,6 +54,7 @@ import { isUnoptimizedRemoteImageSrc } from "@/lib/remote-image-unoptimized";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { BoardPostPeekSheet } from "@/components/board-post-peek-sheet";
 import { markBoardLastSeenNow } from "@/lib/board-last-seen";
+import type { ContentBodyEditorHandle } from "@/components/content-body-editor";
 
 const CATEGORY_LABEL: Record<string, string> = {
   COMPANY: "회사 자료",
@@ -145,6 +146,7 @@ export function BoardPageClient({
   const [bodyContent, setBodyContent] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [peekBoardId, setPeekBoardId] = useState<string | null>(null);
+  const announcementEditorRef = useRef<ContentBodyEditorHandle | null>(null);
 
   const BOARD_PAGE = 20;
 
@@ -262,7 +264,8 @@ export function BoardPageClient({
 
   const handleSubmitAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !bodyContent.trim()) {
+    const flushedBody = announcementEditorRef.current?.flushPendingChange() ?? bodyContent;
+    if (!title.trim() || !flushedBody.trim()) {
       toast.error("제목과 내용을 입력하세요.");
       return;
     }
@@ -271,7 +274,7 @@ export function BoardPageClient({
       const res = await fetch("/api/announcements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), content: bodyContent.trim() }),
+        body: JSON.stringify({ title: title.trim(), content: flushedBody.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "등록 실패");
@@ -657,6 +660,7 @@ export function BoardPageClient({
             <div className="space-y-2">
               <Label>내용 (프로젝트 상세와 동일한 서식)</Label>
               <ContentBodyEditor
+                ref={announcementEditorRef}
                 key={openAnnouncement ? "ann-open" : "ann-closed"}
                 initialContent={bodyContent}
                 onChange={setBodyContent}

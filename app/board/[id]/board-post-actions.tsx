@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
+import type { ContentBodyEditorHandle } from "@/components/content-body-editor";
 
 // [PERF-C] 게시글 수정 시에만 BlockNote 청크 로드
 const ContentBodyEditor = dynamic(
@@ -104,6 +105,7 @@ export function BoardPostActions({
   const [urlLink, setUrlLink] = useState("");
   const [urlName, setUrlName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const contentEditorRef = useRef<ContentBodyEditorHandle | null>(null);
 
   const openEdit = () => {
     setTitle(initialTitle);
@@ -184,6 +186,15 @@ export function BoardPostActions({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleEditorModeChange = (m: HtmlEditorMode) => {
+    if (m === editorMode) return;
+    if (editorMode === "text" && m !== "text") {
+      const flushed = contentEditorRef.current?.flushPendingChange();
+      if (flushed !== undefined) setBodyContent(flushed);
+    }
+    setEditorMode(m);
+  };
+
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -194,13 +205,15 @@ export function BoardPostActions({
     setSubmitLoading(true);
     try {
       const isHtmlPayload = editorMode === "html" || editorMode === "preview";
+      const flushedBody =
+        !isHtmlPayload ? (contentEditorRef.current?.flushPendingChange() ?? bodyContent) : bodyContent;
       /** POST는 PATCH와 동일 처리(API route). 일부 환경에서 PATCH가 비정상일 때 대비 */
       const res = await fetch(`/api/board/${postId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          description: (isHtmlPayload ? htmlContent : bodyContent).trim() || "",
+          description: (isHtmlPayload ? htmlContent : flushedBody).trim() || "",
           contentType: isHtmlPayload ? "html" : "text",
           category,
           attachments,
@@ -320,12 +333,13 @@ export function BoardPostActions({
               <Label>설명</Label>
               <HtmlEditorModeTabs
                 editorMode={editorMode}
-                setEditorMode={setEditorMode}
+                setEditorMode={handleEditorModeChange}
                 htmlContent={htmlContent}
                 setHtmlContent={setHtmlContent}
                 htmlPageMode
                 textEditor={
                   <ContentBodyEditor
+                    ref={contentEditorRef}
                     key={editOpen ? "edit-rich-open" : "edit-rich-closed"}
                     initialContent={bodyContent}
                     onChange={setBodyContent}

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
@@ -42,6 +42,7 @@ import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 import { ExportDocumentButtons } from "@/components/export-document-buttons";
 import { contentToPlainText } from "@/lib/export/plain-from-content";
+import type { ContentBodyEditorHandle } from "@/components/content-body-editor";
 
 const ContentBodyEditor = dynamic(
   () => import("@/components/content-body-editor").then((m) => ({ default: m.ContentBodyEditor })),
@@ -125,6 +126,7 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
   const [editorMode, setEditorMode] = useState<HtmlEditorMode>("text");
   const [bodyEditorKey, setBodyEditorKey] = useState(0);
   const [bodySaving, setBodySaving] = useState(false);
+  const bodyEditorRef = useRef<ContentBodyEditorHandle | null>(null);
 
   useAutoReadOnEnter(
     projectId
@@ -225,6 +227,15 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
     setBodyEditOpen(true);
   };
 
+  const handleEditorModeChange = (m: HtmlEditorMode) => {
+    if (m === editorMode) return;
+    if (editorMode === "text" && m !== "text") {
+      const flushed = bodyEditorRef.current?.flushPendingChange();
+      if (flushed !== undefined) setBodyContent(flushed);
+    }
+    setEditorMode(m);
+  };
+
   const saveBody = async (e: React.FormEvent) => {
     e.preventDefault();
     setBodySaving(true);
@@ -233,14 +244,16 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
        *  미리보기만 보다가 HTML이 비어 있으면 본문(bodyContent)을 유지해 잘못 덮어쓰지 않음. */
       let description: string;
       let contentType: "text" | "html";
+      const flushedBody =
+        editorMode === "text" ? (bodyEditorRef.current?.flushPendingChange() ?? bodyContent) : bodyContent;
       if (editorMode === "text") {
-        description = bodyContent.trim();
+        description = flushedBody.trim();
         contentType = "text";
       } else if (htmlContent.trim()) {
         description = htmlContent.trim();
         contentType = "html";
       } else {
-        description = bodyContent.trim();
+        description = flushedBody.trim();
         contentType = "text";
       }
 
@@ -485,12 +498,13 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
               <Label>본문</Label>
               <HtmlEditorModeTabs
                 editorMode={editorMode}
-                setEditorMode={setEditorMode}
+                setEditorMode={handleEditorModeChange}
                 htmlContent={htmlContent}
                 setHtmlContent={setHtmlContent}
                 htmlPageMode
                 textEditor={
                   <ContentBodyEditor
+                    ref={bodyEditorRef}
                     key={bodyEditorKey}
                     initialContent={bodyContent}
                     onChange={setBodyContent}

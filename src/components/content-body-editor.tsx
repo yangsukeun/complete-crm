@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useMemo } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useMemo,
+} from "react";
 import { combineByGroup } from "@blocknote/core";
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import {
@@ -143,6 +150,11 @@ function BoardContentSlashMenu() {
   return <SuggestionMenuController triggerCharacter="/" getItems={getItems} />;
 }
 
+export type ContentBodyEditorHandle = {
+  /** 디바운스 대기 중인 변경을 즉시 부모 onChange에 반영하고 직렬화 문자열을 반환 */
+  flushPendingChange: () => string;
+};
+
 export type ContentBodyEditorProps = {
   initialContent: string | null;
   onChange: (markdown: string) => void;
@@ -151,13 +163,11 @@ export type ContentBodyEditorProps = {
   showHelp?: boolean;
 };
 
-export function ContentBodyEditor({
-  initialContent,
-  onChange,
-  className,
-  minHeight = "280px",
-  showHelp = true,
-}: ContentBodyEditorProps) {
+export const ContentBodyEditor = forwardRef<ContentBodyEditorHandle, ContentBodyEditorProps>(
+  function ContentBodyEditor(
+    { initialContent, onChange, className, minHeight = "280px", showHelp = true },
+    ref
+  ) {
   /** 슬래시 이미지 블록·드래그 기본 경로도 동일: /api/upload → Drive면 thumbnail URL */
   const uploadFile = useCallback(async (file: File): Promise<string> => {
     return uploadImageViaApi(file);
@@ -203,18 +213,37 @@ export function ContentBodyEditor({
     }
   }, [editor, initialContent]);
 
-  const emitChange = useCallback(() => {
-    if (!editor) return;
+  const readSerialized = useCallback(() => {
+    if (!editor) return "";
     const stored = serializeTaskBodyForStore({
       document: editor.document,
       blocksToMarkdownLossy: (blocks) => editor.blocksToMarkdownLossy(blocks ?? editor.document),
     });
-    onChangeRef.current(stored ?? "");
+    return stored ?? "";
   }, [editor]);
+
+  const emitChange = useCallback(() => {
+    onChangeRef.current(readSerialized());
+  }, [readSerialized]);
+
+  const flushPendingChange = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const stored = readSerialized();
+    onChangeRef.current(stored);
+    return stored;
+  }, [readSerialized]);
+
+  const flushPendingChangeRef = useRef(flushPendingChange);
+  flushPendingChangeRef.current = flushPendingChange;
+
+  useImperativeHandle(ref, () => ({ flushPendingChange }), [flushPendingChange]);
 
   useEffect(() => {
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      flushPendingChangeRef.current();
     };
   }, []);
 
@@ -357,4 +386,4 @@ export function ContentBodyEditor({
       )}
     </div>
   );
-}
+});
