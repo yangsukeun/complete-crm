@@ -14,7 +14,7 @@ import {
 } from "@/lib/task-body-description";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { createSequencedDescriptionPatcher } from "@/lib/sequenced-patch-client";
-import { BodyMetaLine } from "@/components/body-meta-line";
+import { BodyMetaColumn, BodyMetaLine } from "@/components/body-meta-line";
 import { cn } from "@/lib/utils";
 import { useSession } from "next-auth/react";
 
@@ -211,54 +211,60 @@ export function TaskBodyEditorWithTabs({
 
   const blockNoteInitial = isTaskHtmlPage(initialDescription) ? null : initialDescription;
 
-  const metaLine = (
-    <BodyMetaLine
-      authorName={authorName}
-      editorName={displayEditorName}
-      createdAtIso={createdAtIso}
-      updatedAtIso={displayUpdatedAt}
-    />
-  );
+  const metaProps = {
+    authorName,
+    editorName: displayEditorName,
+    createdAtIso,
+    updatedAtIso: displayUpdatedAt,
+  };
 
   return (
     <div className={cn("space-y-2", className)}>
-      {editorMode !== "text" ? (
-        <div className="mb-1 flex min-h-[22px] flex-wrap items-center justify-end gap-x-3 gap-y-0.5">
-          {metaLine}
-          {htmlSaving ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-amber-600/90 animate-pulse">
-              HTML 저장 중…
-            </span>
+      <div className="mb-1 flex min-h-[22px] items-center justify-end gap-2 sm:hidden">
+        <BodyMetaLine {...metaProps} />
+      </div>
+      <div className="flex items-start gap-0">
+        <div className="min-w-0 flex-1">
+          {editorMode !== "text" && htmlSaving ? (
+            <div className="mb-1 flex justify-end">
+              <span className="text-[11px] tabular-nums text-amber-600/90 animate-pulse">
+                HTML 저장 중…
+              </span>
+            </div>
           ) : null}
+          <HtmlEditorModeTabs
+            editorMode={editorMode}
+            setEditorMode={handleModeChange}
+            htmlContent={htmlContent}
+            setHtmlContent={handleHtmlChange}
+            onHtmlBlur={() => void saveHtml(htmlContent)}
+            htmlPageMode
+            emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
+            textEditor={
+              editorMode === "text" ? (
+                <TaskBodyEditorDynamic
+                  ref={blockNoteRef}
+                  key={`${taskId}-${initialIsHtml ? "fresh" : "doc"}`}
+                  taskId={taskId}
+                  initialDescription={blockNoteInitial}
+                  bodyVersionRef={bodyVersionRef}
+                  onSaved={notifyBodySaved}
+                />
+              ) : (
+                <p className="text-muted-foreground py-6 text-sm">
+                  텍스트 탭을 선택하면 BlockNote 에디터가 열립니다.{" "}
+                  <kbd className="rounded border px-1 text-[10px]">/</kbd> 메뉴에서 HTML 블록·YouTube 등을
+                  넣을 수 있습니다.
+                </p>
+              )
+            }
+          />
         </div>
-      ) : null}
-      <HtmlEditorModeTabs
-        editorMode={editorMode}
-        setEditorMode={handleModeChange}
-        htmlContent={htmlContent}
-        setHtmlContent={handleHtmlChange}
-        onHtmlBlur={() => void saveHtml(htmlContent)}
-        htmlPageMode
-        emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
-        textEditor={
-          editorMode === "text" ? (
-            <TaskBodyEditorDynamic
-              ref={blockNoteRef}
-              key={`${taskId}-${initialIsHtml ? "fresh" : "doc"}`}
-              taskId={taskId}
-              initialDescription={blockNoteInitial}
-              bodyVersionRef={bodyVersionRef}
-              metaLine={metaLine}
-              onSaved={notifyBodySaved}
-            />
-          ) : (
-            <p className="text-muted-foreground py-6 text-sm">
-              텍스트 탭을 선택하면 BlockNote 에디터가 열립니다.{" "}
-              <kbd className="rounded border px-1 text-[10px]">/</kbd> 메뉴에서 HTML 블록·YouTube 등을 넣을 수 있습니다.
-            </p>
-          )
-        }
-      />
+        <BodyMetaColumn
+          {...metaProps}
+          className="sticky top-20 mt-10 hidden self-stretch sm:block"
+        />
+      </div>
       {editorMode === "text" && initialIsHtml ? (
         <p className="text-muted-foreground text-xs">
           이 업무는 HTML 전체 페이지로 저장되어 있습니다. 텍스트 탭에서 새로 작성하면 BlockNote 본문으로 덮어씁니다.
