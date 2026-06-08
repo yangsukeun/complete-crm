@@ -47,6 +47,7 @@ import {
   readBoardLastSeenIso,
 } from "@/lib/board-last-seen";
 import { Button } from "@/components/ui/button";
+import { HistoryNavButtons } from "@/components/history-nav-buttons";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -381,7 +382,8 @@ export function AppNav() {
     <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         {/* Left: 로고(또는 아이콘) + 서비스명 COMPLETE CRM */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <HistoryNavButtons className="shrink-0" />
           <Link
             href="/dashboard"
             prefetch={false}

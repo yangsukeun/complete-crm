@@ -44,12 +44,13 @@ import {
 } from "@/lib/upload-client-validate";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
+import { HistoryNavButtons } from "@/components/history-nav-buttons";
+import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { CreateTaskModal } from "@/components/create-task-modal";
 import { TaskCreationSource } from "@prisma/client";
 import { TaskDetailSkeleton } from "@/components/detail/detail-skeletons";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
-import { AuthorMetaLine } from "@/components/author-meta-line";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
@@ -83,6 +84,7 @@ type TaskDetail = {
   assignedTo: AssigneeUser | null;
   createdBy: { id: string; name: string; position?: string | null };
   createdById?: string | null;
+  createdAt?: string | null;
   updatedAt?: string | null;
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
@@ -562,12 +564,15 @@ export default function TaskDetailPage() {
         )}
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
-            <Link href="/tasks" prefetch={true}>
-              <ArrowLeft className="mr-2 size-4" />
-              Projects 목록
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <HistoryNavButtons />
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
+              <Link href="/tasks" prefetch={true}>
+                <ArrowLeft className="mr-2 size-4" />
+                Projects 목록
+              </Link>
+            </Button>
+          </div>
           <div className="flex items-center gap-1">
             {task ? (
               <ExportDocumentButtons
@@ -712,14 +717,6 @@ export default function TaskDetailPage() {
             <span className="text-muted-foreground">지시</span>
             <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{task.createdBy ? formatUserName(task.createdBy) : "삭제된 사용자"}</span>
           </div>
-          <div className="mt-2">
-            <AuthorMetaLine
-              authorName={task.createdBy?.name}
-              editorName={task.revisions?.at(-1)?.user?.name}
-              dateIso={task.updatedAt}
-            />
-          </div>
-
           {canEditAssignees && workspaceUsers.length > 0 && (
             <div className="mt-4 rounded-lg border bg-muted/15 p-3 space-y-2">
               <p className="text-xs font-medium text-muted-foreground">담당자 변경 (복수 선택)</p>
@@ -761,6 +758,9 @@ export default function TaskDetailPage() {
                   taskId={task.id}
                   initialDescription={task.description}
                   bodyUpdatedAt={task.updatedAt ?? null}
+                  authorName={task.createdBy ? formatUserName(task.createdBy) : null}
+                  editorName={lastTaskBodyEditorName(task.revisions)}
+                  createdAtIso={task.createdAt ?? null}
                   onSaved={afterBodyAutoSave}
                 />
               ) : (
