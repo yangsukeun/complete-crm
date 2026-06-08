@@ -17,6 +17,12 @@ export type BlockMetaUser = {
   name: string;
 };
 
+export type DocumentAuthorFallback = {
+  id: string;
+  name: string;
+  createdAt?: string | null;
+};
+
 export function storedBlockMetaToEntry(stored: StoredBlockMeta): BlockMetaEntry {
   return {
     authorName: stored.authorName,
@@ -76,7 +82,8 @@ export function stampTopLevelBlockMeta(
   },
   blockMeta: TaskBodyBlockMetaMap,
   user: BlockMetaUser,
-  nowIso = new Date().toISOString()
+  nowIso = new Date().toISOString(),
+  documentAuthor?: DocumentAuthorFallback | null
 ): TaskBodyBlockMetaMap {
   const cursor = editor.getTextCursorPosition().block;
   const topLevelId = resolveTopLevelBlockId(editor, cursor.id);
@@ -84,12 +91,15 @@ export function stampTopLevelBlockMeta(
   const existing = blockMeta[topLevelId];
 
   if (!existing) {
+    const docId = documentAuthor?.id?.trim();
+    const docName = documentAuthor?.name?.trim();
+    const docCreated = documentAuthor?.createdAt?.trim();
     return {
       ...blockMeta,
       [topLevelId]: {
-        authorId: user.id,
-        authorName: name,
-        createdAt: nowIso,
+        authorId: docId || user.id,
+        authorName: docName || name,
+        createdAt: docCreated || nowIso,
         editorId: user.id,
         editorName: name,
         updatedAt: nowIso,

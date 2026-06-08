@@ -758,6 +758,7 @@ export default function TaskDetailPage() {
                   taskId={task.id}
                   initialDescription={task.description}
                   bodyUpdatedAt={task.updatedAt ?? null}
+                  authorId={task.createdBy?.id ?? null}
                   authorName={task.createdBy ? formatUserName(task.createdBy) : null}
                   editorName={lastTaskBodyEditorName(task.revisions)}
                   createdAtIso={task.createdAt ?? null}

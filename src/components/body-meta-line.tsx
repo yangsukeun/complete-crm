@@ -10,6 +10,7 @@ function formatBodyDateTime(iso?: string | Date | null): string | null {
 }
 
 export type BodyMetaProps = {
+  authorId?: string | null;
   authorName?: string | null;
   editorName?: string | null;
   createdAtIso?: string | Date | null;

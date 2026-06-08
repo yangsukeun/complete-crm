@@ -121,6 +121,18 @@ export type SerializeTaskBodyOptions = {
   blockMeta?: TaskBodyBlockMetaMap | null;
 };
 
+/** blockMeta 제외 — 실제 본문 변경 여부만 비교 */
+export function fingerprintTaskBodyBlocks(editor: EditorForSerialize): string | null {
+  try {
+    const blocks = normalizeBlockNoteBlocksForYoutube(
+      JSON.parse(JSON.stringify(editor.document)) as unknown[]
+    );
+    return JSON.stringify(blocks);
+  } catch {
+    return null;
+  }
+}
+
 export function serializeTaskBodyForStore(
   editor: EditorForSerialize,
   options?: SerializeTaskBodyOptions

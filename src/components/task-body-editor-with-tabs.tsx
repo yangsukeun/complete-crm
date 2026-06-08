@@ -24,6 +24,7 @@ type Props = {
   taskId: string;
   initialDescription: string | null;
   bodyUpdatedAt: string | null;
+  authorId?: string | null;
   authorName?: string | null;
   editorName?: string | null;
   createdAtIso?: string | null;
@@ -39,6 +40,7 @@ export function TaskBodyEditorWithTabs({
   taskId,
   initialDescription,
   bodyUpdatedAt,
+  authorId,
   authorName,
   editorName,
   createdAtIso,
@@ -212,6 +214,7 @@ export function TaskBodyEditorWithTabs({
   const blockNoteInitial = isTaskHtmlPage(initialDescription) ? null : initialDescription;
 
   const metaProps = {
+    authorId,
     authorName,
     editorName: displayEditorName,
     createdAtIso,

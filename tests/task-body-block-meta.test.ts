@@ -26,6 +26,25 @@ describe("task-body-block-meta", () => {
     });
   });
 
+  it("stampTopLevelBlockMeta uses document author on first legacy edit", () => {
+    const editor = {
+      getTextCursorPosition: () => ({ block: { id: "top-1" } }),
+      getParentBlock: () => undefined,
+    };
+    const next = stampTopLevelBlockMeta(
+      editor,
+      {},
+      { id: "u2", name: "김철수" },
+      "2026-06-05T11:00:00.000Z",
+      { id: "u1", name: "양수근", createdAt: "2024-06-08T07:42:00.000Z" }
+    );
+    expect(next["top-1"].authorId).toBe("u1");
+    expect(next["top-1"].authorName).toBe("양수근");
+    expect(next["top-1"].createdAt).toBe("2024-06-08T07:42:00.000Z");
+    expect(next["top-1"].editorId).toBe("u2");
+    expect(next["top-1"].editorName).toBe("김철수");
+  });
+
   it("stampTopLevelBlockMeta keeps author and updates editor", () => {
     const existing: TaskBodyBlockMetaMap = {
       "top-1": {

@@ -56,6 +56,7 @@ import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs"
 import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { AuthorMetaLine } from "@/components/author-meta-line";
+import { HistoryNavButtons } from "@/components/history-nav-buttons";
 
 type User = { id: string; name: string; email?: string; department?: string | null; position?: string | null };
 
@@ -636,7 +637,9 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         </div>
       ) : (
         <>
-      <div className="flex items-center justify-end gap-1 px-4 pt-3 pb-0">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-0">
+        <HistoryNavButtons />
+        <div className="flex items-center gap-1">
         {task.scope === "TEAM" && (
           <Button
             variant="ghost"
@@ -668,6 +671,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
             전체 화면
           </Link>
         </Button>
+        </div>
       </div>
       <div className="px-10 pt-8 pb-2">
         {task.project ? (
@@ -1057,6 +1061,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
           taskId={task.id}
           initialDescription={task.description}
           bodyUpdatedAt={task.updatedAt ?? null}
+          authorId={task.createdBy?.id ?? null}
           authorName={task.createdBy ? formatUserName(task.createdBy) : null}
           editorName={lastTaskBodyEditorName(task.revisions)}
           createdAtIso={task.createdAt ?? null}

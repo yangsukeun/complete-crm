@@ -43,7 +43,11 @@ import {
 } from "@/lib/editor-paste-url-helpers";
 import { taskBodySchema } from "@/lib/task-body-schema";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
-import { parseStoredTaskBody, serializeTaskBodyForStore } from "@/lib/task-body-description";
+import {
+  fingerprintTaskBodyBlocks,
+  parseStoredTaskBody,
+  serializeTaskBodyForStore,
+} from "@/lib/task-body-description";
 import { normalizeImageBlocksDriveDisplayUrls } from "@/lib/task-body-drive-images";
 import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
 import { BLOCKNOTE_TABLES_OPTIONS } from "@/lib/blocknote-table-options";
@@ -301,6 +305,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
   const editorWrapperRef = useRef<HTMLDivElement | null>(null);
   const [blockMetaMap, setBlockMetaMap] = useState<Record<string, BlockMetaEntry>>({});
   const blockMetaStoreRef = useRef<TaskBodyBlockMetaMap>({});
+  const lastContentFingerprintRef = useRef<string | null>(null);
   const [layoutTick, setLayoutTick] = useState(0);
   const loadedForTaskIdRef = useRef<string | null>(null);
   /** 서버와 동기화된 직렬화 본문 — 동일 스냅샷이면 PATCH 생략(onChange·프리뷰 갱신 루프 방지) */
@@ -331,6 +336,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
     lastSavedSerializedRef.current = null;
     setBlockMetaMap({});
     blockMetaStoreRef.current = {};
+    lastContentFingerprintRef.current = null;
     setLayoutTick(0);
   }, [taskId]);
 
@@ -339,6 +345,23 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
     setBlockMetaMap(blockMetaMapToDisplay(store));
   }, []);
 
+  const documentAuthorFallback = useMemo(() => {
+    const id = bodyMeta?.authorId?.trim();
+    const name = bodyMeta?.authorName?.trim();
+    if (!id && !name) return null;
+    const createdAt =
+      bodyMeta?.createdAtIso instanceof Date
+        ? bodyMeta.createdAtIso.toISOString()
+        : typeof bodyMeta?.createdAtIso === "string"
+          ? bodyMeta.createdAtIso
+          : null;
+    return {
+      id: id || "",
+      name: name || "—",
+      createdAt,
+    };
+  }, [bodyMeta?.authorId, bodyMeta?.authorName, bodyMeta?.createdAtIso]);
+
   const stampBlockMetaFromCursor = useCallback(
     (updatedAtIso?: string) => {
       if (!editor || !currentUserId?.trim()) return;
@@ -346,7 +369,13 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
         id: currentUserId.trim(),
         name: currentUserName?.trim() || "—",
       };
-      let next = stampTopLevelBlockMeta(editor, blockMetaStoreRef.current, user);
+      let next = stampTopLevelBlockMeta(
+        editor,
+        blockMetaStoreRef.current,
+        user,
+        updatedAtIso ?? new Date().toISOString(),
+        documentAuthorFallback
+      );
       if (updatedAtIso) {
         try {
           const cursor = editor.getTextCursorPosition().block;
@@ -360,8 +389,13 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
       }
       applyBlockMetaStore(next);
     },
-    [editor, currentUserId, currentUserName, applyBlockMetaStore]
+    [editor, currentUserId, currentUserName, applyBlockMetaStore, documentAuthorFallback]
   );
+
+  const syncContentFingerprint = useCallback(() => {
+    if (!editor) return;
+    lastContentFingerprintRef.current = fingerprintTaskBodyBlocks(editor);
+  }, [editor]);
 
   useEffect(() => {
     if (!editor || !taskId) return;
@@ -371,16 +405,17 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
     const raw = (initialDescription ?? "").trim();
     if (!raw) {
       loadedForTaskIdRef.current = taskId;
-      applyBlockMetaStore({});
-      try {
-        lastSavedSerializedRef.current = serializeTaskBodyForStore(editor, {
-          blockMeta: blockMetaStoreRef.current,
-        });
-      } catch {
-        lastSavedSerializedRef.current = null;
-      }
-      return;
-    }
+          applyBlockMetaStore({});
+          syncContentFingerprint();
+          try {
+            lastSavedSerializedRef.current = serializeTaskBodyForStore(editor, {
+              blockMeta: blockMetaStoreRef.current,
+            });
+          } catch {
+            lastSavedSerializedRef.current = null;
+          }
+          return;
+        }
 
     // replaceBlocks는 React 렌더/useEffect 동기 구간에서 호출 시 flushSync 경고가 난다.
     // initialDescription은 deps에 넣지 않음 — 서버 재조회·부모 setTask만으로는 재적용하지 않음(onChange→저장 루프 차단).
@@ -402,6 +437,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
             } catch {
               lastSavedSerializedRef.current = null;
             }
+            syncContentFingerprint();
             setLayoutTick((n) => n + 1);
           }, 0);
           return;
@@ -433,6 +469,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
             } catch {
               lastSavedSerializedRef.current = null;
             }
+            syncContentFingerprint();
             setLayoutTick((n) => n + 1);
           }, 0);
         }
@@ -443,7 +480,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
     const id = window.setTimeout(apply, 0);
     return () => window.clearTimeout(id);
     // initialDescription은 의도적으로 제외 — taskId·에디터 준비 시점의 스냅샷만 적용
-  }, [editor, taskId, applyBlockMetaStore]);
+  }, [editor, taskId, applyBlockMetaStore, syncContentFingerprint]);
 
   const performSave = useCallback(
     async (options?: { keepalive?: boolean; silent?: boolean }) => {
@@ -539,14 +576,25 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
   }, [taskId]);
 
   const handleChange = useCallback(() => {
-    stampBlockMetaFromCursor();
+    if (!editor) return;
+    const fingerprint = fingerprintTaskBodyBlocks(editor);
+    if (fingerprint === null) return;
+
     setLayoutTick((n) => n + 1);
+
+    if (fingerprint === lastContentFingerprintRef.current) {
+      return;
+    }
+
+    lastContentFingerprintRef.current = fingerprint;
+    stampBlockMetaFromCursor();
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       void performSave();
     }, AUTO_SAVE_DEBOUNCE_MS);
-  }, [performSave, stampBlockMetaFromCursor]);
+  }, [editor, performSave, stampBlockMetaFromCursor]);
 
   /* 캡처 단계: 이미지 파일 → /api/upload 후 영구 URL 블록 삽입(blob URL 방지). URL만 붙일 때는 유튜브/링크 프리뷰 */
   const handlePasteCapture = useCallback(
