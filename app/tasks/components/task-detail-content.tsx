@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor, PROJECT_TASK_COLORS, taskHasPaletteColor } from "@/lib/project-task-colors";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
+import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { AuthorMetaLine } from "@/components/author-meta-line";
 
@@ -74,8 +75,12 @@ type TaskDetail = {
   assignees?: { id: string; name: string; email: string; position?: string | null; image?: string | null }[];
   assignedTo: { id: string; name: string; email: string; position?: string | null; image?: string | null } | null;
   createdBy: { id: string; name: string; position?: string | null } | null;
+  createdAt?: string | null;
   updatedAt?: string | null;
-  revisions?: { user: { id: string; name: string; position?: string | null } }[];
+  revisions?: {
+    field: string;
+    user: { id: string; name: string; position?: string | null };
+  }[];
   attachments: { id: string; type: string; url: string; name: string | null }[];
   comments: { id: string; body: string; createdAt: string; user: { id: string; name: string; position?: string | null } }[];
 };
@@ -1052,6 +1057,9 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
           taskId={task.id}
           initialDescription={task.description}
           bodyUpdatedAt={task.updatedAt ?? null}
+          authorName={task.createdBy ? formatUserName(task.createdBy) : null}
+          editorName={lastTaskBodyEditorName(task.revisions)}
+          createdAtIso={task.createdAt ?? null}
           onSaved={afterBodyAutoSave}
         />
       </div>

@@ -26,7 +26,7 @@ type TaskBodyEditorDynamicProps = TaskBodyEditorProps;
 
 export const TaskBodyEditorDynamic = forwardRef<TaskBodyEditorHandle, TaskBodyEditorDynamicProps>(
   function TaskBodyEditorDynamic(
-    { taskId, initialDescription, bodyVersionRef, onSaved, className },
+    { taskId, initialDescription, bodyVersionRef, metaLine, onSaved, className },
     ref
   ) {
     return (
@@ -37,6 +37,7 @@ export const TaskBodyEditorDynamic = forwardRef<TaskBodyEditorHandle, TaskBodyEd
           taskId={taskId}
           initialDescription={initialDescription}
           bodyVersionRef={bodyVersionRef}
+          metaLine={metaLine}
           onSaved={onSaved}
           className={className}
         />

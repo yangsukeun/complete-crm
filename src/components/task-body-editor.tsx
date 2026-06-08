@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   useMemo,
+  type ReactNode,
 } from "react";
 import { combineByGroup } from "@blocknote/core";
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
@@ -240,13 +241,14 @@ export type TaskBodyEditorProps = {
   initialDescription: string | null;
   /** 다탭 충돌 검증용 — 부모·with-tabs와 공유 ref */
   bodyVersionRef: React.MutableRefObject<string | null>;
+  metaLine?: ReactNode;
   onSaved: () => void;
   className?: string;
 };
 
 export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorProps>(
   function TaskBodyEditor(
-    { taskId, initialDescription, bodyVersionRef, onSaved, className },
+    { taskId, initialDescription, bodyVersionRef, metaLine, onSaved, className },
     ref
   ) {
   const uploadFile = useCallback(async (file: File): Promise<string> => {
@@ -539,14 +541,15 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
   return (
     <div className={cn("flex flex-col", className)}>
       {/* 노션처럼 본문 위는 최소 정보만 (저장 상태) */}
-      <div className="mb-1 flex min-h-[22px] justify-end">
+      <div className="mb-1 flex min-h-[22px] flex-wrap items-center justify-end gap-x-3 gap-y-0.5">
+        {metaLine}
         {saveStatus === "saving" && (
-          <span className="text-[11px] tabular-nums text-amber-600/90 animate-pulse">
+          <span className="shrink-0 text-[11px] tabular-nums text-amber-600/90 animate-pulse">
             저장 중…
           </span>
         )}
         {saveStatus === "saved" && (
-          <span className="text-[11px] tabular-nums text-muted-foreground">저장됨</span>
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">저장됨</span>
         )}
       </div>
 

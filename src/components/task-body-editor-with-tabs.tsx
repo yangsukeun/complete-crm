@@ -14,7 +14,9 @@ import {
 } from "@/lib/task-body-description";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { createSequencedDescriptionPatcher } from "@/lib/sequenced-patch-client";
+import { BodyMetaLine } from "@/components/body-meta-line";
 import { cn } from "@/lib/utils";
+import { useSession } from "next-auth/react";
 
 const HTML_SAVE_DEBOUNCE_MS = 1200;
 
@@ -22,6 +24,9 @@ type Props = {
   taskId: string;
   initialDescription: string | null;
   bodyUpdatedAt: string | null;
+  authorName?: string | null;
+  editorName?: string | null;
+  createdAtIso?: string | null;
   onSaved: () => void;
   className?: string;
 };
@@ -34,9 +39,15 @@ export function TaskBodyEditorWithTabs({
   taskId,
   initialDescription,
   bodyUpdatedAt,
+  authorName,
+  editorName,
+  createdAtIso,
   onSaved,
   className,
 }: Props) {
+  const { data: session } = useSession();
+  const [displayUpdatedAt, setDisplayUpdatedAt] = useState<string | null>(bodyUpdatedAt);
+  const [displayEditorName, setDisplayEditorName] = useState<string | null>(editorName ?? null);
   const initialIsHtml = isTaskHtmlPage(initialDescription);
   const [editorMode, setEditorMode] = useState<HtmlEditorMode>(initialIsHtml ? "html" : "text");
   const [htmlContent, setHtmlContent] = useState(
@@ -58,7 +69,16 @@ export function TaskBodyEditorWithTabs({
 
   useEffect(() => {
     bodyVersionRef.current = bodyUpdatedAt;
-  }, [taskId, bodyUpdatedAt]);
+    setDisplayUpdatedAt(bodyUpdatedAt);
+    setDisplayEditorName(editorName ?? null);
+  }, [taskId, bodyUpdatedAt, editorName]);
+
+  const notifyBodySaved = useCallback(() => {
+    if (bodyVersionRef.current) setDisplayUpdatedAt(bodyVersionRef.current);
+    const me = session?.user?.name?.trim();
+    if (me) setDisplayEditorName(me);
+    onSavedRef.current();
+  }, [session?.user?.name]);
   const patcherRef = useRef(
     createSequencedDescriptionPatcher(() => ({
       url: `/api/tasks/${taskId}`,
@@ -106,12 +126,12 @@ export function TaskBodyEditorWithTabs({
           bodyVersionRef.current = result.updatedAt;
         }
         lastSavedHtmlRef.current = html;
-        onSavedRef.current();
+        notifyBodySaved();
       } finally {
         setHtmlSaving(false);
       }
     },
-    []
+    [notifyBodySaved]
   );
 
   const saveHtmlRef = useRef(saveHtml);
@@ -191,8 +211,27 @@ export function TaskBodyEditorWithTabs({
 
   const blockNoteInitial = isTaskHtmlPage(initialDescription) ? null : initialDescription;
 
+  const metaLine = (
+    <BodyMetaLine
+      authorName={authorName}
+      editorName={displayEditorName}
+      createdAtIso={createdAtIso}
+      updatedAtIso={displayUpdatedAt}
+    />
+  );
+
   return (
     <div className={cn("space-y-2", className)}>
+      {editorMode !== "text" ? (
+        <div className="mb-1 flex min-h-[22px] flex-wrap items-center justify-end gap-x-3 gap-y-0.5">
+          {metaLine}
+          {htmlSaving ? (
+            <span className="shrink-0 text-[11px] tabular-nums text-amber-600/90 animate-pulse">
+              HTML 저장 중…
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <HtmlEditorModeTabs
         editorMode={editorMode}
         setEditorMode={handleModeChange}
@@ -209,7 +248,8 @@ export function TaskBodyEditorWithTabs({
               taskId={taskId}
               initialDescription={blockNoteInitial}
               bodyVersionRef={bodyVersionRef}
-              onSaved={onSaved}
+              metaLine={metaLine}
+              onSaved={notifyBodySaved}
             />
           ) : (
             <p className="text-muted-foreground py-6 text-sm">
@@ -219,9 +259,6 @@ export function TaskBodyEditorWithTabs({
           )
         }
       />
-      {htmlSaving && editorMode !== "text" ? (
-        <p className="text-muted-foreground text-xs">HTML 저장 중…</p>
-      ) : null}
       {editorMode === "text" && initialIsHtml ? (
         <p className="text-muted-foreground text-xs">
           이 업무는 HTML 전체 페이지로 저장되어 있습니다. 텍스트 탭에서 새로 작성하면 BlockNote 본문으로 덮어씁니다.
