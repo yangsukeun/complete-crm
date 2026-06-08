@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  useMemo,
+} from "react";
 import { combineByGroup } from "@blocknote/core";
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import {
@@ -48,6 +56,7 @@ import {
   uploadImageViaApi,
 } from "@/lib/editor-image-upload";
 import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
+import { createSequencedDescriptionPatcher } from "@/lib/sequenced-patch-client";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
@@ -221,6 +230,11 @@ function TaskSlashMenu() {
   return <SuggestionMenuController triggerCharacter="/" getItems={getItems} />;
 }
 
+export type TaskBodyEditorHandle = {
+  /** 디바운스 대기 중인 변경 + 미반영 편집을 즉시 저장 시도 */
+  flushPendingSave: () => Promise<void>;
+};
+
 export type TaskBodyEditorProps = {
   taskId: string;
   initialDescription: string | null;
@@ -228,12 +242,8 @@ export type TaskBodyEditorProps = {
   className?: string;
 };
 
-export function TaskBodyEditor({
-  taskId,
-  initialDescription,
-  onSaved,
-  className,
-}: TaskBodyEditorProps) {
+export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorProps>(
+  function TaskBodyEditor({ taskId, initialDescription, onSaved, className }, ref) {
   const uploadFile = useCallback(async (file: File): Promise<string> => {
     return uploadImageViaApi(file);
   }, []);
@@ -262,6 +272,23 @@ export function TaskBodyEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  const unmountedRef = useRef(false);
+  const performSaveRef = useRef<
+    (options?: { keepalive?: boolean; silent?: boolean }) => Promise<void>
+  >(async () => {});
+  const patcherRef = useRef(
+    createSequencedDescriptionPatcher(() => ({
+      url: `/api/tasks/${taskId}`,
+      headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
+    }))
+  );
+
+  useEffect(() => {
+    patcherRef.current = createSequencedDescriptionPatcher(() => ({
+      url: `/api/tasks/${taskId}`,
+      headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
+    }));
+  }, [taskId]);
 
   useEffect(() => {
     loadedForTaskIdRef.current = null;
@@ -336,46 +363,82 @@ export function TaskBodyEditor({
     // initialDescription은 의도적으로 제외 — taskId·에디터 준비 시점의 스냅샷만 적용
   }, [editor, taskId]);
 
-  const performSave = useCallback(async () => {
-    if (!editor) return;
-    let stored: string | null;
-    try {
-      stored = serializeTaskBodyForStore(editor);
-    } catch {
-      return;
-    }
-    if (stored == null) return;
-    if (lastSavedSerializedRef.current === stored) return;
-    setSaveStatus("saving");
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ description: stored }),
+  const performSave = useCallback(
+    async (options?: { keepalive?: boolean; silent?: boolean }) => {
+      if (!editor) return;
+      let stored: string | null;
+      try {
+        stored = serializeTaskBodyForStore(editor);
+      } catch {
+        return;
+      }
+      if (stored == null) return;
+      if (lastSavedSerializedRef.current === stored) return;
+      if (!unmountedRef.current) setSaveStatus("saving");
+      const result = await patcherRef.current.patch(stored, {
+        keepalive: options?.keepalive,
       });
-      if (!res.ok) throw new Error("저장 실패");
+      if (result.ok === false) {
+        if (result.reason === "error" && !options?.silent) {
+          toast.error("본문 자동 저장에 실패했습니다.");
+        }
+        if (!unmountedRef.current) setSaveStatus("idle");
+        return;
+      }
       lastSavedSerializedRef.current = stored;
-      setSaveStatus("saved");
-      onSavedRef.current();
-      setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch {
-      toast.error("본문 자동 저장에 실패했습니다.");
-      setSaveStatus("idle");
+      if (!unmountedRef.current) {
+        setSaveStatus("saved");
+        onSavedRef.current();
+        setTimeout(() => {
+          if (!unmountedRef.current) setSaveStatus("idle");
+        }, 2000);
+      }
+    },
+    [editor]
+  );
+  performSaveRef.current = performSave;
+
+  const flushPendingSave = useCallback(async () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
     }
-  }, [taskId, editor]);
+    await performSave();
+  }, [performSave]);
+
+  useImperativeHandle(ref, () => ({ flushPendingSave }), [flushPendingSave]);
+
+  const flushPendingSaveRef = useRef(flushPendingSave);
+  flushPendingSaveRef.current = flushPendingSave;
 
   useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+    unmountedRef.current = false;
+
+    const onBeforeUnload = () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      void performSaveRef.current({ keepalive: true, silent: true });
     };
-  }, []);
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      unmountedRef.current = true;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      void flushPendingSaveRef.current();
+    };
+  }, [taskId]);
 
   const handleChange = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
-      performSave();
+      void performSave();
     }, AUTO_SAVE_DEBOUNCE_MS);
   }, [performSave]);
 
@@ -559,4 +622,4 @@ export function TaskBodyEditor({
       </p>
     </div>
   );
-}
+});

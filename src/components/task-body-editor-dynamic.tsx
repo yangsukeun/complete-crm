@@ -1,8 +1,11 @@
 "use client";
 
+import { forwardRef } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
-import type { TaskBodyEditorProps } from "./task-body-editor";
+import type { TaskBodyEditorHandle, TaskBodyEditorProps } from "./task-body-editor";
+
+export type { TaskBodyEditorHandle };
 
 // [PERF-C] BlockNote 에디터 청크 분리 + 로딩 스켈레톤
 const TaskBodyEditor = dynamic(
@@ -21,21 +24,19 @@ const TaskBodyEditor = dynamic(
 
 type TaskBodyEditorDynamicProps = TaskBodyEditorProps;
 
-export function TaskBodyEditorDynamic({
-  taskId,
-  initialDescription,
-  onSaved,
-  className,
-}: TaskBodyEditorDynamicProps) {
-  return (
-    <div className={cn("w-full", className)}>
-      <TaskBodyEditor
-        key={taskId}
-        taskId={taskId}
-        initialDescription={initialDescription}
-        onSaved={onSaved}
-        className={className}
-      />
-    </div>
-  );
-}
+export const TaskBodyEditorDynamic = forwardRef<TaskBodyEditorHandle, TaskBodyEditorDynamicProps>(
+  function TaskBodyEditorDynamic({ taskId, initialDescription, onSaved, className }, ref) {
+    return (
+      <div className={cn("w-full", className)}>
+        <TaskBodyEditor
+          ref={ref}
+          key={taskId}
+          taskId={taskId}
+          initialDescription={initialDescription}
+          onSaved={onSaved}
+          className={className}
+        />
+      </div>
+    );
+  }
+);

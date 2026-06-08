@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { HtmlEditorModeTabs, type HtmlEditorMode } from "@/components/html-editor-mode-tabs";
-import { TaskBodyEditorDynamic } from "@/components/task-body-editor-dynamic";
+import {
+  TaskBodyEditorDynamic,
+  type TaskBodyEditorHandle,
+} from "@/components/task-body-editor-dynamic";
 import {
   isTaskHtmlPage,
   stripTaskHtmlPage,
   wrapTaskHtmlPage,
 } from "@/lib/task-body-description";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
+import { createSequencedDescriptionPatcher } from "@/lib/sequenced-patch-client";
 import { cn } from "@/lib/utils";
 
 const HTML_SAVE_DEBOUNCE_MS = 1200;
@@ -43,6 +47,24 @@ export function TaskBodyEditorWithTabs({
   const htmlDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorModeRef = useRef(editorMode);
   editorModeRef.current = editorMode;
+  const blockNoteRef = useRef<TaskBodyEditorHandle | null>(null);
+  const htmlContentRef = useRef(htmlContent);
+  htmlContentRef.current = htmlContent;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+  const patcherRef = useRef(
+    createSequencedDescriptionPatcher(() => ({
+      url: `/api/tasks/${taskId}`,
+      headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
+    }))
+  );
+
+  useEffect(() => {
+    patcherRef.current = createSequencedDescriptionPatcher(() => ({
+      url: `/api/tasks/${taskId}`,
+      headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
+    }));
+  }, [taskId]);
 
   useEffect(() => {
     const isHtml = isTaskHtmlPage(initialDescription);
@@ -53,28 +75,44 @@ export function TaskBodyEditorWithTabs({
   }, [taskId, initialDescription]);
 
   const saveHtml = useCallback(
-    async (html: string) => {
+    async (html: string, options?: { keepalive?: boolean; silent?: boolean }) => {
       if (lastSavedHtmlRef.current === html) return;
       setHtmlSaving(true);
       try {
         const stored = html.trim() ? wrapTaskHtmlPage(html.trim()) : null;
-        const res = await fetch(`/api/tasks/${taskId}`, {
-          method: "PATCH",
-          credentials: "include",
-          headers: workspaceFetchHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ description: stored }),
+        const result = await patcherRef.current.patch(stored, {
+          keepalive: options?.keepalive,
         });
-        if (!res.ok) throw new Error("저장 실패");
+        if (result.ok === false) {
+          if (result.reason === "error" && !options?.silent) {
+            toast.error("HTML 본문 저장에 실패했습니다.");
+          }
+          return;
+        }
         lastSavedHtmlRef.current = html;
-        onSaved();
-      } catch {
-        toast.error("HTML 본문 저장에 실패했습니다.");
+        onSavedRef.current();
       } finally {
         setHtmlSaving(false);
       }
     },
-    [taskId, onSaved]
+    []
   );
+
+  const saveHtmlRef = useRef(saveHtml);
+  saveHtmlRef.current = saveHtml;
+
+  const flushHtmlPending = useCallback(async () => {
+    if (htmlDebounceRef.current) {
+      clearTimeout(htmlDebounceRef.current);
+      htmlDebounceRef.current = null;
+    }
+    if (editorModeRef.current === "html" || editorModeRef.current === "preview") {
+      await saveHtmlRef.current(htmlContentRef.current);
+    }
+  }, []);
+
+  const flushHtmlPendingRef = useRef(flushHtmlPending);
+  flushHtmlPendingRef.current = flushHtmlPending;
 
   const scheduleHtmlSave = useCallback(
     (html: string) => {
@@ -90,10 +128,28 @@ export function TaskBodyEditorWithTabs({
   );
 
   useEffect(() => {
-    return () => {
-      if (htmlDebounceRef.current) clearTimeout(htmlDebounceRef.current);
+    const onBeforeUnload = () => {
+      if (htmlDebounceRef.current) {
+        clearTimeout(htmlDebounceRef.current);
+        htmlDebounceRef.current = null;
+      }
+      if (editorModeRef.current === "html" || editorModeRef.current === "preview") {
+        void saveHtmlRef.current(htmlContentRef.current, { keepalive: true, silent: true });
+      }
+      void blockNoteRef.current?.flushPendingSave();
     };
-  }, []);
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      if (htmlDebounceRef.current) {
+        clearTimeout(htmlDebounceRef.current);
+        htmlDebounceRef.current = null;
+      }
+      void flushHtmlPendingRef.current();
+      void blockNoteRef.current?.flushPendingSave();
+    };
+  }, [taskId]);
 
   const handleHtmlChange = (v: string) => {
     setHtmlContent(v);
@@ -102,14 +158,19 @@ export function TaskBodyEditorWithTabs({
 
   const handleModeChange = (m: HtmlEditorMode) => {
     if (m === editorMode) return;
-    if ((editorMode === "html" || editorMode === "preview") && m === "text") {
-      if (htmlDebounceRef.current) {
-        clearTimeout(htmlDebounceRef.current);
-        htmlDebounceRef.current = null;
+    void (async () => {
+      if (editorMode === "text" && m !== "text") {
+        await blockNoteRef.current?.flushPendingSave();
       }
-      void saveHtml(htmlContent);
-    }
-    setEditorMode(m);
+      if ((editorMode === "html" || editorMode === "preview") && m === "text") {
+        if (htmlDebounceRef.current) {
+          clearTimeout(htmlDebounceRef.current);
+          htmlDebounceRef.current = null;
+        }
+        await saveHtml(htmlContent);
+      }
+      setEditorMode(m);
+    })();
   };
 
   const blockNoteInitial = isTaskHtmlPage(initialDescription) ? null : initialDescription;
@@ -127,6 +188,7 @@ export function TaskBodyEditorWithTabs({
         textEditor={
           editorMode === "text" ? (
             <TaskBodyEditorDynamic
+              ref={blockNoteRef}
               key={`${taskId}-${initialIsHtml ? "fresh" : "doc"}`}
               taskId={taskId}
               initialDescription={blockNoteInitial}
