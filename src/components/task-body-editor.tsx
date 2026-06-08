@@ -57,6 +57,19 @@ import {
 } from "@/lib/editor-image-upload";
 import { UPLOAD_TOAST_DURATION_MS } from "@/lib/upload-client-validate";
 import { createSequencedDescriptionPatcher } from "@/lib/sequenced-patch-client";
+import {
+  BodyMetaBlockRail,
+  type BlockMetaEntry,
+} from "@/components/body-meta-block-rail";
+import type { BodyMetaProps } from "@/components/body-meta-line";
+import {
+  blockMetaMapToDisplay,
+  getTopLevelBlockIds,
+  pruneBlockMeta,
+  resolveTopLevelBlockId,
+  stampTopLevelBlockMeta,
+  type TaskBodyBlockMetaMap,
+} from "@/lib/task-body-block-meta";
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
@@ -242,11 +255,25 @@ export type TaskBodyEditorProps = {
   bodyVersionRef: React.MutableRefObject<string | null>;
   onSaved: () => void;
   className?: string;
+  /** 본문 블록 우측 메타 (문서 기본값) */
+  bodyMeta?: BodyMetaProps;
+  /** 편집 중인 블록에 찍을 수정자 이름 */
+  currentUserName?: string | null;
+  currentUserId?: string | null;
 };
 
 export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorProps>(
   function TaskBodyEditor(
-    { taskId, initialDescription, bodyVersionRef, onSaved, className },
+    {
+      taskId,
+      initialDescription,
+      bodyVersionRef,
+      onSaved,
+      className,
+      bodyMeta,
+      currentUserName,
+      currentUserId,
+    },
     ref
   ) {
   const uploadFile = useCallback(async (file: File): Promise<string> => {
@@ -271,6 +298,10 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
   });
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const editorWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [blockMetaMap, setBlockMetaMap] = useState<Record<string, BlockMetaEntry>>({});
+  const blockMetaStoreRef = useRef<TaskBodyBlockMetaMap>({});
+  const [layoutTick, setLayoutTick] = useState(0);
   const loadedForTaskIdRef = useRef<string | null>(null);
   /** 서버와 동기화된 직렬화 본문 — 동일 스냅샷이면 PATCH 생략(onChange·프리뷰 갱신 루프 방지) */
   const lastSavedSerializedRef = useRef<string | null>(null);
@@ -298,7 +329,39 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
   useEffect(() => {
     loadedForTaskIdRef.current = null;
     lastSavedSerializedRef.current = null;
+    setBlockMetaMap({});
+    blockMetaStoreRef.current = {};
+    setLayoutTick(0);
   }, [taskId]);
+
+  const applyBlockMetaStore = useCallback((store: TaskBodyBlockMetaMap) => {
+    blockMetaStoreRef.current = store;
+    setBlockMetaMap(blockMetaMapToDisplay(store));
+  }, []);
+
+  const stampBlockMetaFromCursor = useCallback(
+    (updatedAtIso?: string) => {
+      if (!editor || !currentUserId?.trim()) return;
+      const user = {
+        id: currentUserId.trim(),
+        name: currentUserName?.trim() || "—",
+      };
+      let next = stampTopLevelBlockMeta(editor, blockMetaStoreRef.current, user);
+      if (updatedAtIso) {
+        try {
+          const cursor = editor.getTextCursorPosition().block;
+          const topId = resolveTopLevelBlockId(editor, cursor.id);
+          if (next[topId]) {
+            next = { ...next, [topId]: { ...next[topId], updatedAt: updatedAtIso } };
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      applyBlockMetaStore(next);
+    },
+    [editor, currentUserId, currentUserName, applyBlockMetaStore]
+  );
 
   useEffect(() => {
     if (!editor || !taskId) return;
@@ -308,8 +371,11 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
     const raw = (initialDescription ?? "").trim();
     if (!raw) {
       loadedForTaskIdRef.current = taskId;
+      applyBlockMetaStore({});
       try {
-        lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+        lastSavedSerializedRef.current = serializeTaskBodyForStore(editor, {
+          blockMeta: blockMetaStoreRef.current,
+        });
       } catch {
         lastSavedSerializedRef.current = null;
       }
@@ -327,19 +393,26 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
           ) as typeof parsed.blocks;
           editor.replaceBlocks(editor.document, normalized as typeof editor.document);
           loadedForTaskIdRef.current = taskId;
+          applyBlockMetaStore(parsed.blockMeta ?? {});
           window.setTimeout(() => {
             try {
-              lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+              lastSavedSerializedRef.current = serializeTaskBodyForStore(editor, {
+                blockMeta: blockMetaStoreRef.current,
+              });
             } catch {
               lastSavedSerializedRef.current = null;
             }
+            setLayoutTick((n) => n + 1);
           }, 0);
           return;
         }
         if (parsed?.format === "blocks") {
           loadedForTaskIdRef.current = taskId;
+          applyBlockMetaStore(parsed.blockMeta ?? {});
           try {
-            lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+            lastSavedSerializedRef.current = serializeTaskBodyForStore(editor, {
+              blockMeta: blockMetaStoreRef.current,
+            });
           } catch {
             lastSavedSerializedRef.current = null;
           }
@@ -351,12 +424,16 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
             editor.replaceBlocks(editor.document, blocks);
           }
           loadedForTaskIdRef.current = taskId;
+          applyBlockMetaStore({});
           window.setTimeout(() => {
             try {
-              lastSavedSerializedRef.current = serializeTaskBodyForStore(editor);
+              lastSavedSerializedRef.current = serializeTaskBodyForStore(editor, {
+                blockMeta: blockMetaStoreRef.current,
+              });
             } catch {
               lastSavedSerializedRef.current = null;
             }
+            setLayoutTick((n) => n + 1);
           }, 0);
         }
       } catch {
@@ -366,14 +443,26 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
     const id = window.setTimeout(apply, 0);
     return () => window.clearTimeout(id);
     // initialDescription은 의도적으로 제외 — taskId·에디터 준비 시점의 스냅샷만 적용
-  }, [editor, taskId]);
+  }, [editor, taskId, applyBlockMetaStore]);
 
   const performSave = useCallback(
     async (options?: { keepalive?: boolean; silent?: boolean }) => {
       if (!editor) return;
+      const prunedMeta = pruneBlockMeta(
+        blockMetaStoreRef.current,
+        getTopLevelBlockIds(editor.document)
+      );
+      const prevKeySig = Object.keys(blockMetaStoreRef.current).sort().join("\0");
+      const nextKeySig = Object.keys(prunedMeta).sort().join("\0");
+      if (prevKeySig !== nextKeySig) {
+        applyBlockMetaStore(prunedMeta);
+      } else {
+        blockMetaStoreRef.current = prunedMeta;
+      }
+
       let stored: string | null;
       try {
-        stored = serializeTaskBodyForStore(editor);
+        stored = serializeTaskBodyForStore(editor, { blockMeta: blockMetaStoreRef.current });
       } catch {
         return;
       }
@@ -398,6 +487,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
       }
       if (result.updatedAt) {
         bodyVersionRef.current = result.updatedAt;
+        stampBlockMetaFromCursor(result.updatedAt);
       }
       lastSavedSerializedRef.current = stored;
       if (!unmountedRef.current) {
@@ -408,7 +498,7 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
         }, 2000);
       }
     },
-    [editor, bodyVersionRef]
+    [editor, bodyVersionRef, applyBlockMetaStore, stampBlockMetaFromCursor]
   );
   performSaveRef.current = performSave;
 
@@ -449,12 +539,14 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
   }, [taskId]);
 
   const handleChange = useCallback(() => {
+    stampBlockMetaFromCursor();
+    setLayoutTick((n) => n + 1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       void performSave();
     }, AUTO_SAVE_DEBOUNCE_MS);
-  }, [performSave]);
+  }, [performSave, stampBlockMetaFromCursor]);
 
   /* 캡처 단계: 이미지 파일 → /api/upload 후 영구 URL 블록 삽입(blob URL 방지). URL만 붙일 때는 유튜브/링크 프리뷰 */
   const handlePasteCapture = useCallback(
@@ -550,9 +642,11 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
         )}
       </div>
 
+      <div className="flex items-start gap-0">
       <div
+        ref={editorWrapperRef}
         className={cn(
-          "notion-editor-wrapper notion-page-like",
+          "notion-editor-wrapper notion-page-like min-w-0 flex-1",
           "relative isolate min-h-[min(60vh,520px)] overflow-visible rounded-md",
           "border-0 bg-transparent shadow-none",
           "[&_.bn-editor]:mx-0 [&_.bn-editor]:w-full [&_.bn-editor]:max-w-none [&_.bn-editor]:min-h-[280px] [&_.bn-editor]:px-0 [&_.bn-editor]:py-3 sm:[&_.bn-editor]:px-1",
@@ -588,6 +682,17 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
             <SideMenuController sideMenu={NotionStyleSideMenu} />
           </BlockNoteView>
         </BlockNoteMantineShell>
+      </div>
+
+      {bodyMeta ? (
+        <BodyMetaBlockRail
+          anchorRef={editorWrapperRef}
+          editor={editor}
+          documentMeta={bodyMeta}
+          blockMetaMap={blockMetaMap}
+          layoutTick={layoutTick}
+        />
+      ) : null}
       </div>
 
       <style jsx global>{`

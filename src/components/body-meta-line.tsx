@@ -9,7 +9,7 @@ function formatBodyDateTime(iso?: string | Date | null): string | null {
   return format(d, "yyyy.MM.dd HH:mm", { locale: ko });
 }
 
-type BodyMetaProps = {
+export type BodyMetaProps = {
   authorName?: string | null;
   editorName?: string | null;
   createdAtIso?: string | Date | null;

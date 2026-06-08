@@ -1,4 +1,8 @@
 import { normalizeBlockNoteBlocksForYoutube } from "@/lib/blocknote-normalize-youtube";
+import {
+  parseBlockMetaFromPayload,
+  type TaskBodyBlockMetaMap,
+} from "@/lib/task-body-block-meta";
 
 /**
  * 업무 본문 저장: 마크다운만 쓰면 토글·다열 등 BlockNote 블록 타입이 유지되지 않습니다.
@@ -27,7 +31,7 @@ export function taskDescriptionContentType(raw: string | null | undefined): "tex
 }
 
 export type ParsedStoredTaskBody =
-  | { format: "blocks"; blocks: unknown[] }
+  | { format: "blocks"; blocks: unknown[]; blockMeta?: TaskBodyBlockMetaMap }
   | { format: "markdown"; markdown: string };
 
 /** DB/서버에서 온 문자열을 블록 JSON 또는 레거시 마크다운으로 구분 */
@@ -39,10 +43,16 @@ export function parseStoredTaskBody(raw: string | null | undefined): ParsedStore
       const parsed = JSON.parse(t.slice(TASK_BODY_DOC_PREFIX.length)) as {
         v?: number;
         blocks?: unknown[];
+        blockMeta?: unknown;
       };
       // v 검증 완화: blocks 배열만 있으면 구조화 본문으로 취급(@멘션 추출·에디터 로드 모두에 필요)
       if (Array.isArray(parsed?.blocks)) {
-        return { format: "blocks", blocks: parsed.blocks };
+        const blockMeta = parseBlockMetaFromPayload(parsed);
+        return {
+          format: "blocks",
+          blocks: parsed.blocks,
+          ...(blockMeta ? { blockMeta } : {}),
+        };
       }
     } catch {
       /* 손상된 JSON은 마크다운으로 재시도 */
@@ -107,7 +117,14 @@ function documentHasStoredContent(blocks: unknown[]): boolean {
  * - blocksToMarkdownLossy만 쓰면 @멘션·일부 블록이 빈 문자열로 나와 저장이 빠질 수 있음
  * - 블록 트리를 함께 보면 실질적인 공백만 null 처리
  */
-export function serializeTaskBodyForStore(editor: EditorForSerialize): string | null {
+export type SerializeTaskBodyOptions = {
+  blockMeta?: TaskBodyBlockMetaMap | null;
+};
+
+export function serializeTaskBodyForStore(
+  editor: EditorForSerialize,
+  options?: SerializeTaskBodyOptions
+): string | null {
   let blocks: unknown[];
   try {
     blocks = normalizeBlockNoteBlocksForYoutube(
@@ -124,9 +141,13 @@ export function serializeTaskBodyForStore(editor: EditorForSerialize): string | 
   }
   const hasStructuralContent = documentHasStoredContent(blocks);
   if (!md && !hasStructuralContent) return null;
+  const blockMeta = options?.blockMeta;
+  const hasBlockMeta =
+    blockMeta && typeof blockMeta === "object" && Object.keys(blockMeta).length > 0;
   const payload = {
     v: 1 as const,
     blocks,
+    ...(hasBlockMeta ? { blockMeta } : {}),
   };
   return TASK_BODY_DOC_PREFIX + JSON.stringify(payload);
 }

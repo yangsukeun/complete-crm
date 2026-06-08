@@ -225,45 +225,50 @@ export function TaskBodyEditorWithTabs({
       </div>
       <div className="flex items-start gap-0">
         <div className="min-w-0 flex-1">
-          {editorMode !== "text" && htmlSaving ? (
-            <div className="mb-1 flex justify-end">
-              <span className="text-[11px] tabular-nums text-amber-600/90 animate-pulse">
-                HTML 저장 중…
-              </span>
-            </div>
-          ) : null}
-          <HtmlEditorModeTabs
-            editorMode={editorMode}
-            setEditorMode={handleModeChange}
-            htmlContent={htmlContent}
-            setHtmlContent={handleHtmlChange}
-            onHtmlBlur={() => void saveHtml(htmlContent)}
-            htmlPageMode
-            emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
-            textEditor={
-              editorMode === "text" ? (
-                <TaskBodyEditorDynamic
-                  ref={blockNoteRef}
-                  key={`${taskId}-${initialIsHtml ? "fresh" : "doc"}`}
-                  taskId={taskId}
-                  initialDescription={blockNoteInitial}
-                  bodyVersionRef={bodyVersionRef}
-                  onSaved={notifyBodySaved}
-                />
-              ) : (
-                <p className="text-muted-foreground py-6 text-sm">
-                  텍스트 탭을 선택하면 BlockNote 에디터가 열립니다.{" "}
-                  <kbd className="rounded border px-1 text-[10px]">/</kbd> 메뉴에서 HTML 블록·YouTube 등을
-                  넣을 수 있습니다.
-                </p>
-              )
-            }
-          />
-        </div>
-        <BodyMetaColumn
-          {...metaProps}
-          className="sticky top-20 mt-10 hidden self-stretch sm:block"
+        {editorMode !== "text" && htmlSaving ? (
+          <div className="mb-1 flex justify-end">
+            <span className="text-[11px] tabular-nums text-amber-600/90 animate-pulse">
+              HTML 저장 중…
+            </span>
+          </div>
+        ) : null}
+        <HtmlEditorModeTabs
+          editorMode={editorMode}
+          setEditorMode={handleModeChange}
+          htmlContent={htmlContent}
+          setHtmlContent={handleHtmlChange}
+          onHtmlBlur={() => void saveHtml(htmlContent)}
+          htmlPageMode
+          emptyPreviewMessage="HTML 탭에서 코드를 입력하면 여기에 표시됩니다"
+          textEditor={
+            editorMode === "text" ? (
+              <TaskBodyEditorDynamic
+                ref={blockNoteRef}
+                key={`${taskId}-${initialIsHtml ? "fresh" : "doc"}`}
+                taskId={taskId}
+                initialDescription={blockNoteInitial}
+                bodyVersionRef={bodyVersionRef}
+                onSaved={notifyBodySaved}
+                bodyMeta={metaProps}
+                currentUserName={session?.user?.name}
+                currentUserId={session?.user?.id}
+              />
+            ) : (
+              <p className="text-muted-foreground py-6 text-sm">
+                텍스트 탭을 선택하면 BlockNote 에디터가 열립니다.{" "}
+                <kbd className="rounded border px-1 text-[10px]">/</kbd> 메뉴에서 HTML 블록·YouTube 등을
+                넣을 수 있습니다.
+              </p>
+            )
+          }
         />
+        </div>
+        {editorMode !== "text" ? (
+          <BodyMetaColumn
+            {...metaProps}
+            className="sticky top-20 mt-10 hidden self-stretch sm:block"
+          />
+        ) : null}
       </div>
       {editorMode === "text" && initialIsHtml ? (
         <p className="text-muted-foreground text-xs">
