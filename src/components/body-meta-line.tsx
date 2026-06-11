@@ -78,6 +78,57 @@ export function BodyMetaColumn({
   );
 }
 
+/** 블록 행 우측 — 접힌 토글 등 짧은 줄용 컴팩트 2행 */
+export function BodyMetaColumnCompact({
+  authorName,
+  editorName,
+  createdAtIso,
+  updatedAtIso,
+  className,
+}: BodyMetaProps) {
+  const author = authorName?.trim() || "—";
+  const editor = editorName?.trim() || null;
+  const created = formatBodyDateTime(createdAtIso);
+  const updated = formatBodyDateTime(updatedAtIso);
+  const showEditor =
+    !!editor && (editor !== author || (updated && created && updated !== created));
+
+  return (
+    <div
+      className={cn("text-muted-foreground leading-tight", className)}
+      aria-label="블록 작성·수정 정보"
+    >
+      <p className="m-0 text-[10px] tabular-nums">
+        <span className="text-muted-foreground/75">작성 </span>
+        <span className="text-foreground/80">{author}</span>
+        {created ? (
+          <>
+            <span className="text-muted-foreground/50"> · </span>
+            <span>{created}</span>
+          </>
+        ) : null}
+      </p>
+      {showEditor ? (
+        <p className="m-0 mt-0.5 text-[10px] tabular-nums">
+          <span className="text-muted-foreground/75">수정 </span>
+          <span className="text-foreground/80">{editor}</span>
+          {updated ? (
+            <>
+              <span className="text-muted-foreground/50"> · </span>
+              <span>{updated}</span>
+            </>
+          ) : null}
+        </p>
+      ) : updated && created && updated !== created ? (
+        <p className="m-0 mt-0.5 text-[10px] tabular-nums">
+          <span className="text-muted-foreground/75">수정 </span>
+          <span>{updated}</span>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** 한 줄 요약 (좁은 화면·다른 경로용) */
 export function BodyMetaLine(props: BodyMetaProps) {
   const rows = buildMetaRows(props);
