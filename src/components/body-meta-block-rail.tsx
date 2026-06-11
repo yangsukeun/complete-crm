@@ -32,14 +32,13 @@ function useBlockRowLayouts(
 
   const measure = useCallback(() => {
     const anchor = anchorRef.current;
-    if (!anchor || !editor) {
+    if (!anchor || !editor?.document?.length) {
       setLayouts([]);
       setRailHeight(0);
       return;
     }
 
-    const docIds = new Set(editor.document.map((b) => b.id));
-    const next = measureTopLevelBlockLayouts(anchor, docIds);
+    const next = measureTopLevelBlockLayouts(anchor, editor.document);
 
     setLayouts(next);
     const contentHeight = Math.max(anchor.offsetHeight, anchor.scrollHeight);
@@ -60,12 +59,15 @@ function useBlockRowLayouts(
       measure();
       window.requestAnimationFrame(measure);
       window.setTimeout(measure, 120);
+      window.setTimeout(measure, 320);
     };
 
     const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(anchor);
     const editorEl = anchor.querySelector(".bn-editor");
     if (editorEl) ro.observe(editorEl);
+    const containerEl = anchor.querySelector(".bn-container");
+    if (containerEl) ro.observe(containerEl);
 
     const mo = new MutationObserver(scheduleMeasure);
     mo.observe(anchor, {
@@ -77,12 +79,14 @@ function useBlockRowLayouts(
 
     const onResize = () => scheduleMeasure();
     window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onResize, true);
     anchor.addEventListener("click", scheduleMeasure, true);
 
     return () => {
       ro.disconnect();
       mo.disconnect();
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onResize, true);
       anchor.removeEventListener("click", scheduleMeasure, true);
     };
   }, [anchorRef, editor, measure]);
@@ -99,7 +103,7 @@ type Props = {
   className?: string;
 };
 
-/** 블록(행) 높이에 맞춰 우측 메타를 한 줄씩 정렬 */
+/** 블록(행) 높이에 맞춰 우측 메타 오버레이 */
 export function BodyMetaBlockRail({
   anchorRef,
   editor,
@@ -110,36 +114,13 @@ export function BodyMetaBlockRail({
 }: Props) {
   const { layouts, railHeight } = useBlockRowLayouts(anchorRef, editor, layoutTick);
 
-  if (!editor || layouts.length === 0) {
-    return (
-      <div
-        className={cn(
-          "hidden w-[10.5rem] shrink-0 border-l border-border/40 pl-3 sm:block sm:w-[11.5rem]",
-          className
-        )}
-        aria-hidden
-      />
-    );
-  }
-
   const rowsWithMeta = layouts.filter((row) => blockMetaMap[row.blockId]);
-  if (rowsWithMeta.length === 0) {
-    return (
-      <div
-        className={cn(
-          "hidden w-[10.5rem] shrink-0 border-l border-border/40 pl-3 sm:block sm:w-[11.5rem]",
-          className
-        )}
-        style={{ minHeight: railHeight > 0 ? railHeight : undefined }}
-        aria-hidden
-      />
-    );
-  }
+  if (!editor || rowsWithMeta.length === 0) return null;
 
   return (
     <div
       className={cn(
-        "relative hidden w-[10.5rem] shrink-0 border-l border-border/40 pl-3 sm:block sm:w-[11.5rem]",
+        "pointer-events-none absolute right-0 top-0 z-[1] hidden w-[10.5rem] border-l border-border/35 bg-background/85 pl-2 backdrop-blur-[1px] sm:block sm:w-[11.5rem]",
         className
       )}
       style={{ minHeight: railHeight > 0 ? railHeight : undefined }}
@@ -151,13 +132,10 @@ export function BodyMetaBlockRail({
         return (
           <div
             key={row.blockId}
-            className="pointer-events-none absolute left-0 right-0 flex items-start pr-0.5"
-            style={{ top: row.top, height: row.slotHeight }}
+            className="absolute left-0 right-0 flex items-start pr-1"
+            style={{ top: row.top, minHeight: row.slotHeight }}
           >
-            <BodyMetaColumnCompact
-              {...blockMeta}
-              className="w-full min-w-0 overflow-hidden"
-            />
+            <BodyMetaColumnCompact {...blockMeta} className="w-full min-w-0" />
           </div>
         );
       })}

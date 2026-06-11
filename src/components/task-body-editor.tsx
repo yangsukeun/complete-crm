@@ -690,12 +690,12 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
         )}
       </div>
 
-      <div className="flex items-start gap-0">
       <div
         ref={editorWrapperRef}
         className={cn(
-          "notion-editor-wrapper notion-page-like min-w-0 flex-1",
+          "notion-editor-wrapper notion-page-like min-w-0 w-full",
           "relative isolate min-h-[min(60vh,520px)] overflow-visible rounded-md",
+          bodyMeta && "[&_.bn-editor]:sm:pr-[11.5rem]",
           "border-0 bg-transparent shadow-none",
           "[&_.bn-editor]:mx-0 [&_.bn-editor]:w-full [&_.bn-editor]:max-w-none [&_.bn-editor]:min-h-[280px] [&_.bn-editor]:px-0 [&_.bn-editor]:py-3 sm:[&_.bn-editor]:px-1",
           "[&_.bn-editor]:text-base",
@@ -730,17 +730,16 @@ export const TaskBodyEditor = forwardRef<TaskBodyEditorHandle, TaskBodyEditorPro
             <SideMenuController sideMenu={NotionStyleSideMenu} />
           </BlockNoteView>
         </BlockNoteMantineShell>
-      </div>
 
-      {bodyMeta ? (
-        <BodyMetaBlockRail
-          anchorRef={editorWrapperRef}
-          editor={editor}
-          documentMeta={bodyMeta}
-          blockMetaMap={blockMetaMap}
-          layoutTick={layoutTick}
-        />
-      ) : null}
+        {bodyMeta ? (
+          <BodyMetaBlockRail
+            anchorRef={editorWrapperRef}
+            editor={editor}
+            documentMeta={bodyMeta}
+            blockMetaMap={blockMetaMap}
+            layoutTick={layoutTick}
+          />
+        ) : null}
       </div>
 
       <style jsx global>{`
