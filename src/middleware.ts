@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/api/auth"];
+const PUBLIC_PATHS = ["/login", "/api/auth"];
 const NEXTAUTH_COOKIES = [
   "next-auth.session-token",
   "__Secure-next-auth.session-token",
@@ -86,6 +86,11 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/app/login")) {
     const newPath = pathname.replace(/^\/app/, "") || "/login";
     return NextResponse.redirect(new URL(newPath, request.url));
+  }
+
+  /** 공개 회원가입 비활성 — 직원 계정은 관리자가 /admin/employees 에서만 생성 */
+  if (pathname === "/signup" || pathname.startsWith("/signup/")) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (isPublic(pathname)) {

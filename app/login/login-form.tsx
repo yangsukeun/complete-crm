@@ -132,10 +132,7 @@ function LoginFormInner() {
               </p>
             )}
             <p className="text-center text-sm text-muted-foreground">
-              계정이 없으신가요?{" "}
-              <Link href="/signup" className="text-primary underline hover:no-underline">
-                회원가입
-              </Link>
+              계정이 필요하면 관리자에게 직원 등록을 요청하세요.
             </p>
             <p className="text-center text-sm text-muted-foreground">
               비밀번호를 잊으셨나요?{" "}
