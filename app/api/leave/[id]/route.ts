@@ -8,6 +8,12 @@ import {
 } from "@/lib/leave/apply-approved-consumption";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { isSickLeaveType, leaveRequestDays } from "@/lib/leave/leave-request-days";
+import {
+  canTeamLeadManageLeaveApplicant,
+  fetchDepartmentsWithTeamLead,
+  needsExecutiveDirectLeaveApproval,
+  teamLeadNotifyWhereForApplicantDepartment,
+} from "@/lib/leave-department-access";
 
 function isTeamLead(role: string | undefined) {
   return role === "TEAM_LEAD";
@@ -22,11 +28,58 @@ function canOwnerRequestCancel(current: string) {
 
 function canManagerFinalizeCancel(cancelFromStatus: string | null | undefined, role: string | undefined) {
   if (!cancelFromStatus) return false;
-  // 1차 대기(PENDING) 취소는 팀장/임원 모두 처리 가능
   if (cancelFromStatus === "PENDING") return isTeamLead(role) || isExecutive(role);
-  // 2차 대기/최종승인 취소는 임원(또는 ADMIN)이 최종 처리
   if (cancelFromStatus === "TEAM_LEAD_APPROVED" || cancelFromStatus === "APPROVED") return isExecutive(role);
   return false;
+}
+
+async function applyExecutiveLeaveApproval(
+  leave: {
+    id: string;
+    userId: string;
+    type: string;
+    startDate: Date;
+    endDate: Date;
+  },
+  requestedStatus: "APPROVED" | "REJECTED"
+) {
+  if (requestedStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
+    const days = leaveRequestDays(leave.type, leave.startDate, leave.endDate);
+    const pool = await calculateLeavePool(leave.userId, new Date());
+    if (days > pool.available + 1e-6) {
+      return NextResponse.json(
+        { error: `연차 잔여일(${pool.available.toFixed(1)}일)이 부족합니다.` },
+        { status: 400 }
+      );
+    }
+    try {
+      await prisma.$transaction(async (tx) => {
+        await applyApprovedLeaveConsumption(tx, leave.userId, leave.id, days, leave.startDate);
+        await tx.leaveRequest.update({
+          where: { id: leave.id },
+          data: { status: "APPROVED" },
+        });
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("LEAVE_POOL_INSUFFICIENT")) {
+        return NextResponse.json({ error: "연차 잔여가 부족합니다." }, { status: 400 });
+      }
+      throw err;
+    }
+    const updated = await prisma.leaveRequest.findUnique({
+      where: { id: leave.id },
+      include: { user: { select: { name: true, position: true } } },
+    });
+    return NextResponse.json(updated);
+  }
+
+  const updated = await prisma.leaveRequest.update({
+    where: { id: leave.id },
+    data: { status: requestedStatus },
+    include: { user: { select: { name: true, position: true } } },
+  });
+  return NextResponse.json(updated);
 }
 
 export async function PATCH(
@@ -44,7 +97,10 @@ export async function PATCH(
     const body = await req.json();
     const requestedStatus = body.status as string;
 
-    const leave = await prisma.leaveRequest.findUnique({ where: { id }, include: { user: true } });
+    const leave = await prisma.leaveRequest.findUnique({
+      where: { id },
+      include: { user: { select: { name: true, position: true, department: true, role: true } } },
+    });
     if (!leave) {
       return NextResponse.json({ error: "신청을 찾을 수 없습니다." }, { status: 404 });
     }
@@ -66,9 +122,13 @@ export async function PATCH(
         });
 
         const applicant = updated.user?.name ?? "직원";
+        const teamLeadFilter = teamLeadNotifyWhereForApplicantDepartment(leave.user?.department);
         const managers = await prisma.user.findMany({
           where: {
-            role: { in: ["TEAM_LEAD", "EXECUTIVE", "ADMIN"] },
+            OR: [
+              { role: { in: ["EXECUTIVE", "ADMIN"] } },
+              ...(teamLeadFilter ? [teamLeadFilter] : []),
+            ],
             id: { not: leave.userId },
           },
           select: { id: true, role: true },
@@ -95,8 +155,19 @@ export async function PATCH(
       }
     }
 
-    // 팀장: 1차 승인/반려 (PENDING → TEAM_LEAD_APPROVED | REJECTED)
+    // 팀장: 1차 승인/반려 (PENDING → TEAM_LEAD_APPROVED | REJECTED) — 동일 부서만
     if (isTeamLead(role)) {
+      const teamLeadRow = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { department: true },
+      });
+      if (!canTeamLeadManageLeaveApplicant(teamLeadRow?.department, leave.user?.department)) {
+        return NextResponse.json(
+          { error: "같은 부서(팀) 소속 직원의 휴가만 1차 승인·반려할 수 있습니다." },
+          { status: 403 }
+        );
+      }
+
       // 취소 요청 처리: cancelFromStatus 기준으로 가능 여부 결정
       if (leave.status === "CANCEL_REQUESTED") {
         if (requestedStatus !== "CANCELLED") {
@@ -145,8 +216,15 @@ export async function PATCH(
       return NextResponse.json(updated);
     }
 
-    // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED), 최종 승인 시에만 연차 차감
+    // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED)
+    // 팀장 없는 부서: PENDING → APPROVED | REJECTED (바로 최종 승인)
     if (isExecutive(role)) {
+      const departmentsWithTeamLead = await fetchDepartmentsWithTeamLead(prisma);
+      const directFromPending = needsExecutiveDirectLeaveApproval(
+        leave.user?.department,
+        departmentsWithTeamLead
+      );
+
       // 취소 요청 처리 (CANCEL_REQUESTED → CANCELLED). APPROVED 취소면 연차 사용 복구
       if (leave.status === "CANCEL_REQUESTED") {
         if (requestedStatus !== "CANCELLED") {
@@ -170,55 +248,27 @@ export async function PATCH(
         return NextResponse.json(updated);
       }
 
-      if (leave.status !== "TEAM_LEAD_APPROVED") {
-        return NextResponse.json({ error: "2차 승인은 팀장 1차 승인된 건만 처리할 수 있습니다." }, { status: 400 });
+      const canFinalApprove =
+        leave.status === "TEAM_LEAD_APPROVED" ||
+        (leave.status === "PENDING" && directFromPending);
+
+      if (!canFinalApprove) {
+        if (leave.status === "PENDING") {
+          return NextResponse.json(
+            { error: "해당 부서 팀장 1차 승인 후 최종 승인할 수 있습니다." },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: "2차 승인은 팀장 1차 승인된 건만 처리할 수 있습니다." },
+          { status: 400 }
+        );
       }
       if (requestedStatus !== "APPROVED" && requestedStatus !== "REJECTED") {
         return NextResponse.json({ error: "status는 APPROVED 또는 REJECTED 여야 합니다." }, { status: 400 });
       }
 
-      if (requestedStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
-        const days = leaveRequestDays(leave.type, leave.startDate, leave.endDate);
-        const asOf = new Date();
-
-        const pool = await calculateLeavePool(leave.userId, asOf);
-        if (days > pool.available + 1e-6) {
-          return NextResponse.json(
-            { error: `연차 잔여일(${pool.available.toFixed(1)}일)이 부족합니다.` },
-            { status: 400 }
-          );
-        }
-
-        try {
-          await prisma.$transaction(async (tx) => {
-            // 승인 확정 시 항상 발생분에 FIFO 차감 연결 (미래 일자 포함, 미차감 승인 방지)
-            await applyApprovedLeaveConsumption(tx, leave.userId, id, days, leave.startDate);
-            await tx.leaveRequest.update({
-              where: { id },
-              data: { status: "APPROVED" },
-            });
-          });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("LEAVE_POOL_INSUFFICIENT")) {
-            return NextResponse.json({ error: "연차 잔여가 부족합니다." }, { status: 400 });
-          }
-          throw err;
-        }
-
-        const updated = await prisma.leaveRequest.findUnique({
-          where: { id },
-          include: { user: { select: { name: true, position: true } } },
-        });
-        return NextResponse.json(updated);
-      }
-
-      const updated = await prisma.leaveRequest.update({
-        where: { id },
-        data: { status: requestedStatus as "APPROVED" | "REJECTED" },
-        include: { user: { select: { name: true, position: true } } },
-      });
-      return NextResponse.json(updated);
+      return applyExecutiveLeaveApproval(leave, requestedStatus as "APPROVED" | "REJECTED");
     }
 
     return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });

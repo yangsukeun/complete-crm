@@ -84,6 +84,8 @@ export function LeavePageClient({
   const canApprove = isTeamLead || isExecutive;
   const { data: session } = useSession();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [viewerDepartment, setViewerDepartment] = useState<string | null>(null);
+  const [departmentsWithTeamLead, setDepartmentsWithTeamLead] = useState<string[]>([]);
   const [balance, setBalance] = useState<Balance | null>(null);
   const [todayAttendance, setTodayAttendance] = useState<TodayAttendance>(null);
   const [loading, setLoading] = useState(true);
@@ -115,6 +117,8 @@ export function LeavePageClient({
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       setRequests(data.requests);
+      setViewerDepartment(data.viewer?.department ?? null);
+      setDepartmentsWithTeamLead(Array.isArray(data.departmentsWithTeamLead) ? data.departmentsWithTeamLead : []);
       setBalance(data.balance);
     } catch {
       setRequests([]);
@@ -287,25 +291,41 @@ export function LeavePageClient({
     return list;
   }, [requests, myUid, peerNameQ, peerTypeQ, peerFrom, peerTo]);
 
+  const deptHasTeamLead = useCallback(
+    (dept: string | null | undefined) => {
+      const d = (dept ?? "").trim();
+      return d.length > 0 && departmentsWithTeamLead.some((x) => x.trim() === d);
+    },
+    [departmentsWithTeamLead]
+  );
+
   const approvalQueue = useMemo(() => {
     if (!canApprove) return [];
+    const myDept = (viewerDepartment ?? "").trim();
+    const sameDept = (dept: string | null | undefined) =>
+      myDept.length > 0 && (dept ?? "").trim() === myDept;
+
     return requests.filter((r) => {
-      if (isTeamLead && r.status === "PENDING") return true;
+      if (isTeamLead && r.status === "PENDING") return sameDept(r.user?.department);
       if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
+      if (isExecutive && r.status === "PENDING" && !deptHasTeamLead(r.user?.department)) return true;
       if (r.status === "CANCEL_REQUESTED") {
-        // 취소 요청은 cancelFromStatus 기준으로 라우팅
-        if (isTeamLead && r.cancelFromStatus === "PENDING") return true;
+        if (isTeamLead && r.cancelFromStatus === "PENDING") return sameDept(r.user?.department);
         if (
           isExecutive &&
           (r.cancelFromStatus === "PENDING" ||
             r.cancelFromStatus === "TEAM_LEAD_APPROVED" ||
             r.cancelFromStatus === "APPROVED")
-        )
+        ) {
+          if (r.cancelFromStatus === "PENDING" && deptHasTeamLead(r.user?.department)) {
+            return false;
+          }
           return true;
+        }
       }
       return false;
     });
-  }, [requests, canApprove, isTeamLead, isExecutive]);
+  }, [requests, canApprove, isTeamLead, isExecutive, viewerDepartment, deptHasTeamLead]);
 
   if (loading) {
     return (
@@ -325,12 +345,19 @@ export function LeavePageClient({
           />
           {canApprove && (
             <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-              <span className="font-medium text-foreground">대표·팀장·관리자:</span> 직원이 휴가를 신청하면 헤더
-              알림함{" "}
+              <span className="font-medium text-foreground">대표·관리자:</span> 팀장 1차 승인 후 최종
+              승인합니다. 팀장이 없는 부서는 바로 최종 승인할 수 있습니다.{" "}
+              {isTeamLead && (
+                <>
+                  <span className="font-medium text-foreground">팀장:</span> 같은 부서(팀) 직원의
+                  휴가만 1차 승인·반려할 수 있습니다.{" "}
+                </>
+              )}
+              알림은{" "}
               <Link href="/notifications" className="underline underline-offset-4 hover:no-underline">
                 /notifications
               </Link>
-              과 이 페이지 목록에서 확인할 수 있습니다. 최종 승인 전에 팀장 1차 승인이 먼저 필요합니다.
+              과 이 페이지에서 확인하세요.
             </p>
           )}
         </div>
@@ -651,6 +678,26 @@ export function LeavePageClient({
                                     onClick={() => handleStatus(r.id, "TEAM_LEAD_APPROVED")}
                                   >
                                     1차 승인
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "REJECTED")}
+                                  >
+                                    반려
+                                  </Button>
+                                </div>
+                              )}
+                              {r.status === "PENDING" && isExecutive && !deptHasTeamLead(r.user?.department) && (
+                                <div className="flex flex-wrap gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "APPROVED")}
+                                  >
+                                    승인
                                   </Button>
                                   <Button
                                     size="sm"

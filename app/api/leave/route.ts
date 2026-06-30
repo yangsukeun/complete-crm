@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { createNotificationWithOptions } from "@/lib/notifications";
+import { teamLeadNotifyWhereForApplicantDepartment, fetchDepartmentsWithTeamLead, needsExecutiveDirectLeaveApproval } from "@/lib/leave-department-access";
 import {
   leaveRequestListWhere,
   serializeLeaveRequestForViewer,
@@ -49,8 +50,13 @@ export async function GET() {
     const uid = session.user.id;
     const year = getCurrentLeaveCalendarYearKst();
 
+    const viewer = await prisma.user.findUnique({
+      where: { id: uid },
+      select: { department: true },
+    });
+
     const rawRequests = await prisma.leaveRequest.findMany({
-      where: leaveRequestListWhere(uid, role),
+      where: leaveRequestListWhere(uid, role, viewer?.department),
       include: {
         user: {
           select: {
@@ -87,8 +93,14 @@ export async function GET() {
       serializeLeaveRequestForViewer(row, uid, role)
     );
 
+    const departmentsWithTeamLead = [
+      ...((await fetchDepartmentsWithTeamLead(prisma)).values()),
+    ];
+
     return NextResponse.json({
       requests,
+      viewer: { department: viewer?.department ?? null },
+      departmentsWithTeamLead,
       balance: {
         year,
         total,
@@ -168,24 +180,37 @@ export async function POST(req: Request) {
         endDate: end,
         reason: parsed.data.reason ?? null,
       },
-      include: { user: { select: { name: true, position: true } } },
+      include: {
+        user: { select: { name: true, position: true, department: true } },
+      },
     });
 
     const applicantId = session.user.id;
-    const applicant = leave.user?.name ?? "직원";
+    const applicantName = leave.user?.name ?? "직원";
+    const departmentsWithTeamLead = await fetchDepartmentsWithTeamLead(prisma);
+    const executiveDirect = needsExecutiveDirectLeaveApproval(
+      leave.user?.department,
+      departmentsWithTeamLead
+    );
+    const teamLeadFilter = teamLeadNotifyWhereForApplicantDepartment(leave.user?.department);
     const managers = await prisma.user.findMany({
       where: {
-        role: { in: ["TEAM_LEAD", "EXECUTIVE", "ADMIN"] },
+        OR: [
+          { role: { in: ["EXECUTIVE", "ADMIN"] } },
+          ...(teamLeadFilter ? [teamLeadFilter] : []),
+        ],
         id: { not: applicantId },
       },
       select: { id: true, role: true },
     });
 
     for (const r of managers) {
-      const isTeamLead = r.role === "TEAM_LEAD";
-      const message = isTeamLead
-        ? `${applicant}님이 휴가를 신청했습니다. 아래 목록에서 1차 승인해 주세요.`
-        : `${applicant}님이 휴가를 신청했습니다. 팀장 1차 승인 후 최종 승인할 수 있습니다. 연차/근태(/leave)에서 확인하세요.`;
+      const isTeamLeadRole = r.role === "TEAM_LEAD";
+      const message = isTeamLeadRole
+        ? `${applicantName}님이 휴가를 신청했습니다. 아래 목록에서 1차 승인해 주세요.`
+        : executiveDirect
+          ? `${applicantName}님이 휴가를 신청했습니다. 해당 부서에 팀장이 없어 연차/근태(/leave)에서 바로 최종 승인해 주세요.`
+          : `${applicantName}님이 휴가를 신청했습니다. 팀장 1차 승인 후 최종 승인할 수 있습니다. 연차/근태(/leave)에서 확인하세요.`;
       await createNotificationWithOptions({
         userId: r.id,
         type: "LEAVE_REQUEST",

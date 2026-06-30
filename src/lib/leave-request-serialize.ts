@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
+import { normalizeDepartment } from "@/lib/leave-department-access";
 
-/** 팀장·임원·관리자 — 전 직원·전 상태 목록 조회 */
+/** 팀장·임원·관리자 — 목록 조회 (팀장은 동일 부서 + 본인 + 타 부서 승인 완료) */
 export function isLeaveManagementRole(role: string | undefined): boolean {
   const r = String(role ?? "").toUpperCase();
   return r === "TEAM_LEAD" || r === "EXECUTIVE" || r === "ADMIN";
@@ -9,9 +10,22 @@ export function isLeaveManagementRole(role: string | undefined): boolean {
 /** 일반 직원: 승인된 건 전사 + 본인 신청 전부(대기·반려 등) */
 export function leaveRequestListWhere(
   sessionUserId: string,
-  role: string | undefined
+  role: string | undefined,
+  viewerDepartment?: string | null
 ): Prisma.LeaveRequestWhereInput {
-  if (isLeaveManagementRole(role)) return {};
+  const r = String(role ?? "").toUpperCase();
+  if (r === "EXECUTIVE" || r === "ADMIN") return {};
+  if (r === "TEAM_LEAD") {
+    const dept = normalizeDepartment(viewerDepartment);
+    const or: Prisma.LeaveRequestWhereInput[] = [
+      { userId: sessionUserId },
+      { status: "APPROVED" },
+    ];
+    if (dept) {
+      or.push({ user: { department: dept } });
+    }
+    return { OR: or };
+  }
   return {
     OR: [{ status: "APPROVED" as const }, { userId: sessionUserId }],
   };
