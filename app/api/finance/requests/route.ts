@@ -2,7 +2,17 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
+import {
+  canTeamLeadApprovePaymentRequest,
+  fetchDepartmentsWithTeamLead,
+  paymentRequestNeedsExecutiveDirectApproval,
+  paymentRequestNeedsExecutiveFirstLineApproval,
+  teamLeadNotifyWhereForApplicantDepartment,
+} from "@/lib/finance-payment-request-policy";
+import {
+  ensurePaymentRequestAlerts,
+  notifyExecutivesOnTeamLeadApproval,
+} from "@/lib/finance-payment-request-alerts";
 
 const createSchema = z.object({
   vendorId: z.string().min(1),
@@ -72,12 +82,21 @@ export async function GET() {
     }
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
+    const departmentsWithTeamLeadSet = await fetchDepartmentsWithTeamLead(prisma);
+    const departmentsWithTeamLead = [...departmentsWithTeamLeadSet];
+    const viewerRow = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { department: true },
+    });
+    const viewerDepartment = viewerRow?.department ?? null;
+    const listMeta = { departmentsWithTeamLead, viewerDepartment };
+
     // 대표/임원: 전체 조회 후 완료/미완료로 분리 (다른 직원 요청 포함, 새/옛 건 구분 없음)
     if (isExecutive(role)) {
       const allRequests = await prisma.paymentRequest.findMany({
         where: {},
         include: {
-          requester: { select: { id: true, name: true, email: true, position: true } },
+          requester: { select: { id: true, name: true, email: true, position: true, department: true } },
           vendor: true,
           quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
         },
@@ -95,7 +114,10 @@ export async function GET() {
         .filter((r: any) => r.status === "COMPLETED")
         .sort((a: any, b: any) => (b.completedAt ? b.completedAt.getTime() : 0) - (a.completedAt ? a.completedAt.getTime() : 0));
       const pendingRequests = allRequests.filter(
-        (r: any) => r.status === "PENDING" || r.status === "TEAM_LEAD_APPROVED"
+        (r: any) =>
+          r.status === "PENDING" ||
+          r.status === "EXECUTIVE_PENDING" ||
+          (isTransferExecutor && r.status === "TEAM_LEAD_APPROVED")
       );
       const mapWithAttachments = (r: any) => ({
         ...r,
@@ -108,6 +130,7 @@ export async function GET() {
           isExecutiveTransferExecutor: isTransferExecutor,
           transferExecutorIds,
           paymentAlertUnreadCount: unreadCount,
+          ...listMeta,
         },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
@@ -118,13 +141,13 @@ export async function GET() {
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
         description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
-        r_id: string; r_name: string; r_email: string; r_position: string | null;
+        r_id: string; r_name: string; r_email: string; r_position: string | null; r_department: string | null;
         v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
         q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
         `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
-         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
+         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position, u.department as r_department,
          v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
          q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
          FROM "PaymentRequest" pr
@@ -144,13 +167,37 @@ export async function GET() {
         attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
         requesterId: r.requesterId,
         vendorId: r.vendorId,
-        requester: { id: r.r_id, name: r.r_name, email: r.r_email, position: r.r_position },
+        requester: {
+          id: r.r_id,
+          name: r.r_name,
+          email: r.r_email,
+          position: r.r_position,
+          department: r.r_department,
+        },
         vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
         quotation: r.q_id
           ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
           : null,
       }));
-      const pendingIds = requests.filter((r: any) => r.status === "PENDING").map((r: any) => r.id);
+      const pendingIds = requests
+        .filter((r: any) => {
+          if (r.status !== "PENDING") return false;
+          if (
+            paymentRequestNeedsExecutiveFirstLineApproval(
+              r.requesterId,
+              r.requester?.name,
+              transferExecutorIds
+            )
+          ) {
+            return false;
+          }
+          return canTeamLeadApprovePaymentRequest(
+            viewerDepartment,
+            r.requester?.department,
+            departmentsWithTeamLeadSet
+          );
+        })
+        .map((r: any) => r.id);
       const now = new Date().toISOString();
       const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
       if (pendingIds.length > 0) {
@@ -187,7 +234,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         finalUnread = Number(countRows[0]?.count ?? 0);
       } catch (_) {}
       return NextResponse.json(
-        { requests, paymentAlertUnreadCount: finalUnread, transferExecutorIds },
+        { requests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
     }
@@ -197,13 +244,13 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
         description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
-        r_id: string; r_name: string; r_email: string; r_position: string | null;
+        r_id: string; r_name: string; r_email: string; r_position: string | null; r_department: string | null;
         v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
         q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
       };
       const rawRows = await prisma.$queryRawUnsafe<Row[]>(
         `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
-         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position,
+         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position, u.department as r_department,
          v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
          q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
          FROM "PaymentRequest" pr
@@ -223,7 +270,13 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
         requesterId: r.requesterId,
         vendorId: r.vendorId,
-        requester: { id: r.r_id, name: r.r_name, email: r.r_email, position: r.r_position },
+        requester: {
+          id: r.r_id,
+          name: r.r_name,
+          email: r.r_email,
+          position: r.r_position,
+          department: r.r_department,
+        },
         vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
         quotation: r.q_id
           ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
@@ -266,7 +319,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         unreadCount = Number(countRows[0]?.count ?? 0);
       } catch (_) {}
       return NextResponse.json(
-        { requests, paymentAlertUnreadCount: unreadCount, transferExecutorIds },
+        { requests, paymentAlertUnreadCount: unreadCount, transferExecutorIds, ...listMeta },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
     }
@@ -276,7 +329,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       where: { requesterId: session.user.id },
       include: {
         requester: {
-          select: { id: true, name: true, email: true, position: true },
+          select: { id: true, name: true, email: true, position: true, department: true },
         },
         vendor: true,
         quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
@@ -295,7 +348,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       );
       paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
     } catch (_) {}
-    return NextResponse.json({ requests: mapped, paymentAlertUnreadCount, transferExecutorIds });
+    return NextResponse.json({ requests: mapped, paymentAlertUnreadCount, transferExecutorIds, ...listMeta });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "결제 요청 목록을 불러올 수 없습니다." }, { status: 500 });
@@ -325,7 +378,7 @@ export async function POST(req: Request) {
 
     const requesterUser = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { role: true, name: true },
+      select: { role: true, name: true, department: true },
     });
     const requesterRole = (requesterUser?.role ?? session.user.role) as string | undefined;
 
@@ -345,6 +398,14 @@ export async function POST(req: Request) {
       transferExecutorIdsPost
     );
     const isRequesterTeamLead = isTeamLead(requesterRole);
+    const departmentsWithTeamLeadSet = await fetchDepartmentsWithTeamLead(prisma);
+    const needsExecutiveDirect =
+      !needsExecutiveFirstLine &&
+      !isRequesterTeamLead &&
+      paymentRequestNeedsExecutiveDirectApproval(
+        requesterUser?.department,
+        departmentsWithTeamLeadSet
+      );
     /** 이체 담당자·김소윤: 팀장 자동승인 없음 → 대표/임원·팀장이 1차 승인 */
     const initialStatus =
       needsExecutiveFirstLine ? "PENDING" : isRequesterTeamLead ? "TEAM_LEAD_APPROVED" : "PENDING";
@@ -419,23 +480,26 @@ export async function POST(req: Request) {
       } catch (alertErr) {
         console.error("이체 담당자 알람 생성 실패:", alertErr);
       }
-    } else {
-      // 일반 직원 요청: 결재 담당자(팀장)에게 알람 등록
+    } else if (needsExecutiveDirect) {
+      // 팀장 없는 부서: 대표/임원에게 바로 알람
       try {
-        const teamLeads = await prisma.user.findMany({
-          where: { role: "TEAM_LEAD" },
-          select: { id: true },
-        });
-        for (const u of teamLeads) {
-          try {
-            await prisma.$executeRawUnsafe(
-              'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-              cuidLike(),
-              paymentRequest.id,
-              u.id,
-              now
-            );
-          } catch (_) {}
+        await notifyExecutivesOnTeamLeadApproval(paymentRequest.id);
+      } catch (alertErr) {
+        console.error("대표/임원 알람 생성 실패:", alertErr);
+      }
+    } else {
+      // 일반 직원 요청: 신청자와 같은 부서 팀장에게만 알람
+      try {
+        const teamLeadWhere = teamLeadNotifyWhereForApplicantDepartment(requesterUser?.department);
+        if (teamLeadWhere) {
+          const teamLeads = await prisma.user.findMany({
+            where: teamLeadWhere,
+            select: { id: true },
+          });
+          await ensurePaymentRequestAlerts(
+            paymentRequest.id,
+            teamLeads.map((u) => u.id)
+          );
         }
       } catch (alertErr) {
         console.error("팀장 알람 생성 실패:", alertErr);

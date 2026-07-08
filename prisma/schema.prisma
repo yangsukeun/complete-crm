@@ -90,8 +90,9 @@ enum ScheduleInviteStatus {
 }
 
 enum PaymentRequestStatus {
-  PENDING             // 신청됨 → 팀장 승인 대기
-  TEAM_LEAD_APPROVED  // 팀장 승인됨 → 이체 담당자 이체 대기
+  PENDING             // 신청됨 → 팀장(일반) 또는 대표(이체담당자 요청) 승인 대기
+  EXECUTIVE_PENDING   // 팀장 1차 승인 완료 → 대표 2차 승인 대기
+  TEAM_LEAD_APPROVED  // 대표 최종 승인 완료 → 이체 담당자 이체 대기
   COMPLETED           // 이체 담당자가 이체 완료 처리
   REJECTED
 }

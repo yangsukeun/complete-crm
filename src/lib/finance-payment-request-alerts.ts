@@ -62,3 +62,15 @@ export async function notifyTransferExecutorsOnApproval(requestId: string): Prom
   const transferExecutorIds = await loadTransferExecutorIds();
   await ensurePaymentRequestAlerts(requestId, transferExecutorIds);
 }
+
+/** 팀장 1차 승인 후 대표/임원에게 2차 승인 알람 */
+export async function notifyExecutivesOnTeamLeadApproval(requestId: string): Promise<void> {
+  const execs = await prisma.user.findMany({
+    where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
+    select: { id: true },
+  });
+  await ensurePaymentRequestAlerts(
+    requestId,
+    execs.map((u) => u.id)
+  );
+}

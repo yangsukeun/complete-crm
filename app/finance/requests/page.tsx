@@ -38,7 +38,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { postUploadFile } from "@/lib/upload-client-validate";
-import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
+import {
+  canTeamLeadManagePaymentApplicant,
+  normalizeDepartment,
+  paymentRequestNeedsExecutiveDirectApproval,
+  paymentRequestNeedsExecutiveFirstLineApproval,
+} from "@/lib/finance-payment-request-policy";
 import * as XLSX from "xlsx";
 
 type Vendor = {
@@ -62,13 +67,19 @@ type QuotationOption = {
 type PaymentRequest = {
   id: string;
   amount: number;
-  status: "PENDING" | "TEAM_LEAD_APPROVED" | "COMPLETED" | "REJECTED";
+  status: "PENDING" | "EXECUTIVE_PENDING" | "TEAM_LEAD_APPROVED" | "COMPLETED" | "REJECTED";
   requestedAt: string;
   completedAt: string | null;
   description: string | null;
   attachment: string | null;
   attachments?: string[] | null;
-  requester: { id: string; name: string; email: string; position: string | null };
+  requester: {
+    id: string;
+    name: string;
+    email: string;
+    position: string | null;
+    department?: string | null;
+  };
   vendor: Vendor;
   quotation?: QuotationOption | null;
 };
@@ -137,6 +148,53 @@ function rowNeedsExecutiveFirstLineApproval(
   );
 }
 
+function rowNeedsExecutiveDirectApproval(
+  r: PaymentRequest,
+  transferExecutorIds: readonly string[],
+  departmentsWithTeamLead: readonly string[]
+): boolean {
+  if (rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds)) return false;
+  const deptSet = new Set(
+    departmentsWithTeamLead.map((d) => normalizeDepartment(d)).filter(Boolean)
+  );
+  return paymentRequestNeedsExecutiveDirectApproval(r.requester?.department, deptSet);
+}
+
+function approvalTargetStatus(
+  r: PaymentRequest,
+  ctx: { isTeamLead: boolean; isExecutive: boolean; teamLeadDepartment?: string | null },
+  transferExecutorIds: readonly string[],
+  departmentsWithTeamLead: readonly string[]
+): "EXECUTIVE_PENDING" | "TEAM_LEAD_APPROVED" | null {
+  const execFirst = rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds);
+  const execDirect = rowNeedsExecutiveDirectApproval(r, transferExecutorIds, departmentsWithTeamLead);
+  if (
+    ctx.isTeamLead &&
+    r.status === "PENDING" &&
+    !execFirst &&
+    !execDirect &&
+    canTeamLeadManagePaymentApplicant(ctx.teamLeadDepartment, r.requester?.department)
+  ) {
+    return "EXECUTIVE_PENDING";
+  }
+  if (ctx.isExecutive && r.status === "EXECUTIVE_PENDING" && !execFirst) return "TEAM_LEAD_APPROVED";
+  if (ctx.isExecutive && r.status === "PENDING" && (execFirst || execDirect)) return "TEAM_LEAD_APPROVED";
+  return null;
+}
+
+function approvalButtonLabel(
+  r: PaymentRequest,
+  ctx: { isTeamLead: boolean; isExecutive: boolean; teamLeadDepartment?: string | null },
+  transferExecutorIds: readonly string[],
+  departmentsWithTeamLead: readonly string[]
+): string {
+  const target = approvalTargetStatus(r, ctx, transferExecutorIds, departmentsWithTeamLead);
+  if (target === "EXECUTIVE_PENDING") return "1차 승인";
+  if (target === "TEAM_LEAD_APPROVED" && r.status === "EXECUTIVE_PENDING") return "2차 승인";
+  if (target === "TEAM_LEAD_APPROVED") return "승인";
+  return "승인";
+}
+
 function attachmentsForRequest(r: PaymentRequest): string[] {
   const list = Array.isArray(r.attachments) ? r.attachments : [];
   const merged = [...list, ...(r.attachment ? [r.attachment] : [])]
@@ -178,6 +236,8 @@ export default function FinanceRequestsPage() {
   const [selectedCompleteIds, setSelectedCompleteIds] = useState<Set<string>>(new Set());
   const [paymentAlertUnreadCount, setPaymentAlertUnreadCount] = useState<number | undefined>(undefined);
   const [transferExecutorIds, setTransferExecutorIds] = useState<string[]>([]);
+  const [viewerDepartment, setViewerDepartment] = useState<string | null>(null);
+  const [departmentsWithTeamLead, setDepartmentsWithTeamLead] = useState<string[]>([]);
   const [vendorModalOpen, setVendorModalOpen] = useState(false);
   /** null = 신규 등록, 문자열 = 해당 id 수정 */
   const [vendorEditingId, setVendorEditingId] = useState<string | null>(null);
@@ -242,6 +302,17 @@ export default function FinanceRequestsPage() {
   }, [modalOpen]);
 
   const fetchRequests = useCallback(async (noCache = false) => {
+    const applyListMeta = (data: {
+      viewerDepartment?: string | null;
+      departmentsWithTeamLead?: string[];
+    }) => {
+      setViewerDepartment(
+        typeof data.viewerDepartment === "string" ? data.viewerDepartment : null
+      );
+      setDepartmentsWithTeamLead(
+        Array.isArray(data.departmentsWithTeamLead) ? data.departmentsWithTeamLead : []
+      );
+    };
     try {
       const url = noCache ? `/api/finance/requests?_t=${Date.now()}` : "/api/finance/requests";
       const res = await fetch(url, {
@@ -260,6 +331,7 @@ export default function FinanceRequestsPage() {
         setAllowTransferComplete(data.isExecutiveTransferExecutor === true);
         setPaymentAlertUnreadCount(typeof data.paymentAlertUnreadCount === "number" ? data.paymentAlertUnreadCount : undefined);
         setTransferExecutorIds(Array.isArray(data.transferExecutorIds) ? data.transferExecutorIds : []);
+        applyListMeta(data);
       } else if (Array.isArray(data)) {
         const isExecutiveFromSession = session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
         if (isExecutiveFromSession) {
@@ -287,6 +359,7 @@ export default function FinanceRequestsPage() {
         setAllowTransferComplete(false);
         setPaymentAlertUnreadCount(typeof data.paymentAlertUnreadCount === "number" ? data.paymentAlertUnreadCount : undefined);
         setTransferExecutorIds(Array.isArray(data.transferExecutorIds) ? data.transferExecutorIds : []);
+        applyListMeta(data);
       } else {
         setRequests([]);
         setCompletedRequests([]);
@@ -561,22 +634,39 @@ export default function FinanceRequestsPage() {
     }
   };
 
-  const handleApprove = async (id: string) => {
-    setCompletingId(id);
+  const handleApprove = async (r: PaymentRequest) => {
+    const userRole = session?.user?.role;
+    const target = approvalTargetStatus(
+      r,
+      {
+        isTeamLead: userRole === "TEAM_LEAD",
+        isExecutive: userRole === "EXECUTIVE" || userRole === "ADMIN",
+        teamLeadDepartment: viewerDepartment,
+      },
+      transferExecutorIds,
+      departmentsWithTeamLead
+    );
+    if (!target) return;
+    setCompletingId(r.id);
     try {
-      const res = await fetch(`/api/finance/requests/${id}`, {
+      const res = await fetch(`/api/finance/requests/${r.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "TEAM_LEAD_APPROVED" }),
+        body: JSON.stringify({ status: target }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "승인 처리 실패");
       }
       const data = await res.json().catch(() => ({}));
-      toastForActionResult(data, "승인했습니다. 이체 담당자에게 알림이 전달됩니다.");
-      // 재조회 전에 UI를 즉시 반영 (배포 환경에서 갱신 지연/실패 체감 최소화)
-      optimisticApplyStatusPatch(id, { status: "TEAM_LEAD_APPROVED" as any });
+      const msg =
+        target === "EXECUTIVE_PENDING"
+          ? "1차 승인했습니다. 대표에게 알림이 전달됩니다."
+          : target === "TEAM_LEAD_APPROVED" && r.status === "EXECUTIVE_PENDING"
+            ? "2차 승인했습니다. 이체 담당자에게 알림이 전달됩니다."
+            : "승인했습니다. 이체 담당자에게 알림이 전달됩니다.";
+      toastForActionResult(data, msg);
+      optimisticApplyStatusPatch(r.id, { status: target });
       await fetchRequests(true);
       router.refresh();
       if (typeof window !== "undefined") window.dispatchEvent(new Event("finance-alerts-refresh"));
@@ -738,15 +828,26 @@ export default function FinanceRequestsPage() {
   const isTransferExecutor = transferExecutorIds.includes(myUserId);
   const canRequest = !isExecutive;
   const canComplete = isTransferExecutor;
-  /** 팀장: 일반 건만 1차 승인·반려. 이체 담당자·김소윤 특례 건은 대표/임원만 */
+  const approvalCtx = { isTeamLead, isExecutive, teamLeadDepartment: viewerDepartment };
+  /** 팀장: 같은 부서 일반 건 1차 승인. 대표: 이체담당자·팀장 없는 부서 또는 팀장 승인 후 2차 승인 */
   const canApproveRejectRow = (r: PaymentRequest) => {
-    if (isExecutive) return true;
-    if (isTeamLead) return !rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds);
+    if (approvalTargetStatus(r, approvalCtx, transferExecutorIds, departmentsWithTeamLead)) return true;
+    if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
+    if (
+      isTeamLead &&
+      r.status === "EXECUTIVE_PENDING" &&
+      !rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds) &&
+      canTeamLeadManagePaymentApplicant(viewerDepartment, r.requester?.department)
+    ) {
+      return true;
+    }
     return false;
   };
   const showApprovalActionsColumn = isTeamLead || isExecutive || canComplete;
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
-  const pendingTotal = pendingList.filter((r: any) => r.status === "PENDING").reduce((sum, r) => sum + r.amount, 0);
+  const pendingTotal = pendingList
+    .filter((r: PaymentRequest) => r.status === "PENDING" || r.status === "EXECUTIVE_PENDING")
+    .reduce((sum, r) => sum + r.amount, 0);
   const showTwoSections =
     isExecutiveTransferExecutor || (isExecutive && !loading && requests.length === 0);
 
@@ -762,6 +863,7 @@ export default function FinanceRequestsPage() {
 
   const statusBadge = (status: string) => {
     if (status === "PENDING") return <Badge className="bg-amber-500/90 hover:bg-amber-500/90">승인대기</Badge>;
+    if (status === "EXECUTIVE_PENDING") return <Badge className="bg-violet-600 hover:bg-violet-600">대표승인대기</Badge>;
     if (status === "TEAM_LEAD_APPROVED") return <Badge className="bg-blue-600 hover:bg-blue-600">이체대기</Badge>;
     if (status === "COMPLETED") return <Badge className="bg-emerald-600 hover:bg-emerald-600">완료</Badge>;
     return <Badge variant="destructive">반려</Badge>;
@@ -788,9 +890,9 @@ export default function FinanceRequestsPage() {
             showTwoSections
               ? "결제 요청(이체 대기) 건과 이체 완료된 건을 모두 조회합니다. 이체 담당자로 지정된 경우 직접 이체 완료 처리할 수 있습니다."
               : isTeamLead
-                ? "일반 요청은 팀장이 1차 승인할 수 있습니다. 이체 담당자(또는 김소윤 님)가 올린 건은 대표(임원)만 1차 승인합니다. 이체 완료는 이체 담당자가 처리합니다."
+                ? "같은 부서(팀) 직원 요청만 팀장 1차 승인 후 대표 2차 승인합니다. 팀장이 없는 부서는 대표가 바로 승인합니다."
                 : isExecutive
-                  ? "이체 담당자 또는 김소윤 님이 올린 요청은 대표/임원이 승인·반려할 수 있습니다. 이체 완료는 이체 담당자가 처리합니다."
+                  ? "일반 직원 요청은 팀장 1차 승인 후 대표 2차 승인합니다. 팀장이 없는 부서·이체 담당자 요청은 대표가 바로 승인합니다."
                 : isTransferExecutor
                   ? "팀장 승인된 건을 실제 이체한 뒤 이체완료 버튼을 눌러주세요."
                   : "거래처에 대한 송금을 요청합니다."
@@ -996,15 +1098,18 @@ export default function FinanceRequestsPage() {
                                 대표(임원) 결재 건 · 되돌리기·반려는 대표만 가능
                               </p>
                             )}
-                          {canApproveRejectRow(r) && r.status === "PENDING" && (
+                          {canApproveRejectRow(r) &&
+                            approvalTargetStatus(r, approvalCtx, transferExecutorIds, departmentsWithTeamLead) && (
                             <div className="flex flex-wrap gap-1">
                               <Button
                                 size="sm"
-                                onClick={() => handleApprove(r.id)}
+                                onClick={() => handleApprove(r)}
                                 disabled={completingId === r.id}
                                 className="bg-emerald-600 hover:bg-emerald-700"
                               >
-                                {completingId === r.id ? "처리 중..." : "승인"}
+                                {completingId === r.id
+                                  ? "처리 중..."
+                                  : approvalButtonLabel(r, approvalCtx, transferExecutorIds, departmentsWithTeamLead)}
                               </Button>
                               <Button size="sm" variant="outline" onClick={() => handleReject(r.id)} disabled={completingId === r.id}>
                                 반려
@@ -1304,15 +1409,18 @@ export default function FinanceRequestsPage() {
                             대표(임원) 결재 건 · 되돌리기·반려는 대표만 가능
                           </p>
                         )}
-                      {canApproveRejectRow(r) && r.status === "PENDING" && (
+                      {canApproveRejectRow(r) &&
+                        approvalTargetStatus(r, approvalCtx, transferExecutorIds, departmentsWithTeamLead) && (
                         <div className="flex flex-wrap gap-1">
                           <Button
                             size="sm"
-                            onClick={() => handleApprove(r.id)}
+                            onClick={() => handleApprove(r)}
                             disabled={completingId === r.id}
                             className="bg-emerald-600 hover:bg-emerald-700"
                           >
-                            {completingId === r.id ? "처리 중..." : "승인"}
+                            {completingId === r.id
+                              ? "처리 중..."
+                              : approvalButtonLabel(r, approvalCtx, transferExecutorIds, departmentsWithTeamLead)}
                           </Button>
                           <Button
                             size="sm"

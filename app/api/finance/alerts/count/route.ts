@@ -40,42 +40,18 @@ export async function GET() {
       );
     }
 
-    // 팀장: 승인대기(PENDING) + 이체 담당자 겸직 시 이체대기 알람
+    // 팀장: 같은 부서 승인대기 알람 수
     if (role === "TEAM_LEAD") {
-      const pendingCount = await prisma.paymentRequest.count({
-        where: { status: "PENDING" },
-      });
-      let transferExecutorIds: string[] = [];
+      let alertCount = 0;
       try {
-        transferExecutorIds = await loadTransferExecutorIds();
-      } catch {
-        transferExecutorIds = [];
-      }
-      const isAlsoTransferExecutor = transferExecutorIds.includes(session.user.id);
-      if (isAlsoTransferExecutor) {
-        let alertCount = 0;
-        try {
-          const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-            'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-            session.user.id
-          );
-          alertCount = Number(countRows[0]?.count ?? 0);
-        } catch (err) {
-          console.error("[GET /api/finance/alerts/count] team lead transfer alert count", err);
-        }
-        if (alertCount > 0) {
-          return NextResponse.json(
-            { count: alertCount, label: "이체대기" },
-            {
-              headers: {
-                "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",
-              },
-            }
-          );
-        }
+        alertCount = await prisma.paymentRequestAlert.count({
+          where: { userId: session.user.id, readAt: null },
+        });
+      } catch (err) {
+        console.error("[GET /api/finance/alerts/count] team lead paymentRequestAlert.count", err);
       }
       return NextResponse.json(
-        { count: pendingCount, label: "승인대기" },
+        { count: alertCount, label: "승인대기" },
         {
           headers: {
             "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",

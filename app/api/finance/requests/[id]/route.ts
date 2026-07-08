@@ -2,16 +2,97 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
+import {
+  canTeamLeadApprovePaymentRequest,
+  fetchDepartmentsWithTeamLead,
+  paymentRequestNeedsExecutiveDirectApproval,
+  paymentRequestNeedsExecutiveFirstLineApproval,
+} from "@/lib/finance-payment-request-policy";
 import {
   ensurePaymentRequestAlerts,
   loadTransferExecutorIds,
+  notifyExecutivesOnTeamLeadApproval,
   notifyTransferExecutorsOnApproval,
 } from "@/lib/finance-payment-request-alerts";
 
+type PaymentStatus =
+  | "PENDING"
+  | "EXECUTIVE_PENDING"
+  | "TEAM_LEAD_APPROVED"
+  | "COMPLETED"
+  | "REJECTED";
+
 const updateSchema = z.object({
-  status: z.enum(["PENDING", "TEAM_LEAD_APPROVED", "COMPLETED", "REJECTED"]),
+  status: z.enum(["PENDING", "EXECUTIVE_PENDING", "TEAM_LEAD_APPROVED", "COMPLETED", "REJECTED"]),
 });
+
+function authorizePaymentStatusChange(params: {
+  cur: PaymentStatus;
+  next: PaymentStatus;
+  isTeamLead: boolean;
+  isExecutive: boolean;
+  isTransferExecutor: boolean;
+  needsExecutiveFirstLine: boolean;
+  needsExecutiveDirect: boolean;
+}): { ok: true } | { ok: false; status: number; error: string } {
+  const {
+    cur,
+    next,
+    isTeamLead,
+    isExecutive,
+    isTransferExecutor,
+    needsExecutiveFirstLine,
+    needsExecutiveDirect,
+  } = params;
+
+  const skipsTeamLeadApproval = needsExecutiveFirstLine || needsExecutiveDirect;
+
+  if (next === "COMPLETED") {
+    if (!isTransferExecutor) {
+      return { ok: false, status: 403, error: "이체 완료는 이체 담당자만 처리할 수 있습니다." };
+    }
+    if (cur !== "TEAM_LEAD_APPROVED") {
+      return { ok: false, status: 400, error: "승인 완료된 건만 이체 완료할 수 있습니다." };
+    }
+    return { ok: true };
+  }
+
+  // 이체 담당자 요청 또는 팀장 없는 부서: 대표만 PENDING → TEAM_LEAD_APPROVED
+  if (skipsTeamLeadApproval) {
+    if (isExecutive && cur === "PENDING" && (next === "TEAM_LEAD_APPROVED" || next === "REJECTED")) {
+      return { ok: true };
+    }
+    if (isExecutive && cur === "TEAM_LEAD_APPROVED" && (next === "PENDING" || next === "REJECTED")) {
+      return { ok: true };
+    }
+    if (isTeamLead && !isExecutive) {
+      const msg = needsExecutiveFirstLine
+        ? "이체 담당자가 올린 요청은 대표(임원)만 승인할 수 있습니다."
+        : "해당 부서는 팀장이 없어 대표(임원)만 승인할 수 있습니다.";
+      return { ok: false, status: 403, error: msg };
+    }
+    return { ok: false, status: 403, error: "승인·반려 권한이 없습니다." };
+  }
+
+  // 일반 직원 요청: 팀장 1차 → 대표 2차
+  if (isTeamLead && cur === "PENDING" && (next === "EXECUTIVE_PENDING" || next === "REJECTED")) {
+    return { ok: true };
+  }
+  if (isTeamLead && cur === "EXECUTIVE_PENDING" && (next === "PENDING" || next === "REJECTED")) {
+    return { ok: true };
+  }
+  if (isExecutive && cur === "EXECUTIVE_PENDING" && (next === "TEAM_LEAD_APPROVED" || next === "REJECTED")) {
+    return { ok: true };
+  }
+  if (isExecutive && cur === "EXECUTIVE_PENDING" && next === "PENDING") {
+    return { ok: true };
+  }
+  if (isExecutive && cur === "TEAM_LEAD_APPROVED" && (next === "PENDING" || next === "REJECTED")) {
+    return { ok: true };
+  }
+
+  return { ok: false, status: 403, error: "결재 권한이 없거나 처리할 수 없는 상태입니다." };
+}
 
 export async function PATCH(
   req: Request,
@@ -51,7 +132,6 @@ export async function PATCH(
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    /** UI 더블클릭/레이스 등으로 같은 상태로 다시 PATCH가 들어오면 no-op으로 성공 처리 */
     if (parsed.data.status === current.status) {
       const row = await prisma.paymentRequest.findUnique({
         where: { id },
@@ -80,25 +160,19 @@ export async function PATCH(
 
     const dbUser = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { role: true },
+      select: { role: true, department: true },
     });
     const role = (dbUser?.role ?? session.user.role) as string | undefined;
     const isTeamLead = role === "TEAM_LEAD";
-    const isExecutiveApprover = role === "EXECUTIVE" || role === "ADMIN";
+    const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
 
-    let transferExecutorIds: string[] = [];
-    try {
-      transferExecutorIds = await loadTransferExecutorIds();
-    } catch (err) {
-      console.error("[PATCH /api/finance/requests/:id] transferExecutorIds read failed", err);
-      transferExecutorIds = [];
-    }
+    const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
     const requesterRow = current.requesterId
       ? await prisma.user.findUnique({
           where: { id: current.requesterId },
-          select: { name: true },
+          select: { name: true, department: true },
         })
       : null;
     const needsExecutiveFirstLine = paymentRequestNeedsExecutiveFirstLineApproval(
@@ -106,73 +180,56 @@ export async function PATCH(
       requesterRow?.name,
       transferExecutorIds
     );
-    /** 이체 담당자·김소윤 요청: 1차 승인·반려·되돌리기는 대표/임원만. 그 외는 팀장 또는 대표/임원 */
-    const canFirstLineApprove = needsExecutiveFirstLine
-      ? isExecutiveApprover
-      : isTeamLead || isExecutiveApprover;
-
-    // 팀장·(해당 건) 대표/임원: PENDING → 이체대기(TEAM_LEAD_APPROVED) / 반려. 이체대기 건 → 승인대기로 되돌리기·반려 가능.
-    if (canFirstLineApprove) {
-      if (parsed.data.status === "COMPLETED") {
-        return NextResponse.json(
-          { error: "이체 완료는 이체 담당자만 처리할 수 있습니다." },
-          { status: 403 }
-        );
-      }
-      if (current.status === "PENDING") {
-        if (parsed.data.status !== "TEAM_LEAD_APPROVED" && parsed.data.status !== "REJECTED") {
-          return NextResponse.json({ error: "승인 또는 반려만 가능합니다." }, { status: 400 });
-        }
-      } else if (current.status === "TEAM_LEAD_APPROVED") {
-        if (parsed.data.status !== "PENDING" && parsed.data.status !== "REJECTED") {
-          return NextResponse.json({ error: "승인 대기로 되돌리기 또는 반려만 가능합니다." }, { status: 400 });
-        }
-      } else {
-        return NextResponse.json(
-          { error: "승인대기 또는 이체대기 건만 처리할 수 있습니다." },
-          { status: 400 }
-        );
-      }
-    }
-
-    /**
-     * 이체 담당자(팀장·임원 제외한 순수 담당자): TEAM_LEAD_APPROVED → COMPLETED 만 가능.
-     * 팀장 전용 이체 담당자는 1차 승인 권한이 없으므로 canFirstLineApprove 가 false 일 때 여기로 옴.
-     */
-    if (isTransferExecutor && !canFirstLineApprove) {
-      if (parsed.data.status !== "COMPLETED") {
-        return NextResponse.json(
-          { error: "이체 담당자는 이체 완료만 처리할 수 있습니다." },
-          { status: 403 }
-        );
-      }
-      if (current.status !== "TEAM_LEAD_APPROVED") {
-        return NextResponse.json(
-          { error: "팀장 승인된 건만 이체 완료할 수 있습니다." },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (!canFirstLineApprove && !isTransferExecutor) {
-      if (needsExecutiveFirstLine && isTeamLead) {
-        return NextResponse.json(
-          { error: "이체 담당자가 올린 요청은 대표(임원)만 승인할 수 있습니다." },
-          { status: 403 }
-        );
-      }
-      return NextResponse.json(
-        { error: "결재 담당자(팀장·대표/임원) 또는 이체 담당자만 처리할 수 있습니다." },
-        { status: 403 }
+    const departmentsWithTeamLeadSet = await fetchDepartmentsWithTeamLead(prisma);
+    const needsExecutiveDirect =
+      !needsExecutiveFirstLine &&
+      paymentRequestNeedsExecutiveDirectApproval(
+        requesterRow?.department,
+        departmentsWithTeamLeadSet
       );
+
+    const cur = current.status as PaymentStatus;
+    const nextStatus = parsed.data.status as PaymentStatus;
+
+    if (
+      isTeamLead &&
+      !isExecutive &&
+      !needsExecutiveFirstLine &&
+      (cur === "PENDING" || cur === "EXECUTIVE_PENDING") &&
+      (nextStatus === "EXECUTIVE_PENDING" || nextStatus === "REJECTED" || nextStatus === "PENDING")
+    ) {
+      if (
+        !canTeamLeadApprovePaymentRequest(
+          dbUser?.department,
+          requesterRow?.department,
+          departmentsWithTeamLeadSet
+        )
+      ) {
+        return NextResponse.json(
+          { error: "같은 부서(팀) 요청만 1차 승인·반려할 수 있습니다." },
+          { status: 403 }
+        );
+      }
     }
 
-    const completedAt = parsed.data.status === "COMPLETED" ? new Date() : null;
-    const newStatus = parsed.data.status as "PENDING" | "TEAM_LEAD_APPROVED" | "COMPLETED" | "REJECTED";
+    const auth = authorizePaymentStatusChange({
+      cur,
+      next: nextStatus,
+      isTeamLead,
+      isExecutive,
+      isTransferExecutor,
+      needsExecutiveFirstLine,
+      needsExecutiveDirect,
+    });
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const completedAt = nextStatus === "COMPLETED" ? new Date() : null;
 
     const updated = await prisma.paymentRequest.update({
       where: { id },
-      data: { status: newStatus, completedAt },
+      data: { status: nextStatus, completedAt },
       include: {
         requester: { select: { id: true, name: true, email: true, position: true } },
         vendor: true,
@@ -181,15 +238,10 @@ export async function PATCH(
 
     const now = new Date();
 
-    /**
-     * 아래 알림/후처리는 "승인 상태 변경"의 부가 작업이므로 실패해도 PATCH 자체는 성공이어야 한다.
-     * (배포 환경에서 스키마 지연/권한/중복 알림 레이스 등으로 예외가 나면 UI는 실패로 뜨지만 DB는 이미 변경됨)
-     */
     try {
-      // 이체대기 → 승인대기/반려 되돌리기: 해당 건 알람 전부 삭제
       if (
-        current.status === "TEAM_LEAD_APPROVED" &&
-        (parsed.data.status === "PENDING" || parsed.data.status === "REJECTED")
+        (cur === "TEAM_LEAD_APPROVED" || cur === "EXECUTIVE_PENDING") &&
+        (nextStatus === "PENDING" || nextStatus === "REJECTED")
       ) {
         await prisma.paymentRequestAlert.deleteMany({ where: { requestId: id } });
       }
@@ -198,17 +250,22 @@ export async function PATCH(
     }
 
     try {
-      // 1차 승인 시: 이체 담당자에게 알람 (raw SQL — Prisma create 실패 방지)
-      if (canFirstLineApprove && parsed.data.status === "TEAM_LEAD_APPROVED") {
+      if (cur === "PENDING" && nextStatus === "EXECUTIVE_PENDING") {
+        await notifyExecutivesOnTeamLeadApproval(id);
+      }
+      if (
+        (cur === "EXECUTIVE_PENDING" ||
+          (cur === "PENDING" && (needsExecutiveFirstLine || needsExecutiveDirect))) &&
+        nextStatus === "TEAM_LEAD_APPROVED"
+      ) {
         await notifyTransferExecutorsOnApproval(id);
       }
     } catch (err) {
-      console.error("[PATCH /api/finance/requests/:id] alert create for transfer executors failed", err);
+      console.error("[PATCH /api/finance/requests/:id] alert notify failed", err);
     }
 
     try {
-      // 이체완료 시: 요청자(담당자)에게 알람
-      if (parsed.data.status === "COMPLETED" && current.requesterId) {
+      if (nextStatus === "COMPLETED" && current.requesterId) {
         await ensurePaymentRequestAlerts(id, [current.requesterId]);
       }
     } catch (err) {
@@ -216,7 +273,6 @@ export async function PATCH(
     }
 
     try {
-      // 처리한 사람 본인 알람 읽음 처리
       await prisma.paymentRequestAlert.updateMany({
         where: { requestId: id, userId: session.user.id },
         data: { readAt: now },
@@ -268,12 +324,10 @@ export async function DELETE(
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    // 완료(COMPLETED)된 건은 삭제 불가
     if (current.status === "COMPLETED") {
       return NextResponse.json({ error: "이체 완료된 건은 삭제할 수 없습니다." }, { status: 400 });
     }
 
-    // 요청자 본인만 삭제 가능
     if (!current.requesterId || current.requesterId !== session.user.id) {
       return NextResponse.json({ error: "본인이 요청한 건만 삭제할 수 있습니다." }, { status: 403 });
     }
