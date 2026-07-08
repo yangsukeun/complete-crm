@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-
-function getTransferExecutorIds(idsJson: string | null): string[] {
-  if (!idsJson?.trim()) return [];
-  try {
-    const arr = JSON.parse(idsJson) as unknown;
-    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
+import { loadTransferExecutorIds } from "@/lib/finance-payment-request-alerts";
 
 /** 자금관리 뱃지: 팀장=승인대기(자금요청), 이체담당자=이체대기, 요청자=이체완료 알람 수 + 라벨 */
 export async function GET() {
@@ -49,13 +40,42 @@ export async function GET() {
       );
     }
 
-    // 팀장: 승인대기(자금요청) 건수 → "승인대기" 뱃지
+    // 팀장: 승인대기(PENDING) + 이체 담당자 겸직 시 이체대기 알람
     if (role === "TEAM_LEAD") {
-      const count = await prisma.paymentRequest.count({
+      const pendingCount = await prisma.paymentRequest.count({
         where: { status: "PENDING" },
       });
+      let transferExecutorIds: string[] = [];
+      try {
+        transferExecutorIds = await loadTransferExecutorIds();
+      } catch {
+        transferExecutorIds = [];
+      }
+      const isAlsoTransferExecutor = transferExecutorIds.includes(session.user.id);
+      if (isAlsoTransferExecutor) {
+        let alertCount = 0;
+        try {
+          const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
+            'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
+            session.user.id
+          );
+          alertCount = Number(countRows[0]?.count ?? 0);
+        } catch (err) {
+          console.error("[GET /api/finance/alerts/count] team lead transfer alert count", err);
+        }
+        if (alertCount > 0) {
+          return NextResponse.json(
+            { count: alertCount, label: "이체대기" },
+            {
+              headers: {
+                "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",
+              },
+            }
+          );
+        }
+      }
       return NextResponse.json(
-        { count, label: "승인대기" },
+        { count: pendingCount, label: "승인대기" },
         {
           headers: {
             "Cache-Control": "private, max-age=0, must-revalidate, stale-while-revalidate=30",
@@ -76,14 +96,9 @@ export async function GET() {
 
     let transferExecutorIds: string[] = [];
     try {
-      const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-      transferExecutorIds = getTransferExecutorIds(
-        company?.transferExecutorIds ??
-          (company as { transferExecutorIds?: string | null })?.transferExecutorIds ??
-          null
-      );
+      transferExecutorIds = await loadTransferExecutorIds();
     } catch (err) {
-      console.error("[GET /api/finance/alerts/count] companyInfo.transferExecutorIds read failed", err);
+      console.error("[GET /api/finance/alerts/count] transferExecutorIds read failed", err);
       transferExecutorIds = [];
     }
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);

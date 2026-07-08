@@ -732,11 +732,12 @@ export default function FinanceRequestsPage() {
   }
 
   const role = session?.user?.role;
+  const myUserId = session?.user?.id ?? "";
   const isTeamLead = role === "TEAM_LEAD";
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
-  const isTransferExecutor = !isTeamLead && (paymentAlertUnreadCount !== undefined || isExecutiveTransferExecutor);
-  const canRequest = !isExecutive; // 직원·팀장·이체 담당자: 새 결제 요청 가능 (대표는 요청 불가). 팀장 요청 시 바로 이체 담당자에게 알람
-  const canComplete = isTransferExecutor; // 이체 담당자(또는 대표+이체담당자): 이체완료
+  const isTransferExecutor = transferExecutorIds.includes(myUserId);
+  const canRequest = !isExecutive;
+  const canComplete = isTransferExecutor;
   /** 팀장: 일반 건만 1차 승인·반려. 이체 담당자·김소윤 특례 건은 대표/임원만 */
   const canApproveRejectRow = (r: PaymentRequest) => {
     if (isExecutive) return true;
@@ -749,9 +750,8 @@ export default function FinanceRequestsPage() {
   const showTwoSections =
     isExecutiveTransferExecutor || (isExecutive && !loading && requests.length === 0);
 
-  /** 일괄 이체완료: 이체 담당자(팀장 제외), 단일 화면·분할 화면 동일 규칙 */
-  const canBatchComplete =
-    !isTeamLead && (showTwoSections ? allowTransferComplete : canComplete);
+  /** 일괄 이체완료: 이체 담당자만 */
+  const canBatchComplete = isTransferExecutor && (showTwoSections ? allowTransferComplete : canComplete);
 
   const approvedPendingForBatch = visiblePendingRequests.filter((r: any) => r.status === "TEAM_LEAD_APPROVED");
   const approvedRequestsForBatch = visibleRequests.filter((r: any) => r.status === "TEAM_LEAD_APPROVED");

@@ -301,8 +301,9 @@ export async function subscribeGlobalPresence(
 }
 
 /**
- * 자금관리 네비 뱃지: DB 변경 시 폴링 대신 postgres_changes.
- * TEAM_LEAD → PaymentRequest(PENDING 건수 변동), 그 외 → 본인 PaymentRequestAlert.
+ * 자금관리 네비 뱃지: DB 변경 시 postgres_changes.
+ * - 본인 PaymentRequestAlert (이체 담당자·요청자 알람)
+ * - 팀장: PaymentRequest(PENDING 건수) 추가 구독
  */
 export async function subscribeFinanceRealtime(
   sessionUserId: string,
@@ -314,27 +315,27 @@ export async function subscribeFinanceRealtime(
 
   const channels: RealtimeChannel[] = [];
 
+  const alertCh = client
+    .channel(`crm-payment-request-alert:${sessionUserId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "PaymentRequestAlert",
+        filter: `userId=eq.${sessionUserId}`,
+      },
+      onEvent
+    )
+    .subscribe();
+  channels.push(alertCh);
+
   if (role === "TEAM_LEAD") {
     const ch = client
       .channel(`crm-payment-request:${sessionUserId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "PaymentRequest" },
-        onEvent
-      )
-      .subscribe();
-    channels.push(ch);
-  } else {
-    const ch = client
-      .channel(`crm-payment-request-alert:${sessionUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "PaymentRequestAlert",
-          filter: `userId=eq.${sessionUserId}`,
-        },
         onEvent
       )
       .subscribe();

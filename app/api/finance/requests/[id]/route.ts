@@ -3,24 +3,15 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { paymentRequestNeedsExecutiveFirstLineApproval } from "@/lib/finance-payment-request-policy";
+import {
+  ensurePaymentRequestAlerts,
+  loadTransferExecutorIds,
+  notifyTransferExecutorsOnApproval,
+} from "@/lib/finance-payment-request-alerts";
 
 const updateSchema = z.object({
   status: z.enum(["PENDING", "TEAM_LEAD_APPROVED", "COMPLETED", "REJECTED"]),
 });
-
-function getTransferExecutorIds(idsJson: string | null): string[] {
-  if (!idsJson?.trim()) return [];
-  try {
-    const arr = JSON.parse(idsJson) as unknown;
-    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function cuidLike() {
-  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
-}
 
 export async function PATCH(
   req: Request,
@@ -97,15 +88,9 @@ export async function PATCH(
 
     let transferExecutorIds: string[] = [];
     try {
-      const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-      transferExecutorIds = getTransferExecutorIds(
-        company?.transferExecutorIds ??
-          (company as { transferExecutorIds?: string | null })?.transferExecutorIds ??
-          null
-      );
+      transferExecutorIds = await loadTransferExecutorIds();
     } catch (err) {
-      // 배포 DB 스키마가 덜 반영된 경우(컬럼 미존재 등)에도 승인/반려는 진행 가능해야 함
-      console.error("[PATCH /api/finance/requests/:id] companyInfo.transferExecutorIds read failed", err);
+      console.error("[PATCH /api/finance/requests/:id] transferExecutorIds read failed", err);
       transferExecutorIds = [];
     }
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
@@ -213,18 +198,9 @@ export async function PATCH(
     }
 
     try {
-      // 1차 승인 시: 이체 담당자에게 알람
-      if (canFirstLineApprove && parsed.data.status === "TEAM_LEAD_APPROVED" && transferExecutorIds.length > 0) {
-        for (const userId of transferExecutorIds) {
-          try {
-            await prisma.paymentRequestAlert.create({
-              data: { id: cuidLike(), requestId: id, userId },
-            });
-          } catch (e: unknown) {
-            const err = e as { code?: string };
-            if (err?.code !== "P2002") throw e;
-          }
-        }
+      // 1차 승인 시: 이체 담당자에게 알람 (raw SQL — Prisma create 실패 방지)
+      if (canFirstLineApprove && parsed.data.status === "TEAM_LEAD_APPROVED") {
+        await notifyTransferExecutorsOnApproval(id);
       }
     } catch (err) {
       console.error("[PATCH /api/finance/requests/:id] alert create for transfer executors failed", err);
@@ -233,14 +209,7 @@ export async function PATCH(
     try {
       // 이체완료 시: 요청자(담당자)에게 알람
       if (parsed.data.status === "COMPLETED" && current.requesterId) {
-        try {
-          await prisma.paymentRequestAlert.create({
-            data: { id: cuidLike(), requestId: id, userId: current.requesterId },
-          });
-        } catch (e: unknown) {
-          const err = e as { code?: string };
-          if (err?.code !== "P2002") throw e;
-        }
+        await ensurePaymentRequestAlerts(id, [current.requesterId]);
       }
     } catch (err) {
       console.error("[PATCH /api/finance/requests/:id] alert create for requester failed", err);
