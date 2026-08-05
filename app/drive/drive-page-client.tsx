@@ -86,7 +86,12 @@ export function DrivePageClient() {
     try {
       const res = await fetch("/api/drive/sync", { method: "POST" });
       const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || "동기화 실패");
+      if (!res.ok) {
+        const dbg = body?.debug
+          ? ` [folder=${body.debug.hasFolderId ? "Y" : "N"}, saJson=${body.debug.hasServiceAccountJson ? "Y" : "N"}, saValid=${String(body.debug.serviceAccountJsonValid)}]`
+          : "";
+        throw new Error((body?.error || "동기화 실패") + dbg);
+      }
       setSyncMessage(body.message || `동기화 완료: ${body.totalInDb ?? 0}개`);
       await mutate(listUrl);
       await mutate(`/api/drive/files?parentId=`);

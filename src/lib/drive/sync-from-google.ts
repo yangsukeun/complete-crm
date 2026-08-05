@@ -132,15 +132,37 @@ async function syncFolder(
 /** Google Drive 루트 폴더 → Prisma DriveFile 동기화 (세션 무관, cron/API 공용) */
 export async function syncGoogleDriveToDb(): Promise<DriveSyncStats> {
   const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim();
+  console.log("[sync] syncGoogleDriveToDb 진입", {
+    hasFolderId: Boolean(rootFolderId),
+    folderIdPrefix: rootFolderId ? `${rootFolderId.slice(0, 6)}…` : null,
+    hasSaJson: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()),
+    hasSaEmail: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim()),
+  });
+
   if (!rootFolderId) {
     throw new Error("GOOGLE_DRIVE_FOLDER_ID가 설정되어 있지 않습니다.");
   }
 
-  const drive = getDriveV3();
+  let drive: ReturnType<typeof getDriveV3>;
+  try {
+    drive = getDriveV3();
+    console.log("[sync] Drive 클라이언트 생성 OK");
+  } catch (e) {
+    console.error("[sync] Drive 클라이언트 생성 실패", e);
+    throw e;
+  }
+
   const stats = { upserted: 0, folders: 0, removed: 0 };
-  await syncFolder(drive, rootFolderId, null, 0, stats);
+  try {
+    console.log("[sync] 루트 폴더 동기화 시작", rootFolderId.slice(0, 8) + "…");
+    await syncFolder(drive, rootFolderId, null, 0, stats);
+  } catch (e) {
+    console.error("[sync] files.list/upsert 단계 실패", e);
+    throw e;
+  }
 
   const totalInDb = await prisma.driveFile.count({ where: { source: "google_drive" } });
+  console.log("[sync] DB 반영 완료", { ...stats, totalInDb });
 
   return {
     ...stats,
