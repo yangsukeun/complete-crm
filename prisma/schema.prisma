@@ -262,6 +262,7 @@ model User {
   taskMindmapStates      UserTaskMindmapState[]
   taskAuditLogs          TaskAuditLog[]          @relation("TaskAuditActor")
   userDailyUploadUsages  UserDailyUploadUsage[]
+  driveFiles             DriveFile[]
   @@index([currentProjectId])
 }
 
@@ -360,6 +361,7 @@ model Project {
   lastEditedById String?
   lastEditedBy User? @relation("ProjectLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
   userNotes UserNote[]
+  driveFiles ProjectDriveFile[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([brandId, name])
@@ -803,6 +805,7 @@ model BoardPost {
   deletedBy   User?             @relation("BoardPostDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
   comments    BoardPostComment[]
   revisions   BoardPostRevision[]
+  driveFiles  PostDriveFile[]
   @@index([createdAt])
   @@index([category])
   @@index([category, createdAt(sort: Desc)])
@@ -981,6 +984,72 @@ model DrivePreviewPermissionExpiry {
 
   @@index([driveFileId])
   @@index([expiresAt])
+}
+
+/// 드라이브 파일/폴더 메타데이터 (Google Drive 폴더형 탐색기 동기화)
+model DriveFile {
+  id             String  @id @default(cuid())
+  driveFileId    String? @unique
+  driveFolderId  String?
+  name           String
+  mimeType       String?
+  size           BigInt?
+  webViewLink    String?
+  webContentLink String?
+  thumbnailLink  String?
+
+  parentId String?
+  parent   DriveFile?  @relation("FolderChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children DriveFile[] @relation("FolderChildren")
+  isFolder Boolean     @default(false)
+
+  description String?
+  tags        String[] @default([])
+  source      String   @default("google_drive")
+
+  createdBy String?
+  user      User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  projectFiles ProjectDriveFile[]
+  postFiles    PostDriveFile[]
+
+  lastSyncedAt    DateTime?
+  driveModifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([driveFolderId])
+  @@index([isFolder])
+  @@index([source])
+  @@index([createdBy])
+}
+
+model ProjectDriveFile {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileId    String
+  file      DriveFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([projectId, fileId])
+  @@index([projectId])
+  @@index([fileId])
+}
+
+model PostDriveFile {
+  id        String    @id @default(cuid())
+  postId    String
+  post      BoardPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  fileId    String
+  file      DriveFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([postId, fileId])
+  @@index([postId])
+  @@index([fileId])
 }
 
 model Vendor {
