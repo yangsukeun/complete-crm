@@ -64,7 +64,7 @@ const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboar
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard, featureKey: "dashboard" },
   { href: "/announcements", label: "공지사항", icon: Megaphone, featureKey: "announcements", companyOnly: true },
   { href: "/board", label: "게시판", icon: FolderOpen, featureKey: "board", companyOnly: true },
-  { href: "/drive", label: "파일", icon: HardDrive, featureKey: "board", companyOnly: true },
+  { href: "/drive", label: "파일", icon: HardDrive },
   { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true },
   { href: "/ai-secretary", label: "AI 비서", icon: Sparkles },
   { href: "/ai-hub", label: "AI 허브", icon: BrainCircuit },
@@ -476,24 +476,22 @@ export function AppNav() {
             </Button>
           )}
 
-          {/* 파일(Drive) - 회사 모드에서만 */}
-          {isCompany && can("board") && (
-            <Button
-              variant="ghost"
-              asChild
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                pathname === "/drive" || pathname.startsWith("/drive/")
-                  ? "bg-gray-100 text-gray-900"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              )}
-            >
-              <Link href="/drive" prefetch={false} className="flex items-center gap-1.5">
-                <HardDrive className="size-4" />
-                <span>파일</span>
-              </Link>
-            </Button>
-          )}
+          {/* 파일(Drive) — 전 직원 노출 */}
+          <Button
+            variant="ghost"
+            asChild
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+              pathname === "/drive" || pathname.startsWith("/drive/")
+                ? "bg-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            )}
+          >
+            <Link href="/drive" prefetch={false} className="flex items-center gap-1.5">
+              <HardDrive className="size-4" />
+              <span>파일</span>
+            </Link>
+          </Button>
 
           {/* 채팅 - 회사 모드에서만 */}
           {isCompany && can("chat") && (
