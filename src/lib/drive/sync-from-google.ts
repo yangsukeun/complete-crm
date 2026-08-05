@@ -20,13 +20,20 @@ function escapeDriveQueryValue(id: string): string {
   return id.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
+/**
+ * 공유 드라이브(Shared Drive) 하위 목록.
+ * - supportsAllDrives / includeItemsFromAllDrives 필수
+ * - corpora=drive + driveId = 공유 드라이브 ID (루트 env)
+ * - q 의 parents = 현재 탐색 중인 폴더 ID (루트면 공유 드라이브 ID와 동일)
+ */
 async function listChildren(
   drive: drive_v3.Drive,
-  googleFolderId: string
+  parentGoogleId: string,
+  sharedDriveId: string
 ): Promise<drive_v3.Schema$File[]> {
   const all: drive_v3.Schema$File[] = [];
   let pageToken: string | undefined;
-  const q = `'${escapeDriveQueryValue(googleFolderId)}' in parents and trashed = false`;
+  const q = `'${escapeDriveQueryValue(parentGoogleId)}' in parents and trashed = false`;
 
   do {
     const response = await drive.files.list({
@@ -38,6 +45,8 @@ async function listChildren(
       pageToken,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
+      corpora: "drive",
+      driveId: sharedDriveId,
     });
     if (response.data.files?.length) all.push(...response.data.files);
     pageToken = response.data.nextPageToken ?? undefined;
@@ -62,13 +71,20 @@ async function deleteDriveFileTree(id: string): Promise<void> {
 async function syncFolder(
   drive: drive_v3.Drive,
   googleFolderId: string,
+  sharedDriveId: string,
   parentDbId: string | null,
   depth: number,
   stats: Pick<DriveSyncStats, "upserted" | "folders" | "removed">
 ): Promise<void> {
   if (depth > MAX_DEPTH) return;
 
-  const files = await listChildren(drive, googleFolderId);
+  const files = await listChildren(drive, googleFolderId, sharedDriveId);
+  console.log("[sync] listChildren", {
+    depth,
+    parentPrefix: googleFolderId.slice(0, 8) + "…",
+    count: files.length,
+  });
+
   const driveIds = files.map((f) => f.id).filter((id): id is string => Boolean(id));
 
   for (const file of files) {
@@ -110,7 +126,7 @@ async function syncFolder(
     stats.upserted += 1;
     if (isFolder) {
       stats.folders += 1;
-      await syncFolder(drive, file.id, dbFile.id, depth + 1, stats);
+      await syncFolder(drive, file.id, sharedDriveId, dbFile.id, depth + 1, stats);
     }
   }
 
@@ -129,10 +145,10 @@ async function syncFolder(
   }
 }
 
-/** Google Drive 루트 폴더 → Prisma DriveFile 동기화 (세션 무관, cron/API 공용) */
+/** Google Drive 공유 드라이브 → Prisma DriveFile 동기화 (세션 무관, cron/API 공용) */
 export async function syncGoogleDriveToDb(): Promise<DriveSyncStats> {
   const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim();
-  console.log("[sync] syncGoogleDriveToDb 진입", {
+  console.log("[sync] syncGoogleDriveToDb 진입 (shared drive)", {
     hasFolderId: Boolean(rootFolderId),
     folderIdPrefix: rootFolderId ? `${rootFolderId.slice(0, 6)}…` : null,
     hasSaJson: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()),
@@ -154,8 +170,9 @@ export async function syncGoogleDriveToDb(): Promise<DriveSyncStats> {
 
   const stats = { upserted: 0, folders: 0, removed: 0 };
   try {
-    console.log("[sync] 루트 폴더 동기화 시작", rootFolderId.slice(0, 8) + "…");
-    await syncFolder(drive, rootFolderId, null, 0, stats);
+    // GOOGLE_DRIVE_FOLDER_ID = 공유 드라이브 ID (루트)
+    console.log("[sync] 공유 드라이브 루트 동기화 시작", rootFolderId.slice(0, 8) + "…");
+    await syncFolder(drive, rootFolderId, rootFolderId, null, 0, stats);
   } catch (e) {
     console.error("[sync] files.list/upsert 단계 실패", e);
     throw e;

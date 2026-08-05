@@ -43,6 +43,7 @@ export async function POST() {
   console.log("[sync] SA JSON 있음:", dbg.hasServiceAccountJson, "len=", dbg.serviceAccountJsonLength);
   console.log("[sync] SA JSON 유효:", dbg.serviceAccountJsonValid);
   console.log("[sync] SA EMAIL/KEY:", dbg.hasServiceAccountEmail, dbg.hasPrivateKey);
+  console.log("[sync] mode: shared drive (corpora=drive)");
 
   try {
     const session = await getAppSession();
