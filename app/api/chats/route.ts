@@ -16,6 +16,30 @@ const userSelect = {
   position: true,
 } as const;
 
+const lastMessageSelect = {
+  id: true,
+  body: true,
+  createdAt: true,
+  user: { select: userSelect },
+} as const;
+
+const chatListSelect = {
+  id: true,
+  isGroup: true,
+  name: true,
+  updatedAt: true,
+  participants: {
+    select: {
+      user: { select: userSelect },
+    },
+  },
+  messages: {
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+    select: lastMessageSelect,
+  },
+} as const;
+
 export async function GET() {
   try {
     const session = await getAppSession();
@@ -29,34 +53,14 @@ export async function GET() {
     if (isMaster) {
       const allChats = await prisma.chat.findMany({
         take: 80,
-        include: {
-          participants: {
-            select: {
-              id: true,
-              chatId: true,
-              userId: true,
-              joinedAt: true,
-              user: { select: userSelect },
-            },
-          },
-          messages: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: {
-              id: true,
-              body: true,
-              createdAt: true,
-              user: { select: userSelect },
-            },
-          },
-        },
+        select: chatListSelect,
         orderBy: { updatedAt: "desc" },
       });
-      const chats = allChats.map((chat: any) => ({
+      const chats = allChats.map((chat) => ({
         id: chat.id,
         isGroup: chat.isGroup,
         name: chat.name,
-        participants: chat.participants.map((x: any) => x.user),
+        participants: chat.participants.map((x) => x.user),
         lastMessage: chat.messages[0] ?? null,
       }));
       return NextResponse.json(chats, {
@@ -69,39 +73,17 @@ export async function GET() {
     const participants = await prisma.chatParticipant.findMany({
       where: { userId: session.user.id },
       take: 80,
-      include: {
-        chat: {
-          include: {
-            participants: {
-              select: {
-                id: true,
-                chatId: true,
-                userId: true,
-                joinedAt: true,
-                user: { select: userSelect },
-              },
-            },
-            messages: {
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              select: {
-                id: true,
-                body: true,
-                createdAt: true,
-                user: { select: userSelect },
-              },
-            },
-          },
-        },
+      select: {
+        chat: { select: chatListSelect },
       },
       orderBy: { chat: { updatedAt: "desc" } },
     });
 
-    const chats = participants.map((p: any) => ({
+    const chats = participants.map((p) => ({
       id: p.chat.id,
       isGroup: p.chat.isGroup,
       name: p.chat.name,
-      participants: p.chat.participants.map((x: any) => x.user),
+      participants: p.chat.participants.map((x) => x.user),
       lastMessage: p.chat.messages[0] ?? null,
     }));
 
@@ -160,12 +142,21 @@ export async function POST(req: Request) {
             every: { userId: { in: [a, b] } },
           },
         },
-        include: { participants: true },
+        select: chatListSelect,
       });
       if (existing && existing.participants.length === 2) {
-        const ids = existing.participants.map((p: any) => p.userId).sort().join(",");
+        const ids = existing.participants
+          .map((p) => p.user.id)
+          .sort()
+          .join(",");
         if (ids === [a, b].sort().join(",")) {
-          return NextResponse.json(existing);
+          return NextResponse.json({
+            id: existing.id,
+            isGroup: existing.isGroup,
+            name: existing.name,
+            participants: existing.participants.map((x) => x.user),
+            lastMessage: existing.messages[0] ?? null,
+          });
         }
       }
     }
@@ -175,12 +166,15 @@ export async function POST(req: Request) {
         isGroup,
         name: isGroup ? name ?? null : null,
         participants: {
-          create: userIds.map((userId: any) => ({ userId })),
+          create: userIds.map((userId) => ({ userId })),
         },
       },
-      include: {
+      select: {
+        id: true,
+        isGroup: true,
+        name: true,
         participants: {
-          include: { user: { select: userSelect } },
+          select: { user: { select: userSelect } },
         },
       },
     });

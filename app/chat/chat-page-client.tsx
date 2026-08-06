@@ -367,31 +367,38 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   }, [swrChatList, swrChatsLoading, session?.user?.id]);
 
   const fetchMessages = useCallback(
-    async (chatId: string, silent = false, sinceIso: string | null = null) => {
+    async (chatId: string, silent = false, sinceIso: string | null = null): Promise<number> => {
       if (!silent) setMessageLoading(true);
       try {
         const url = sinceIso
           ? apiUrl(`/api/chats/${chatId}/messages?since=${encodeURIComponent(sinceIso)}&limit=50`)
           : apiUrl(`/api/chats/${chatId}/messages?limit=50&markRead=1`);
         const res = await fetch(url, { credentials: "include" });
-        if (!res.ok) return;
+        if (!res.ok) return 0;
         const raw = await res.json();
         const { messages: list, readAtByUserId: readMap } = parseChatMessagesResponse(raw);
         if (Object.keys(readMap).length > 0) {
           setReadAtByUserId(readMap);
         }
         if (sinceIso) {
-          setMessages((prev: Message[]) => {
-            const existingIds = new Set(prev.map((m: Message) => m.id));
-            const toAdd = list.filter((m: Message) => !existingIds.has(m.id));
-            if (toAdd.length === 0) return prev;
-            return [...prev, ...toAdd];
-          });
+          const existingIds = new Set(messagesRef.current.map((m: Message) => m.id));
+          const toAdd = list.filter((m: Message) => !existingIds.has(m.id));
+          if (toAdd.length > 0) {
+            setMessages((prev: Message[]) => {
+              const ids = new Set(prev.map((m: Message) => m.id));
+              const add = list.filter((m: Message) => !ids.has(m.id));
+              if (add.length === 0) return prev;
+              return [...prev, ...add];
+            });
+          }
+          return toAdd.length;
         } else {
           setMessages(list);
+          return list.length;
         }
       } catch {
         if (!silent) setMessages([]);
+        return 0;
       } finally {
         if (!silent) setMessageLoading(false);
       }
@@ -409,18 +416,51 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
     mutateChatsRef.current = mutateChats;
   }, [mutateChats]);
 
-  /** 3초 폴링: 즉시 1회(최근 50) + 이후 since 증분 — Realtime 누락 시에도 수신 보장 */
+  /** 12초 폴링: 즉시 1회(최근 50) + 이후 since 증분. 탭 비활성 시 중단. 새 메시지 있을 때만 목록 mutate */
   useEffect(() => {
     if (!selectedChatId) return;
     if (typeof window === "undefined") return;
     const cid = selectedChatId;
-    void fetchMessagesRef.current(cid, true, null);
-    const pollInterval = window.setInterval(() => {
+    let pollInterval: number | null = null;
+
+    const stop = () => {
+      if (pollInterval != null) {
+        window.clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
+    const tick = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const last = messagesRef.current[messagesRef.current.length - 1];
-      void fetchMessagesRef.current(cid, true, last?.createdAt ?? null);
-      void mutateChatsRef.current();
-    }, 3000);
-    return () => window.clearInterval(pollInterval);
+      const added = await fetchMessagesRef.current(cid, true, last?.createdAt ?? null);
+      if (added > 0) void mutateChatsRef.current();
+    };
+
+    const start = () => {
+      stop();
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      pollInterval = window.setInterval(() => {
+        void tick();
+      }, 12_000);
+    };
+
+    void fetchMessagesRef.current(cid, true, null);
+    start();
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void tick();
+        start();
+      } else {
+        stop();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [selectedChatId]);
 
   useEffect(() => {

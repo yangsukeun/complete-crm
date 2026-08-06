@@ -468,14 +468,20 @@ export async function GET(req: Request) {
       }
     }
 
-    /** all=1: projectId 없을 때만(임원·관리자 전체 목록). projectId 있으면 해당 스코프 전부 한 번에 반환 */
+    /** all=1: projectId 없을 때만(임원·관리자 전체 목록). projectId 있으면 해당 스코프(상한 적용) */
     const all = !hasProjectIdParam && searchParams.get("all") === "1";
 
     if (all || hasProjectIdParam) {
+      /** all=1 → 상한 500 + 최근 갱신순. projectId 스코프 → 트리 정렬 유지 + 상한 200 */
+      const take = all ? 500 : 200;
+      const listOrderBy = all
+        ? ([{ updatedAt: "desc" as const }] as const)
+        : orderBy;
       const tasks = await findManyTasksForList({
         where: baseWhere,
         select: listSelect,
-        orderBy,
+        orderBy: [...listOrderBy],
+        take,
       });
       return NextResponse.json(tasks.map((t) => mapListItem(t as unknown as Record<string, unknown>)));
     }

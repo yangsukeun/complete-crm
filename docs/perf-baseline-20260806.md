@@ -152,18 +152,29 @@ Layout SSR: `getHeaderBootstrapData`가 mode/logo/unread를 시드 → SWR fallb
 
 ## STEP 4. 기준선 표
 
-| 페이지 | 정적분석 호출수 | 폴링 항목 | 실측 요청수(추후 기입) | 실측 로드시간(추후 기입) |
-|--------|-----------------|-----------|------------------------|--------------------------|
-| 공통 레이아웃 | 5~8 + heartbeat | heartbeat 45s; floating chat ~12s (비-/chat) | | |
-| `/dashboard` | 페이지 2 (+공통) | (공통만) | | |
-| `/board` | 페이지 2 (+peek/첨부) | preview PENDING 시 2.5s | | |
-| `/tasks` (Projects) | 리스트 2~3 / mindmap 5+ (+공통) | (공통만) | | |
-| `/schedule` | 탭당 6~8 (+공통) | (공통만; SWR dedupe만) | | |
-| `/chat` | 1 + 폴링 | **messages 3s**, readMeta **24s** | | |
+| 페이지 | 정적분석 호출수 | 폴링 항목 | 1차 개선 후 (예상) | 실측 요청수(추후 기입) | 실측 로드시간(추후 기입) |
+|--------|-----------------|-----------|-------------------|------------------------|--------------------------|
+| 공통 레이아웃 | 5~8 + heartbeat | heartbeat 45s; floating ~12s | floating **30s** + 탭 숨김 시 중단 | | |
+| `/dashboard` | 페이지 2 (+공통) | (공통만) | 동일 | | |
+| `/board` | 페이지 2 (+peek/첨부) | preview PENDING 시 2.5s | 동일 | | |
+| `/tasks` (Projects) | 리스트 2~3 / mindmap 5+ (+공통) | (공통만) | `all=1`≤500, `projectId`≤200 | | |
+| `/schedule` | 탭당 6~8 (+공통) | (공통만; SWR dedupe만) | bundle **from/to = 현재월±1**, 월 이동 시 재요청 | | |
+| `/chat` | 1 + 폴링 | **messages 3s**, readMeta 24s | messages **12s** + 신규시만 mutateChats + 탭 숨김 중단; chats select 축소 | | |
 
 실측: DevTools Network에서 첫 로드(도큐먼트 제외 XHR/fetch) 수와 DomContentLoaded~Idle 시간을 기입.
 
----
+### 1차 개선 적용 (2026-08-06)
+
+| 항목 | 변경 전 | 변경 후 |
+|------|---------|---------|
+| 채팅 메시지 폴링 | 3s + 매 tick mutateChats | 12s, 새 메시지 있을 때만 mutate, hidden 중단 |
+| floating chat | 12s × messages+chat | 30s, hidden 중단 (열린 패널 본문용 — unread 배지와 역할 다름) |
+| tasks `all=1` / `projectId` | unbounded | take 500 / 200, all은 updatedAt desc |
+| schedules/bundle | 전체 일정 | from/to 필수(기본 현재월±1) |
+| chats GET | include 풀 로우 + 중첩 | select (id/이름/멤버명/lastMessage 1) |
+
+DB 영향(2026-08-06): PROJECT Task 126건(전부 projectId null), 프로젝트당 200 초과 **0**, Schedule 16건.
+
 
 ## STEP 5. 개선 후보 Top 10 (수정 금지 · 후보만)
 

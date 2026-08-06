@@ -120,15 +120,44 @@ export function FloatingChatPanel() {
     void fetchDataRef.current(chatId);
   }, [chatId]);
 
-  /** ChatMessage Realtime 은 `ChatPageClient` 마운트 시에만 — 플로팅만 열린 상태에서는 주기 갱신 */
+  /** ChatMessage Realtime 은 `ChatPageClient` 마운트 시에만 — 플로팅만 열린 상태에서는 30초 주기 갱신. 탭 비활성 시 중단. */
   useEffect(() => {
     if (!chatId || pathname.startsWith("/chat")) return;
+    let pollInterval: number | null = null;
+
+    const stop = () => {
+      if (pollInterval != null) {
+        window.clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
     const tick = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       void fetchDataRef.current(chatId, true);
     };
-    const id = window.setInterval(tick, 12_000);
-    return () => clearInterval(id);
+
+    const start = () => {
+      stop();
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      pollInterval = window.setInterval(tick, 30_000);
+    };
+
+    start();
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+        start();
+      } else {
+        stop();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [chatId, pathname]);
 
   useEffect(() => {

@@ -984,12 +984,23 @@ function SchedulePageInner() {
   const { data: session } = useSession();
   const router = useRouter();
 
-  type SchedBundle = { personal?: unknown[]; team?: unknown[] };
+  type SchedBundle = { personal?: unknown[]; team?: unknown[]; from?: string; to?: string };
+  const scheduleBundleRange = useMemo(() => {
+    const from = startOfMonth(new Date(date.getFullYear(), date.getMonth() - 1, 1));
+    const to = endOfMonth(new Date(date.getFullYear(), date.getMonth() + 1, 1));
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+    };
+  }, [date]);
+  const schedulesBundleKey = session?.user
+    ? `/api/schedules/bundle?from=${encodeURIComponent(scheduleBundleRange.from)}&to=${encodeURIComponent(scheduleBundleRange.to)}`
+    : null;
   const {
     data: schedBundle,
     mutate: mutateSchedBundle,
     isLoading: bundleLoading,
-  } = useSWR<SchedBundle>(session?.user ? SWR_KEYS.schedulesBundle : null, jsonFetcher, {
+  } = useSWR<SchedBundle>(schedulesBundleKey, jsonFetcher, {
     dedupingInterval: 12_000,
     revalidateOnFocus: false,
   });
