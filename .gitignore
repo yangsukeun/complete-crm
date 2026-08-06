@@ -35,3 +35,10 @@ next-env.d.ts
 
 # 업로드된 사용자 파일 (로컬 전용)
 public/uploads/content/
+
+# DB 백업 (수동·로컬 전용 — 커밋 금지)
+backups/
+*.dump
+
+# API 감사 스크립트 마지막 실행 결과(로컬)
+scripts/audit-api-auth-last.json
