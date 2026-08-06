@@ -43,6 +43,7 @@
     "@prisma/adapter-better-sqlite3": "^7.3.0",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-hover-card": "^1.1.15",
+    "@sentry/nextjs": "^10.69.0",
     "@supabase/realtime-js": "^2.100.0",
     "@supabase/supabase-js": "^2.100.0",
     "@types/dagre": "^0.7.53",
