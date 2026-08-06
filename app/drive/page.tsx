@@ -10,7 +10,9 @@ export default async function DrivePage() {
 
   const role = String(session.user.role ?? "").toUpperCase();
   const isAdmin = role === "ADMIN" || role === "EXECUTIVE";
-  const showExplorerSetupBanner = isAdmin && !isDriveExplorerFolderConfigured();
+  const canDeleteFiles = isAdmin || role === "TEAM_LEAD";
+  const explorerConfigured = isDriveExplorerFolderConfigured();
+  const showExplorerSetupBanner = isAdmin && !explorerConfigured;
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
@@ -18,7 +20,11 @@ export default async function DrivePage() {
         title="파일"
         description="Google Drive와 동기화된 폴더·파일을 탐색합니다. 동기화 후 목록이 표시됩니다."
       />
-      <DrivePageClient showExplorerSetupBanner={showExplorerSetupBanner} />
+      <DrivePageClient
+        showExplorerSetupBanner={showExplorerSetupBanner}
+        canDeleteFiles={canDeleteFiles}
+        explorerConfigured={explorerConfigured}
+      />
     </div>
   );
 }

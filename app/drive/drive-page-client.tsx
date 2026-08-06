@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import {
   File,
@@ -11,7 +11,9 @@ import {
   Folder,
   HardDrive,
   Loader2,
+  Plus,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,19 +63,33 @@ function formatSize(bytes: string | null) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-type Crumb = { id: string | null; name: string };
+type Crumb = { id: string | null; name: string; driveFileId: string | null };
 
 export function DrivePageClient({
   showExplorerSetupBanner = false,
+  canDeleteFiles = false,
+  explorerConfigured = false,
 }: {
   showExplorerSetupBanner?: boolean;
+  canDeleteFiles?: boolean;
+  explorerConfigured?: boolean;
 }) {
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([{ id: null, name: "전체 파일" }]);
+  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([
+    { id: null, name: "전체 파일", driveFileId: null },
+  ]);
   const [search, setSearch] = useState("");
   const [previewFile, setPreviewFile] = useState<DriveFileRow | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const currentDriveFolderId = breadcrumb[breadcrumb.length - 1]?.driveFileId ?? null;
+  const canUploadHere = Boolean(explorerConfigured && currentDriveFolderId && !search.trim());
 
   const listUrl = useMemo(() => {
     if (search.trim()) {
@@ -83,6 +99,10 @@ export function DrivePageClient({
   }, [search, currentId]);
 
   const { data, isLoading, error } = useSWR(listUrl, fetcher);
+
+  const refreshList = useCallback(async () => {
+    await mutate(listUrl);
+  }, [listUrl]);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -97,7 +117,7 @@ export function DrivePageClient({
         throw new Error((body?.error || "동기화 실패") + dbg);
       }
       setSyncMessage(body.message || `동기화 완료: ${body.totalInDb ?? 0}개`);
-      await mutate(listUrl);
+      await refreshList();
       await mutate(`/api/drive/files?parentId=`);
     } catch (e) {
       setSyncMessage(e instanceof Error ? e.message : "동기화 실패");
@@ -106,9 +126,73 @@ export function DrivePageClient({
     }
   };
 
+  const uploadFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    if (!canUploadHere || !currentDriveFolderId) {
+      setUploadMessage("폴더에 들어가서 업로드하세요.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadMessage(null);
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const file of list) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("targetFolderId", currentDriveFolderId);
+        const res = await fetch("/api/drive/upload", { method: "POST", body: fd });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          fail += 1;
+          setUploadMessage(body?.error || `${file.name} 업로드 실패`);
+        } else {
+          ok += 1;
+        }
+      }
+      await refreshList();
+      if (ok > 0 && fail === 0) {
+        setUploadMessage(`${ok}개 파일 업로드 완료`);
+      } else if (ok > 0 && fail > 0) {
+        setUploadMessage(`${ok}개 성공, ${fail}개 실패`);
+      }
+    } catch (e) {
+      setUploadMessage(e instanceof Error ? e.message : "업로드 실패");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDelete = async (file: DriveFileRow) => {
+    if (!canDeleteFiles || file.isFolder) return;
+    const ok = window.confirm("드라이브 휴지통으로 이동합니다");
+    if (!ok) return;
+
+    setDeletingId(file.id);
+    try {
+      const res = await fetch(`/api/drive/file/${encodeURIComponent(file.id)}`, {
+        method: "DELETE",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "삭제 실패");
+      if (previewFile?.id === file.id) setPreviewFile(null);
+      await refreshList();
+    } catch (e) {
+      setUploadMessage(e instanceof Error ? e.message : "삭제 실패");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const openFolder = (folder: DriveFileRow) => {
     setCurrentId(folder.id);
-    setBreadcrumb((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setBreadcrumb((prev) => [
+      ...prev,
+      { id: folder.id, name: folder.name, driveFileId: folder.driveFileId },
+    ]);
     setSearch("");
   };
 
@@ -138,6 +222,39 @@ export function DrivePageClient({
           <span>Google Drive 연동 탐색기</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) void uploadFiles(e.target.files);
+            }}
+          />
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="gap-1.5"
+            disabled={!canUploadHere || isUploading}
+            title={
+              !explorerConfigured
+                ? "직원용 공유 드라이브가 연결되지 않았습니다"
+                : !currentDriveFolderId
+                  ? "폴더에 들어가서 업로드하세요"
+                  : search.trim()
+                    ? "검색 중에는 업로드할 수 없습니다"
+                    : "현재 폴더에 파일 업로드"
+            }
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {isUploading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Plus className="size-4" />
+            )}
+            {isUploading ? "업로드 중…" : "+ 파일 업로드"}
+          </Button>
           <Input
             type="search"
             placeholder="파일 검색…"
@@ -159,9 +276,9 @@ export function DrivePageClient({
         </div>
       </div>
 
-      {syncMessage && (
+      {(syncMessage || uploadMessage) && (
         <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-          {syncMessage}
+          {uploadMessage || syncMessage}
         </p>
       )}
 
@@ -188,8 +305,42 @@ export function DrivePageClient({
         </nav>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_180px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+      <div
+        className={cn(
+          "overflow-hidden rounded-lg border bg-white transition-colors",
+          dragOver && canUploadHere
+            ? "border-sky-400 ring-2 ring-sky-200"
+            : "border-gray-200"
+        )}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          if (canUploadHere) setDragOver(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (canUploadHere) setDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          if (e.currentTarget === e.target) setDragOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (!canUploadHere) {
+            setUploadMessage("폴더에 들어가서 업로드하세요.");
+            return;
+          }
+          if (e.dataTransfer.files?.length) void uploadFiles(e.dataTransfer.files);
+        }}
+      >
+        {dragOver && canUploadHere && (
+          <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800">
+            여기에 파일을 놓으면 현재 폴더에 업로드됩니다
+          </div>
+        )}
+
+        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_200px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
           <span>이름</span>
           <span>수정일</span>
           <span>크기</span>
@@ -226,7 +377,7 @@ export function DrivePageClient({
                   else setPreviewFile(file);
                 }
               }}
-              className="grid grid-cols-[minmax(0,2fr)_120px_100px_180px] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm hover:bg-gray-50"
+              className="grid grid-cols-[minmax(0,2fr)_120px_100px_200px] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm hover:bg-gray-50"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <FileTypeIcon mimeType={file.mimeType} isFolder={file.isFolder} />
@@ -278,6 +429,26 @@ export function DrivePageClient({
                         구글에서 열기
                       </a>
                     )}
+                    {canDeleteFiles && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-xs text-rose-700 hover:bg-rose-50"
+                        disabled={deletingId === file.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDelete(file);
+                        }}
+                      >
+                        {deletingId === file.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                        삭제
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -288,7 +459,9 @@ export function DrivePageClient({
           <div className="px-4 py-16 text-center text-sm text-muted-foreground">
             {search.trim()
               ? `"${search.trim()}" 검색 결과가 없습니다`
-              : "이 폴더는 비어 있습니다. 상단 동기화 버튼을 눌러 Drive에서 가져와 주세요."}
+              : canUploadHere
+                ? "이 폴더는 비어 있습니다. 파일을 끌어다 놓거나 업로드 버튼을 사용하세요."
+                : "이 폴더는 비어 있습니다. 상단 동기화 버튼을 눌러 Drive에서 가져와 주세요."}
           </div>
         )}
       </div>
