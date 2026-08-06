@@ -211,8 +211,22 @@ export async function handleBoardPost(req: Request): Promise<Response> {
     });
   } catch (e) {
     console.error("[board POST catch]", e);
-    console.error("[board POST] 에러 타입:", typeof e, e instanceof Error ? e.message : e);
-    if (e instanceof Error) console.error("[board POST] 스택:", e.stack);
+    console.error(
+      "[board POST] 에러 타입:",
+      e && typeof e === "object" && "constructor" in e
+        ? (e as { constructor?: { name?: string } }).constructor?.name
+        : typeof e
+    );
+    console.error(
+      "[board POST] 메시지:",
+      e instanceof Error ? e.message : String(e)
+    );
+    if (e instanceof Error && e.stack) {
+      console.error(
+        "[board POST] 스택:",
+        e.stack.split("\n").slice(0, 5).join("\n")
+      );
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

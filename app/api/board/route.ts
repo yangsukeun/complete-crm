@@ -205,18 +205,37 @@ export async function POST(req: Request) {
   try {
     try {
       const preview = await req.clone().json();
-      console.error("[board POST] 받은 데이터:", JSON.stringify(preview, null, 2));
+      const body =
+        preview && typeof preview === "object" && !Array.isArray(preview)
+          ? (preview as Record<string, unknown>)
+          : {};
+      console.error("[board POST] body keys:", Object.keys(body));
+      console.error(
+        "[board POST] body:",
+        JSON.stringify(preview).slice(0, 500)
+      );
     } catch (e) {
       console.error("[board POST] body 미리보기 파싱 실패:", e);
     }
     const { handleBoardPost } = await import("@/lib/board-route-post");
     return handleBoardPost(req);
   } catch (e) {
-    console.error("[board POST] 에러 타입:", typeof e, e instanceof Error ? e.message : e);
-    if (e instanceof Error) console.error("[board POST] 스택:", e.stack);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : String(e) },
-      { status: 500 }
+    console.error(
+      "[board POST] 에러 타입:",
+      e && typeof e === "object" && "constructor" in e
+        ? (e as { constructor?: { name?: string } }).constructor?.name
+        : typeof e
     );
+    console.error(
+      "[board POST] 메시지:",
+      e instanceof Error ? e.message : String(e)
+    );
+    if (e instanceof Error && e.stack) {
+      console.error(
+        "[board POST] 스택:",
+        e.stack.split("\n").slice(0, 5).join("\n")
+      );
+    }
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
