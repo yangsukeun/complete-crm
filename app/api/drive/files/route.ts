@@ -44,6 +44,7 @@ function explorerListWhere(extra: Prisma.DriveFileWhereInput = {}): Prisma.Drive
 }
 
 export async function GET(req: NextRequest) {
+  const t0 = Date.now();
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search")?.trim() || "";
 
     if (search) {
+      const tQ = Date.now();
       const files = await prisma.driveFile.findMany({
         where: explorerListWhere({
           name: { contains: search, mode: "insensitive" },
@@ -67,13 +69,22 @@ export async function GET(req: NextRequest) {
           _count: { select: { children: true } },
         },
       });
+      const queryMs = Date.now() - tQ;
+      console.log("[drive/files] timing", {
+        mode: "search",
+        queryMs,
+        totalMs: Date.now() - t0,
+        count: files.length,
+      });
       return NextResponse.json({
         files: files.map(serializeDriveFile),
         search,
         explorerConfigured: isDriveExplorerFolderConfigured(),
+        timing: { queryMs, totalMs: Date.now() - t0 },
       });
     }
 
+    const tQ = Date.now();
     const files = await prisma.driveFile.findMany({
       where: explorerListWhere({ parentId }),
       orderBy: [{ isFolder: "desc" }, { name: "asc" }],
@@ -81,11 +92,20 @@ export async function GET(req: NextRequest) {
         _count: { select: { children: true } },
       },
     });
+    const queryMs = Date.now() - tQ;
+    console.log("[drive/files] timing", {
+      mode: "list",
+      parentId: parentId ? parentId.slice(0, 8) + "…" : null,
+      queryMs,
+      totalMs: Date.now() - t0,
+      count: files.length,
+    });
 
     return NextResponse.json({
       files: files.map(serializeDriveFile),
       parentId,
       explorerConfigured: isDriveExplorerFolderConfigured(),
+      timing: { queryMs, totalMs: Date.now() - t0 },
     });
   } catch (e) {
     console.error("[drive/files GET]", e);

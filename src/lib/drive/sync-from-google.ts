@@ -77,7 +77,9 @@ async function syncFolder(
   rootId: string,
   parentDbId: string | null,
   depth: number,
-  stats: Pick<DriveSyncStats, "upserted" | "folders" | "removed">
+  stats: Pick<DriveSyncStats, "upserted" | "folders" | "removed">,
+  /** false면 직계 자식만 (하위 폴더 재귀 없음) — UI "이 폴더 새로고침" */
+  recurse = true
 ): Promise<void> {
   if (depth > MAX_DEPTH) return;
 
@@ -87,6 +89,7 @@ async function syncFolder(
     parentPrefix: googleFolderId.slice(0, 8) + "…",
     rootPrefix: rootId.slice(0, 8) + "…",
     count: files.length,
+    recurse,
   });
 
   const driveIds = files.map((f) => f.id).filter((id): id is string => Boolean(id));
@@ -132,7 +135,9 @@ async function syncFolder(
     stats.upserted += 1;
     if (isFolder) {
       stats.folders += 1;
-      await syncFolder(drive, file.id, sharedDriveId, rootId, dbFile.id, depth + 1, stats);
+      if (recurse) {
+        await syncFolder(drive, file.id, sharedDriveId, rootId, dbFile.id, depth + 1, stats, true);
+      }
     }
   }
 
@@ -151,6 +156,63 @@ async function syncFolder(
     await deleteDriveFileTree(orphan.id);
     stats.removed += 1;
   }
+}
+
+/**
+ * 현재 폴더(직계 자식)만 Drive→DB 반영. 전체 트리는 크론(syncGoogleDriveToDb)이 담당.
+ * - googleFolderId 없으면 탐색기 루트
+ * - parentDbId: DriveFile.id (루트면 null)
+ */
+export async function syncExplorerFolderOnly(opts: {
+  googleFolderId?: string | null;
+  parentDbId?: string | null;
+}): Promise<DriveSyncStats> {
+  const rootFolderId = getDriveExplorerRootId();
+  const explorerConfigured = isDriveExplorerFolderConfigured();
+  if (!rootFolderId) {
+    throw new Error(
+      "GOOGLE_DRIVE_EXPLORER_FOLDER_ID 또는 GOOGLE_DRIVE_FOLDER_ID가 설정되어 있지 않습니다."
+    );
+  }
+
+  const googleFolderId = opts.googleFolderId?.trim() || rootFolderId;
+  let parentDbId: string | null =
+    opts.parentDbId === undefined ? null : opts.parentDbId;
+
+  if (googleFolderId !== rootFolderId) {
+    const folder = await prisma.driveFile.findFirst({
+      where: {
+        driveFileId: googleFolderId,
+        isFolder: true,
+        rootId: rootFolderId,
+        source: "google_drive",
+      },
+      select: { id: true },
+    });
+    if (!folder) {
+      throw new Error("탐색기 공유 드라이브 하위 폴더만 새로고침할 수 있습니다.");
+    }
+    parentDbId = folder.id;
+  } else {
+    parentDbId = null;
+  }
+
+  const drive = getDriveV3();
+  const stats = { upserted: 0, folders: 0, removed: 0 };
+  const t0 = Date.now();
+  await syncFolder(drive, googleFolderId, rootFolderId, rootFolderId, parentDbId, 0, stats, false);
+  const totalInDb = await prisma.driveFile.count({
+    where: { source: "google_drive", rootId: rootFolderId, driveFolderId: googleFolderId },
+  });
+  console.log("[sync] folder-only 완료", { ...stats, totalInDb, elapsedMs: Date.now() - t0 });
+
+  return {
+    ...stats,
+    totalInDb,
+    rootFolderId,
+    explorerConfigured,
+    syncedAt: new Date().toISOString(),
+  };
 }
 
 /**

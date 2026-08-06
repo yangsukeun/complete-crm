@@ -21,10 +21,14 @@ export const maxDuration = 300;
  * POST /api/drive/upload
  * 탐색기 SHARED 드라이브(EXPLORER) 폴더에만 업로드.
  * GOOGLE_DRIVE_FOLDER_ID(첨부 자동저장)는 사용하지 않음.
+ *
+ * NOTE: 브라우저→Drive 직접 resumable PUT은 세션 Origin 불일치(CORS)로 불가.
+ * 서버 경유 multipart 유지.
  */
 export async function POST(req: Request) {
   let reservedBytes = 0;
   let reservedUserId: string | null = null;
+  const t0 = Date.now();
 
   try {
     const session = await getAppSession();
@@ -63,6 +67,7 @@ export async function POST(req: Request) {
     const mime = (file.type || "").toLowerCase() || "application/octet-stream";
     const displayName = sanitizeUploadDisplayName(file.name);
     const buffer = Buffer.from(await file.arrayBuffer());
+    const tReceived = Date.now();
 
     try {
       await reserveDailyUploadBytes(userId, buffer.byteLength);
@@ -89,6 +94,7 @@ export async function POST(req: Request) {
         "id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, modifiedTime, parents",
       supportsAllDrives: true,
     });
+    const tDriveDone = Date.now();
 
     const driveFileId = created.data.id;
     if (!driveFileId) {
@@ -137,16 +143,20 @@ export async function POST(req: Request) {
         lastSyncedAt: new Date(),
       },
     });
+    const tUpsertDone = Date.now();
 
-    console.log("[drive/upload] ok", {
-      userId,
-      driveFileIdPrefix: driveFileId.slice(0, 8) + "…",
-      parentDbId: folder.id,
+    const timing = {
+      receiveMs: tReceived - t0,
+      driveMs: tDriveDone - tReceived,
+      upsertMs: tUpsertDone - tDriveDone,
+      totalMs: tUpsertDone - t0,
       bytes: buffer.byteLength,
-    });
+    };
+    console.log("[drive/upload] timing", timing);
 
     return NextResponse.json({
       ok: true,
+      timing,
       file: {
         id: dbFile.id,
         driveFileId: dbFile.driveFileId,
@@ -158,6 +168,7 @@ export async function POST(req: Request) {
         webViewLink: dbFile.webViewLink,
         rootId: dbFile.rootId,
         createdBy: dbFile.createdBy,
+        driveModifiedAt: dbFile.driveModifiedAt?.toISOString() ?? null,
       },
     });
   } catch (e) {

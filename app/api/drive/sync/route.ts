@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { syncGoogleDriveToDb } from "@/lib/drive/sync-from-google";
+import {
+  syncExplorerFolderOnly,
+  syncGoogleDriveToDb,
+} from "@/lib/drive/sync-from-google";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,8 +44,8 @@ function driveEnvDebug() {
   };
 }
 
-/** POST — Google Drive → DB 동기화 */
-export async function POST() {
+/** POST — 기본: 현재 폴더만 새로고침. body.mode=full 이면 전체(크론과 동일) */
+export async function POST(req: Request) {
   const dbg = driveEnvDebug();
   console.log("[sync] 시작");
   console.log(
@@ -53,10 +56,6 @@ export async function POST() {
     "FOLDER_ID 폴백=",
     !dbg.usingExplorerEnv && dbg.hasFolderId
   );
-  console.log("[sync] SA JSON 있음:", dbg.hasServiceAccountJson, "len=", dbg.serviceAccountJsonLength);
-  console.log("[sync] SA JSON 유효:", dbg.serviceAccountJsonValid);
-  console.log("[sync] SA EMAIL/KEY:", dbg.hasServiceAccountEmail, dbg.hasPrivateKey);
-  console.log("[sync] mode: shared drive (corpora=drive)");
 
   try {
     const session = await getAppSession();
@@ -64,10 +63,34 @@ export async function POST() {
       console.warn("[sync] 401 로그인 필요");
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
-    console.log("[sync] userId:", session.user.id);
 
-    const result = await syncGoogleDriveToDb();
+    let mode: "folder" | "full" = "folder";
+    let googleFolderId: string | null = null;
+    let parentDbId: string | null = null;
+    try {
+      const body = (await req.json()) as {
+        mode?: string;
+        googleFolderId?: string | null;
+        parentDbId?: string | null;
+      };
+      if (body?.mode === "full") mode = "full";
+      if (typeof body?.googleFolderId === "string" && body.googleFolderId.trim()) {
+        googleFolderId = body.googleFolderId.trim();
+      }
+      if (typeof body?.parentDbId === "string" && body.parentDbId.trim()) {
+        parentDbId = body.parentDbId.trim();
+      }
+    } catch {
+      /* empty body → folder-only at root */
+    }
+
+    const result =
+      mode === "full"
+        ? await syncGoogleDriveToDb()
+        : await syncExplorerFolderOnly({ googleFolderId, parentDbId });
+
     console.log("[sync] 완료", {
+      mode,
       upserted: result.upserted,
       folders: result.folders,
       removed: result.removed,
@@ -77,7 +100,11 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       success: true,
-      message: `동기화 완료: ${result.totalInDb}개 파일`,
+      mode,
+      message:
+        mode === "full"
+          ? `전체 동기화 완료: ${result.totalInDb}개`
+          : `이 폴더 새로고침 완료: ${result.upserted}개 반영`,
       ...result,
       debug: dbg,
     });
@@ -85,7 +112,7 @@ export async function POST() {
     console.error("[sync] 실패", e);
     const msg = e instanceof Error ? e.message : String(e);
     const status =
-      /GOOGLE_DRIVE_EXPLORER_FOLDER_ID|GOOGLE_DRIVE_FOLDER_ID|서비스 계정|GOOGLE_SERVICE_ACCOUNT|JSON/i.test(
+      /GOOGLE_DRIVE_EXPLORER_FOLDER_ID|GOOGLE_DRIVE_FOLDER_ID|서비스 계정|GOOGLE_SERVICE_ACCOUNT|JSON|하위 폴더/i.test(
         msg
       )
         ? 400
@@ -121,7 +148,9 @@ export async function GET() {
     ]);
 
     return NextResponse.json({
-      configured: dbg.hasFolderId && (dbg.hasServiceAccountJson || (dbg.hasServiceAccountEmail && dbg.hasPrivateKey)),
+      configured:
+        dbg.hasFolderId &&
+        (dbg.hasServiceAccountJson || (dbg.hasServiceAccountEmail && dbg.hasPrivateKey)),
       total,
       folders,
       files,

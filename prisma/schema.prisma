@@ -218,6 +218,8 @@ model User {
   lastActiveAt      DateTime?   // 마지막 접속 시각 (heartbeat — 온라인 여부 판단용)
   /// 회사/개인 모드 선호 — 다른 PC·쿠키 없을 때 복구 (app_mode 쿠키와 동기화)
   lastAppMode   String?
+  /// true면 로그인·API 접근 불가(퇴사 등). 행·연관 기록은 유지.
+  accountDisabled Boolean @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
@@ -1028,6 +1030,7 @@ model DriveFile {
   @@index([source])
   @@index([createdBy])
   @@index([rootId])
+  @@index([rootId, parentId])
 }
 
 model ProjectDriveFile {
