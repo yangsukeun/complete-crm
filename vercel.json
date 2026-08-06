@@ -46,7 +46,7 @@
     },
     {
       "path": "/api/cron/sync-drive",
-      "schedule": "0 2 * * *"
+      "schedule": "0 22 * * *"
     }
   ]
 }
