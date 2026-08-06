@@ -28,6 +28,7 @@ export default async function BoardPage() {
         canCreate={canCreate}
         canCreateAnnouncement={canCreateAnnouncement}
         currentUserId={session.user.id}
+        currentUserRole={role}
       />
     </div>
   );

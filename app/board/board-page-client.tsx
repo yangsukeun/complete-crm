@@ -120,10 +120,12 @@ export function BoardPageClient({
   canCreate,
   canCreateAnnouncement,
   currentUserId,
+  currentUserRole,
 }: {
   canCreate: boolean;
   canCreateAnnouncement: boolean;
   currentUserId?: string;
+  currentUserRole?: string;
 }) {
   const {
     data: swrAnnouncements = [],
@@ -639,7 +641,13 @@ export function BoardPageClient({
       </section>
 
       {/* 공지 등록 다이얼로그 — 업무상세와 동일한 본문 에디터 */}
-      <BoardPostPeekSheet postId={peekBoardId} onClose={() => setPeekBoardId(null)} />
+      <BoardPostPeekSheet
+        postId={peekBoardId}
+        onClose={() => setPeekBoardId(null)}
+        onDeleted={() => void refreshBoard()}
+        currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
+      />
 
       <Dialog open={openAnnouncement} onOpenChange={(o: any) => !o && resetAnnouncementForm()}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 gap-0">
