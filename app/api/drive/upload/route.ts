@@ -5,6 +5,10 @@ import prisma from "@/lib/prisma";
 import { getDriveV3 } from "@/lib/google-drive-admin";
 import { resolveExplorerUploadFolder } from "@/lib/drive/explorer-folder-guard";
 import {
+  assertCanAccessDriveFileId,
+  loadDriveAccessActor,
+} from "@/lib/drive/folder-access";
+import {
   sanitizeUploadDisplayName,
   validateUploadFile,
 } from "@/lib/upload-policy";
@@ -63,6 +67,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
     const { folder, explorerRootId } = resolved;
+
+    const actor = await loadDriveAccessActor(userId);
+    if (!actor) {
+      return NextResponse.json({ error: "사용자를 찾을 수 없습니다." }, { status: 401 });
+    }
+    const access = await assertCanAccessDriveFileId(actor, folder.id);
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
 
     const mime = (file.type || "").toLowerCase() || "application/octet-stream";
     const displayName = sanitizeUploadDisplayName(file.name);

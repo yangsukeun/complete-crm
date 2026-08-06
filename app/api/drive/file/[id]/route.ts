@@ -3,6 +3,10 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getDriveV3 } from "@/lib/google-drive-admin";
 import { assertExplorerConfigured } from "@/lib/drive/explorer-folder-guard";
+import {
+  assertCanAccessDriveFileId,
+  loadDriveAccessActor,
+} from "@/lib/drive/folder-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -79,6 +83,15 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
         { error: "탐색기 공유 드라이브 파일만 삭제할 수 있습니다." },
         { status: 403 }
       );
+    }
+
+    const actor = await loadDriveAccessActor(session.user.id);
+    if (!actor) {
+      return NextResponse.json({ error: "사용자를 찾을 수 없습니다." }, { status: 401 });
+    }
+    const access = await assertCanAccessDriveFileId(actor, row.id);
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     if (!row.driveFileId) {

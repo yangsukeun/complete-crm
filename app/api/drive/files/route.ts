@@ -5,6 +5,11 @@ import {
   getDriveExplorerRootId,
   isDriveExplorerFolderConfigured,
 } from "@/lib/drive/explorer-root";
+import {
+  assertCanAccessDriveFileId,
+  filterAccessibleDriveFiles,
+  loadDriveAccessActor,
+} from "@/lib/drive/folder-access";
 import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -19,11 +24,6 @@ function serializeDriveFile<T extends { size?: bigint | null }>(
   };
 }
 
-/**
- * 탐색기에 표시할 DriveFile 범위.
- * - EXPLORER ID 설정 시: 해당 rootId만 (업로드 폴더 동기화 분 제외)
- * - 미설정(폴백): 현재 폴백 루트 + rootId null(레거시) — 동작 유지
- */
 function explorerListWhere(extra: Prisma.DriveFileWhereInput = {}): Prisma.DriveFileWhereInput {
   const rootId = getDriveExplorerRootId();
   const explorerOnly = isDriveExplorerFolderConfigured();
@@ -51,6 +51,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
+    const actor = await loadDriveAccessActor(session.user.id);
+    if (!actor) {
+      return NextResponse.json({ error: "사용자를 찾을 수 없습니다." }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const parentIdRaw = searchParams.get("parentId");
     const parentId =
@@ -64,24 +69,33 @@ export async function GET(req: NextRequest) {
           name: { contains: search, mode: "insensitive" },
         }),
         orderBy: [{ isFolder: "desc" }, { name: "asc" }],
-        take: 50,
+        take: 80,
         include: {
           _count: { select: { children: true } },
         },
       });
+      const visible = await filterAccessibleDriveFiles(actor, files);
       const queryMs = Date.now() - tQ;
       console.log("[drive/files] timing", {
         mode: "search",
         queryMs,
         totalMs: Date.now() - t0,
         count: files.length,
+        visible: visible.length,
       });
       return NextResponse.json({
-        files: files.map(serializeDriveFile),
+        files: visible.slice(0, 50).map(serializeDriveFile),
         search,
         explorerConfigured: isDriveExplorerFolderConfigured(),
         timing: { queryMs, totalMs: Date.now() - t0 },
       });
+    }
+
+    if (parentId) {
+      const gate = await assertCanAccessDriveFileId(actor, parentId);
+      if (!gate.ok) {
+        return NextResponse.json({ error: gate.error }, { status: gate.status });
+      }
     }
 
     const tQ = Date.now();
@@ -92,6 +106,7 @@ export async function GET(req: NextRequest) {
         _count: { select: { children: true } },
       },
     });
+    const visible = await filterAccessibleDriveFiles(actor, files);
     const queryMs = Date.now() - tQ;
     console.log("[drive/files] timing", {
       mode: "list",
@@ -99,10 +114,13 @@ export async function GET(req: NextRequest) {
       queryMs,
       totalMs: Date.now() - t0,
       count: files.length,
+      visible: visible.length,
+      role: actor.role,
+      dept: actor.department || null,
     });
 
     return NextResponse.json({
-      files: files.map(serializeDriveFile),
+      files: visible.map(serializeDriveFile),
       parentId,
       explorerConfigured: isDriveExplorerFolderConfigured(),
       timing: { queryMs, totalMs: Date.now() - t0 },
