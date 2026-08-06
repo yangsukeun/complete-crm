@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate, useSWRConfig } from "swr";
 import {
   File,
@@ -40,6 +40,40 @@ type ListPayload = {
   search?: string;
   timing?: { queryMs: number; totalMs: number };
 };
+
+const CLIENT_SYNC_THROTTLE_MS = 60_000;
+const SYNC_TS_STORAGE_KEY = "drive-explorer-sync-ts";
+
+function syncThrottleKey(parentDbId: string | null, googleFolderId: string | null) {
+  return `${parentDbId ?? "root"}::${googleFolderId ?? "root"}`;
+}
+
+function readSyncTsMap(): Record<string, number> {
+  try {
+    const raw = sessionStorage.getItem(SYNC_TS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function shouldSkipClientSync(key: string): boolean {
+  const map = readSyncTsMap();
+  const ts = map[key] ?? 0;
+  return ts > 0 && Date.now() - ts < CLIENT_SYNC_THROTTLE_MS;
+}
+
+function markClientSync(key: string) {
+  try {
+    const map = readSyncTsMap();
+    map[key] = Date.now();
+    sessionStorage.setItem(SYNC_TS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    /* private mode 등 */
+  }
+}
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -115,6 +149,7 @@ export function DrivePageClient({
   const [search, setSearch] = useState("");
   const [previewFile, setPreviewFile] = useState<DriveFileRow | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -122,6 +157,7 @@ export function DrivePageClient({
   const [dragOver, setDragOver] = useState(false);
   const [optimisticRows, setOptimisticRows] = useState<DriveFileRow[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autoSyncInFlight = useRef<string | null>(null);
 
   const currentDriveFolderId = breadcrumb[breadcrumb.length - 1]?.driveFileId ?? null;
   const canUploadHere = Boolean(explorerConfigured && currentDriveFolderId && !search.trim());
@@ -158,31 +194,111 @@ export function DrivePageClient({
     await mutate(listUrl);
   }, [listUrl]);
 
+  const runFolderSync = useCallback(
+    async (opts: {
+      parentDbId: string | null;
+      googleFolderId: string | null;
+      force?: boolean;
+      source: "manual" | "auto";
+    }) => {
+      const key = syncThrottleKey(opts.parentDbId, opts.googleFolderId);
+      if (!opts.force && shouldSkipClientSync(key)) {
+        console.log("[drive auto-sync] client skip 60s", key);
+        return { skipped: true as const };
+      }
+      if (!opts.force && autoSyncInFlight.current === key) {
+        return { skipped: true as const };
+      }
+
+      if (opts.source === "manual") setIsSyncing(true);
+      else {
+        autoSyncInFlight.current = key;
+        setIsAutoSyncing(true);
+      }
+
+      try {
+        const res = await fetch("/api/drive/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "folder",
+            googleFolderId: opts.googleFolderId,
+            parentDbId: opts.parentDbId,
+            force: opts.force === true,
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(body?.error || "새로고침 실패");
+        }
+        markClientSync(key);
+        if (opts.source === "manual") {
+          setSyncMessage(body.message || "이 폴더 새로고침 완료");
+        } else if (body.skippedDrive) {
+          console.log("[drive auto-sync] server skipped Drive", key);
+        } else {
+          console.log("[drive auto-sync] ok", key, {
+            upserted: body.upserted,
+            totalInDb: body.totalInDb,
+          });
+        }
+        await mutate(listUrlFor(opts.parentDbId, ""));
+        return { skipped: false as const, body };
+      } finally {
+        if (opts.source === "manual") setIsSyncing(false);
+        else {
+          if (autoSyncInFlight.current === key) autoSyncInFlight.current = null;
+          setIsAutoSyncing(false);
+        }
+      }
+    },
+    []
+  );
+
   const handleSync = async () => {
-    setIsSyncing(true);
     setSyncMessage(null);
     try {
-      const res = await fetch("/api/drive/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "folder",
-          googleFolderId: currentDriveFolderId,
-          parentDbId: currentId,
-        }),
+      await runFolderSync({
+        parentDbId: currentId,
+        googleFolderId: currentDriveFolderId,
+        force: true,
+        source: "manual",
       });
-      const body = await res.json();
-      if (!res.ok) {
-        throw new Error(body?.error || "새로고침 실패");
-      }
-      setSyncMessage(body.message || "이 폴더 새로고침 완료");
-      await refreshList();
     } catch (e) {
       setSyncMessage(e instanceof Error ? e.message : "새로고침 실패");
-    } finally {
-      setIsSyncing(false);
     }
   };
+
+  // 마운트·폴더 이동 시 자동 직계 동기화 (검색 중 제외, 60초 스로틀)
+  useEffect(() => {
+    if (search.trim()) return;
+    void runFolderSync({
+      parentDbId: currentId,
+      googleFolderId: currentDriveFolderId,
+      force: false,
+      source: "auto",
+    }).catch((e) => {
+      console.warn("[drive auto-sync]", e);
+    });
+  }, [currentId, currentDriveFolderId, search, runFolderSync]);
+
+  // 탭 복귀 시 현재 폴더 1회
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (search.trim()) return;
+      void runFolderSync({
+        parentDbId: currentId,
+        googleFolderId: currentDriveFolderId,
+        force: false,
+        source: "auto",
+      }).catch((e) => {
+        console.warn("[drive auto-sync visibility]", e);
+      });
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [currentId, currentDriveFolderId, search, runFolderSync]);
 
   const uploadFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
@@ -244,7 +360,6 @@ export function DrivePageClient({
               : r
           )
         );
-        // swap into SWR cache then drop optimistic
         await mutate(
           listUrl,
           (cur: ListPayload | undefined) => {
@@ -329,11 +444,14 @@ export function DrivePageClient({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <HardDrive className="size-4" />
           <span>Google Drive 연동 탐색기</span>
-          {isValidating && !isLoading && (
-            <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-hidden />
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {(isValidating || isAutoSyncing) && !isLoading && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              새로고침 중…
+            </span>
+          )}
           <input
             ref={fileInputRef}
             type="file"

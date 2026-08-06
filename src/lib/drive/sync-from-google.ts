@@ -7,6 +7,9 @@ import { getDriveExplorerRootId, isDriveExplorerFolderConfigured } from "@/lib/d
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MAX_DEPTH = 5;
+/** 서버리스 인스턴스 내 동일 폴더 Drive 호출 가드 (DB lastSyncedAt 보조) */
+const folderSyncGuardMs = new Map<string, number>();
+const SERVER_FOLDER_THROTTLE_MS = 30_000;
 
 export type DriveSyncStats = {
   upserted: number;
@@ -16,6 +19,8 @@ export type DriveSyncStats = {
   rootFolderId: string;
   explorerConfigured: boolean;
   syncedAt: string;
+  /** Drive API 호출 없이 DB만 반환한 경우 */
+  skippedDrive?: boolean;
 };
 
 function escapeDriveQueryValue(id: string): string {
@@ -162,10 +167,12 @@ async function syncFolder(
  * 현재 폴더(직계 자식)만 Drive→DB 반영. 전체 트리는 크론(syncGoogleDriveToDb)이 담당.
  * - googleFolderId 없으면 탐색기 루트
  * - parentDbId: DriveFile.id (루트면 null)
+ * - force 아니면 동일 폴더 30초 내 lastSyncedAt이 있으면 Drive API 스킵
  */
 export async function syncExplorerFolderOnly(opts: {
   googleFolderId?: string | null;
   parentDbId?: string | null;
+  force?: boolean;
 }): Promise<DriveSyncStats> {
   const rootFolderId = getDriveExplorerRootId();
   const explorerConfigured = isDriveExplorerFolderConfigured();
@@ -187,7 +194,7 @@ export async function syncExplorerFolderOnly(opts: {
         rootId: rootFolderId,
         source: "google_drive",
       },
-      select: { id: true },
+      select: { id: true, lastSyncedAt: true },
     });
     if (!folder) {
       throw new Error("탐색기 공유 드라이브 하위 폴더만 새로고침할 수 있습니다.");
@@ -197,14 +204,80 @@ export async function syncExplorerFolderOnly(opts: {
     parentDbId = null;
   }
 
+  const SERVER_THROTTLE_MS = SERVER_FOLDER_THROTTLE_MS;
+  if (!opts.force) {
+    const memTs = folderSyncGuardMs.get(googleFolderId) ?? 0;
+    const latestChild = await prisma.driveFile.findFirst({
+      where: {
+        source: "google_drive",
+        rootId: rootFolderId,
+        driveFolderId: googleFolderId,
+        lastSyncedAt: { not: null },
+      },
+      orderBy: { lastSyncedAt: "desc" },
+      select: { lastSyncedAt: true },
+    });
+    const parentSelf =
+      googleFolderId !== rootFolderId
+        ? await prisma.driveFile.findFirst({
+            where: { driveFileId: googleFolderId, source: "google_drive" },
+            select: { lastSyncedAt: true },
+          })
+        : null;
+    const dbTs = Math.max(
+      latestChild?.lastSyncedAt?.getTime() ?? 0,
+      parentSelf?.lastSyncedAt?.getTime() ?? 0
+    );
+    const ts = Math.max(memTs, dbTs);
+    if (ts > 0 && Date.now() - ts < SERVER_THROTTLE_MS) {
+      const totalInDb = await prisma.driveFile.count({
+        where: { source: "google_drive", rootId: rootFolderId, driveFolderId: googleFolderId },
+      });
+      console.log("[sync] folder-only SKIP drive (30s throttle)", {
+        googlePrefix: googleFolderId.slice(0, 8) + "…",
+        ageMs: Date.now() - ts,
+        totalInDb,
+      });
+      return {
+        upserted: 0,
+        folders: 0,
+        removed: 0,
+        totalInDb,
+        rootFolderId,
+        explorerConfigured,
+        syncedAt: new Date().toISOString(),
+        skippedDrive: true,
+      };
+    }
+  }
+
   const drive = getDriveV3();
   const stats = { upserted: 0, folders: 0, removed: 0 };
   const t0 = Date.now();
   await syncFolder(drive, googleFolderId, rootFolderId, rootFolderId, parentDbId, 0, stats, false);
+  folderSyncGuardMs.set(googleFolderId, Date.now());
+
+  // 부모 폴더 레코드에도 lastSyncedAt 갱신 → 빈 폴더 재호출 스로틀에 사용
+  if (parentDbId) {
+    await prisma.driveFile
+      .update({
+        where: { id: parentDbId },
+        data: { lastSyncedAt: new Date() },
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }
+
   const totalInDb = await prisma.driveFile.count({
     where: { source: "google_drive", rootId: rootFolderId, driveFolderId: googleFolderId },
   });
-  console.log("[sync] folder-only 완료", { ...stats, totalInDb, elapsedMs: Date.now() - t0 });
+  console.log("[sync] folder-only 완료", {
+    ...stats,
+    totalInDb,
+    elapsedMs: Date.now() - t0,
+    skippedDrive: false,
+  });
 
   return {
     ...stats,
@@ -212,6 +285,7 @@ export async function syncExplorerFolderOnly(opts: {
     rootFolderId,
     explorerConfigured,
     syncedAt: new Date().toISOString(),
+    skippedDrive: false,
   };
 }
 

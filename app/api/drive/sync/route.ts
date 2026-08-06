@@ -67,11 +67,13 @@ export async function POST(req: Request) {
     let mode: "folder" | "full" = "folder";
     let googleFolderId: string | null = null;
     let parentDbId: string | null = null;
+    let force = false;
     try {
       const body = (await req.json()) as {
         mode?: string;
         googleFolderId?: string | null;
         parentDbId?: string | null;
+        force?: boolean;
       };
       if (body?.mode === "full") mode = "full";
       if (typeof body?.googleFolderId === "string" && body.googleFolderId.trim()) {
@@ -80,6 +82,7 @@ export async function POST(req: Request) {
       if (typeof body?.parentDbId === "string" && body.parentDbId.trim()) {
         parentDbId = body.parentDbId.trim();
       }
+      if (body?.force === true) force = true;
     } catch {
       /* empty body → folder-only at root */
     }
@@ -87,10 +90,12 @@ export async function POST(req: Request) {
     const result =
       mode === "full"
         ? await syncGoogleDriveToDb()
-        : await syncExplorerFolderOnly({ googleFolderId, parentDbId });
+        : await syncExplorerFolderOnly({ googleFolderId, parentDbId, force });
 
     console.log("[sync] 완료", {
       mode,
+      force,
+      skippedDrive: result.skippedDrive ?? false,
       upserted: result.upserted,
       folders: result.folders,
       removed: result.removed,
@@ -101,8 +106,9 @@ export async function POST(req: Request) {
       ok: true,
       success: true,
       mode,
-      message:
-        mode === "full"
+      message: result.skippedDrive
+        ? "최근 동기화됨 — Drive 호출 생략"
+        : mode === "full"
           ? `전체 동기화 완료: ${result.totalInDb}개`
           : `이 폴더 새로고침 완료: ${result.upserted}개 반영`,
       ...result,
