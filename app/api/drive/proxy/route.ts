@@ -3,6 +3,12 @@ import { getAppSession } from "@/auth";
 import { secureDownloadHeaders } from "@/lib/download-response-headers";
 import { Readable } from "stream";
 import { getDriveV3, sanitizeDriveFileId } from "@/lib/google-drive-admin";
+import {
+  assertUserCanAccessDriveAttachment,
+  FilePreviewForbiddenError,
+  FilePreviewNotFoundError,
+  parseAttachmentPreviewContext,
+} from "@/lib/files/preview-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,7 +20,7 @@ function sanitizeDownloadName(name: string): string {
 
 /**
  * Google Drive 파일을 CRM 서버가 프록시로 스트리밍 다운로드.
- * GET /api/drive/proxy?fileId=xxx
+ * GET /api/drive/proxy?fileId=xxx&context=board|project|chat&postId|projectId|chatId=...
  */
 export async function GET(req: Request) {
   try {
@@ -29,6 +35,22 @@ export async function GET(req: Request) {
     if (!fileId) {
       return NextResponse.json({ error: "fileId가 올바르지 않습니다." }, { status: 400 });
     }
+
+    const pctx = parseAttachmentPreviewContext(searchParams);
+    if (!pctx) {
+      return NextResponse.json(
+        { error: "context와 postId|projectId|chatId가 필요합니다." },
+        { status: 400 }
+      );
+    }
+
+    await assertUserCanAccessDriveAttachment(
+      session.user.id,
+      session.user.role,
+      session.user.email ?? undefined,
+      fileId,
+      pctx
+    );
 
     const drive = getDriveV3();
 
@@ -61,6 +83,12 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
+    if (e instanceof FilePreviewForbiddenError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (e instanceof FilePreviewNotFoundError) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     console.error("[drive/proxy]", e);
     return NextResponse.json({ error: "다운로드에 실패했습니다." }, { status: 500 });
   }

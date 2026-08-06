@@ -9,6 +9,12 @@ const DEV_PASSWORD = "dev1234";
  * 로그인 테스트용. 프로덕션에서는 404.
  */
 export async function POST(req: Request) {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production"
+  ) {
+    return new Response(null, { status: 404 });
+  }
   if (process.env.NODE_ENV !== "development") {
     return NextResponse.json({ error: "Not available" }, { status: 404 });
   }

@@ -38,7 +38,8 @@ function buildMetaUrl(fileId: string, ctx: AttachmentPreviewContext) {
   const p = new URLSearchParams();
   p.set("context", ctx.type);
   if (ctx.type === "board") p.set("postId", ctx.postId);
-  else p.set("projectId", ctx.projectId);
+  else if (ctx.type === "project") p.set("projectId", ctx.projectId);
+  else p.set("chatId", ctx.chatId);
   return `/api/files/${encodeURIComponent(fileId)}/preview-meta?${p.toString()}`;
 }
 

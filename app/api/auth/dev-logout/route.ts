@@ -6,6 +6,12 @@ import { DEV_SESSION_COOKIE } from "@/auth";
  * 완전한 로그아웃은 UI에서 signOut()을 사용하세요.
  */
 export async function GET(req: Request) {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production"
+  ) {
+    return new Response(null, { status: 404 });
+  }
   const res = NextResponse.redirect(new URL("/login", req.url));
   res.cookies.set(DEV_SESSION_COOKIE, "", { path: "/", maxAge: 0, expires: new Date(0) });
   return res;

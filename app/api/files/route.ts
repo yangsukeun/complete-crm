@@ -1,7 +1,8 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import fs, { type Dirent } from "fs";
 import path from "path";
 import os from "os";
+import { getAppSession } from "@/auth";
 
 const DEFAULT_PATH = process.platform === "win32" ? "C:\\" : process.cwd();
 
@@ -21,8 +22,21 @@ function getPathFromPreset(preset: string): string {
   return DEFAULT_PATH;
 }
 
+/**
+ * 서버 로컬 파일시스템 디렉터리 리스팅 (documents 페이지용).
+ * 인증된 ADMIN/EXECUTIVE만 허용.
+ */
 export async function GET(req: NextRequest) {
   try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const role = (session.user as { role?: string }).role ?? "";
+    if (role !== "ADMIN" && role !== "EXECUTIVE") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const rawPath = req.nextUrl.searchParams.get("path");
     const preset = req.nextUrl.searchParams.get("preset");
     const dir = rawPath ? normalizePath(rawPath) : preset ? getPathFromPreset(preset) : DEFAULT_PATH;

@@ -9,7 +9,8 @@ import { userCanAccessProject } from "@/lib/project-access";
 
 export type AttachmentPreviewContext =
   | { type: "board"; postId: string }
-  | { type: "project"; projectId: string };
+  | { type: "project"; projectId: string }
+  | { type: "chat"; chatId: string };
 
 export class FilePreviewForbiddenError extends Error {
   constructor(message = "Forbidden") {
@@ -29,8 +30,10 @@ export function parseAttachmentPreviewContext(sp: URLSearchParams): AttachmentPr
   const t = (sp.get("context") ?? sp.get("ctx") ?? "").trim().toLowerCase();
   const postId = sp.get("postId")?.trim();
   const projectId = sp.get("projectId")?.trim();
+  const chatId = sp.get("chatId")?.trim();
   if (t === "board" && postId) return { type: "board", postId };
   if (t === "project" && projectId) return { type: "project", projectId };
+  if (t === "chat" && chatId) return { type: "chat", chatId };
   return null;
 }
 
@@ -68,6 +71,30 @@ export async function assertUserCanAccessDriveAttachment(
     }
 
     throw new FilePreviewForbiddenError();
+  }
+
+  if (ctx.type === "chat") {
+    const r = role ?? "";
+    const isElevated = r === "ADMIN" || r === "EXECUTIVE" || r === "TEAM_LEAD";
+    const participant = await prisma.chatParticipant.findFirst({
+      where: { chatId: ctx.chatId, userId },
+      select: { id: true },
+    });
+    if (!participant && !isElevated) throw new FilePreviewForbiddenError();
+
+    const chat = await prisma.chat.findUnique({
+      where: { id: ctx.chatId },
+      select: { id: true },
+    });
+    if (!chat) throw new FilePreviewNotFoundError();
+
+    // 메시지 본문에 해당 Drive fileId가 포함된 경우만 허용
+    const hit = await prisma.chatMessage.findFirst({
+      where: { chatId: ctx.chatId, body: { contains: driveFileId } },
+      select: { id: true },
+    });
+    if (!hit) throw new FilePreviewForbiddenError();
+    return { originalName: "채팅 파일" };
   }
 
   const ok = await userCanAccessProject(userId, ctx.projectId, { role, email });

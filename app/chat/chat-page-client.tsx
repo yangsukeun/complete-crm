@@ -1320,9 +1320,10 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
                                 const driveId = /drive\.google\.com|googleusercontent\.com/i.test(part)
                                   ? parseGoogleDriveFileIdFromUrl(part)
                                   : null;
-                                const href = driveId
-                                  ? `/api/drive/proxy?fileId=${encodeURIComponent(driveId)}`
-                                  : part;
+                                const href =
+                                  driveId && selectedChatId
+                                    ? `/api/drive/proxy?fileId=${encodeURIComponent(driveId)}&context=chat&chatId=${encodeURIComponent(selectedChatId)}`
+                                    : part;
                                 return (
                                   <a
                                     key={i}
