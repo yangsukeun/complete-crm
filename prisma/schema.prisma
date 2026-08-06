@@ -1007,6 +1007,9 @@ model DriveFile {
   tags        String[] @default([])
   source      String   @default("google_drive")
 
+  /// 동기화 루트 Google ID (탐색기/업로드 드라이브 구분). null = 마이그레이션 전 레거시
+  rootId String?
+
   createdBy String?
   user      User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
@@ -1024,6 +1027,7 @@ model DriveFile {
   @@index([isFolder])
   @@index([source])
   @@index([createdBy])
+  @@index([rootId])
 }
 
 model ProjectDriveFile {

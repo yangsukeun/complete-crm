@@ -3,6 +3,7 @@ import "server-only";
 import type { drive_v3 } from "googleapis";
 import prisma from "@/lib/prisma";
 import { getDriveV3 } from "@/lib/google-drive-admin";
+import { getDriveExplorerRootId, isDriveExplorerFolderConfigured } from "@/lib/drive/explorer-root";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MAX_DEPTH = 5;
@@ -13,6 +14,7 @@ export type DriveSyncStats = {
   removed: number;
   totalInDb: number;
   rootFolderId: string;
+  explorerConfigured: boolean;
   syncedAt: string;
 };
 
@@ -72,6 +74,7 @@ async function syncFolder(
   drive: drive_v3.Drive,
   googleFolderId: string,
   sharedDriveId: string,
+  rootId: string,
   parentDbId: string | null,
   depth: number,
   stats: Pick<DriveSyncStats, "upserted" | "folders" | "removed">
@@ -82,6 +85,7 @@ async function syncFolder(
   console.log("[sync] listChildren", {
     depth,
     parentPrefix: googleFolderId.slice(0, 8) + "…",
+    rootPrefix: rootId.slice(0, 8) + "…",
     count: files.length,
   });
 
@@ -96,6 +100,7 @@ async function syncFolder(
       create: {
         driveFileId: file.id,
         driveFolderId: googleFolderId,
+        rootId,
         name: file.name,
         mimeType: file.mimeType ?? null,
         size: file.size != null ? BigInt(file.size) : null,
@@ -118,6 +123,7 @@ async function syncFolder(
         isFolder,
         parentId: parentDbId,
         driveFolderId: googleFolderId,
+        rootId,
         driveModifiedAt: file.modifiedTime ? new Date(file.modifiedTime) : null,
         lastSyncedAt: new Date(),
       },
@@ -126,12 +132,14 @@ async function syncFolder(
     stats.upserted += 1;
     if (isFolder) {
       stats.folders += 1;
-      await syncFolder(drive, file.id, sharedDriveId, dbFile.id, depth + 1, stats);
+      await syncFolder(drive, file.id, sharedDriveId, rootId, dbFile.id, depth + 1, stats);
     }
   }
 
+  /** 같은 루트·같은 부모 아래에서만 고아 정리 — 다른 드라이브(업로드 폴더) 레코드는 건드리지 않음 */
   const orphans = await prisma.driveFile.findMany({
     where: {
+      rootId,
       driveFolderId: googleFolderId,
       source: "google_drive",
       ...(driveIds.length > 0 ? { NOT: { driveFileId: { in: driveIds } } } : {}),
@@ -145,18 +153,25 @@ async function syncFolder(
   }
 }
 
-/** Google Drive 공유 드라이브 → Prisma DriveFile 동기화 (세션 무관, cron/API 공용) */
+/**
+ * 탐색기 루트(GOOGLE_DRIVE_EXPLORER_FOLDER_ID → 폴백 FOLDER_ID) → Prisma DriveFile 동기화.
+ * 업로드 전용 GOOGLE_DRIVE_FOLDER_ID 값은 변경하지 않음.
+ */
 export async function syncGoogleDriveToDb(): Promise<DriveSyncStats> {
-  const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim();
+  const rootFolderId = getDriveExplorerRootId();
+  const explorerConfigured = isDriveExplorerFolderConfigured();
   console.log("[sync] syncGoogleDriveToDb 진입 (shared drive)", {
-    hasFolderId: Boolean(rootFolderId),
-    folderIdPrefix: rootFolderId ? `${rootFolderId.slice(0, 6)}…` : null,
+    explorerConfigured,
+    hasRootId: Boolean(rootFolderId),
+    rootIdPrefix: rootFolderId ? `${rootFolderId.slice(0, 6)}…` : null,
     hasSaJson: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()),
     hasSaEmail: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim()),
   });
 
   if (!rootFolderId) {
-    throw new Error("GOOGLE_DRIVE_FOLDER_ID가 설정되어 있지 않습니다.");
+    throw new Error(
+      "GOOGLE_DRIVE_EXPLORER_FOLDER_ID 또는 GOOGLE_DRIVE_FOLDER_ID가 설정되어 있지 않습니다."
+    );
   }
 
   let drive: ReturnType<typeof getDriveV3>;
@@ -170,21 +185,27 @@ export async function syncGoogleDriveToDb(): Promise<DriveSyncStats> {
 
   const stats = { upserted: 0, folders: 0, removed: 0 };
   try {
-    // GOOGLE_DRIVE_FOLDER_ID = 공유 드라이브 ID (루트)
-    console.log("[sync] 공유 드라이브 루트 동기화 시작", rootFolderId.slice(0, 8) + "…");
-    await syncFolder(drive, rootFolderId, rootFolderId, null, 0, stats);
+    console.log(
+      "[sync] 탐색기 루트 동기화 시작",
+      rootFolderId.slice(0, 8) + "…",
+      explorerConfigured ? "(EXPLORER)" : "(FOLDER_ID 폴백)"
+    );
+    await syncFolder(drive, rootFolderId, rootFolderId, rootFolderId, null, 0, stats);
   } catch (e) {
     console.error("[sync] files.list/upsert 단계 실패", e);
     throw e;
   }
 
-  const totalInDb = await prisma.driveFile.count({ where: { source: "google_drive" } });
-  console.log("[sync] DB 반영 완료", { ...stats, totalInDb });
+  const totalInDb = await prisma.driveFile.count({
+    where: { source: "google_drive", rootId: rootFolderId },
+  });
+  console.log("[sync] DB 반영 완료", { ...stats, totalInDb, rootFolderId: rootFolderId.slice(0, 8) + "…" });
 
   return {
     ...stats,
     totalInDb,
     rootFolderId,
+    explorerConfigured,
     syncedAt: new Date().toISOString(),
   };
 }

@@ -63,7 +63,11 @@ function formatSize(bytes: string | null) {
 
 type Crumb = { id: string | null; name: string };
 
-export function DrivePageClient() {
+export function DrivePageClient({
+  showExplorerSetupBanner = false,
+}: {
+  showExplorerSetupBanner?: boolean;
+}) {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([{ id: null, name: "전체 파일" }]);
   const [search, setSearch] = useState("");
@@ -118,6 +122,16 @@ export function DrivePageClient() {
 
   return (
     <div className="flex flex-col gap-4">
+      {showExplorerSetupBanner && (
+        <div
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950"
+          role="status"
+        >
+          직원용 공유 드라이브가 아직 연결되지 않았습니다. GOOGLE_DRIVE_EXPLORER_FOLDER_ID 설정
+          필요
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <HardDrive className="size-4" />

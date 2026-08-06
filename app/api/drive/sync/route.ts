@@ -8,6 +8,8 @@ export const maxDuration = 300;
 
 function driveEnvDebug() {
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim() || "";
+  const explorerId = process.env.GOOGLE_DRIVE_EXPLORER_FOLDER_ID?.trim() || "";
+  const effectiveRoot = explorerId || folderId;
   const saJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() || "";
   const saEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim() || "";
   const saKey = process.env.GOOGLE_PRIVATE_KEY?.trim() || "";
@@ -26,6 +28,10 @@ function driveEnvDebug() {
     hasFolderId: Boolean(folderId),
     folderIdLength: folderId.length,
     folderIdPrefix: folderId ? `${folderId.slice(0, 6)}…` : null,
+    hasExplorerFolderId: Boolean(explorerId),
+    explorerFolderIdPrefix: explorerId ? `${explorerId.slice(0, 6)}…` : null,
+    effectiveRootPrefix: effectiveRoot ? `${effectiveRoot.slice(0, 6)}…` : null,
+    usingExplorerEnv: Boolean(explorerId),
     hasServiceAccountJson: Boolean(saJson),
     serviceAccountJsonLength: saJson.length,
     serviceAccountJsonValid: saJsonValid,
@@ -39,7 +45,14 @@ function driveEnvDebug() {
 export async function POST() {
   const dbg = driveEnvDebug();
   console.log("[sync] 시작");
-  console.log("[sync] 폴더 ID:", dbg.folderIdPrefix, "len=", dbg.folderIdLength);
+  console.log(
+    "[sync] 탐색기 루트:",
+    dbg.effectiveRootPrefix,
+    "EXPLORER=",
+    dbg.hasExplorerFolderId,
+    "FOLDER_ID 폴백=",
+    !dbg.usingExplorerEnv && dbg.hasFolderId
+  );
   console.log("[sync] SA JSON 있음:", dbg.hasServiceAccountJson, "len=", dbg.serviceAccountJsonLength);
   console.log("[sync] SA JSON 유효:", dbg.serviceAccountJsonValid);
   console.log("[sync] SA EMAIL/KEY:", dbg.hasServiceAccountEmail, dbg.hasPrivateKey);
@@ -72,7 +85,11 @@ export async function POST() {
     console.error("[sync] 실패", e);
     const msg = e instanceof Error ? e.message : String(e);
     const status =
-      /GOOGLE_DRIVE_FOLDER_ID|서비스 계정|GOOGLE_SERVICE_ACCOUNT|JSON/i.test(msg) ? 400 : 500;
+      /GOOGLE_DRIVE_EXPLORER_FOLDER_ID|GOOGLE_DRIVE_FOLDER_ID|서비스 계정|GOOGLE_SERVICE_ACCOUNT|JSON/i.test(
+        msg
+      )
+        ? 400
+        : 500;
     return NextResponse.json(
       {
         error: msg,
