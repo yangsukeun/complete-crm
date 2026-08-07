@@ -230,7 +230,6 @@ export default async function DashboardPage() {
 
     const {
       announcements: announcementsFallback,
-      upcomingSchedules: adminUpcomingSchedules,
       adminTasks: tasksCreatedByMe,
     } = dashPrefetch;
 
@@ -280,21 +279,7 @@ export default async function DashboardPage() {
           />
         </section>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Link
-            href="/schedule"
-            className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
-          >
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Calendar className="size-5" />
-              <span className="text-sm">일정</span>
-            </div>
-            <p className="mt-2 text-2xl font-semibold">{adminUpcomingSchedules.length}건</p>
-            <p className="text-muted-foreground text-sm">다음 7일 일정</p>
-            <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-              일정표 →
-            </span>
-          </Link>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2 text-muted-foreground">
               <ListTodo className="size-5" />
@@ -372,33 +357,6 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {adminUpcomingSchedules.length > 0 && (
-          <section>
-            <h2 className="mb-3 flex items-center gap-2 font-semibold">
-              <Calendar className="size-5" />
-              다가오는 일정
-            </h2>
-            <ul className="space-y-2">
-              {adminUpcomingSchedules.map((s: any) => (
-                <li key={s.id}>
-                  <Link
-                    href="/schedule"
-                    className="flex items-center gap-2 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50"
-                  >
-                    <span className="flex-1 font-medium">{s.title}</span>
-                    <span className="text-muted-foreground text-sm">
-                      {format(new Date(s.startTime), "M/d (EEE) HH:mm", { locale: ko })}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <Link href="/schedule" className="text-primary mt-2 inline-block text-sm font-medium hover:underline">
-              전체 일정 →
-            </Link>
-          </section>
-        )}
-
         <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/schedule"
@@ -455,7 +413,6 @@ export default async function DashboardPage() {
 
   const {
     announcements: announcementsFallbackUser,
-    upcomingSchedules,
     myTasks,
   } = dashPrefetchUser;
 
@@ -505,21 +462,7 @@ export default async function DashboardPage() {
         />
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link
-          href="/schedule"
-          className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
-        >
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Calendar className="size-5" />
-            <span className="text-sm">일정</span>
-          </div>
-          <p className="mt-2 text-2xl font-semibold">{upcomingSchedules.length}건</p>
-          <p className="text-muted-foreground text-sm">다음 7일 일정</p>
-          <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-            일정표 →
-          </span>
-        </Link>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
           href="/tasks"
           className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -561,33 +504,6 @@ export default async function DashboardPage() {
           </p>
         </div>
       </div>
-
-      {upcomingSchedules.length > 0 && (
-        <section>
-          <h2 className="mb-3 flex items-center gap-2 font-semibold">
-            <Calendar className="size-5" />
-            다가오는 일정
-          </h2>
-          <ul className="space-y-2">
-            {upcomingSchedules.map((s: any) => (
-              <li key={s.id}>
-                <Link
-                  href="/schedule"
-                  className="flex items-center gap-2 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50"
-                >
-                  <span className="flex-1 font-medium">{s.title}</span>
-                  <span className="text-muted-foreground text-sm">
-                    {format(new Date(s.startTime), "M/d (EEE) HH:mm", { locale: ko })}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Link href="/schedule" className="text-primary mt-2 inline-block text-sm font-medium hover:underline">
-            전체 일정 →
-          </Link>
-        </section>
-      )}
 
       <section>
         <h2 className="mb-3 flex items-center gap-2 font-semibold">

@@ -100,6 +100,11 @@ type Props = {
   listClassName?: string;
   /** 상세 링크 라벨 */
   detailLabel?: string;
+  /** 목록 표시 상한 (요약 카운트는 전체 기준) */
+  maxItems?: number;
+  /** 상한 초과 시 더보기 링크 */
+  moreHref?: string;
+  moreLabel?: string;
 };
 
 export function ScheduleTaskList({
@@ -109,6 +114,9 @@ export function ScheduleTaskList({
   className,
   listClassName,
   detailLabel = "상세",
+  maxItems,
+  moreHref,
+  moreLabel = "할일 페이지로 →",
 }: Props) {
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
@@ -116,6 +124,11 @@ export function ScheduleTaskList({
 
   const sorted = useMemo(() => sortScheduleTasks(tasks), [tasks]);
   const summary = useMemo(() => summarizeScheduleTasks(tasks), [tasks]);
+  const visible = useMemo(
+    () => (maxItems != null && maxItems > 0 ? sorted.slice(0, maxItems) : sorted),
+    [sorted, maxItems]
+  );
+  const hiddenCount = Math.max(0, sorted.length - visible.length);
 
   const clearTimer = useCallback((id: string) => {
     const t = timersRef.current.get(id);
@@ -240,7 +253,7 @@ export function ScheduleTaskList({
         </span>
       </p>
       <ul className={cn("space-y-2", listClassName)}>
-        {sorted.map((t) => {
+        {visible.map((t) => {
           const meta = dueMeta(t.dueDate);
           const pending = pendingIds.has(t.id);
           const removing = removingIds.has(t.id);
@@ -328,6 +341,17 @@ export function ScheduleTaskList({
           );
         })}
       </ul>
+      {hiddenCount > 0 && moreHref ? (
+        <p className="mt-2">
+          <Link
+            href={moreHref}
+            prefetch={false}
+            className="text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300"
+          >
+            {moreLabel} ({hiddenCount}건 더)
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }

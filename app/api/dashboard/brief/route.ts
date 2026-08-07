@@ -3,6 +3,8 @@ import { addDays } from "date-fns";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { addDaysKstYmd, kstDateBoundsUtc, todayYmdKst } from "@/lib/date-kst";
+import { listScheduleStandaloneTasks } from "@/lib/schedule-standalone-tasks";
+import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 
 export const runtime = "nodejs";
 
@@ -61,84 +63,76 @@ type BriefProject = {
 };
 
 /** 대시보드 오늘의 브리핑 — 세션 사용자 기준 1회 호출 */
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = session.user.id;
+    const scope = await getServerWorkspaceScopeFromRequest(req);
     const ymd = todayYmdKst();
     const { start: dayStart, end: dayEnd } = kstDateBoundsUtc(ymd);
     const d3End = kstDateBoundsUtc(addDaysKstYmd(ymd, 3)).end;
 
-    const assigneeWhere = {
-      OR: [{ assignedToId: userId }, { assignees: { some: { userId } } }],
-    };
-
-    const [crmSchedules, tasks, projects, googleToken] = await Promise.all([
-      prisma.schedule.findMany({
-        where: {
-          userId,
-          OR: [
-            { startTime: { gte: dayStart, lt: dayEnd } },
-            {
-              AND: [
-                { startTime: { lt: dayEnd } },
-                { endTime: { gt: dayStart } },
-              ],
-            },
-          ],
-        },
-        orderBy: { startTime: "asc" },
-        select: {
-          id: true,
-          title: true,
-          startTime: true,
-          endTime: true,
-          isAllDay: true,
-        },
-      }),
-      prisma.task.findMany({
-        where: {
-          deletedAt: null,
-          archivedAt: null,
-          isCompleted: false,
-          status: { not: "DONE" },
-          dueDate: { lt: dayEnd }, // 오늘 마감 + 지연
-          ...assigneeWhere,
-        },
-        orderBy: { dueDate: "asc" },
-        take: 30,
-        select: {
-          id: true,
-          title: true,
-          dueDate: true,
-          isCompleted: true,
-          assignedTo: { select: { id: true, name: true, position: true } },
-          assignees: {
-            select: { user: { select: { id: true, name: true, position: true } } },
+    const [crmSchedules, standaloneTasks, projects, googleToken, projectsWithDueCount] =
+      await Promise.all([
+        prisma.schedule.findMany({
+          where: {
+            userId,
+            OR: [
+              { startTime: { gte: dayStart, lt: dayEnd } },
+              {
+                AND: [{ startTime: { lt: dayEnd } }, { endTime: { gt: dayStart } }],
+              },
+            ],
           },
-        },
-      }),
-      prisma.project.findMany({
-        where: {
-          deletedAt: null,
-          status: { not: "COMPLETED" },
-          dueDate: { gte: dayStart, lt: d3End },
-          users: { some: { id: userId } },
-        },
-        orderBy: { dueDate: "asc" },
-        take: 20,
-        select: {
-          id: true,
-          name: true,
-          dueDate: true,
-          brand: { select: { name: true } },
-        },
-      }),
-      getGoogleAccessToken(userId),
-    ]);
+          orderBy: { startTime: "asc" },
+          select: {
+            id: true,
+            title: true,
+            startTime: true,
+            endTime: true,
+            isAllDay: true,
+          },
+        }),
+        // 스케줄 페이지 할일 목록과 동일 필터
+        listScheduleStandaloneTasks(
+          {
+            id: userId,
+            email: session.user.email,
+            role: session.user.role,
+          },
+          scope,
+          100
+        ),
+        // 본인 담당: 지연(마감 경과) + D-3 임박
+        prisma.project.findMany({
+          where: {
+            deletedAt: null,
+            status: { not: "COMPLETED" },
+            dueDate: { not: null, lt: d3End },
+            users: { some: { id: userId } },
+          },
+          orderBy: { dueDate: "asc" },
+          take: 50,
+          select: {
+            id: true,
+            name: true,
+            dueDate: true,
+            brand: { select: { name: true } },
+          },
+        }),
+        getGoogleAccessToken(userId),
+        prisma.project.count({
+          where: {
+            deletedAt: null,
+            status: { not: "COMPLETED" },
+            dueDate: { not: null },
+            users: { some: { id: userId } },
+          },
+        }),
+      ]);
 
     const schedules: BriefSchedule[] = crmSchedules.map((s) => ({
       id: s.id,
@@ -185,7 +179,6 @@ export async function GET() {
                 ? new Date(`${e.end.date}T00:00:00+09:00`)
                 : addDays(start, 1);
               end = new Date(exclusive.getTime() - 1);
-              // 오늘 칸과 겹치지 않으면 스킵
               if (end < dayStart || start >= dayEnd) continue;
             } else {
               continue;
@@ -210,7 +203,7 @@ export async function GET() {
       return new Date(a.start).getTime() - new Date(b.start).getTime();
     });
 
-    const briefTasks: BriefTask[] = tasks.map((t) => ({
+    const briefTasks: BriefTask[] = standaloneTasks.map((t) => ({
       id: t.id,
       title: t.title,
       dueDate: t.dueDate?.toISOString() ?? null,
@@ -228,11 +221,20 @@ export async function GET() {
         brandName: p.brand?.name ?? null,
       }));
 
+    const overdueProjects = briefProjects.filter((p) => new Date(p.dueDate) < dayStart).length;
+    const soonProjects = briefProjects.length - overdueProjects;
+
     return NextResponse.json({
       dateYmd: ymd,
       schedules,
       tasks: briefTasks,
       projects: briefProjects,
+      projectMeta: {
+        overdue: overdueProjects,
+        soon: soonProjects,
+        /** 담당 프로젝트 중 dueDate가 하나라도 있는지 (상시 구역만 있으면 0) */
+        withDueDate: projectsWithDueCount,
+      },
     });
   } catch (e) {
     console.error("[GET /api/dashboard/brief]", e);

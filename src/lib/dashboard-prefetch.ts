@@ -157,26 +157,23 @@ export type CompanyDashboardPrefetch = {
   upcomingSchedules: Awaited<ReturnType<typeof getUpcomingSchedulesForDashboard>>;
 };
 
-/** 관리자 대시보드: 공지·일정·내가 만든 업무 프리뷰를 한 번에 (매출 위젯 제거 P3-10) */
+/** 관리자 대시보드: 공지·내가 만든 업무 프리뷰 (일정은 브리핑으로 통일) */
 export async function prefetchCompanyDashboardAdmin(userId: string) {
-  const [announcements, upcomingSchedules, adminTasks] = await Promise.all([
+  const [announcements, adminTasks] = await Promise.all([
     getAnnouncementsForDashboard(userId),
-    getUpcomingSchedulesForDashboard(userId),
     getAdminTasksForDashboard(userId),
   ]);
-  return { announcements, upcomingSchedules, adminTasks };
+  return { announcements, adminTasks };
 }
 
-/** 직원 대시보드: 공지·일정·할당 업무 프리뷰를 한 번에 (매출 위젯 제거 P3-10) */
+/** 직원 대시보드: 공지·할당 업무 프리뷰 (일정은 브리핑으로 통일) */
 export async function prefetchCompanyDashboardUser(userId: string) {
-  const [announcements, upcomingSchedules, userTaskBundle] = await Promise.all([
+  const [announcements, userTaskBundle] = await Promise.all([
     getAnnouncementsForDashboard(userId),
-    getUpcomingSchedulesForDashboard(userId),
     getUserTasksForDashboard(userId),
   ]);
   return {
     announcements,
-    upcomingSchedules,
     myTasks: userTaskBundle.list,
     dueSoonCount: userTaskBundle.dueSoonCount,
   };
@@ -187,9 +184,6 @@ export async function prefetchCompanyDashboardUser(userId: string) {
  * @deprecated prefetchCompanyDashboardUser/Admin 사용 권장
  */
 export async function prefetchCompanyDashboardShared(userId: string): Promise<CompanyDashboardPrefetch> {
-  const [announcements, upcomingSchedules] = await Promise.all([
-    getAnnouncementsForDashboard(userId),
-    getUpcomingSchedulesForDashboard(userId),
-  ]);
-  return { announcements, upcomingSchedules };
+  const announcements = await getAnnouncementsForDashboard(userId);
+  return { announcements, upcomingSchedules: [] };
 }

@@ -31,6 +31,7 @@ type BriefResponse = {
   schedules: BriefSchedule[];
   tasks: ScheduleListTask[];
   projects: BriefProject[];
+  projectMeta?: { overdue: number; soon: number; withDueDate: number };
 };
 
 function projectDueBadge(dueDate: string) {
@@ -75,6 +76,9 @@ export function DashboardTodayBrief() {
     return data.schedules.length === 0 && data.tasks.length === 0 && data.projects.length === 0;
   }, [data]);
 
+  const visibleProjects = useMemo(() => (data?.projects ?? []).slice(0, 5), [data?.projects]);
+  const hiddenProjects = Math.max(0, (data?.projects.length ?? 0) - visibleProjects.length);
+
   if (isLoading && !data) {
     return <div className="h-28 animate-pulse rounded-lg bg-muted/40" />;
   }
@@ -88,6 +92,8 @@ export function DashboardTodayBrief() {
       </section>
     );
   }
+
+  const meta = data.projectMeta;
 
   return (
     <section className="rounded-lg border bg-card p-4 shadow-sm">
@@ -105,7 +111,7 @@ export function DashboardTodayBrief() {
               {data.schedules.map((s) => (
                 <li key={s.id}>
                   <Link
-                    href={s.source === "crm" ? "/schedule" : "/schedule"}
+                    href="/schedule"
                     prefetch={false}
                     className="flex items-baseline gap-2 rounded-md px-1 py-1 text-sm hover:bg-muted/50"
                   >
@@ -131,46 +137,76 @@ export function DashboardTodayBrief() {
           <ScheduleTaskList
             tasks={data.tasks}
             onCompleted={handleTaskCompleted}
+            maxItems={5}
+            moreHref="/schedule"
+            moreLabel="할일 목록으로 →"
             listClassName="max-h-64 overflow-y-auto"
-            emptyHint={<p className="text-muted-foreground text-sm">마감·지연 없음</p>}
+            emptyHint={<p className="text-muted-foreground text-sm">표시할 할일 없음</p>}
           />
         </div>
 
         <div className="min-w-0 space-y-2">
           <h3 className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
             <Target className="size-3.5" />
-            프로젝트 마감 임박
+            프로젝트 마감
           </h3>
+          {meta && (meta.overdue > 0 || meta.soon > 0) ? (
+            <p className="text-muted-foreground text-xs">
+              {meta.overdue > 0 ? (
+                <span className="mr-2 inline-flex rounded-full bg-red-100 px-1.5 py-0.5 font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                  지연 {meta.overdue}
+                </span>
+              ) : null}
+              <span>
+                임박 <span className="font-semibold text-foreground">{meta.soon}</span>
+              </span>
+            </p>
+          ) : null}
           {data.projects.length === 0 ? (
-            <p className="text-muted-foreground text-sm">임박 프로젝트 없음</p>
+            <p className="text-muted-foreground text-sm">
+              {meta && meta.withDueDate === 0
+                ? "마감일이 설정된 담당 프로젝트 없음"
+                : "지연·임박 프로젝트 없음"}
+            </p>
           ) : (
-            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-              {data.projects.map((p) => {
-                const badge = projectDueBadge(p.dueDate);
-                return (
-                  <li key={p.id}>
-                    <Link
-                      href={`/projects/${p.id}`}
-                      prefetch={false}
-                      className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm hover:bg-muted/40"
-                    >
-                      <span className="min-w-0 flex-1 truncate font-medium">
-                        {p.brandName ? `${p.brandName} · ` : ""}
-                        {p.name}
-                      </span>
-                      <span
-                        className={cn(
-                          "inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                          badge.className
-                        )}
+            <>
+              <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+                {visibleProjects.map((p) => {
+                  const badge = projectDueBadge(p.dueDate);
+                  return (
+                    <li key={p.id}>
+                      <Link
+                        href={`/projects/${p.id}`}
+                        prefetch={false}
+                        className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm hover:bg-muted/40"
                       >
-                        {badge.label}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {p.brandName ? `${p.brandName} · ` : ""}
+                          {p.name}
+                        </span>
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            badge.className
+                          )}
+                        >
+                          {badge.label}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              {hiddenProjects > 0 ? (
+                <Link
+                  href="/tasks"
+                  prefetch={false}
+                  className="text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300"
+                >
+                  프로젝트 더보기 ({hiddenProjects}건)
+                </Link>
+              ) : null}
+            </>
           )}
         </div>
       </div>
