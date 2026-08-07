@@ -35,6 +35,7 @@ import {
   Trash2,
   Shield,
   Link2,
+  Server,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -66,6 +67,7 @@ const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboar
   { href: "/announcements", label: "공지사항", icon: Megaphone, featureKey: "announcements", companyOnly: true },
   { href: "/board", label: "게시판", icon: FolderOpen, featureKey: "board", companyOnly: true },
   { href: "/drive", label: "파일", icon: HardDrive },
+  { href: "/nas-drive", label: "NAS 문서함", icon: Server },
   { href: "/cs-tools", label: "CS 링크", icon: Link2 },
   { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true },
   { href: "/ai-secretary", label: "AI 비서", icon: Sparkles },
@@ -492,6 +494,23 @@ export function AppNav() {
             <Link href="/drive" prefetch={false} className="flex items-center gap-1.5">
               <HardDrive className="size-4" />
               <span>파일</span>
+            </Link>
+          </Button>
+
+          {/* NAS 문서함 — File Station 목록 (GOOGLE_DRIVE_* 와 분리) */}
+          <Button
+            variant="ghost"
+            asChild
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+              pathname === "/nas-drive" || pathname.startsWith("/nas-drive/")
+                ? "bg-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            )}
+          >
+            <Link href="/nas-drive" prefetch={false} className="flex items-center gap-1.5">
+              <Server className="size-4" />
+              <span>NAS 문서함</span>
             </Link>
           </Button>
 

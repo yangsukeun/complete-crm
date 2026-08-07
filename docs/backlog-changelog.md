@@ -6,6 +6,7 @@
 
 ---
 
+[진행] 2026.08.07 | NAS 문서함 File Station | /nas-drive + /api/nas/files | 자격증명 env 대기 — 실인증·급여폴더 미노출 검증 보류
 [완료] 2026.08.07 | P3-1 CS 링크 허브 | CsTool/CsToolClickLog + /cs-tools + 대시보드 카드(CS·관리자) | 시드는 플레이스홀더 21건 — CS팀장 확인 후 교체 필수
 [변경] 2026.08.07 | P3 착수 | B(3-10 알림·브리핑) 선행, A(CS 링크 허브) 차순위 | 대시보드 매출·수금 위젯 제거(데이터 보존)
 [변경] 2026.08.07 | 대시보드 브리핑 정합 | 할일=스케줄 standalone 필터 / 프로젝트=dueDate 지연·임박 / 하단 일정 카드 제거 | PROJECT 출처·projectId null 구역 Task가 할일로 혼입되던 문제
