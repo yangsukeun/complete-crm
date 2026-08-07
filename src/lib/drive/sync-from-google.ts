@@ -167,7 +167,7 @@ async function syncFolder(
  * 현재 폴더(직계 자식)만 Drive→DB 반영. 전체 트리는 크론(syncGoogleDriveToDb)이 담당.
  * - googleFolderId 없으면 탐색기 루트
  * - parentDbId: DriveFile.id (루트면 null)
- * - force 아니면 동일 폴더 30초 내 lastSyncedAt이 있으면 Drive API 스킵
+ * - force 아니면 동일 폴더 10초 내 lastSyncedAt이 있으면 Drive API 스킵
  */
 export async function syncExplorerFolderOnly(opts: {
   googleFolderId?: string | null;
