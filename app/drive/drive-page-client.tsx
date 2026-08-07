@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate, useSWRConfig } from "swr";
 import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   File,
   FileImage,
   FileSpreadsheet,
@@ -154,6 +158,15 @@ function formatSize(bytes: string | null) {
 
 type Crumb = { id: string | null; name: string; driveFileId: string | null };
 
+const ROOT_CRUMB: Crumb = { id: null, name: "전체 파일", driveFileId: null };
+
+const FOLDER_UNAVAILABLE_TOAST = "폴더를 열 수 없습니다. 루트로 이동합니다.";
+
+type BreadcrumbPayload = {
+  path?: { id: string; name: string; driveFileId: string | null; parentId: string | null }[];
+  error?: string;
+};
+
 export function DrivePageClient({
   showExplorerSetupBanner = false,
   canDeleteFiles = false,
@@ -163,11 +176,15 @@ export function DrivePageClient({
   canDeleteFiles?: boolean;
   explorerConfigured?: boolean;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const folderParam = searchParams.get("folder")?.trim() || null;
+
   const { mutate: globalMutate } = useSWRConfig();
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([
-    { id: null, name: "전체 파일", driveFileId: null },
-  ]);
+  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([ROOT_CRUMB]);
+  /** URL folder 해석 전에는 자동 동기화·목록을 루트로 한 번 돌리지 않음 */
+  const [navReady, setNavReady] = useState(() => !folderParam);
   const [search, setSearch] = useState("");
   const [previewFile, setPreviewFile] = useState<DriveFileRow | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -186,14 +203,18 @@ export function DrivePageClient({
   const autoSyncInFlight = useRef<string | null>(null);
   /** /drive 페이지 세션에서 첫 자동 동기화(마운트)만 스로틀 무시 */
   const mountSyncPendingRef = useRef(true);
+  const resolvingFolderRef = useRef<string | null>(null);
+  /** URL과 동기화된 현재 Google folder id (낙관적 이동·중복 fetch 방지) */
+  const appliedFolderRef = useRef<string | null>(null);
 
   const currentDriveFolderId = breadcrumb[breadcrumb.length - 1]?.driveFileId ?? null;
   const canUploadHere = Boolean(explorerConfigured && currentDriveFolderId && !search.trim());
   const canCreateFolderHere = canUploadHere;
+  const canGoUp = breadcrumb.length > 1;
 
   const listUrl = useMemo(() => listUrlFor(currentId, search), [search, currentId]);
 
-  const { data, isLoading, error, isValidating } = useSWR(listUrl, fetcher, {
+  const { data, isLoading, error, isValidating } = useSWR(navReady ? listUrl : null, fetcher, {
     revalidateOnFocus: false,
     keepPreviousData: true,
   });
@@ -206,10 +227,126 @@ export function DrivePageClient({
     return [...pending, ...base];
   }, [data?.files, optimisticRows]);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
-  };
+  }, []);
+
+  const driveUrlFor = useCallback((driveFileId: string | null) => {
+    if (!driveFileId) return "/drive";
+    return `/drive?folder=${encodeURIComponent(driveFileId)}`;
+  }, []);
+
+  /** 폴더 이동 → URL 히스토리 (브라우저 뒤로가기 = 이전 폴더) */
+  const navigateToDriveFolder = useCallback(
+    (driveFileId: string | null) => {
+      const next = driveUrlFor(driveFileId);
+      const cur =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "";
+      if (cur === next) return;
+      router.push(next);
+    },
+    [driveUrlFor, router]
+  );
+
+  const applyFolderPath = useCallback(
+    (path: { id: string; name: string; driveFileId: string | null }[]) => {
+      const crumbs: Crumb[] = [
+        ROOT_CRUMB,
+        ...path.map((p) => ({
+          id: p.id,
+          name: p.name,
+          driveFileId: p.driveFileId,
+        })),
+      ];
+      const leaf = crumbs[crumbs.length - 1]!;
+      setBreadcrumb(crumbs);
+      setCurrentId(leaf.id);
+      setOptimisticRows([]);
+      setSearch("");
+      appliedFolderRef.current = leaf.driveFileId;
+    },
+    []
+  );
+
+  // URL ?folder= ↔ 탐색기 상태 (새로고침·공유·뒤로/앞으로)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncFromUrl() {
+      if (!folderParam) {
+        resolvingFolderRef.current = null;
+        if (appliedFolderRef.current !== null) {
+          setBreadcrumb([ROOT_CRUMB]);
+          setCurrentId(null);
+          setOptimisticRows([]);
+          appliedFolderRef.current = null;
+        }
+        setNavReady(true);
+        return;
+      }
+
+      // 낙관적 이동·이미 적용된 폴더면 API 생략
+      if (appliedFolderRef.current === folderParam) {
+        setNavReady(true);
+        return;
+      }
+
+      if (resolvingFolderRef.current === folderParam) return;
+      resolvingFolderRef.current = folderParam;
+      setNavReady(false);
+
+      try {
+        const res = await fetch(
+          `/api/drive/breadcrumb?folder=${encodeURIComponent(folderParam)}`
+        );
+        const body = (await res.json().catch(() => ({}))) as BreadcrumbPayload;
+        if (cancelled) return;
+
+        if (!res.ok || !Array.isArray(body.path)) {
+          resolvingFolderRef.current = null;
+          showToast(FOLDER_UNAVAILABLE_TOAST);
+          appliedFolderRef.current = null;
+          setBreadcrumb([ROOT_CRUMB]);
+          setCurrentId(null);
+          setNavReady(true);
+          router.replace("/drive");
+          return;
+        }
+
+        if (body.path.length === 0) {
+          setBreadcrumb([ROOT_CRUMB]);
+          setCurrentId(null);
+          setOptimisticRows([]);
+          appliedFolderRef.current = null;
+          setNavReady(true);
+          resolvingFolderRef.current = null;
+          router.replace("/drive");
+          return;
+        }
+
+        applyFolderPath(body.path);
+        setNavReady(true);
+        resolvingFolderRef.current = null;
+      } catch {
+        if (cancelled) return;
+        resolvingFolderRef.current = null;
+        showToast(FOLDER_UNAVAILABLE_TOAST);
+        appliedFolderRef.current = null;
+        setBreadcrumb([ROOT_CRUMB]);
+        setCurrentId(null);
+        setNavReady(true);
+        router.replace("/drive");
+      }
+    }
+
+    void syncFromUrl();
+    return () => {
+      cancelled = true;
+    };
+  }, [folderParam, applyFolderPath, router, showToast]);
 
   const prefetchFolder = useCallback(
     (folderId: string) => {
@@ -311,8 +448,9 @@ export function DrivePageClient({
     }
   };
 
-  // 마운트·폴더 이동 시 자동 직계 동기화 (검색 중 제외)
+  // 마운트·폴더 이동 시 자동 직계 동기화 (검색 중 제외, URL 해석 후)
   useEffect(() => {
+    if (!navReady) return;
     if (search.trim()) return;
     const isMount = mountSyncPendingRef.current;
     if (isMount) mountSyncPendingRef.current = false;
@@ -325,12 +463,13 @@ export function DrivePageClient({
     }).catch((e) => {
       console.warn("[drive auto-sync]", e);
     });
-  }, [currentId, currentDriveFolderId, search, runFolderSync]);
+  }, [navReady, currentId, currentDriveFolderId, search, runFolderSync]);
 
   // 탭 복귀 시 현재 폴더 1회 (20초 스로틀)
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
+      if (!navReady) return;
       if (search.trim()) return;
       void runFolderSync({
         parentDbId: currentId,
@@ -344,7 +483,7 @@ export function DrivePageClient({
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [currentId, currentDriveFolderId, search, runFolderSync]);
+  }, [navReady, currentId, currentDriveFolderId, search, runFolderSync]);
 
   const uploadFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
@@ -538,12 +677,20 @@ export function DrivePageClient({
   };
 
   const openFolder = (folder: DriveFileRow) => {
+    if (!folder.driveFileId) {
+      showToast("이 폴더는 아직 Drive와 연결되지 않았습니다.");
+      return;
+    }
     setCurrentId(folder.id);
     setBreadcrumb((prev) => [
       ...prev,
       { id: folder.id, name: folder.name, driveFileId: folder.driveFileId },
     ]);
     setSearch("");
+    setOptimisticRows([]);
+    appliedFolderRef.current = folder.driveFileId;
+    setNavReady(true);
+    navigateToDriveFolder(folder.driveFileId);
   };
 
   const goTo = (index: number) => {
@@ -552,6 +699,15 @@ export function DrivePageClient({
     setCurrentId(target.id);
     setBreadcrumb(breadcrumb.slice(0, index + 1));
     setSearch("");
+    setOptimisticRows([]);
+    appliedFolderRef.current = target.driveFileId;
+    setNavReady(true);
+    navigateToDriveFolder(target.driveFileId);
+  };
+
+  const goUp = () => {
+    if (breadcrumb.length <= 1) return;
+    goTo(breadcrumb.length - 2);
   };
 
   return (
@@ -579,6 +735,42 @@ export function DrivePageClient({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <HardDrive className="size-4" />
           <span>Google Drive 연동 탐색기</span>
+          <div className="ml-1 flex items-center gap-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="뒤로"
+              aria-label="뒤로"
+              onClick={() => router.back()}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="앞으로"
+              aria-label="앞으로"
+              onClick={() => router.forward()}
+            >
+              <ArrowRight className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="상위 폴더"
+              aria-label="상위 폴더"
+              disabled={!canGoUp}
+              onClick={goUp}
+            >
+              <ArrowUp className="size-4" />
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {(isValidating || isAutoSyncing) && !isLoading && (
@@ -762,20 +954,21 @@ export function DrivePageClient({
           <span>작업</span>
         </div>
 
-        {isLoading && !data && (
+        {(!navReady || (isLoading && !data)) && (
           <div className="flex items-center justify-center gap-2 px-4 py-16 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             불러오는 중…
           </div>
         )}
 
-        {error && !isLoading && !data && (
+        {navReady && error && !isLoading && !data && (
           <div className="px-4 py-16 text-center text-sm text-rose-600">
             {error instanceof Error ? error.message : "목록을 불러오지 못했습니다."}
           </div>
         )}
 
-        {displayFiles.map((file) => (
+        {navReady &&
+          displayFiles.map((file) => (
           <div
             key={file.id}
             role="row"
@@ -899,7 +1092,7 @@ export function DrivePageClient({
           </div>
         ))}
 
-        {!isLoading && !error && displayFiles.length === 0 && (
+        {!navReady || isLoading || error ? null : displayFiles.length === 0 ? (
           <div className="px-4 py-16 text-center text-sm text-muted-foreground">
             {search.trim()
               ? `"${search.trim()}" 검색 결과가 없습니다`
@@ -907,7 +1100,7 @@ export function DrivePageClient({
                 ? "이 폴더는 비어 있습니다. 파일을 끌어다 놓거나 업로드 버튼을 사용하세요."
                 : "이 폴더는 비어 있습니다. 「이 폴더 새로고침」으로 Drive에서 가져와 주세요."}
           </div>
-        )}
+        ) : null}
       </div>
 
       {previewFile && (

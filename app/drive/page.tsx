@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
@@ -20,11 +21,17 @@ export default async function DrivePage() {
         title="파일"
         description="Google Drive와 동기화된 폴더·파일을 탐색합니다. 동기화 후 목록이 표시됩니다."
       />
-      <DrivePageClient
-        showExplorerSetupBanner={showExplorerSetupBanner}
-        canDeleteFiles={canDeleteFiles}
-        explorerConfigured={explorerConfigured}
-      />
+      <Suspense
+        fallback={
+          <p className="text-sm text-muted-foreground">탐색기를 불러오는 중…</p>
+        }
+      >
+        <DrivePageClient
+          showExplorerSetupBanner={showExplorerSetupBanner}
+          canDeleteFiles={canDeleteFiles}
+          explorerConfigured={explorerConfigured}
+        />
+      </Suspense>
     </div>
   );
 }
