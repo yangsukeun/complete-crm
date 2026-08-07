@@ -9,6 +9,7 @@ import {
   FileText,
   FileVideo,
   Folder,
+  FolderPlus,
   HardDrive,
   Loader2,
   Plus,
@@ -31,6 +32,8 @@ type DriveFileRow = {
   driveModifiedAt: string | null;
   parentId: string | null;
   uploading?: boolean;
+  /** 낙관적 새 폴더 생성 중 */
+  creating?: boolean;
   _count?: { children: number };
 };
 
@@ -175,13 +178,18 @@ export function DrivePageClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [optimisticRows, setOptimisticRows] = useState<DriveFileRow[]>([]);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
   const autoSyncInFlight = useRef<string | null>(null);
   /** /drive 페이지 세션에서 첫 자동 동기화(마운트)만 스로틀 무시 */
   const mountSyncPendingRef = useRef(true);
 
   const currentDriveFolderId = breadcrumb[breadcrumb.length - 1]?.driveFileId ?? null;
   const canUploadHere = Boolean(explorerConfigured && currentDriveFolderId && !search.trim());
+  const canCreateFolderHere = canUploadHere;
 
   const listUrl = useMemo(() => listUrlFor(currentId, search), [search, currentId]);
 
@@ -419,8 +427,95 @@ export function DrivePageClient({
     void refreshList();
   };
 
+  const openNewFolderInput = () => {
+    if (!canCreateFolderHere) {
+      showToast("폴더에 들어가서 새 폴더를 만드세요.");
+      return;
+    }
+    setNewFolderOpen(true);
+    setNewFolderName("");
+    window.setTimeout(() => newFolderInputRef.current?.focus(), 0);
+  };
+
+  const createFolder = async () => {
+    const name = newFolderName.trim();
+    if (!name) {
+      showToast("폴더 이름을 입력하세요.");
+      return;
+    }
+    if (!canCreateFolderHere || !currentDriveFolderId) {
+      showToast("폴더에 들어가서 새 폴더를 만드세요.");
+      return;
+    }
+    if (isCreatingFolder) return;
+
+    const parentDbId = currentId;
+    const tempId = `creating-folder-${Date.now()}`;
+    const temp: DriveFileRow = {
+      id: tempId,
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      size: null,
+      isFolder: true,
+      driveFileId: null,
+      webViewLink: null,
+      driveModifiedAt: null,
+      parentId: parentDbId,
+      creating: true,
+      _count: { children: 0 },
+    };
+
+    setOptimisticRows((prev) => [temp, ...prev]);
+    setIsCreatingFolder(true);
+    setNewFolderOpen(false);
+    setNewFolderName("");
+
+    try {
+      const res = await fetch("/api/drive/folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, parentFolderId: currentDriveFolderId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+        showToast(body?.error || "폴더 생성 실패");
+        return;
+      }
+      const f = body.file as DriveFileRow;
+      setOptimisticRows((prev) =>
+        prev.map((r) =>
+          r.id === tempId
+            ? {
+                ...f,
+                creating: false,
+                driveModifiedAt: f.driveModifiedAt ?? new Date().toISOString(),
+                _count: f._count ?? { children: 0 },
+              }
+            : r
+        )
+      );
+      await mutate(
+        listUrl,
+        (cur: ListPayload | undefined) => {
+          if (!cur) return cur;
+          const without = cur.files.filter((x) => x.id !== f.id);
+          return { ...cur, files: [f, ...without] };
+        },
+        { revalidate: false }
+      );
+      setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+      void refreshList();
+    } catch (e) {
+      setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+      showToast(e instanceof Error ? e.message : "폴더 생성 실패");
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
+
   const handleDelete = async (file: DriveFileRow) => {
-    if (!canDeleteFiles || file.isFolder || file.uploading) return;
+    if (!canDeleteFiles || file.isFolder || file.uploading || file.creating) return;
     const ok = window.confirm("드라이브 휴지통으로 이동합니다");
     if (!ok) return;
 
@@ -525,6 +620,57 @@ export function DrivePageClient({
             )}
             {isUploading ? "업로드 중…" : "+ 파일 업로드"}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={!canCreateFolderHere || isCreatingFolder}
+            title={
+              !explorerConfigured
+                ? "직원용 공유 드라이브가 연결되지 않았습니다"
+                : !currentDriveFolderId
+                  ? "루트에서는 새 폴더를 만들 수 없습니다. 01~05 폴더 안에서 생성하세요"
+                  : search.trim()
+                    ? "검색 중에는 폴더를 만들 수 없습니다"
+                    : "현재 폴더에 새 폴더 만들기"
+            }
+            onClick={openNewFolderInput}
+          >
+            {isCreatingFolder ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FolderPlus className="size-4" />
+            )}
+            {isCreatingFolder ? "생성 중…" : "+ 새 폴더"}
+          </Button>
+          {newFolderOpen && (
+            <Input
+              ref={newFolderInputRef}
+              type="text"
+              placeholder="폴더 이름"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void createFolder();
+                }
+                if (e.key === "Escape") {
+                  setNewFolderOpen(false);
+                  setNewFolderName("");
+                }
+              }}
+              onBlur={() => {
+                if (!newFolderName.trim()) {
+                  setNewFolderOpen(false);
+                }
+              }}
+              className="h-9 w-[180px]"
+              disabled={isCreatingFolder}
+              aria-label="새 폴더 이름"
+            />
+          )}
           <Input
             type="search"
             placeholder="파일 검색…"
@@ -635,26 +781,28 @@ export function DrivePageClient({
             role="row"
             tabIndex={0}
             onMouseEnter={() => {
-              if (file.isFolder && !file.uploading) prefetchFolder(file.id);
+              if (file.isFolder && !file.uploading && !file.creating) prefetchFolder(file.id);
             }}
             onDoubleClick={() => {
-              if (file.uploading) return;
+              if (file.uploading || file.creating) return;
               if (file.isFolder) openFolder(file);
               else setPreviewFile(file);
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !file.uploading) {
+              if (e.key === "Enter" && !file.uploading && !file.creating) {
                 if (file.isFolder) openFolder(file);
                 else setPreviewFile(file);
               }
             }}
             className={cn(
               "grid grid-cols-[minmax(0,2fr)_120px_100px_200px] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
-              file.uploading ? "bg-gray-50 text-muted-foreground" : "hover:bg-gray-50"
+              file.uploading || file.creating
+                ? "bg-gray-50 text-muted-foreground"
+                : "hover:bg-gray-50"
             )}
           >
             <div className="flex min-w-0 items-center gap-2">
-              {file.uploading ? (
+              {file.uploading || file.creating ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-gray-400" />
               ) : (
                 <FileTypeIcon mimeType={file.mimeType} isFolder={file.isFolder} />
@@ -662,19 +810,23 @@ export function DrivePageClient({
               <span
                 className={cn(
                   "truncate font-medium",
-                  file.uploading ? "text-gray-500" : "text-gray-900"
+                  file.uploading || file.creating ? "text-gray-500" : "text-gray-900"
                 )}
               >
-                {file.uploading ? `${file.name} (업로드 중…)` : file.name}
+                {file.creating
+                  ? `${file.name} (생성 중…)`
+                  : file.uploading
+                    ? `${file.name} (업로드 중…)`
+                    : file.name}
               </span>
-              {file.isFolder && (file._count?.children ?? 0) > 0 && (
+              {file.isFolder && !file.creating && (file._count?.children ?? 0) > 0 && (
                 <span className="shrink-0 text-xs text-muted-foreground">
                   ({file._count?.children})
                 </span>
               )}
             </div>
             <span className="text-xs text-muted-foreground">
-              {file.uploading
+              {file.uploading || file.creating
                 ? "—"
                 : file.driveModifiedAt
                   ? new Date(file.driveModifiedAt).toLocaleDateString("ko")
@@ -684,7 +836,9 @@ export function DrivePageClient({
               {file.isFolder ? "—" : formatSize(file.size)}
             </span>
             <div className="flex flex-wrap items-center gap-1.5">
-              {file.uploading ? (
+              {file.creating ? (
+                <span className="text-xs text-muted-foreground">생성 중</span>
+              ) : file.uploading ? (
                 <span className="text-xs text-muted-foreground">업로드 중</span>
               ) : file.isFolder ? (
                 <Button
