@@ -9,7 +9,7 @@ const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MAX_DEPTH = 5;
 /** 서버리스 인스턴스 내 동일 폴더 Drive 호출 가드 (DB lastSyncedAt 보조) */
 const folderSyncGuardMs = new Map<string, number>();
-const SERVER_FOLDER_THROTTLE_MS = 30_000;
+const SERVER_FOLDER_THROTTLE_MS = 10_000;
 
 export type DriveSyncStats = {
   upserted: number;
@@ -233,7 +233,7 @@ export async function syncExplorerFolderOnly(opts: {
       const totalInDb = await prisma.driveFile.count({
         where: { source: "google_drive", rootId: rootFolderId, driveFolderId: googleFolderId },
       });
-      console.log("[sync] folder-only SKIP drive (30s throttle)", {
+      console.log("[sync] folder-only SKIP drive (10s throttle)", {
         googlePrefix: googleFolderId.slice(0, 8) + "…",
         ageMs: Date.now() - ts,
         totalInDb,

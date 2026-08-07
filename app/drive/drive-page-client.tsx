@@ -41,16 +41,18 @@ type ListPayload = {
   timing?: { queryMs: number; totalMs: number };
 };
 
-const CLIENT_SYNC_THROTTLE_MS = 60_000;
+const CLIENT_SYNC_THROTTLE_MS = 20_000;
+const DELETE_SUPPRESS_MS = 15_000;
 const SYNC_TS_STORAGE_KEY = "drive-explorer-sync-ts";
+const DELETE_SUPPRESS_STORAGE_KEY = "drive-explorer-delete-suppress";
 
 function syncThrottleKey(parentDbId: string | null, googleFolderId: string | null) {
   return `${parentDbId ?? "root"}::${googleFolderId ?? "root"}`;
 }
 
-function readSyncTsMap(): Record<string, number> {
+function readJsonMap(storageKey: string): Record<string, number> {
   try {
-    const raw = sessionStorage.getItem(SYNC_TS_STORAGE_KEY);
+    const raw = sessionStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, number>;
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -59,20 +61,37 @@ function readSyncTsMap(): Record<string, number> {
   }
 }
 
+function writeJsonMap(storageKey: string, map: Record<string, number>) {
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(map));
+  } catch {
+    /* private mode 등 */
+  }
+}
+
 function shouldSkipClientSync(key: string): boolean {
-  const map = readSyncTsMap();
+  const map = readJsonMap(SYNC_TS_STORAGE_KEY);
   const ts = map[key] ?? 0;
   return ts > 0 && Date.now() - ts < CLIENT_SYNC_THROTTLE_MS;
 }
 
 function markClientSync(key: string) {
-  try {
-    const map = readSyncTsMap();
-    map[key] = Date.now();
-    sessionStorage.setItem(SYNC_TS_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* private mode 등 */
-  }
+  const map = readJsonMap(SYNC_TS_STORAGE_KEY);
+  map[key] = Date.now();
+  writeJsonMap(SYNC_TS_STORAGE_KEY, map);
+}
+
+/** 삭제 직후 자동 동기화 억제 — 유령 파일 부활 방지 (첫 진입 강제보다 우선) */
+function isDeleteSyncSuppressed(key: string): boolean {
+  const map = readJsonMap(DELETE_SUPPRESS_STORAGE_KEY);
+  const until = map[key] ?? 0;
+  return until > Date.now();
+}
+
+function markDeleteSyncSuppress(key: string) {
+  const map = readJsonMap(DELETE_SUPPRESS_STORAGE_KEY);
+  map[key] = Date.now() + DELETE_SUPPRESS_MS;
+  writeJsonMap(DELETE_SUPPRESS_STORAGE_KEY, map);
 }
 
 const fetcher = async (url: string) => {
@@ -158,6 +177,8 @@ export function DrivePageClient({
   const [optimisticRows, setOptimisticRows] = useState<DriveFileRow[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoSyncInFlight = useRef<string | null>(null);
+  /** /drive 페이지 세션에서 첫 자동 동기화(마운트)만 스로틀 무시 */
+  const mountSyncPendingRef = useRef(true);
 
   const currentDriveFolderId = breadcrumb[breadcrumb.length - 1]?.driveFileId ?? null;
   const canUploadHere = Boolean(explorerConfigured && currentDriveFolderId && !search.trim());
@@ -191,7 +212,7 @@ export function DrivePageClient({
   );
 
   const refreshList = useCallback(async () => {
-    await mutate(listUrl);
+    await mutate(listUrl, undefined, { revalidate: true });
   }, [listUrl]);
 
   const runFolderSync = useCallback(
@@ -200,14 +221,24 @@ export function DrivePageClient({
       googleFolderId: string | null;
       force?: boolean;
       source: "manual" | "auto";
+      /** mount = 첫 진입(클라이언트 20초 스로틀 무시). navigate | visibility = 20초 적용 */
+      trigger?: "mount" | "navigate" | "visibility";
     }) => {
       const key = syncThrottleKey(opts.parentDbId, opts.googleFolderId);
-      if (!opts.force && shouldSkipClientSync(key)) {
-        console.log("[drive auto-sync] client skip 60s", key);
-        return { skipped: true as const };
+
+      // 삭제 억제가 최우선 (첫 진입 강제·자동 동기화 모두 차단 — 유령 부활 방지)
+      if (opts.source === "auto" && isDeleteSyncSuppressed(key)) {
+        console.log("[drive auto-sync] skip — delete suppress 15s", key);
+        return { skipped: true as const, reason: "delete-suppress" as const };
+      }
+
+      const bypassClientThrottle = opts.force === true || opts.trigger === "mount";
+      if (!bypassClientThrottle && shouldSkipClientSync(key)) {
+        console.log("[drive auto-sync] client skip 20s", key);
+        return { skipped: true as const, reason: "client-throttle" as const };
       }
       if (!opts.force && autoSyncInFlight.current === key) {
-        return { skipped: true as const };
+        return { skipped: true as const, reason: "in-flight" as const };
       }
 
       if (opts.source === "manual") setIsSyncing(true);
@@ -240,9 +271,12 @@ export function DrivePageClient({
           console.log("[drive auto-sync] ok", key, {
             upserted: body.upserted,
             totalInDb: body.totalInDb,
+            trigger: opts.trigger,
           });
         }
-        await mutate(listUrlFor(opts.parentDbId, ""));
+        // 동기화 후 목록 확실히 재검증 (캐시→최신 교체)
+        const folderListUrl = listUrlFor(opts.parentDbId, "");
+        await mutate(folderListUrl, undefined, { revalidate: true });
         return { skipped: false as const, body };
       } finally {
         if (opts.source === "manual") setIsSyncing(false);
@@ -269,20 +303,23 @@ export function DrivePageClient({
     }
   };
 
-  // 마운트·폴더 이동 시 자동 직계 동기화 (검색 중 제외, 60초 스로틀)
+  // 마운트·폴더 이동 시 자동 직계 동기화 (검색 중 제외)
   useEffect(() => {
     if (search.trim()) return;
+    const isMount = mountSyncPendingRef.current;
+    if (isMount) mountSyncPendingRef.current = false;
     void runFolderSync({
       parentDbId: currentId,
       googleFolderId: currentDriveFolderId,
       force: false,
       source: "auto",
+      trigger: isMount ? "mount" : "navigate",
     }).catch((e) => {
       console.warn("[drive auto-sync]", e);
     });
   }, [currentId, currentDriveFolderId, search, runFolderSync]);
 
-  // 탭 복귀 시 현재 폴더 1회
+  // 탭 복귀 시 현재 폴더 1회 (20초 스로틀)
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
@@ -292,6 +329,7 @@ export function DrivePageClient({
         googleFolderId: currentDriveFolderId,
         force: false,
         source: "auto",
+        trigger: "visibility",
       }).catch((e) => {
         console.warn("[drive auto-sync visibility]", e);
       });
@@ -394,6 +432,8 @@ export function DrivePageClient({
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "삭제 실패");
       if (previewFile?.id === file.id) setPreviewFile(null);
+      // 삭제 후 15초간 해당 폴더 자동 동기화 억제 (유령 부활 방지)
+      markDeleteSyncSuppress(syncThrottleKey(currentId, currentDriveFolderId));
       await refreshList();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "삭제 실패");
