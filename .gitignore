@@ -23,6 +23,7 @@ yarn-error.log*
 
 # vercel
 .vercel
+.env.vercel
 
 # typescript
 *.tsbuildinfo
@@ -32,6 +33,7 @@ next-env.d.ts
 
 .vercel
 .env*.local
+.env.vercel
 
 # 업로드된 사용자 파일 (로컬 전용)
 public/uploads/content/
