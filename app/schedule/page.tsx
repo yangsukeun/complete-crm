@@ -270,44 +270,81 @@ function CustomDateHeader({
   drilldownView,
   onDrillDown,
   isOffRange,
+  holidayName,
 }: {
   label: string;
   date: Date;
   drilldownView?: string;
   onDrillDown?: (e: React.MouseEvent) => void;
   isOffRange?: boolean;
+  /** 공휴일명 — 있으면 숫자 빨강 + 상단 11px 라벨 (바 이벤트 대체) */
+  holidayName?: string | null;
 }) {
   const isToday = isSameDay(date, new Date());
   const dow = getDay(date);
   const isSat = dow === 6;
   const isSun = dow === 0;
-  const legal = isLegalHoliday(date);
-  const className = legal ? "rbc-date-cell--legal-holiday" : isSun ? "rbc-date-cell--sunday" : isSat ? "rbc-date-cell--saturday" : "";
+  const legal = Boolean(holidayName) || isLegalHoliday(date);
+  const className = legal
+    ? "rbc-date-cell--legal-holiday"
+    : isSun
+      ? "rbc-date-cell--sunday"
+      : isSat
+        ? "rbc-date-cell--saturday"
+        : "";
   const content = (
-    <div
-      className={cn(
-        "relative inline-flex items-center justify-center w-6 h-6 rounded-full text-sm",
-        className,
-        isToday ? "bg-blue-600 text-white font-bold" : "",
-        isOffRange && !isToday && "scale-[0.92] text-[#9aa0a6] dark:text-[#80868b]"
-      )}
-    >
-      {label}
-      {isToday && (
-        <span className="absolute -top-2 -right-2 text-[9px] font-semibold text-blue-500">
-          TODAY
+    <div className="flex w-full min-w-0 flex-col items-center gap-0.5 px-0.5 pt-0.5">
+      {holidayName ? (
+        <span
+          className="schedule-gcal-holiday-label w-full truncate text-center text-[11px] font-medium leading-tight text-[#d93025]"
+          title={holidayName}
+        >
+          {holidayName}
         </span>
-      )}
+      ) : null}
+      <div
+        className={cn(
+          "relative inline-flex h-6 w-6 items-center justify-center rounded-full text-sm",
+          className,
+          isToday ? "bg-blue-600 font-bold text-white" : "",
+          !isToday && legal && "font-semibold text-[#d93025]",
+          isOffRange && !isToday && "scale-[0.92] text-[#9aa0a6] dark:text-[#80868b]"
+        )}
+      >
+        {label}
+        {isToday && (
+          <span className="absolute -top-2 -right-2 text-[9px] font-semibold text-blue-500">
+            TODAY
+          </span>
+        )}
+      </div>
     </div>
   );
   if (drilldownView && onDrillDown) {
     return (
-      <button type="button" className="rbc-button-link" onClick={onDrillDown}>
+      <button type="button" className="rbc-button-link w-full" onClick={onDrillDown}>
         {content}
       </button>
     );
   }
   return content;
+}
+
+function createDateHeader(opts: {
+  holidayByYmd: Record<string, string>;
+  showHoliday: boolean;
+}) {
+  return function DateHeaderBound(props: {
+    label: string;
+    date: Date;
+    drilldownView?: string;
+    onDrillDown?: (e: React.MouseEvent) => void;
+    isOffRange?: boolean;
+  }) {
+    const ymd = toKstYmd(props.date);
+    const holidayName = opts.showHoliday ? (opts.holidayByYmd[ymd] ?? null) : null;
+    return <CustomDateHeader {...props} holidayName={holidayName} />;
+  };
 }
 
 /** 승인 휴가를 캘린더에 표시할 때 종류(휴가·반차 등) */
@@ -380,86 +417,83 @@ function DateCellLeaveFooter({
   onLeaveClick: (leaveId: string) => void;
   onLeavePointerSession?: () => void;
 }) {
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const swallowLeavePointer = (e: React.SyntheticEvent) => {
     onLeavePointerSession?.();
     stopCalendarSlotPointerChain(e);
   };
 
-  const lineBtn = (entry: LeaveDayEntry, key: string) => (
-    <button
-      key={key}
-      type="button"
-      data-leave-item
-      className={cn(
-        "rbc-date-cell-leave-line flex w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded-md px-1 py-0.5 text-left text-[0.65rem] font-medium transition-[box-shadow,filter] duration-150",
-        leaveTypeChipClass(entry.type)
-      )}
-      onPointerDownCapture={swallowLeavePointer}
-      onMouseDown={swallowLeavePointer}
-      onTouchStart={swallowLeavePointer}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onLeaveClick(entry.leaveId);
-      }}
-    >
-      <LeaveTypeIcon type={entry.type} />
-      <span className="min-w-0 flex-1 truncate text-center">{entry.display}</span>
-    </button>
-  );
-
   if (entries.length === 0) return null;
+
+  const hasHalfOrQuarter = entries.some(
+    (e) => e.type.startsWith("HALF_") || e.type.startsWith("QUARTER_")
+  );
+  const chipLabel = hasHalfOrQuarter
+    ? `휴가·반차 ${entries.length}명`
+    : `휴가 ${entries.length}명`;
 
   return (
     <div
       data-leave-footer
-      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-200/90 bg-blue-50/85 px-1 pt-1.5 pb-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-blue-800/70 dark:bg-blue-950/40 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      className="rbc-date-cell-leave-footer mt-auto w-full max-w-full shrink-0 border-t border-blue-200/80 bg-blue-50/70 px-1 py-1 dark:border-blue-800/60 dark:bg-blue-950/35"
       aria-label={entries.map((x) => x.display).join(", ")}
       onPointerDownCapture={swallowLeavePointer}
       onMouseDown={swallowLeavePointer}
       onTouchStart={swallowLeavePointer}
     >
-      {entries.length <= 2 ? (
-        <div className="flex max-h-[2.6rem] w-full max-w-full flex-col gap-0.5 overflow-hidden">
-          {entries.map((en, i) => lineBtn(en, `${en.userId}-${i}`))}
-        </div>
-      ) : (
-        <div className="flex max-h-[2.6rem] w-full max-w-full flex-col gap-0.5 overflow-hidden">
-          {lineBtn(entries[0], `${entries[0].userId}-0`)}
-          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                data-leave-item
-                className="mx-auto inline-flex max-w-full cursor-pointer items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100 dark:hover:bg-blue-900/60"
-                onPointerDownCapture={swallowLeavePointer}
-                onMouseDown={swallowLeavePointer}
-                onTouchStart={swallowLeavePointer}
-                onClick={(e) => e.stopPropagation()}
-              >
-                +{entries.length - 1}명 더
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-64 p-2"
-              align="center"
-              onPointerDownCapture={swallowLeavePointer}
-              onMouseDown={swallowLeavePointer}
-              onTouchStart={swallowLeavePointer}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p className="text-muted-foreground mb-2 text-xs">해당일 휴가</p>
-              <ul className="max-h-56 space-y-1 overflow-y-auto">
-                {entries.map((en, i) => (
-                  <li key={`${en.userId}-all-${i}`}>{lineBtn(en, `p-${en.userId}-${i}`)}</li>
-                ))}
-              </ul>
-            </PopoverContent>
-          </Popover>
-        </div>
-      )}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            data-leave-item
+            className="mx-auto flex w-full max-w-full cursor-pointer items-center justify-center gap-1 rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-900 shadow-sm hover:bg-blue-50 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-100 dark:hover:bg-blue-900/50"
+            onPointerDownCapture={swallowLeavePointer}
+            onMouseDown={swallowLeavePointer}
+            onTouchStart={swallowLeavePointer}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Palmtree className="size-3 shrink-0 opacity-80" aria-hidden />
+            <span className="truncate">{chipLabel}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-64 p-2"
+          align="center"
+          onPointerDownCapture={swallowLeavePointer}
+          onMouseDown={swallowLeavePointer}
+          onTouchStart={swallowLeavePointer}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-muted-foreground mb-2 text-xs">해당일 휴가 ({entries.length}명)</p>
+          <ul className="max-h-56 space-y-1 overflow-y-auto">
+            {entries.map((en, i) => (
+              <li key={`${en.userId}-all-${i}`}>
+                <button
+                  type="button"
+                  data-leave-item
+                  className={cn(
+                    "flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors",
+                    leaveTypeChipClass(en.type)
+                  )}
+                  onPointerDownCapture={swallowLeavePointer}
+                  onMouseDown={swallowLeavePointer}
+                  onTouchStart={swallowLeavePointer}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOpen(false);
+                    onLeaveClick(en.leaveId);
+                  }}
+                >
+                  <LeaveTypeIcon type={en.type} />
+                  <span className="min-w-0 flex-1 truncate">{en.display}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -539,7 +573,7 @@ function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; tex
   if (event.isTaskDue || (typeof event.id === "string" && event.id.startsWith("task-due"))) {
     const tw = normalizeTaskWorkflowStatus(event.taskStatus ?? undefined);
     if (event.taskDueOverdue && tw !== "DONE") {
-      return { bg: "#b71c1c", light: "#ffebee", text: "#ffffff", border: "#b71c1c" };
+      return { bg: "#b71c1c", light: "#ffebee", text: "#b71c1c", border: "#b71c1c" };
     }
     const p = TASK_DUE_CHIP[tw];
     return { bg: p.bg, light: p.light, text: p.text, border: p.border };
@@ -551,6 +585,32 @@ function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; tex
   if (event.calendarId === "personal") return EVENT_PALETTE.personal;
   if (event.calendarId === "team") return EVENT_PALETTE.team;
   return EVENT_PALETTE.personal;
+}
+
+function layerDotColor(event: ScheduleEvent): string {
+  if (event.isTaskDue || String(event.id).startsWith("task-due")) {
+    return EVENT_PALETTE.taskDue.bg;
+  }
+  if (event.calendarId === "team") return EVENT_PALETTE.team.bg;
+  if (event.calendarId === "google") return EVENT_PALETTE.google.bg;
+  return EVENT_PALETTE.personal.bg;
+}
+
+/** 월간 셀 표시 우선순위: 할일마감 > 종일/멀티데이 > 시간 일정 */
+function monthEventSortPriority(e: ScheduleEvent): number {
+  if (e.isTaskDue || String(e.id).startsWith("task-due")) return 0;
+  if (e.allDay || !isSameDay(e.start, e.end)) return 1;
+  return 2;
+}
+
+function compareMonthEventPriority(a: ScheduleEvent, b: ScheduleEvent): number {
+  const d = monthEventSortPriority(a) - monthEventSortPriority(b);
+  if (d !== 0) return d;
+  return a.start.getTime() - b.start.getTime();
+}
+
+function stripCalendarEmoji(title: string): string {
+  return title.replace(/^📅\s*/u, "").trim();
 }
 
 function ScheduleCalendarEvent({
@@ -573,6 +633,8 @@ function ScheduleCalendarEvent({
   const pal = paletteForEvent(event);
   const isAllDay = Boolean(allDayAccessor || event.allDay);
   const isTaskDueChip = Boolean(event.isTaskDue || String(event.id).startsWith("task-due"));
+  const isGoogle = event.calendarId === "google";
+  const displayTitle = stripCalendarEmoji(title);
   const startTime = format(event.start, "HH:mm", { locale: ko });
   const dday =
     event.taskDueDate != null && isTaskDueChip
@@ -583,28 +645,63 @@ function ScheduleCalendarEvent({
         })
       : null;
 
+  /* 시간 일정: 배경 바 없이 ● HH:MM 제목 */
+  if (!isAllDay) {
+    return (
+      <div
+        className={cn(
+          "schedule-gcal-event-chip schedule-gcal-event-chip--timed-dot",
+          isGoogle && "schedule-gcal-event-chip--google",
+          dimOffMonth && "schedule-gcal-event-chip--off-month"
+        )}
+      >
+        <div className="schedule-gcal-event-chip__row">
+          <span
+            className="schedule-gcal-event-dot"
+            style={{ background: layerDotColor(event) }}
+            aria-hidden
+          />
+          <span className="schedule-gcal-event-chip__title schedule-gcal-event-chip__title--timed">
+            <span className="schedule-gcal-event-time">{startTime}</span>
+            {displayTitle}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  /* 종일·멀티데이·할일마감: 얇은 바 */
   return (
     <div
       className={cn(
         "schedule-gcal-event-chip",
-        isAllDay ? "schedule-gcal-event-chip--allday" : "schedule-gcal-event-chip--timed",
-        isAllDay && isTaskDueChip && "schedule-gcal-event-chip--task-due-allday",
+        "schedule-gcal-event-chip--allday",
+        isTaskDueChip && "schedule-gcal-event-chip--task-due",
+        isGoogle && !isTaskDueChip && "schedule-gcal-event-chip--google",
         dimOffMonth && "schedule-gcal-event-chip--off-month"
       )}
-      style={{
-        background: isAllDay ? pal.bg : pal.light,
-        color: isAllDay ? pal.text : pal.bg,
-        borderLeftColor: !isAllDay ? pal.bg : undefined,
-        ...(isAllDay && isTaskDueChip && pal.border
-          ? { border: `1px solid ${pal.border}`, boxSizing: "border-box" as const }
-          : {}),
-      }}
+      style={
+        isTaskDueChip
+          ? {
+              background: "#fce8e6",
+              color: "#c62828",
+              borderLeft: `3px solid ${
+                event.taskDueOverdue ? "#b71c1c" : (pal.border ?? EVENT_PALETTE.taskDue.bg)
+              }`,
+            }
+          : isGoogle
+            ? {
+                background: pal.light,
+                color: pal.text,
+              }
+            : {
+                background: pal.bg,
+                color: pal.text,
+              }
+      }
     >
       <div className="schedule-gcal-event-chip__row">
-        <span className="schedule-gcal-event-chip__title">
-          {!isAllDay && <span className="mr-1 text-[11px] opacity-80">{startTime}</span>}
-          {title}
-        </span>
+        <span className="schedule-gcal-event-chip__title">{displayTitle}</span>
         {dday && (
           <span className="schedule-gcal-dday" style={{ background: dday.color }}>
             {dday.label}
@@ -1158,7 +1255,7 @@ function SchedulePageInner() {
         setGoogleEvents(
           list.map((e: any) => ({
             id: e.id,
-            title: `📅 ${e.title}`,
+            title: stripCalendarEmoji(String(e.title ?? "")),
             start: new Date(e.start),
             end: new Date(e.end),
             allDay: e.isAllDay,
@@ -1295,6 +1392,15 @@ function SchedulePageInner() {
     return [...prev, ...curr, ...next].map(holidayToEvent);
   }, [date]);
 
+  /** 공휴일명 맵 (월간 날짜 헤더 라벨용 — RBC 이벤트 바 대신) */
+  const holidayByYmd = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const e of holidayEvents) {
+      map[toKstYmd(e.start)] = e.title;
+    }
+    return map;
+  }, [holidayEvents]);
+
   /** 날짜별 승인 휴가 (KST yyyy-MM-dd) — 셀 하단 전용, 사용자별 한 줄 */
   const leaveByDate = useMemo(() => {
     const map: Record<string, LeaveDayEntry[]> = {};
@@ -1344,13 +1450,22 @@ function SchedulePageInner() {
     return MonthAwareScheduleEvent;
   }, [date, view]);
 
+  const dateHeaderComponent = useMemo(
+    () =>
+      createDateHeader({
+        holidayByYmd,
+        showHoliday: visibleCalendars.holiday !== false,
+      }),
+    [holidayByYmd, visibleCalendars.holiday]
+  );
+
   const calendarRbcComponents = useMemo(
     () => ({
-      dateHeader: CustomDateHeader as any,
+      dateHeader: dateHeaderComponent as any,
       dateCellWrapper: dateCellWrapperComponent as any,
       event: monthEventComponent as any,
     }),
-    [dateCellWrapperComponent, monthEventComponent]
+    [dateHeaderComponent, dateCellWrapperComponent, monthEventComponent]
   );
 
   const leaveDetail = useMemo(
@@ -1369,9 +1484,28 @@ function SchedulePageInner() {
   }, []);
 
   const displayEvents = useMemo(() => {
-    const all = [...personalEvents, ...teamEvents, ...holidayEvents, ...googleEvents, ...taskDueEvents];
-    return all.filter((e: any) => (e.calendarId ? (visibleCalendars as any)[e.calendarId] !== false : true));
-  }, [personalEvents, teamEvents, holidayEvents, googleEvents, taskDueEvents, visibleCalendars]);
+    // 공휴일은 날짜 헤더 라벨로만 표시 (이벤트 바 제외)
+    const all = [...personalEvents, ...teamEvents, ...googleEvents, ...taskDueEvents];
+    const filtered = all.filter((e: any) =>
+      e.calendarId ? (visibleCalendars as any)[e.calendarId] !== false : true
+    );
+    // 같은 날 정렬: 할일마감이 더보기에 숨지 않도록 우선
+    // (종일 non-task 시작을 1분 밀어 RBC allDay 정렬에서 마감이 위)
+    return filtered
+      .map((e) => {
+        const title = stripCalendarEmoji(e.title);
+        if (e.isTaskDue || String(e.id).startsWith("task-due")) {
+          return { ...e, title, start: startOfDay(e.start) };
+        }
+        if (e.allDay) {
+          const s = startOfDay(e.start);
+          s.setMinutes(1);
+          return { ...e, title, start: s };
+        }
+        return title === e.title ? e : { ...e, title };
+      })
+      .sort(compareMonthEventPriority);
+  }, [personalEvents, teamEvents, googleEvents, taskDueEvents, visibleCalendars]);
 
   const diaryDayStart = startOfDay(new Date(diaryDate));
   const diaryDayEnd = endOfDay(new Date(diaryDate));
@@ -1761,7 +1895,10 @@ function SchedulePageInner() {
               doShowMoreDrillDown={false}
               components={calendarRbcComponents as any}
               dayPropGetter={(d: any) => {
-                const legal = isLegalHoliday(d);
+                const ymd = toKstYmd(d as Date);
+                const legal =
+                  isLegalHoliday(d) ||
+                  (visibleCalendars.holiday !== false && Boolean(holidayByYmd[ymd]));
                 const dow = getDay(d as Date);
                 const sat = dow === 6;
                 const sun = dow === 0;
@@ -1789,7 +1926,7 @@ function SchedulePageInner() {
                 time: "시간",
                 event: "일정",
                 noEventsInRange: "이 기간에 일정이 없습니다.",
-                showMore: (count: number) => `+${count}개 더`,
+                showMore: (count: number) => `+${count}개 더보기`,
               }}
             />
           </div>

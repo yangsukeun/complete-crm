@@ -106,10 +106,10 @@
   min-width: 0;
 }
 
-/* 토·일 배경(다른 달 off-range 는 기존 톤 유지) */
+/* 토·일 배경 — surface-1급으로 옅게 (다른 달 off-range 는 기존 톤 유지) */
 .schedule-gcal-viewport .rbc-day-bg.rbc-day--saturday:not(.rbc-off-range-bg),
 .schedule-gcal-viewport .rbc-day-bg.rbc-day--sunday:not(.rbc-off-range-bg) {
-  background: #f4f6f8 !important;
+  background: var(--muted, #f8f9fa) !important;
 }
 
 .dark .schedule-gcal-viewport .rbc-day-bg.rbc-day--saturday:not(.rbc-off-range-bg),
@@ -197,10 +197,12 @@
 }
 
 .schedule-gcal-viewport .rbc-date-cell .rbc-button-link {
-  width: 28px;
-  height: 28px;
-  margin: 2px auto 4px;
-  border-radius: 999px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 28px;
+  margin: 0 auto 2px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -210,6 +212,13 @@
   color: var(--gcal-text);
   text-decoration: none;
   transition: background 0.1s ease, color 0.1s ease;
+}
+
+/* 공휴일 상단 라벨 (날짜 숫자 위) */
+.schedule-gcal-holiday-label {
+  display: block;
+  line-height: 1.15;
+  max-width: 100%;
 }
 
 .schedule-gcal-viewport .rbc-date-cell.rbc-now .rbc-button-link {
@@ -241,15 +250,24 @@
 
 /* 이벤트 래퍼: 내용이 칩 스타일을 담당 */
 .schedule-gcal-viewport .rbc-event {
-  padding: 0 3px 2px !important;
+  padding: 0 2px 1px !important;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
-  min-height: 20px;
-  max-height: 22px;
   max-width: 100%;
   overflow: hidden;
+}
+
+/* 월간: 셀당 ~4줄 + 더보기 (높이 기반 rowLimit) */
+.schedule-gcal-viewport .rbc-month-view .rbc-event {
+  min-height: 18px;
+  max-height: 18px;
+}
+
+.schedule-gcal-viewport .rbc-month-view .schedule-gcal-event-chip {
+  height: 16px;
+  line-height: 16px;
 }
 
 /* Task DONE·프로젝트 COMPLETED 마감 칩 — RBC 바깥 .rbc-event 에만 opacity (표시 모드 dimmed 일 때) */
@@ -268,21 +286,23 @@
 }
 
 .schedule-gcal-event-chip {
-  border-radius: 4px;
-  padding: 2px 6px;
-  margin-bottom: 2px;
-  font-size: 12px;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-bottom: 0;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  line-height: 16px;
+  box-sizing: border-box;
   transition: filter 0.1s ease, box-shadow 0.1s ease;
 }
 
 .schedule-gcal-event-chip:hover {
   filter: brightness(0.97);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* 월 뷰: 보고 있는 달 밖 슬롯에 그려진 일정 칩 */
@@ -295,11 +315,60 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-/* 기본 종일 칩: 진한 배경 + 흰 글자. Task 마감(밝은 배경)은 --task-due-allday 로 제외 */
-.schedule-gcal-event-chip--allday:not(.schedule-gcal-event-chip--task-due-allday) {
+/* 종일·멀티데이: 얇은 바 (~18px). 구글은 연보라(인라인)라 흰글자 강제 제외 */
+.schedule-gcal-event-chip--allday:not(.schedule-gcal-event-chip--task-due):not(.schedule-gcal-event-chip--google) {
   color: #fff !important;
 }
 
+.schedule-gcal-event-chip--task-due {
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.schedule-gcal-event-chip--google {
+  font-weight: 500;
+}
+
+/* 시간 일정: 배경 바 없이 점 + 텍스트 */
+.schedule-gcal-event-chip--timed-dot {
+  background: transparent !important;
+  color: var(--gcal-text);
+  padding-left: 2px;
+  padding-right: 2px;
+  border-radius: 0;
+}
+
+.schedule-gcal-event-chip--timed-dot:hover {
+  filter: none;
+  box-shadow: none;
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+
+.dark .schedule-gcal-event-chip--timed-dot:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.schedule-gcal-event-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.schedule-gcal-event-time {
+  margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.schedule-gcal-event-chip__title--timed {
+  color: inherit;
+  font-weight: 400;
+}
+
+/* 레거시 timed 좌측 보더 스타일 (미사용, 호환) */
 .schedule-gcal-event-chip--timed {
   border-left-width: 3px;
   border-left-style: solid;
@@ -308,24 +377,27 @@
 .schedule-gcal-event-chip__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 4px;
   min-width: 0;
+  height: 100%;
 }
 
 .schedule-gcal-event-chip__title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1 1 auto;
 }
 
 .schedule-gcal-dday {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 10px;
+  padding: 0 4px;
+  border-radius: 8px;
   color: #fff;
   flex-shrink: 0;
+  line-height: 14px;
 }
 
 /* 공휴일 이벤트(시스템) — 칩에서 inline style로 덮음 */
@@ -389,7 +461,30 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--gcal-primary);
-  padding: 2px 4px;
+  padding: 1px 4px;
+  line-height: 16px;
+}
+
+/* 팝오버(+N 더보기) */
+.schedule-gcal-viewport .rbc-overlay {
+  z-index: 40;
+  max-height: min(360px, 70vh);
+  overflow-y: auto;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.schedule-gcal-viewport .rbc-overlay .rbc-event {
+  max-height: none;
+  min-height: 20px;
+  margin-bottom: 2px;
+}
+
+.schedule-gcal-viewport .rbc-overlay .schedule-gcal-event-chip {
+  height: auto;
+  min-height: 18px;
+  line-height: 18px;
+  white-space: normal;
 }
 
 @media (max-width: 768px) {

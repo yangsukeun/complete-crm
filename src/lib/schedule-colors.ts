@@ -11,6 +11,7 @@ export const EVENT_PALETTE: Record<CalendarLayerId, { bg: string; light: string;
   personal: { bg: "#1a73e8", light: "#e8f0fe", text: "#ffffff" },
   team: { bg: "#0f9d58", light: "#e6f4ea", text: "#ffffff" },
   holiday: { bg: "#f4511e", light: "#fce8e6", text: "#ffffff" },
-  google: { bg: "#8430ce", light: "#f3e8fd", text: "#ffffff" },
+  /** 월간: 연보라 배경 + 진보라 텍스트 (CRM 일정보다 톤다운, solid 보라 금지) */
+  google: { bg: "#9575cd", light: "#f3eef9", text: "#5e35b1" },
   taskDue: { bg: "#e53935", light: "#fce8e6", text: "#ffffff" },
 };
