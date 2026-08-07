@@ -11,11 +11,14 @@ export function TaskAssigneeAvatars({
   assignees,
   assignedTo,
   size = 22,
+  maxVisible = 3,
   className,
 }: {
   assignees?: TaskAssigneeAvatarUser[] | null;
   assignedTo?: TaskAssigneeAvatarUser | null;
   size?: number;
+  /** 원형으로 보여줄 최대 인원 (초과 시 +N) */
+  maxVisible?: number;
   className?: string;
 }) {
   const list =
@@ -23,8 +26,9 @@ export function TaskAssigneeAvatars({
   if (list.length === 0) {
     return <span className="text-muted-foreground text-xs">—</span>;
   }
-  const shown = list.slice(0, 3);
-  const more = list.length - 3;
+  const cap = Math.max(1, maxVisible);
+  const shown = list.slice(0, cap);
+  const more = list.length - cap;
   return (
     <div
       className={cn("inline-flex items-center gap-1 align-middle", className)}
@@ -36,6 +40,7 @@ export function TaskAssigneeAvatars({
             key={u.id}
             className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-card"
             style={{ width: size, height: size, zIndex: shown.length - i }}
+            title={formatUserName(u)}
           >
             {u.image ? (
               // eslint-disable-next-line @next/next/no-img-element -- 외부/Supabase URL

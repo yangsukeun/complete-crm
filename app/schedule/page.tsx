@@ -36,6 +36,7 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 import { ScheduleDetailModal } from "@/components/schedule-detail-modal";
 import { CreateScheduleModal } from "@/components/create-schedule-modal";
 import { CreateTaskModal } from "@/components/create-task-modal";
+import { ScheduleTaskList } from "@/components/schedule-task-list";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -726,8 +727,8 @@ type TaskItem = {
   dueDate: string | null;
   isCompleted: boolean;
   priority: string;
-  assignees?: { id: string; name: string; position?: string | null }[];
-  assignedTo: { name: string; position?: string | null } | null;
+  assignees?: { id: string; name: string; position?: string | null; image?: string | null }[];
+  assignedTo: { id?: string; name: string; position?: string | null; image?: string | null } | null;
 };
 
 type NoDueBrandProject = {
@@ -1198,6 +1199,28 @@ function SchedulePageInner() {
     }));
   }, [tab, tasksRaw, diaryTasksRaw]);
 
+  const handleScheduleTaskCompleted = useCallback(
+    async (taskId: string) => {
+      const strip = <T,>(prev: T): T => {
+        if (prev == null) return prev;
+        if (Array.isArray(prev)) {
+          return prev.filter((t: { id?: string }) => t?.id !== taskId) as T;
+        }
+        if (typeof prev === "object") {
+          const p = prev as unknown as { items?: { id?: string }[] };
+          if (Array.isArray(p.items)) {
+            return { ...p, items: p.items.filter((t) => t?.id !== taskId) } as T;
+          }
+        }
+        return prev;
+      };
+      await mutateTasks(strip, { revalidate: true });
+      void mutateCalendarDueTasks();
+      void mutateDiaryTasks();
+    },
+    [mutateTasks, mutateCalendarDueTasks, mutateDiaryTasks]
+  );
+
   const { data: invites = [], mutate: mutateInvites } = useSWR<ScheduleInvite[]>(
     session?.user ? SWR_KEYS.scheduleInvites : null,
     jsonFetcher,
@@ -1662,39 +1685,20 @@ function SchedulePageInner() {
               </Button>
             </CardHeader>
             <CardContent>
-              {tasks.length === 0 ? (
-                <p className="text-muted-foreground py-4 text-center text-sm">
-                  표시할 할일이 없습니다. 위 <span className="font-medium text-foreground">「할일 추가」</span>로 등록하거나{" "}
-                  <Link href="/tasks" prefetch={false} className="font-medium text-primary underline underline-offset-4 hover:no-underline">
-                    프로젝트 페이지
-                  </Link>
-                  로 이동하세요.
-                </p>
-              ) : (
-                <ul className="max-h-[min(40vh,320px)] space-y-2 overflow-y-auto pr-1">
-                  {tasks.map((t: TaskItem) => (
-                    <li
-                      key={t.id}
-                      className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-900/10 bg-emerald-50/40 px-3 py-2 dark:border-emerald-900/30 dark:bg-emerald-950/20"
-                    >
-                      <input type="checkbox" checked={t.isCompleted} readOnly className="size-4 shrink-0 rounded" />
-                      <span className={cn("min-w-0 flex-1 text-sm", t.isCompleted && "text-muted-foreground line-through")}>{t.title}</span>
-                      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                        {t.dueDate ? format(new Date(t.dueDate), "MM/dd", { locale: ko }) : "마감 미정"}
-                        {" · "}
-                        {t.assignees && t.assignees.length > 0
-                          ? t.assignees.map((a) => formatUserName(a)).join(", ")
-                          : t.assignedTo
-                            ? formatUserName(t.assignedTo)
-                            : "—"}
-                      </span>
-                      <Link href={`/tasks/${t.id}`} prefetch={false} className="shrink-0 text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300">
-                        상세
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ScheduleTaskList
+                tasks={tasks}
+                onCompleted={handleScheduleTaskCompleted}
+                listClassName="max-h-[min(40vh,320px)] overflow-y-auto pr-1"
+                emptyHint={
+                  <p className="text-muted-foreground py-4 text-center text-sm">
+                    표시할 할일이 없습니다. 위 <span className="font-medium text-foreground">「할일 추가」</span>로 등록하거나{" "}
+                    <Link href="/tasks" prefetch={false} className="font-medium text-primary underline underline-offset-4 hover:no-underline">
+                      프로젝트 페이지
+                    </Link>
+                    로 이동하세요.
+                  </p>
+                }
+              />
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-emerald-900/10 pt-3 dark:border-emerald-900/30">
                 <p className="text-muted-foreground text-xs">
                   프로젝트에 연결된 업무·완료 목록은 할일 페이지에서 확인하세요.
@@ -1949,36 +1953,14 @@ function SchedulePageInner() {
             </Button>
           </CardHeader>
           <CardContent>
-            {tasks.length === 0 ? (
-              <p className="text-muted-foreground py-6 text-center text-sm">할일이 없습니다. 위 &#39;내 할일 추가&#39;로 등록하세요.</p>
-            ) : (
-              <ul className="space-y-2">
-                {tasks.map((t: TaskItem) => (
-                  <li key={t.id} className="flex items-center gap-2 rounded border px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={t.isCompleted}
-                      readOnly
-                      className="size-4 rounded"
-                    />
-                    <span className={t.isCompleted ? "text-muted-foreground line-through" : ""}>
-                      {t.title}
-                    </span>
-                    <span className="text-muted-foreground text-xs">
-                      {t.dueDate ? format(new Date(t.dueDate), "MM/dd", { locale: ko }) : "미정"} ·{" "}
-                      {t.assignees && t.assignees.length > 0
-                        ? t.assignees.map((a) => formatUserName(a)).join(", ")
-                        : t.assignedTo
-                          ? formatUserName(t.assignedTo)
-                          : "—"}
-                    </span>
-                    <Link href={`/tasks/${t.id}`} className="ml-auto text-primary text-sm hover:underline">
-                      보기
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+              <ScheduleTaskList
+                tasks={tasks}
+                onCompleted={handleScheduleTaskCompleted}
+                detailLabel="보기"
+                emptyHint={
+                  <p className="text-muted-foreground py-6 text-center text-sm">할일이 없습니다. 위 &#39;내 할일 추가&#39;로 등록하세요.</p>
+                }
+              />
             <Link href="/tasks" prefetch={false} className="text-primary mt-3 inline-block text-sm font-medium hover:underline">
               할일 전체 보기·완료 처리 →
             </Link>
