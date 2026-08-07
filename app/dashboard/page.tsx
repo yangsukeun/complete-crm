@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
-import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock } from "lucide-react";
+import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock, Link2 } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { startOfDayKst, formatKstHm } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
@@ -19,6 +19,7 @@ import {
 import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
 import { canPostAnnouncement } from "@/lib/role-access";
+import { canSeeCsToolsDashboardCard } from "@/lib/cs-tools-access";
 
 const DashboardAttendance = dynamic(
   () => import("@/components/dashboard-attendance").then((m) => m.DashboardAttendance),
@@ -51,6 +52,15 @@ export default async function DashboardPage() {
   const isAdmin = role === "EXECUTIVE" || role === "ADMIN";
   const canCreateAnnouncement = canPostAnnouncement(role);
   const todayStart = startOfDayKst(new Date());
+
+  const meDept = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { department: true },
+  });
+  const showCsToolsCard = canSeeCsToolsDashboardCard({
+    role,
+    department: meDept?.department,
+  });
 
   // 개인 모드: 연차/출퇴근 없이 일정·업무·목표만
   if (!isCompanyMode) {
@@ -92,6 +102,21 @@ export default async function DashboardPage() {
           description="개인 모드 — 내 일정·할 일만 간단히 관리합니다."
         />
         <DashboardTodayBrief />
+        {showCsToolsCard && (
+          <Link
+            href="/cs-tools"
+            className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          >
+            <div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Link2 className="size-5" />
+                <span className="text-sm font-medium text-foreground">CS 링크 허브</span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">상담·번역·문서 등 외부 도구 바로가기</p>
+            </div>
+            <span className="text-primary shrink-0 text-sm font-medium">열기 →</span>
+          </Link>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             href="/schedule"
@@ -270,6 +295,22 @@ export default async function DashboardPage() {
         </div>
 
         <DashboardTodayBrief />
+
+        {showCsToolsCard && (
+          <Link
+            href="/cs-tools"
+            className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          >
+            <div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Link2 className="size-5" />
+                <span className="text-sm font-medium text-foreground">CS 링크 허브</span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">상담·번역·문서 등 외부 도구 바로가기</p>
+            </div>
+            <span className="text-primary shrink-0 text-sm font-medium">열기 →</span>
+          </Link>
+        )}
 
         <section>
           <DashboardAnnouncements
@@ -453,6 +494,22 @@ export default async function DashboardPage() {
       </div>
 
       <DashboardTodayBrief />
+
+      {showCsToolsCard && (
+        <Link
+          href="/cs-tools"
+          className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+        >
+          <div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Link2 className="size-5" />
+              <span className="text-sm font-medium text-foreground">CS 링크 허브</span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">상담·번역·문서 등 외부 도구 바로가기</p>
+          </div>
+          <span className="text-primary shrink-0 text-sm font-medium">열기 →</span>
+        </Link>
+      )}
 
       <section>
         <DashboardAnnouncements
