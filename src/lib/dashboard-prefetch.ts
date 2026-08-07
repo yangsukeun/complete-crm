@@ -1,8 +1,6 @@
 import { unstable_cache } from "next/cache";
 import prisma from "@/lib/prisma";
 import { addDays } from "date-fns";
-import type { DashboardSalesStats } from "@/lib/dashboard-sales";
-import { getDashboardSalesStats } from "@/lib/dashboard-sales";
 import { startOfDayKst } from "@/lib/date-kst";
 
 /** 대시보드 공지 카드 — /api/announcements GET과 동일한 매핑 */
@@ -156,32 +154,28 @@ export async function getAdminTasksForDashboard(userId: string, take = 100) {
 
 export type CompanyDashboardPrefetch = {
   announcements: DashboardAnnouncementItem[];
-  salesStats: DashboardSalesStats;
   upcomingSchedules: Awaited<ReturnType<typeof getUpcomingSchedulesForDashboard>>;
 };
 
-/** 관리자 대시보드: 공지·매출·일정·내가 만든 업무 프리뷰를 한 번에 */
+/** 관리자 대시보드: 공지·일정·내가 만든 업무 프리뷰를 한 번에 (매출 위젯 제거 P3-10) */
 export async function prefetchCompanyDashboardAdmin(userId: string) {
-  const [announcements, salesStats, upcomingSchedules, adminTasks] = await Promise.all([
+  const [announcements, upcomingSchedules, adminTasks] = await Promise.all([
     getAnnouncementsForDashboard(userId),
-    getDashboardSalesStats(),
     getUpcomingSchedulesForDashboard(userId),
     getAdminTasksForDashboard(userId),
   ]);
-  return { announcements, salesStats, upcomingSchedules, adminTasks };
+  return { announcements, upcomingSchedules, adminTasks };
 }
 
-/** 직원 대시보드: 공지·매출·일정·할당 업무 프리뷰를 한 번에 */
+/** 직원 대시보드: 공지·일정·할당 업무 프리뷰를 한 번에 (매출 위젯 제거 P3-10) */
 export async function prefetchCompanyDashboardUser(userId: string) {
-  const [announcements, salesStats, upcomingSchedules, userTaskBundle] = await Promise.all([
+  const [announcements, upcomingSchedules, userTaskBundle] = await Promise.all([
     getAnnouncementsForDashboard(userId),
-    getDashboardSalesStats(),
     getUpcomingSchedulesForDashboard(userId),
     getUserTasksForDashboard(userId),
   ]);
   return {
     announcements,
-    salesStats,
     upcomingSchedules,
     myTasks: userTaskBundle.list,
     dueSoonCount: userTaskBundle.dueSoonCount,
@@ -193,10 +187,9 @@ export async function prefetchCompanyDashboardUser(userId: string) {
  * @deprecated prefetchCompanyDashboardUser/Admin 사용 권장
  */
 export async function prefetchCompanyDashboardShared(userId: string): Promise<CompanyDashboardPrefetch> {
-  const [announcements, salesStats, upcomingSchedules] = await Promise.all([
+  const [announcements, upcomingSchedules] = await Promise.all([
     getAnnouncementsForDashboard(userId),
-    getDashboardSalesStats(),
     getUpcomingSchedulesForDashboard(userId),
   ]);
-  return { announcements, salesStats, upcomingSchedules };
+  return { announcements, upcomingSchedules };
 }

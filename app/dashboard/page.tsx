@@ -28,9 +28,9 @@ const DashboardAnnouncements = dynamic(
   () => import("@/components/dashboard-announcements").then((m) => m.DashboardAnnouncements),
   { ssr: true, loading: () => <div className="h-32 animate-pulse rounded-lg bg-muted/30" /> }
 );
-const DashboardSalesSection = dynamic(
-  () => import("@/components/dashboard-sales-section").then((m) => m.DashboardSalesSection),
-  { ssr: true, loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/30" /> }
+const DashboardTodayBrief = dynamic(
+  () => import("@/components/dashboard-today-brief").then((m) => m.DashboardTodayBrief),
+  { ssr: true, loading: () => <div className="h-28 animate-pulse rounded-lg bg-muted/40" /> }
 );
 
 export default async function DashboardPage() {
@@ -91,6 +91,7 @@ export default async function DashboardPage() {
           title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
           description="개인 모드 — 내 일정·할 일만 간단히 관리합니다."
         />
+        <DashboardTodayBrief />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             href="/schedule"
@@ -229,7 +230,6 @@ export default async function DashboardPage() {
 
     const {
       announcements: announcementsFallback,
-      salesStats,
       upcomingSchedules: adminUpcomingSchedules,
       adminTasks: tasksCreatedByMe,
     } = dashPrefetch;
@@ -269,6 +269,8 @@ export default async function DashboardPage() {
             }
           />
         </div>
+
+        <DashboardTodayBrief />
 
         <section>
           <DashboardAnnouncements
@@ -422,7 +424,6 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        <DashboardSalesSection fallbackData={salesStats} />
       </div>
     );
   }
@@ -454,7 +455,6 @@ export default async function DashboardPage() {
 
   const {
     announcements: announcementsFallbackUser,
-    salesStats,
     upcomingSchedules,
     myTasks,
   } = dashPrefetchUser;
@@ -494,6 +494,8 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      <DashboardTodayBrief />
 
       <section>
         <DashboardAnnouncements
@@ -648,7 +650,6 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <DashboardSalesSection fallbackData={salesStats} />
     </div>
   );
 }

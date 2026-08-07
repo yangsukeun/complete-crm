@@ -123,6 +123,20 @@ export function previousKstYmd(dateStr: string): string {
   return toKstYmd(prev);
 }
 
+/** 한국 날짜 dateStr 기준 ±N일 YYYY-MM-DD */
+export function addDaysKstYmd(dateStr: string, days: number): string {
+  const start = new Date(`${dateStr}T00:00:00+09:00`);
+  if (Number.isNaN(start.getTime())) return dateStr;
+  return toKstYmd(new Date(start.getTime() + days * 24 * 60 * 60 * 1000));
+}
+
+/** KST 기준 요일 (0=일 … 6=토) */
+export function getKstWeekday(date = new Date()): number {
+  const ymd = toKstYmd(date);
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 /** 관리자가 고른 YYYY-MM-DD(한국 기준)에 해당하는 Attendance.date 등에 쓰는 UTC 시각 (KST 그날 00:00) */
 export function kstYmdToUtcDayStart(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00+09:00`);

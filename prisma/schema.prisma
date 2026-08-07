@@ -364,6 +364,7 @@ model Project {
   lastEditedBy User? @relation("ProjectLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
   userNotes UserNote[]
   driveFiles ProjectDriveFile[]
+  notificationLogs NotificationLog[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([brandId, name])
@@ -892,17 +893,20 @@ model OneSignalSubscription {
 
 /// Cron·푸시 중복 방지 (삭제 아님, 발송 이력만)
 model NotificationLog {
-  id     String   @id @default(cuid())
-  userId String
-  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskId String?
-  task   Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  /// ORPHAN | STALE | DUE_D3 | DUE_D1 | DUE_DAY | DIGEST
-  kind   String
-  sentAt DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  /// ORPHAN | STALE | DUE_D3 | DUE_DDAY | DUE_PLUS1 | DUE_D1(레거시) | DUE_DAY(레거시) | DIGEST
+  kind      String
+  sentAt    DateTime @default(now())
 
   @@index([userId, kind, sentAt])
   @@index([taskId, kind])
+  @@index([projectId, kind])
 }
 
 // 접속 로그 (하루 최초 접속·IP 기록, 출근 보조용)
