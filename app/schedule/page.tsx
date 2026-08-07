@@ -1878,7 +1878,14 @@ function SchedulePageInner() {
             </Card>
           )}
 
-          <div className="schedule-gcal-viewport min-h-[520px] h-[min(70vh,900px)] w-full">
+          <div
+            className={cn(
+              "schedule-gcal-viewport w-full",
+              view === "month"
+                ? "schedule-gcal-viewport--month h-auto"
+                : "min-h-[520px] h-[min(70vh,900px)]"
+            )}
+          >
             <Calendar
               localizer={localizer}
               events={displayEvents}
