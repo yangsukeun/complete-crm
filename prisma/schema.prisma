@@ -240,6 +240,8 @@ model User {
   dailyMemos             DailyMemo[]
   googleCalendar         GoogleCalendarIntegration?
   naverCalendar          NaverCalendarIntegration?
+  naverCalDav            NaverCalDavAccount?
+  externalCalendarEvents ExternalCalendarEvent[]
   /// iCal 구독 URL용 비밀 토큰 (재발급 가능)
   icalFeedToken          String?   @unique
   paymentRequests        PaymentRequest[]
@@ -340,6 +342,40 @@ model NaverCalendarIntegration {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   @@index([userId])
+}
+
+/// 네이버 캘린더 읽기(CalDAV) 계정 — 앱 비밀번호는 AES-256-GCM으로 암호화 저장
+model NaverCalDavAccount {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  naverId        String
+  passwordCipher String
+  lastSyncedAt   DateTime?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  @@index([userId])
+}
+
+/// 외부 캘린더에서 읽어온 일정 스냅샷(.ics 업로드 등). 같은 UID+시작시각은 갱신.
+model ExternalCalendarEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// naver_ics 등 출처 구분
+  source      String
+  uid         String
+  title       String
+  description String?
+  location    String?
+  startTime   DateTime
+  endTime     DateTime
+  isAllDay    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([userId, source, uid, startTime])
+  @@index([userId, source, startTime])
 }
 
 model Brand {

@@ -43,6 +43,8 @@ export const SWR_KEYS = {
   leave: "/api/leave",
   googleCalendar: "/api/integrations/google-calendar",
   naverCalendar: "/api/integrations/naver-calendar",
+  /** 네이버 → CRM 읽기(CalDAV) 연결 상태 */
+  naverCalDav: "/api/integrations/naver-calendar/caldav",
   calendarIcal: "/api/calendar/ical",
   /** 캘린더: MY+TEAM 일정 단일 요청 */
   schedulesBundle: "/api/schedules/bundle",

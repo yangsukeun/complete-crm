@@ -63,6 +63,8 @@ import {
   Link2,
   Copy,
   RefreshCw,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -214,6 +216,7 @@ const DEFAULT_VISIBLE_CALENDARS: Record<CalendarLayerId, boolean> = {
   team: true,
   holiday: true,
   google: true,
+  naver: true,
   taskDue: true,
 };
 
@@ -587,6 +590,7 @@ function paletteForEvent(event: ScheduleEvent): { bg: string; light: string; tex
     return EVENT_PALETTE.holiday;
   }
   if (event.calendarId === "google") return EVENT_PALETTE.google;
+  if (event.calendarId === "naver") return EVENT_PALETTE.naver;
   if (event.calendarId === "personal") return EVENT_PALETTE.personal;
   if (event.calendarId === "team") return EVENT_PALETTE.team;
   return EVENT_PALETTE.personal;
@@ -598,6 +602,7 @@ function layerDotColor(event: ScheduleEvent): string {
   }
   if (event.calendarId === "team") return EVENT_PALETTE.team.bg;
   if (event.calendarId === "google") return EVENT_PALETTE.google.bg;
+  if (event.calendarId === "naver") return EVENT_PALETTE.naver.bg;
   return EVENT_PALETTE.personal.bg;
 }
 
@@ -638,7 +643,8 @@ function ScheduleCalendarEvent({
   const pal = paletteForEvent(event);
   const isAllDay = Boolean(allDayAccessor || event.allDay);
   const isTaskDueChip = Boolean(event.isTaskDue || String(event.id).startsWith("task-due"));
-  const isGoogle = event.calendarId === "google";
+  /** 외부 캘린더(Google·네이버)는 연한 배경 + 컬러 텍스트로 CRM 일정과 구분 */
+  const isExternal = event.calendarId === "google" || event.calendarId === "naver";
   const displayTitle = stripCalendarEmoji(title);
   const startTime = format(event.start, "HH:mm", { locale: ko });
   const dday =
@@ -656,7 +662,7 @@ function ScheduleCalendarEvent({
       <div
         className={cn(
           "schedule-gcal-event-chip schedule-gcal-event-chip--timed-dot",
-          isGoogle && "schedule-gcal-event-chip--google",
+          isExternal && "schedule-gcal-event-chip--google",
           dimOffMonth && "schedule-gcal-event-chip--off-month"
         )}
       >
@@ -682,7 +688,7 @@ function ScheduleCalendarEvent({
         "schedule-gcal-event-chip",
         "schedule-gcal-event-chip--allday",
         isTaskDueChip && "schedule-gcal-event-chip--task-due",
-        isGoogle && !isTaskDueChip && "schedule-gcal-event-chip--google",
+        isExternal && !isTaskDueChip && "schedule-gcal-event-chip--google",
         dimOffMonth && "schedule-gcal-event-chip--off-month"
       )}
       style={
@@ -694,7 +700,7 @@ function ScheduleCalendarEvent({
                 event.taskDueOverdue ? "#b71c1c" : (pal.border ?? EVENT_PALETTE.taskDue.bg)
               }`,
             }
-          : isGoogle
+          : isExternal
             ? {
                 background: pal.light,
                 color: pal.text,
@@ -764,6 +770,7 @@ const CALENDAR_LAYER_LABELS: Record<CalendarLayerId, string> = {
   team: "팀/회사 일정",
   holiday: "공휴일",
   google: "Google 캘린더",
+  naver: "네이버 캘린더",
   /** 캘린더 칩: Task 마감일(프로젝트에 연결된 할일 포함). 브랜드 ‘프로젝트’ 엔티티와 구분 */
   taskDue: "할일 마감",
 };
@@ -773,6 +780,7 @@ const CALENDAR_CHIP_COLORS: Record<CalendarLayerId, string> = {
   team: EVENT_PALETTE.team.bg,
   holiday: EVENT_PALETTE.holiday.bg,
   google: EVENT_PALETTE.google.bg,
+  naver: EVENT_PALETTE.naver.bg,
   taskDue: EVENT_PALETTE.taskDue.bg,
 };
 
@@ -790,10 +798,9 @@ type ScheduleHeaderGoogleProps = {
   googleConnected: boolean;
   onGoogleDisconnect: () => void | Promise<void>;
   onGoogleConnect: () => void;
-  naverConnected: boolean;
-  naverConfigured: boolean;
-  onNaverDisconnect: () => void | Promise<void>;
-  onNaverConnect: () => void;
+  /** 네이버 가져오기(CalDAV·.ics) 또는 내보내기(OAuth) 중 하나라도 연결된 상태 */
+  naverActive: boolean;
+  onOpenNaver: () => void;
   onOpenIcalFeed: () => void;
   onNewSchedule: () => void;
 };
@@ -812,10 +819,8 @@ function ScheduleHeaderGoogle({
   googleConnected,
   onGoogleDisconnect,
   onGoogleConnect,
-  naverConnected,
-  naverConfigured,
-  onNaverDisconnect,
-  onNaverConnect,
+  naverActive,
+  onOpenNaver,
   onOpenIcalFeed,
   onNewSchedule,
 }: ScheduleHeaderGoogleProps) {
@@ -986,28 +991,17 @@ function ScheduleHeaderGoogle({
                   <span className="hidden sm:inline">Google 연동</span>
                 </Button>
               )}
-              {naverConfigured &&
-                (naverConnected ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 shrink-0 border-[#03c75a]/40 text-[#03a94d] dark:border-emerald-700"
-                    onClick={() => void onNaverDisconnect()}
-                  >
-                    <CalendarIcon className="mr-1.5 size-4" />
-                    <span className="hidden sm:inline">Naver · 해제</span>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 shrink-0 border-[#03c75a]/40 text-[#03a94d] dark:border-emerald-700"
-                    onClick={onNaverConnect}
-                  >
-                    <CalendarIcon className="mr-1.5 size-4" />
-                    <span className="hidden sm:inline">Naver 연동</span>
-                  </Button>
-                ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 border-[#03c75a]/40 text-[#03a94d] dark:border-emerald-700"
+                onClick={onOpenNaver}
+              >
+                <CalendarIcon className="mr-1.5 size-4" />
+                <span className="hidden sm:inline">
+                  {naverActive ? "네이버 · 연결됨" : "네이버 연동"}
+                </span>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -1075,6 +1069,15 @@ function SchedulePageInner() {
     blockSlotOpenFromLeaveUntilMs.current = Date.now() + 600;
   }, []);
   const [googleEvents, setGoogleEvents] = useState<ScheduleEvent[]>([]);
+  const [naverEvents, setNaverEvents] = useState<ScheduleEvent[]>([]);
+  const [naverDialogOpen, setNaverDialogOpen] = useState(false);
+  const [naverIdInput, setNaverIdInput] = useState("");
+  const [naverPasswordInput, setNaverPasswordInput] = useState("");
+  const [naverConnecting, setNaverConnecting] = useState(false);
+  const [naverIcsUploading, setNaverIcsUploading] = useState(false);
+  /** 연결·업로드 직후 강제 재조회용 */
+  const [naverRefreshKey, setNaverRefreshKey] = useState(0);
+  const naverIcsInputRef = useRef<HTMLInputElement>(null);
   const [icalDialogOpen, setIcalDialogOpen] = useState(false);
   const [icalFeedUrl, setIcalFeedUrl] = useState("");
   const [icalWebcalUrl, setIcalWebcalUrl] = useState("");
@@ -1310,6 +1313,22 @@ function SchedulePageInner() {
   const naverConnected = naverStatus?.connected ?? false;
   const naverConfigured = naverStatus?.configured !== false;
 
+  const { data: naverCalDavStatus, mutate: mutateNaverCalDav } = useSWR<{
+    connected: boolean;
+    configured?: boolean;
+    naverId?: string | null;
+    lastSyncedAt?: string | null;
+    lastError?: string | null;
+    importedCount?: number;
+  }>(session?.user && tab === "schedule" ? SWR_KEYS.naverCalDav : null, jsonFetcher, {
+    dedupingInterval: 60_000,
+    revalidateOnFocus: false,
+  });
+  const naverReadConnected = naverCalDavStatus?.connected ?? false;
+  const naverReadConfigured = naverCalDavStatus?.configured !== false;
+  const naverImportedCount = naverCalDavStatus?.importedCount ?? 0;
+  const naverHasReadSource = naverReadConnected || naverImportedCount > 0;
+
   const revalidateSchedules = useCallback(() => {
     void mutateSchedBundle();
   }, [mutateSchedBundle]);
@@ -1347,13 +1366,53 @@ function SchedulePageInner() {
       .catch(() => setGoogleEvents([]));
   }, [googleConnected, tab, view, date, visibleCalendars.google]);
 
+  useEffect(() => {
+    if (!naverHasReadSource || tab !== "schedule" || visibleCalendars.naver === false) {
+      setNaverEvents([]);
+      return;
+    }
+    const rangeStart = view === "month" ? startOfMonth(date) : startOfWeek(date, { weekStartsOn: 1 });
+    const rangeEnd = view === "month" ? endOfMonth(date) : endOfWeek(date, { weekStartsOn: 1 });
+    const params = new URLSearchParams({
+      timeMin: rangeStart.toISOString(),
+      timeMax: rangeEnd.toISOString(),
+    });
+    let cancelled = false;
+    fetch(`/api/integrations/naver-calendar/events?${params}`)
+      .then((r) => (r.ok ? r.json() : { events: [] }))
+      .then((data: { events?: { id: string; title: string; start: string; end: string; isAllDay: boolean }[] }) => {
+        if (cancelled) return;
+        setNaverEvents(
+          (data.events ?? []).map((e) => ({
+            id: e.id,
+            title: stripCalendarEmoji(String(e.title ?? "")),
+            start: new Date(e.start),
+            end: new Date(e.end),
+            allDay: e.isAllDay,
+            calendarId: "naver" as const,
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setNaverEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [naverHasReadSource, tab, view, date, visibleCalendars.naver, naverRefreshKey]);
+
   const handleSelectEvent = useCallback(
     (event: ScheduleEvent) => {
       if (typeof event.id === "string" && event.id.startsWith("task-due-")) {
         router.push(`/tasks/${event.id.slice("task-due-".length)}`);
         return;
       }
-      if (typeof event.id === "string" && (event.id.startsWith("hol-") || event.id.startsWith("google-"))) return;
+      if (
+        typeof event.id === "string" &&
+        (event.id.startsWith("hol-") || event.id.startsWith("google-") || event.id.startsWith("naver-"))
+      ) {
+        return;
+      }
       setSelectedEvent(event);
       setModalOpen(true);
     },
@@ -1583,7 +1642,7 @@ function SchedulePageInner() {
 
   const displayEvents = useMemo(() => {
     // 공휴일은 날짜 헤더 라벨로만 표시 (이벤트 바 제외)
-    const all = [...personalEvents, ...teamEvents, ...googleEvents, ...taskDueEvents];
+    const all = [...personalEvents, ...teamEvents, ...googleEvents, ...naverEvents, ...taskDueEvents];
     const filtered = all.filter((e: any) =>
       e.calendarId ? (visibleCalendars as any)[e.calendarId] !== false : true
     );
@@ -1603,7 +1662,7 @@ function SchedulePageInner() {
         return title === e.title ? e : { ...e, title };
       })
       .sort(compareMonthEventPriority);
-  }, [personalEvents, teamEvents, googleEvents, taskDueEvents, visibleCalendars]);
+  }, [personalEvents, teamEvents, googleEvents, naverEvents, taskDueEvents, visibleCalendars]);
 
   const diaryDayStart = startOfDay(new Date(diaryDate));
   const diaryDayEnd = endOfDay(new Date(diaryDate));
@@ -1682,6 +1741,79 @@ function SchedulePageInner() {
     window.location.href = "/api/integrations/naver-calendar/auth";
   }, []);
 
+  const handleNaverCalDavConnect = useCallback(async () => {
+    if (!naverIdInput.trim() || !naverPasswordInput) {
+      toast.error("네이버 아이디와 비밀번호를 입력하세요.");
+      return;
+    }
+    setNaverConnecting(true);
+    try {
+      const res = await fetch(SWR_KEYS.naverCalDav, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ naverId: naverIdInput.trim(), password: naverPasswordInput }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "네이버 캘린더 연결에 실패했습니다.");
+      setNaverPasswordInput("");
+      await mutateNaverCalDav();
+      setNaverRefreshKey((k) => k + 1);
+      toast.success("네이버 캘린더를 불러오도록 연결했습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "네이버 캘린더 연결에 실패했습니다.");
+    } finally {
+      setNaverConnecting(false);
+    }
+  }, [naverIdInput, naverPasswordInput, mutateNaverCalDav]);
+
+  const handleNaverCalDavDisconnect = useCallback(async () => {
+    const res = await fetch(SWR_KEYS.naverCalDav, { method: "DELETE" });
+    if (!res.ok) {
+      toast.error("연결 해제에 실패했습니다.");
+      return;
+    }
+    await mutateNaverCalDav();
+    setNaverEvents([]);
+    setNaverRefreshKey((k) => k + 1);
+    toast.success("네이버 캘린더 불러오기를 해제했습니다.");
+  }, [mutateNaverCalDav]);
+
+  const handleNaverIcsUpload = useCallback(
+    async (file: File) => {
+      setNaverIcsUploading(true);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/integrations/naver-calendar/import", {
+          method: "POST",
+          body: form,
+        });
+        const data = (await res.json().catch(() => ({}))) as { imported?: number; error?: string };
+        if (!res.ok) throw new Error(data.error ?? ".ics 파일을 읽지 못했습니다.");
+        await mutateNaverCalDav();
+        setNaverRefreshKey((k) => k + 1);
+        toast.success(`${data.imported ?? 0}건의 일정을 불러왔습니다.`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : ".ics 파일을 읽지 못했습니다.");
+      } finally {
+        setNaverIcsUploading(false);
+        if (naverIcsInputRef.current) naverIcsInputRef.current.value = "";
+      }
+    },
+    [mutateNaverCalDav]
+  );
+
+  const handleNaverIcsClear = useCallback(async () => {
+    const res = await fetch("/api/integrations/naver-calendar/import", { method: "DELETE" });
+    if (!res.ok) {
+      toast.error("삭제에 실패했습니다.");
+      return;
+    }
+    await mutateNaverCalDav();
+    setNaverRefreshKey((k) => k + 1);
+    toast.success("업로드한 네이버 일정을 삭제했습니다.");
+  }, [mutateNaverCalDav]);
+
   const loadIcalFeedUrls = useCallback(async () => {
     setIcalLoading(true);
     try {
@@ -1749,10 +1881,8 @@ function SchedulePageInner() {
           googleConnected={googleConnected}
           onGoogleDisconnect={handleGoogleDisconnect}
           onGoogleConnect={handleGoogleConnect}
-          naverConnected={naverConnected}
-          naverConfigured={naverConfigured}
-          onNaverDisconnect={handleNaverDisconnect}
-          onNaverConnect={handleNaverConnect}
+          naverActive={naverConnected || naverHasReadSource}
+          onOpenNaver={() => setNaverDialogOpen(true)}
           onOpenIcalFeed={handleOpenIcalFeed}
           onNewSchedule={() => setCreateOpen(true)}
         />
@@ -1779,10 +1909,8 @@ function SchedulePageInner() {
         googleConnected={googleConnected}
         onGoogleDisconnect={handleGoogleDisconnect}
         onGoogleConnect={handleGoogleConnect}
-        naverConnected={naverConnected}
-        naverConfigured={naverConfigured}
-        onNaverDisconnect={handleNaverDisconnect}
-        onNaverConnect={handleNaverConnect}
+        naverActive={naverConnected || naverHasReadSource}
+        onOpenNaver={() => setNaverDialogOpen(true)}
         onOpenIcalFeed={handleOpenIcalFeed}
         onNewSchedule={() => setCreateOpen(true)}
       />
@@ -1791,7 +1919,7 @@ function SchedulePageInner() {
         <div className="space-y-1">
           <PageHeadline
             title="스케줄"
-            description="여기에는 직접 만든 할일과 출처 미정 데이터만 목록에 보입니다. Google은 외부 일정을 불러오고, Naver 연동 시 CRM 일정·승인 휴가가 네이버에 등록됩니다. iCal 구독 URL로 네이버·다른 앱에서도 볼 수 있습니다."
+            description="여기에는 직접 만든 할일과 출처 미정 데이터만 목록에 보입니다. Google·네이버 일정은 캘린더에 함께 겹쳐 보이며, 네이버는 CalDAV 연결이나 .ics 업로드로 불러옵니다."
           />
           {session?.user?.role &&
             ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
@@ -1859,7 +1987,7 @@ function SchedulePageInner() {
 
           <div className="sticky top-0 z-10 -mx-4 border-b border-[#e5e7eb] bg-background/95 px-4 py-2 backdrop-blur-md dark:border-border dark:bg-background/95 md:-mx-5 md:px-5">
             <div className="schedule-gcal-filter-chips flex flex-wrap items-center gap-2 px-0">
-              {(["personal", "team", "holiday", "google", "taskDue"] as CalendarLayerId[]).map((layer) => {
+              {(["personal", "team", "holiday", "google", "naver", "taskDue"] as CalendarLayerId[]).map((layer) => {
                 const on = visibleCalendars[layer] !== false;
                 const color = CALENDAR_CHIP_COLORS[layer];
                 return (
@@ -2289,6 +2417,160 @@ function SchedulePageInner() {
               <Link href="/leave" prefetch={false} onClick={() => setLeaveDetailId(null)}>
                 연차/근태로 이동
               </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={naverDialogOpen} onOpenChange={setNaverDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>네이버 캘린더</DialogTitle>
+          </DialogHeader>
+
+          <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1 text-sm">
+            <section className="space-y-3">
+              <div>
+                <h3 className="font-semibold">네이버 일정 불러오기</h3>
+                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                  네이버는 구독용 URL을 제공하지 않아 CalDAV로 접속하거나 .ics 파일을 올려야 합니다.
+                </p>
+              </div>
+
+              <div className="rounded-lg border p-3">
+                <p className="text-xs font-semibold">방법 1. CalDAV 자동 동기화</p>
+                {naverReadConnected ? (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-muted-foreground text-xs">
+                      <span className="font-medium text-foreground">{naverCalDavStatus?.naverId}</span>{" "}
+                      계정으로 연결되어 있습니다.
+                    </p>
+                    {naverCalDavStatus?.lastError ? (
+                      <p className="text-xs text-red-600">{naverCalDavStatus.lastError}</p>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleNaverCalDavDisconnect()}
+                    >
+                      연결 해제
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      2단계 인증을 쓰면 네이버에서 「애플리케이션 비밀번호」를 발급받아 입력하세요.
+                      비밀번호는 암호화해서 보관하며 일정을 읽는 데만 사용합니다.
+                    </p>
+                    <Input
+                      placeholder="네이버 아이디"
+                      autoComplete="off"
+                      value={naverIdInput}
+                      onChange={(e) => setNaverIdInput(e.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="비밀번호 또는 애플리케이션 비밀번호"
+                      autoComplete="new-password"
+                      value={naverPasswordInput}
+                      onChange={(e) => setNaverPasswordInput(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={naverConnecting || !naverReadConfigured}
+                      onClick={() => void handleNaverCalDavConnect()}
+                    >
+                      {naverConnecting ? "연결 중..." : "연결"}
+                    </Button>
+                    {!naverReadConfigured ? (
+                      <p className="text-xs text-red-600">
+                        서버에 암호화 키(CALENDAR_CREDENTIAL_KEY 또는 AUTH_SECRET)가 없어 연결할 수 없습니다.
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border p-3">
+                <p className="text-xs font-semibold">방법 2. .ics 파일 올리기</p>
+                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                  네이버 캘린더의 「가져오기/내보내기(백업)」에서 받은 .ics 파일을 올리면 그 시점 일정이
+                  표시됩니다. 다시 올리면 이전 업로드분을 대체합니다.
+                </p>
+                <input
+                  ref={naverIcsInputRef}
+                  type="file"
+                  accept=".ics,text/calendar"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleNaverIcsUpload(file);
+                  }}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={naverIcsUploading}
+                    onClick={() => naverIcsInputRef.current?.click()}
+                  >
+                    <Upload className="mr-1.5 size-4" />
+                    {naverIcsUploading ? "불러오는 중..." : ".ics 파일 선택"}
+                  </Button>
+                  {naverImportedCount > 0 ? (
+                    <>
+                      <span className="text-muted-foreground text-xs">
+                        {naverImportedCount}건 표시 중
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleNaverIcsClear()}
+                      >
+                        <Trash2 className="mr-1.5 size-4" />
+                        삭제
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-2 border-t pt-4">
+              <div>
+                <h3 className="font-semibold">CRM 일정 네이버로 보내기</h3>
+                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                  연동하면 새로 만든 CRM 일정과 승인된 휴가가 네이버 캘린더에 등록됩니다.
+                </p>
+              </div>
+              {!naverConfigured ? (
+                <p className="text-muted-foreground text-xs">
+                  서버에 네이버 OAuth 설정이 없어 사용할 수 없습니다.
+                </p>
+              ) : naverConnected ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleNaverDisconnect()}
+                >
+                  연동 해제
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" size="sm" onClick={handleNaverConnect}>
+                  네이버 로그인으로 연동
+                </Button>
+              )}
+            </section>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setNaverDialogOpen(false)}>
+              닫기
             </Button>
           </DialogFooter>
         </DialogContent>

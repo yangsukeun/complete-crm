@@ -5,7 +5,7 @@
  * `CALENDAR_CHIP_COLORS`·`paletteForEvent`·`ScheduleCalendarEvent`에 반영됩니다.
  * (캘린더 CSS: `app/schedule/schedule-calendar.css`)
  */
-export type CalendarLayerId = "personal" | "team" | "holiday" | "google" | "taskDue";
+export type CalendarLayerId = "personal" | "team" | "holiday" | "google" | "naver" | "taskDue";
 
 export const EVENT_PALETTE: Record<CalendarLayerId, { bg: string; light: string; text: string }> = {
   personal: { bg: "#1a73e8", light: "#e8f0fe", text: "#ffffff" },
@@ -13,5 +13,7 @@ export const EVENT_PALETTE: Record<CalendarLayerId, { bg: string; light: string;
   holiday: { bg: "#f4511e", light: "#fce8e6", text: "#ffffff" },
   /** 월간: 연보라 배경 + 진보라 텍스트 (CRM 일정보다 톤다운, solid 보라 금지) */
   google: { bg: "#9575cd", light: "#f3eef9", text: "#5e35b1" },
+  /** 네이버 브랜드 그린. 팀 일정(solid green)과 구분되도록 외부 일정은 연한 배경으로 렌더링 */
+  naver: { bg: "#03c75a", light: "#e7f8ee", text: "#017a37" },
   taskDue: { bg: "#e53935", light: "#fce8e6", text: "#ffffff" },
 };
