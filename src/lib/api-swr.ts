@@ -42,6 +42,8 @@ export const SWR_KEYS = {
   scheduleInvites: "/api/schedules/invites",
   leave: "/api/leave",
   googleCalendar: "/api/integrations/google-calendar",
+  naverCalendar: "/api/integrations/naver-calendar",
+  calendarIcal: "/api/calendar/ical",
   /** 캘린더: MY+TEAM 일정 단일 요청 */
   schedulesBundle: "/api/schedules/bundle",
   /** 대시보드 매출·수금 (GET = getDashboardSalesStats) */

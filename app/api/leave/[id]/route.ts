@@ -14,6 +14,7 @@ import {
   needsExecutiveDirectLeaveApproval,
   teamLeadNotifyWhereForApplicantDepartment,
 } from "@/lib/leave-department-access";
+import { syncLeaveToNaverCalendar } from "@/lib/naver-calendar-sync";
 
 function isTeamLead(role: string | undefined) {
   return role === "TEAM_LEAD";
@@ -71,6 +72,15 @@ async function applyExecutiveLeaveApproval(
       where: { id: leave.id },
       include: { user: { select: { name: true, position: true } } },
     });
+    if (updated?.status === "APPROVED") {
+      void syncLeaveToNaverCalendar(leave.userId, {
+        id: leave.id,
+        type: leave.type,
+        startDate: leave.startDate,
+        endDate: leave.endDate,
+        reason: updated.reason,
+      });
+    }
     return NextResponse.json(updated);
   }
 
@@ -79,6 +89,15 @@ async function applyExecutiveLeaveApproval(
     data: { status: requestedStatus },
     include: { user: { select: { name: true, position: true } } },
   });
+  if (requestedStatus === "APPROVED") {
+    void syncLeaveToNaverCalendar(leave.userId, {
+      id: leave.id,
+      type: leave.type,
+      startDate: leave.startDate,
+      endDate: leave.endDate,
+      reason: updated.reason,
+    });
+  }
   return NextResponse.json(updated);
 }
 

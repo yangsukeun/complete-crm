@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getServerWorkspaceScope, getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
 import { createActivityLog } from "@/lib/activity-log";
 import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
+import { syncScheduleToNaverCalendar } from "@/lib/naver-calendar-sync";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -107,6 +108,16 @@ export async function POST(req: Request) {
         isAllDay: schedule.isAllDay,
       });
     }
+
+    void syncScheduleToNaverCalendar(session.user.id, {
+      id: schedule.id,
+      title: schedule.title,
+      description: schedule.description,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      isAllDay: schedule.isAllDay,
+      scope: schedule.scope,
+    });
 
     return NextResponse.json(schedule);
   } catch (e) {

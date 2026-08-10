@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { syncScheduleToNaverCalendar } from "@/lib/naver-calendar-sync";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -42,7 +43,7 @@ export async function PATCH(
     }
 
     if (parsed.data.status === "ACCEPTED") {
-      await prisma.schedule.create({
+      const copied = await prisma.schedule.create({
         data: {
           title: invite.schedule.title,
           description: invite.schedule.description,
@@ -51,6 +52,15 @@ export async function PATCH(
           isAllDay: invite.schedule.isAllDay,
           userId: session.user.id,
         },
+      });
+      void syncScheduleToNaverCalendar(session.user.id, {
+        id: copied.id,
+        title: copied.title,
+        description: copied.description,
+        startTime: copied.startTime,
+        endTime: copied.endTime,
+        isAllDay: copied.isAllDay,
+        scope: copied.scope,
       });
     }
 
