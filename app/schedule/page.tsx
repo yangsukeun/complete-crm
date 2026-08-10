@@ -27,8 +27,6 @@ import {
   startOfMonth,
   endOfMonth,
   endOfWeek,
-  isBefore,
-  isAfter,
   isSameMonth,
 } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -65,6 +63,8 @@ import {
   RefreshCw,
   Upload,
   Trash2,
+  SlidersHorizontal,
+  Check,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -792,6 +792,22 @@ const CALENDAR_CHIP_COLORS: Record<CalendarLayerId, string> = {
   taskDue: EVENT_PALETTE.taskDue.bg,
 };
 
+/** 「표시」 드롭다운에 나열할 순서 */
+const CALENDAR_LAYER_ORDER: CalendarLayerId[] = [
+  "personal",
+  "team",
+  "holiday",
+  "google",
+  "naver",
+  "taskDue",
+];
+
+const COMPLETED_DISPLAY_OPTIONS: { id: CompletedProjectDisplayMode; label: string; hint: string }[] = [
+  { id: "dimmed", label: "반투명", hint: "흐리게 보임" },
+  { id: "hidden", label: "숨김", hint: "캘린더에서 제외" },
+  { id: "normal", label: "선명", hint: "일반 일정처럼" },
+];
+
 type ScheduleHeaderProps = {
   showCalendarNav: boolean;
   tab: TabId;
@@ -807,6 +823,10 @@ type ScheduleHeaderProps = {
   anyIntegrationConnected: boolean;
   onOpenIntegrations: () => void;
   onNewSchedule: () => void;
+  visibleCalendars: Record<CalendarLayerId, boolean>;
+  onToggleCalendarLayer: (layer: CalendarLayerId, visible: boolean) => void;
+  completedProjectDisplay: CompletedProjectDisplayMode;
+  onCompletedProjectDisplayChange: (mode: CompletedProjectDisplayMode) => void;
 };
 
 function ScheduleHeader({
@@ -823,6 +843,10 @@ function ScheduleHeader({
   anyIntegrationConnected,
   onOpenIntegrations,
   onNewSchedule,
+  visibleCalendars,
+  onToggleCalendarLayer,
+  completedProjectDisplay,
+  onCompletedProjectDisplayChange,
 }: ScheduleHeaderProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -846,15 +870,6 @@ function ScheduleHeader({
     return list;
   }, [startYear, endYear]);
 
-  const currentIndex = (currentYear - startYear) * 12 + currentMonth;
-
-  useEffect(() => {
-    if (pickerOpen && listRef.current) {
-      const el = listRef.current.querySelector(`[data-index="${currentIndex}"]`);
-      el?.scrollIntoView({ block: "nearest", behavior: "auto" });
-    }
-  }, [pickerOpen, currentIndex]);
-
   const handleSelectMonth = useCallback(
     (year: number, month: number) => {
       onCalendarNavigate(Navigate.DATE, new Date(year, month, 1));
@@ -863,160 +878,247 @@ function ScheduleHeader({
     [onCalendarNavigate]
   );
 
+  const hiddenLayerCount = CALENDAR_LAYER_ORDER.filter(
+    (layer) => visibleCalendars[layer] === false
+  ).length;
+
   return (
     <header className="sticky top-0 z-20 border-b border-[#e5e7eb] bg-white dark:border-border dark:bg-background">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-5">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
-          {showCalendarNav ? (
-            <>
-              <button
-                type="button"
-                className="shrink-0 rounded-full border border-[#e0e0e0] bg-white px-4 py-2 text-sm font-medium text-[#3c4043] transition-colors hover:bg-[#f8f9fa] dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
-                onClick={() => onCalendarNavigate(Navigate.TODAY)}
-              >
-                {headerMessages.today}
-              </button>
-              <div className="flex shrink-0 gap-0.5">
-                <button
-                  type="button"
-                  className="flex size-8 items-center justify-center rounded-full text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-foreground dark:hover:bg-muted"
-                  aria-label={headerMessages.prev}
-                  onClick={() => onCalendarNavigate(Navigate.PREVIOUS)}
-                >
-                  <ChevronLeft className="size-5" />
-                </button>
-                <button
-                  type="button"
-                  className="flex size-8 items-center justify-center rounded-full text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-foreground dark:hover:bg-muted"
-                  aria-label={headerMessages.next}
-                  onClick={() => onCalendarNavigate(Navigate.NEXT)}
-                >
-                  <ChevronRight className="size-5" />
-                </button>
-              </div>
-              <div className="relative min-w-0">
-                <button
-                  type="button"
-                  className="schedule-gcal-month-title text-left text-base font-normal leading-tight text-[#3c4043] hover:underline dark:text-foreground md:text-[22px] md:font-normal"
-                  onClick={() => setPickerOpen((o) => !o)}
-                  aria-expanded={pickerOpen}
-                  aria-haspopup="listbox"
-                >
-                  {calendarTitle}
-                </button>
-                {pickerOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" aria-hidden onClick={() => setPickerOpen(false)} />
-                    <div
-                      ref={listRef}
-                      role="listbox"
-                      className="absolute left-0 top-full z-50 mt-1 max-h-[280px] w-56 overflow-y-auto rounded-lg border border-[#e0e0e0] bg-card py-1 shadow-lg dark:border-border"
-                    >
-                      {monthOptions.map((opt, idx) => (
-                        <button
-                          key={`${opt.year}-${opt.month}`}
-                          type="button"
-                          data-index={idx}
-                          role="option"
-                          aria-selected={opt.year === currentYear && opt.month === currentMonth}
-                          className={cn(
-                            "w-full px-3 py-2 text-left text-sm hover:bg-muted",
-                            opt.year === currentYear && opt.month === currentMonth && "bg-muted font-medium"
-                          )}
-                          onClick={() => handleSelectMonth(opt.year, opt.month)}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="mx-0.5 hidden h-6 w-px shrink-0 bg-[#e0e0e0] dark:bg-border sm:block" />
-              <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#e0e0e0] dark:border-border">
-                <button
-                  type="button"
-                  className={cn(
-                    "schedule-gcal-view-tab-btn px-3 py-2 text-sm font-medium transition-colors",
-                    view === "month"
-                      ? "bg-[#1a73e8] text-white"
-                      : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
-                  )}
-                  onClick={() => onViewChange("month")}
-                >
-                  {headerMessages.month}
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    "schedule-gcal-view-tab-btn border-l border-[#e0e0e0] px-3 py-2 text-sm font-medium transition-colors dark:border-border",
-                    view === "week"
-                      ? "bg-[#1a73e8] text-white"
-                      : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
-                  )}
-                  onClick={() => onViewChange("week")}
-                >
-                  {headerMessages.week}
-                </button>
-              </div>
-            </>
-          ) : (
-            <h2 className="schedule-gcal-month-title truncate text-lg font-normal text-[#3c4043] dark:text-foreground md:text-[22px]">
-              {pageTabs.find((x) => x.id === tab)?.label ?? "스케줄"}
-            </h2>
-          )}
+      {/* 1단: 페이지 이동 + 주요 동작 */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:px-5">
+        <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#e0e0e0] dark:border-border">
+          {pageTabs.map((t, i) => (
+            <button
+              key={t.id}
+              type="button"
+              className={cn(
+                "schedule-gcal-view-tab-btn flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium transition-colors sm:px-4",
+                i < pageTabs.length - 1 && "border-r border-[#e0e0e0] dark:border-border",
+                tab === t.id
+                  ? "bg-[#1a73e8] text-white"
+                  : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/50"
+              )}
+              onClick={() => setTab(t.id)}
+            >
+              {t.icon}
+              <span className="schedule-gcal-view-tab-label">{t.label}</span>
+            </button>
+          ))}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {showCalendarNav && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                title="Google·네이버 캘린더 연동"
-                className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
-                onClick={onOpenIntegrations}
-              >
-                <Link2 className="mr-1.5 size-4" />
-                <span className="hidden sm:inline">캘린더 연동</span>
-                {anyIntegrationConnected && (
-                  <span
-                    className="ml-1.5 size-1.5 rounded-full bg-[#03c75a]"
-                    aria-label="연결됨"
-                  />
-                )}
-              </Button>
-              <Button
-                size="sm"
-                className="h-9 shrink-0 bg-[#1a73e8] hover:bg-[#1557b0]"
-                onClick={onNewSchedule}
-              >
-                <Plus className="mr-1.5 size-4" />
-                <span className="hidden sm:inline">새 일정</span>
-              </Button>
-            </>
-          )}
-          <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#e0e0e0] dark:border-border">
-            {pageTabs.map((t, i) => (
+        {showCalendarNav && (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              title="Google·네이버 캘린더 연동"
+              className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
+              onClick={onOpenIntegrations}
+            >
+              <Link2 className="mr-1.5 size-4" />
+              <span className="hidden sm:inline">캘린더 연동</span>
+              {anyIntegrationConnected && (
+                <span className="ml-1.5 size-1.5 rounded-full bg-[#03c75a]" aria-label="연결됨" />
+              )}
+            </Button>
+            <Button
+              size="sm"
+              className="h-9 shrink-0 bg-[#1a73e8] hover:bg-[#1557b0]"
+              onClick={onNewSchedule}
+            >
+              <Plus className="mr-1.5 size-4" />
+              <span className="hidden sm:inline">새 일정</span>
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 2단: 기간 이동 + 표시 항목 (일정 탭에서만) */}
+      {showCalendarNav && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f1f3f4] px-4 py-2 dark:border-border/60 md:px-5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
+            <button
+              type="button"
+              className="shrink-0 rounded-full border border-[#e0e0e0] bg-white px-4 py-1.5 text-sm font-medium text-[#3c4043] transition-colors hover:bg-[#f8f9fa] dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
+              onClick={() => onCalendarNavigate(Navigate.TODAY)}
+            >
+              {headerMessages.today}
+            </button>
+            <div className="flex shrink-0 gap-0.5">
               <button
-                key={t.id}
+                type="button"
+                className="flex size-8 items-center justify-center rounded-full text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-foreground dark:hover:bg-muted"
+                aria-label={headerMessages.prev}
+                onClick={() => onCalendarNavigate(Navigate.PREVIOUS)}
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+              <button
+                type="button"
+                className="flex size-8 items-center justify-center rounded-full text-[#3c4043] transition-colors hover:bg-[#f1f3f4] dark:text-foreground dark:hover:bg-muted"
+                aria-label={headerMessages.next}
+                onClick={() => onCalendarNavigate(Navigate.NEXT)}
+              >
+                <ChevronRight className="size-5" />
+              </button>
+            </div>
+            <div className="relative min-w-0">
+              <button
+                type="button"
+                className="schedule-gcal-month-title text-left text-base font-normal leading-tight text-[#3c4043] hover:underline dark:text-foreground md:text-[20px] md:font-normal"
+                onClick={() => setPickerOpen((o) => !o)}
+                aria-expanded={pickerOpen}
+                aria-haspopup="listbox"
+              >
+                {calendarTitle}
+              </button>
+              {pickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" aria-hidden onClick={() => setPickerOpen(false)} />
+                  <div
+                    ref={listRef}
+                    role="listbox"
+                    className="absolute left-0 top-full z-50 mt-1 max-h-[280px] w-56 overflow-y-auto rounded-lg border border-[#e0e0e0] bg-card py-1 shadow-lg dark:border-border"
+                  >
+                    {monthOptions.map((opt, idx) => (
+                      <button
+                        key={`${opt.year}-${opt.month}`}
+                        type="button"
+                        data-index={idx}
+                        role="option"
+                        aria-selected={opt.year === currentYear && opt.month === currentMonth}
+                        className={cn(
+                          "w-full px-3 py-2 text-left text-sm hover:bg-muted",
+                          opt.year === currentYear && opt.month === currentMonth && "bg-muted font-medium"
+                        )}
+                        onClick={() => handleSelectMonth(opt.year, opt.month)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
+                >
+                  <SlidersHorizontal className="mr-1.5 size-4" />
+                  표시
+                  {hiddenLayerCount > 0 && (
+                    <span className="text-muted-foreground ml-1.5 text-xs">
+                      {CALENDAR_LAYER_ORDER.length - hiddenLayerCount}/{CALENDAR_LAYER_ORDER.length}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-2">
+                <p className="text-muted-foreground px-2 pb-1 pt-1.5 text-xs font-semibold">
+                  캘린더
+                </p>
+                {CALENDAR_LAYER_ORDER.map((layer) => {
+                  const on = visibleCalendars[layer] !== false;
+                  return (
+                    <button
+                      key={layer}
+                      type="button"
+                      onClick={() => onToggleCalendarLayer(layer, !on)}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+                    >
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: on ? CALENDAR_CHIP_COLORS[layer] : "transparent",
+                          boxShadow: `inset 0 0 0 1.5px ${CALENDAR_CHIP_COLORS[layer]}`,
+                        }}
+                        aria-hidden
+                      />
+                      <span className={cn("flex-1 text-left", !on && "text-muted-foreground")}>
+                        {CALENDAR_LAYER_LABELS[layer]}
+                      </span>
+                      {on && <Check className="size-4 shrink-0 text-[#1a73e8]" />}
+                    </button>
+                  );
+                })}
+
+                <div className="my-1.5 border-t" />
+                <p className="text-muted-foreground px-2 pb-1 text-xs font-semibold">
+                  완료된 마감
+                </p>
+                {COMPLETED_DISPLAY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => onCompletedProjectDisplayChange(opt.id)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+                  >
+                    <span className="flex-1 text-left">
+                      {opt.label}
+                      <span className="text-muted-foreground ml-1.5 text-xs">{opt.hint}</span>
+                    </span>
+                    {completedProjectDisplay === opt.id && (
+                      <Check className="size-4 shrink-0 text-[#1a73e8]" />
+                    )}
+                  </button>
+                ))}
+
+                <div className="my-1.5 border-t" />
+                <p className="text-muted-foreground px-2 pb-1 text-xs font-semibold">
+                  할일 마감 색
+                </p>
+                <div className="text-muted-foreground flex flex-col gap-1 px-2 pb-1 text-xs">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden>🟠</span> 대기 (TODO)
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden>🔵</span> 진행중 (IN_PROGRESS)
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <svg width="8" height="8" viewBox="0 0 8 8" className="opacity-40" aria-hidden>
+                      <circle cx="4" cy="4" r="4" fill="#6B7280" />
+                    </svg>
+                    완료 (DONE)
+                  </span>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#e0e0e0] dark:border-border">
+              <button
                 type="button"
                 className={cn(
-                  "schedule-gcal-view-tab-btn flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium transition-colors sm:px-4",
-                  i < pageTabs.length - 1 && "border-r border-[#e0e0e0] dark:border-border",
-                  tab === t.id
+                  "schedule-gcal-view-tab-btn px-3 py-2 text-sm font-medium transition-colors",
+                  view === "month"
                     ? "bg-[#1a73e8] text-white"
-                    : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/50"
+                    : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
                 )}
-                onClick={() => setTab(t.id)}
+                onClick={() => onViewChange("month")}
               >
-                {t.icon}
-                <span className="schedule-gcal-view-tab-label">{t.label}</span>
+                {headerMessages.month}
               </button>
-            ))}
+              <button
+                type="button"
+                className={cn(
+                  "schedule-gcal-view-tab-btn border-l border-[#e0e0e0] px-3 py-2 text-sm font-medium transition-colors dark:border-border",
+                  view === "week"
+                    ? "bg-[#1a73e8] text-white"
+                    : "bg-white text-[#3c4043] hover:bg-[#f8f9fa] dark:bg-card dark:text-foreground dark:hover:bg-muted/60"
+                )}
+                onClick={() => onViewChange("week")}
+              >
+                {headerMessages.week}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }
@@ -1082,18 +1184,13 @@ function SchedulePageInner() {
     setCompletedProjectDisplay(loadCompletedProjectDisplay());
   }, []);
 
-  const cycleCompletedProjectDisplay = useCallback(() => {
-    setCompletedProjectDisplay((prev) => {
-      const order: CompletedProjectDisplayMode[] = ["dimmed", "hidden", "normal"];
-      const idx = order.indexOf(prev);
-      const next = order[(idx + 1) % order.length];
-      try {
-        localStorage.setItem(COMPLETED_PROJECT_DISPLAY_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+  const applyCompletedProjectDisplay = useCallback((mode: CompletedProjectDisplayMode) => {
+    setCompletedProjectDisplay(mode);
+    try {
+      localStorage.setItem(COMPLETED_PROJECT_DISPLAY_KEY, mode);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const [narrowViewport, setNarrowViewport] = useState(false);
@@ -1892,6 +1989,10 @@ function SchedulePageInner() {
           anyIntegrationConnected={anyIntegrationConnected}
           onOpenIntegrations={handleOpenIntegrations}
           onNewSchedule={() => setCreateOpen(true)}
+          visibleCalendars={visibleCalendars}
+          onToggleCalendarLayer={setVisibleCalendar}
+          completedProjectDisplay={completedProjectDisplay}
+          onCompletedProjectDisplayChange={applyCompletedProjectDisplay}
         />
         <div className="flex flex-1 items-center justify-center p-6">
           <p className="text-muted-foreground">일정을 불러오는 중...</p>
@@ -1916,6 +2017,10 @@ function SchedulePageInner() {
         anyIntegrationConnected={anyIntegrationConnected}
         onOpenIntegrations={handleOpenIntegrations}
         onNewSchedule={() => setCreateOpen(true)}
+        visibleCalendars={visibleCalendars}
+        onToggleCalendarLayer={setVisibleCalendar}
+        completedProjectDisplay={completedProjectDisplay}
+        onCompletedProjectDisplayChange={applyCompletedProjectDisplay}
       />
 
       <div className="flex flex-col gap-4 px-4 pb-6 pt-3 md:px-5">
@@ -1987,69 +2092,6 @@ function SchedulePageInner() {
               </div>
             </CardContent>
           </Card>
-
-          <div className="sticky top-0 z-10 -mx-4 border-b border-[#e5e7eb] bg-background/95 px-4 py-2 backdrop-blur-md dark:border-border dark:bg-background/95 md:-mx-5 md:px-5">
-            <div className="schedule-gcal-filter-chips flex flex-wrap items-center gap-2 px-0">
-              {(["personal", "team", "holiday", "google", "naver", "taskDue"] as CalendarLayerId[]).map((layer) => {
-                const on = visibleCalendars[layer] !== false;
-                const color = CALENDAR_CHIP_COLORS[layer];
-                return (
-                  <button
-                    key={layer}
-                    type="button"
-                    onClick={() => setVisibleCalendar(layer, !on)}
-                    className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95"
-                    style={{
-                      borderColor: color,
-                      background: on ? color : "transparent",
-                      color: on ? "#ffffff" : color,
-                    }}
-                  >
-                    {on ? <span className="text-xs leading-none">✓</span> : null}
-                    {CALENDAR_LAYER_LABELS[layer]}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                title="완료된 마감(Task DONE·프로젝트 완료) 표시: 반투명 → 숨김 → 선명 순환"
-                onClick={() => cycleCompletedProjectDisplay()}
-                className={cn(
-                  "flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-medium transition-all duration-150 hover:opacity-95",
-                  completedProjectDisplay === "dimmed" && "border-[#6B7280] bg-[#6B7280] text-white",
-                  completedProjectDisplay === "hidden" &&
-                    "border-[#9CA3AF] bg-transparent text-[#4B5563] dark:text-muted-foreground",
-                  completedProjectDisplay === "normal" &&
-                    "border-[#3B82F6] bg-[#EFF6FF] text-[#1E3A8A] dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100"
-                )}
-              >
-                <span className="max-w-[5.5rem] truncate text-[11px] opacity-90">
-                  {completedProjectDisplay === "dimmed"
-                    ? "반투명"
-                    : completedProjectDisplay === "hidden"
-                      ? "숨김"
-                      : "선명"}
-                </span>
-                <span className="whitespace-nowrap">마감 완료</span>
-              </button>
-              <div className="ml-auto hidden min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-muted-foreground sm:flex">
-                <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <span aria-hidden>🟠</span>
-                  대기 (TODO)
-                </span>
-                <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <span aria-hidden>🔵</span>
-                  진행중 (IN_PROGRESS)
-                </span>
-                <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <svg width="8" height="8" viewBox="0 0 8 8" className="opacity-40" aria-hidden>
-                    <circle cx="4" cy="4" r="4" fill="#6B7280" />
-                  </svg>
-                  완료 (DONE)
-                </span>
-              </div>
-            </div>
-          </div>
 
           {narrowViewport && view === "month" && !mobileWeekBannerDismissed && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-50">

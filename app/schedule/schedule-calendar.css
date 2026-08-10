@@ -447,14 +447,6 @@
   color: inherit !important;
 }
 
-/* 캘린더 필터 칩 가로 스크롤 */
-.schedule-gcal-filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 4px 0;
-}
-
 .schedule-gcal-viewport .rbc-row-content {
   position: relative;
   user-select: none;
@@ -504,14 +496,6 @@
 }
 
 @media (max-width: 768px) {
-  .schedule-gcal-filter-chips {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 10px;
-    margin-bottom: -4px;
-  }
-
   .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
     min-height: 120px !important;
   }
