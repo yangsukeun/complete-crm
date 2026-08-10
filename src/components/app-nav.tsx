@@ -70,8 +70,12 @@ const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboar
   { href: "/nas-drive", label: "NAS 문서함", icon: Server },
   { href: "/cs-tools", label: "CS 링크", icon: Link2 },
   { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true },
-  { href: "/ai-secretary", label: "AI 비서", icon: Sparkles },
-  { href: "/ai-hub", label: "AI 허브", icon: BrainCircuit },
+];
+
+// [AI]: 비서·허브를 한 메뉴로 묶어 상단 폭을 아낀다
+const aiGroupLinks: { href: string; label: string; icon: typeof Sparkles; hint: string }[] = [
+  { href: "/ai-secretary", label: "AI 비서", icon: Sparkles, hint: "대화로 일정·업무 처리" },
+  { href: "/ai-hub", label: "AI 허브", icon: BrainCircuit, hint: "모델·프롬프트 설정" },
 ];
 
 const workGroupLinks: { href: string; label: string; icon: typeof ListTodo; featureKey?: string }[] = [
@@ -335,6 +339,9 @@ export function AppNav() {
     (l: any) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
   );
   const workLinks = workGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
+  const aiActive = aiGroupLinks.some(
+    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
+  );
   const hrLinks = hrGroupLinks.filter(
     (l: any) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
   );
@@ -548,37 +555,49 @@ export function AppNav() {
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            asChild
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-              pathname === "/ai-secretary" || pathname.startsWith("/ai-secretary/")
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            )}
-          >
-            <Link href="/ai-secretary" prefetch={false} className="flex items-center gap-1.5">
-              <Sparkles className="size-4" />
-              <span>AI 비서</span>
-            </Link>
-          </Button>
-
-          <Button
-            variant="ghost"
-            asChild
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-              pathname === "/ai-hub" || pathname.startsWith("/ai-hub/")
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            )}
-          >
-            <Link href="/ai-hub" prefetch={false} className="flex items-center gap-1.5">
-              <BrainCircuit className="size-4" />
-              <span>AI 허브</span>
-            </Link>
-          </Button>
+          {/* [AI] - 비서·허브 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+                  aiActive
+                    ? "bg-gray-100 text-gray-900"
+                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                )}
+              >
+                <Sparkles className="size-4" />
+                <span>AI</span>
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-52">
+              <DropdownMenuLabel className="text-muted-foreground text-xs">AI 기능</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {aiGroupLinks.map(({ href, label, icon: Icon, hint }) => {
+                const isActive = pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <DropdownMenuItem key={href} asChild>
+                    <Link
+                      href={href}
+                      prefetch={false}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-2 transition-colors",
+                        isActive && "bg-gray-100 text-gray-900"
+                      )}
+                    >
+                      <Icon className="mt-0.5 size-4 shrink-0" />
+                      <span className="flex flex-col">
+                        <span>{label}</span>
+                        <span className="text-muted-foreground text-[11px]">{hint}</span>
+                      </span>
+                    </Link>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* [인사/일정 관리] - 인디고/블루 */}
           {hrLinks.length > 0 && (
@@ -787,7 +806,7 @@ export function AppNav() {
       {/* Mobile Navigation (shown below header on small screens) */}
       <div className="flex overflow-x-auto border-t border-gray-100 bg-white px-4 py-2 md:hidden">
         <div className="flex gap-1">
-          {[...mainLinks, ...workLinks, ...hrLinks, ...financeLinks].map(({ href, label, icon: Icon }) => {
+          {[...mainLinks, ...workLinks, ...aiGroupLinks, ...hrLinks, ...financeLinks].map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
             const isHr = hrLinks.some((l: any) => l.href === href);
             const isFinance = financeLinks.some((l: any) => l.href === href);
