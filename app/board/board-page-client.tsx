@@ -20,6 +20,8 @@ import {
   ClipboardList,
   LayoutGrid,
   Rows3,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -33,6 +35,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { previewPlainTextForBoard } from "@/lib/board-body";
 import { getPreviewMediaFromAttachmentsClient } from "@/lib/board-list-preview";
 import { toast } from "sonner";
@@ -86,6 +95,18 @@ const CATEGORY_ICON: Record<string, typeof FolderOpen> = {
 
 const BOARD_VIEW_MODE_KEY = "board-view-mode-v1";
 type BoardViewMode = "list" | "gallery";
+type BoardSort = "recent" | "title";
+
+/** 상단 구분 탭 — 전체 + 공지 + 게시판 카테고리 */
+const FILTER_TABS: { value: string; label: string; icon: typeof FolderOpen }[] = [
+  { value: "", label: "전체", icon: FolderOpen },
+  { value: "ANNOUNCEMENT", label: "공지사항", icon: Megaphone },
+  { value: "COMPANY", label: "회사 자료", icon: Building2 },
+  { value: "TRAINING", label: "교육자료", icon: GraduationCap },
+  { value: "FREE", label: "자유게시판", icon: MessageSquare },
+  { value: "ANONYMOUS", label: "익명게시판", icon: Ghost },
+  { value: "MEETING", label: "회의록", icon: ClipboardList },
+];
 
 type AttachmentItem = { url: string; name: string };
 
@@ -361,6 +382,10 @@ export function BoardPageClient({
   const [boardLoadingMore, setBoardLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
+  const [searchInput, setSearchInput] = useState("");
+  /** 입력마다 조회하지 않도록 지연 적용 */
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<BoardSort>("recent");
   const [openAnnouncement, setOpenAnnouncement] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [title, setTitle] = useState("");
@@ -401,6 +426,8 @@ export function BoardPageClient({
       offset: String(offset),
     });
     if (category) params.set("category", category);
+    if (search.trim()) params.set("q", search.trim());
+    if (sort === "title") params.set("sort", "title");
     const boardRes = await fetch(`/api/board?${params}`, { credentials: "include" });
     if (!boardRes.ok) return { items: [] as BoardItem[], hasMore: false, nextOffset: offset };
     const raw = await boardRes.json();
@@ -468,15 +495,29 @@ export function BoardPageClient({
   };
 
   useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
     void refreshBoard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 필터 바뀔 때 게시판 페이지만 초기화 (공지는 SWR 공유)
-  }, [filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 조건 바뀔 때 게시판 페이지만 초기화 (공지는 SWR 공유)
+  }, [filter, search, sort]);
 
   const unifiedList: UnifiedItem[] = (() => {
-    const ann: UnifiedItem[] = announcements.map((a: any) => ({ type: "ANNOUNCEMENT", data: a }));
+    const keyword = search.trim().toLowerCase();
+    /** 공지는 SWR로 전체를 들고 있어 검색·정렬을 클라이언트에서 맞춘다 */
+    const visibleAnnouncements = keyword
+      ? announcements.filter((a) => a.title.toLowerCase().includes(keyword))
+      : announcements;
+    const ann: UnifiedItem[] = visibleAnnouncements.map((a: any) => ({
+      type: "ANNOUNCEMENT",
+      data: a,
+    }));
     const board: UnifiedItem[] = boardList.map((b: any) => ({ type: "BOARD", data: b }));
     const merged = [...ann, ...board];
     merged.sort((a, b) => {
+      if (sort === "title") return a.data.title.localeCompare(b.data.title, "ko");
       const tA = a.type === "ANNOUNCEMENT" ? a.data.createdAt : a.data.createdAt;
       const tB = b.type === "ANNOUNCEMENT" ? b.data.createdAt : b.data.createdAt;
       return new Date(tB).getTime() - new Date(tA).getTime();
@@ -555,68 +596,29 @@ export function BoardPageClient({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={filter === "" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("")}
-          >
-            전체
-          </Button>
-          <Button
-            variant={filter === "ANNOUNCEMENT" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("ANNOUNCEMENT")}
-            className="gap-1"
-          >
-            <Megaphone className="size-4" />
-            공지사항
-          </Button>
-          <Button
-            variant={filter === "COMPANY" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("COMPANY")}
-            className="gap-1"
-          >
-            <Building2 className="size-4" />
-            회사 자료
-          </Button>
-          <Button
-            variant={filter === "TRAINING" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("TRAINING")}
-            className="gap-1"
-          >
-            <GraduationCap className="size-4" />
-            교육자료
-          </Button>
-          <Button
-            variant={filter === "FREE" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("FREE")}
-            className="gap-1"
-          >
-            <MessageSquare className="size-4" />
-            자유게시판
-          </Button>
-          <Button
-            variant={filter === "ANONYMOUS" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("ANONYMOUS")}
-            className="gap-1"
-          >
-            <Ghost className="size-4" />
-            익명게시판
-          </Button>
-          <Button
-            variant={filter === "MEETING" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter("MEETING")}
-            className="gap-1"
-          >
-            <ClipboardList className="size-4" />
-            회의록
-          </Button>
+        <div
+          className="bg-muted/50 flex flex-wrap items-center gap-0.5 rounded-lg border p-0.5"
+          role="tablist"
+          aria-label="자료 구분"
+        >
+          {FILTER_TABS.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value || "all"}
+              type="button"
+              role="tab"
+              aria-selected={filter === value}
+              onClick={() => setFilter(value)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                filter === value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="size-3.5" />
+              {label}
+            </button>
+          ))}
         </div>
         <div className="flex items-center gap-2">
           {canCreateAnnouncement && (
@@ -645,12 +647,41 @@ export function BoardPageClient({
       </div>
 
       <section>
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 font-semibold">
             <FolderOpen className="size-5" />
             공지·자료 목록
           </h2>
-          <div className="flex items-center rounded-md border" role="group" aria-label="목록 표시 방식">
+          <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <div className="relative w-full max-w-[240px]">
+              <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="제목 검색"
+                className="h-9 pl-8 pr-8"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  aria-label="검색어 지우기"
+                  onClick={() => setSearchInput("")}
+                  className="text-muted-foreground hover:text-foreground absolute right-2 top-1/2 -translate-y-1/2"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
+            </div>
+            <Select value={sort} onValueChange={(v) => setSort(v as BoardSort)}>
+              <SelectTrigger className="h-9 w-[110px] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="recent">최신순</SelectItem>
+                <SelectItem value="title">제목순</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex items-center rounded-md border" role="group" aria-label="목록 표시 방식">
             <button
               type="button"
               title="목록형 — 제목 위주로 훑기"
@@ -675,6 +706,7 @@ export function BoardPageClient({
             >
               <LayoutGrid className="size-4" />
             </button>
+            </div>
           </div>
         </div>
         {pageLoading ? (
@@ -704,11 +736,13 @@ export function BoardPageClient({
           )
         ) : unifiedList.length === 0 ? (
           <div className="rounded-xl border border-dashed bg-muted/30 py-12 text-center text-muted-foreground">
-            {filter === "ANNOUNCEMENT"
-              ? "등록된 공지사항이 없습니다."
-              : filter
-                ? "해당 구분의 자료가 없습니다."
-                : "등록된 공지·자료가 없습니다."}
+            {search.trim()
+              ? `“${search.trim()}”에 해당하는 제목이 없습니다.`
+              : filter === "ANNOUNCEMENT"
+                ? "등록된 공지사항이 없습니다."
+                : filter
+                  ? "해당 구분의 자료가 없습니다."
+                  : "등록된 공지·자료가 없습니다."}
           </div>
         ) : viewMode === "list" ? (
           <ul className="bg-card divide-y overflow-hidden rounded-xl border">

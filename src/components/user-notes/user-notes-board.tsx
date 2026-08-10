@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { Plus, Inbox } from "lucide-react";
+import { Plus, Inbox, Search, X, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -22,9 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserNoteCard } from "./user-note-card";
+import { UserNoteTile } from "./user-note-tile";
 import type { UserNoteDto } from "./types";
 import { plainTextFromHtml } from "@/lib/sanitize-note-html";
-import { cn } from "@/lib/utils";
+import { contentToPlainText } from "@/lib/export/plain-from-content";
 
 type BrandOption = { id: string; name: string };
 
@@ -104,6 +106,22 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
   const [brandId, setBrandId] = useState("");
   const [converting, setConverting] = useState(false);
   const [canConvertProject, setCanConvertProject] = useState(false);
+  const [search, setSearch] = useState("");
+  /** 편집기는 한 번에 한 건만 띄운다 */
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null);
+
+  const visibleNotes = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return notes;
+    return notes.filter((n) => {
+      if (n.title.toLowerCase().includes(keyword)) return true;
+      return contentToPlainText(n.content, n.contentType ?? null)
+        .toLowerCase()
+        .includes(keyword);
+    });
+  }, [notes, search]);
+
+  const openNote = openNoteId ? notes.find((n) => n.id === openNoteId) ?? null : null;
 
   useEffect(() => {
     (async () => {
@@ -148,7 +166,8 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       }
       const created = unwrapNotePayload(raw);
       await mutate((prev) => [created, ...(prev ?? [])], { revalidate: false });
-      toast.success(projectId ? "프로젝트에 메모가 추가되었습니다." : "새 메모를 작성하세요.");
+      // 만들자마자 바로 쓸 수 있게 편집 창을 띄운다
+      setOpenNoteId(created.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "메모를 추가하지 못했습니다.");
     }
@@ -162,6 +181,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       contentType?: "text" | "html";
       category?: string;
       attachments?: { url: string; name: string }[];
+      colorHex?: string;
     }
   ) => {
     const updated = await fetchJson<UserNoteDto>(`/api/user-notes/${id}`, {
@@ -176,9 +196,19 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
     return updated;
   };
 
+  const handleColorChange = async (id: string, colorHex: string) => {
+    try {
+      await handlePatch(id, { colorHex });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "색상을 바꾸지 못했습니다.");
+    }
+  };
+
   const handleDelete = async (id: string) => {
+    if (!confirm("이 메모를 삭제할까요?")) return;
     try {
       await fetchJson<{ ok: boolean }>(`/api/user-notes?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      setOpenNoteId((prev) => (prev === id ? null : prev));
       await mutate(
         (prev) => (prev ?? []).filter((n) => n.id !== id),
         { revalidate: false }
@@ -257,64 +287,104 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-base font-semibold">{heading ?? "메모장"}</h2>
-          {description ? (
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-          ) : (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {projectId
-                ? "이 프로젝트에만 연결되는 메모입니다. 게시판 글쓰기와 동일하게 텍스트(BlockNote, 슬래시 메뉴의 HTML 블록)와 HTML 전체 페이지 탭·미리보기로 작성하며 자동 저장됩니다."
-                : "구글 Keep 스타일 메모입니다. 게시판과 동일한 본문 편집기로 텍스트·HTML·미리보기 탭을 사용할 수 있습니다."}
-            </p>
-          )}
+          <p className="text-muted-foreground mt-0.5 text-sm">
+            {description ??
+              (projectId
+                ? "이 프로젝트에만 연결되는 메모입니다. 카드를 누르면 편집창이 열립니다."
+                : "카드를 누르면 편집창이 열리고, 입력은 자동 저장됩니다.")}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-[220px]">
+            <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="제목·내용 검색"
+              className="h-9 pl-8 pr-8"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="검색어 지우기"
+                onClick={() => setSearch("")}
+                className="text-muted-foreground hover:text-foreground absolute right-2 top-1/2 -translate-y-1/2"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
           <Button type="button" size="sm" onClick={() => void handleAdd()}>
-            <Plus className="mr-2 size-4" />
-            + 추가
+            <Plus className="mr-1.5 size-4" />
+            추가
           </Button>
           {projectId ? (
             <Button type="button" size="sm" variant="secondary" onClick={() => void openImport()}>
-              <Inbox className="mr-2 size-4" />
-              메모장에서 가져오기
+              <Inbox className="mr-1.5 size-4" />
+              가져오기
             </Button>
           ) : null}
         </div>
       </div>
 
-      {projectId ? (
-        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          각 메모 카드에서 상단의 「텍스트」「HTML」「미리보기」를 전환해 작성합니다. HTML 탭에 전체 HTML 코드를 넣고 미리보기에서 화면처럼 확인할 수 있습니다. (게시판 글쓰기와 동일)
-        </p>
-      ) : null}
-
       {loading ? (
-        <p className="text-sm text-muted-foreground">불러오는 중…</p>
-      ) : notes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {projectId
-            ? "메모가 없습니다. 「+ 추가」로 카드를 만든 뒤, 그 안에서 텍스트·HTML·미리보기 탭을 사용하세요."
-            : "메모가 없습니다. 위에서 「+ 추가」로 새 메모를 만드세요."}
-        </p>
+        <p className="text-muted-foreground text-sm">불러오는 중…</p>
+      ) : visibleNotes.length === 0 ? (
+        <div className="text-muted-foreground rounded-xl border border-dashed py-10 text-center text-sm">
+          {search.trim() ? (
+            `“${search.trim()}”에 해당하는 메모가 없습니다.`
+          ) : (
+            <span className="inline-flex flex-col items-center gap-2">
+              <StickyNote className="size-6 opacity-50" />
+              메모가 없습니다. 「추가」를 눌러 첫 메모를 만드세요.
+            </span>
+          )}
+        </div>
       ) : (
-        <div
-          className={cn("grid gap-3", projectId ? "grid-cols-1" : "sm:grid-cols-2")}
-        >
-          {notes.map((n) => (
-            <UserNoteCard
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {visibleNotes.map((n) => (
+            <UserNoteTile
               key={n.id}
               note={n}
               showProjectLink={!projectId}
               showConvertToProject={canConvertProject}
-              onPatch={handlePatch}
-              onDelete={handleDelete}
+              onOpen={setOpenNoteId}
+              onColorChange={(id, colorHex) => void handleColorChange(id, colorHex)}
+              onDelete={(id) => void handleDelete(id)}
               onRequestConvert={openConvert}
             />
           ))}
         </div>
       )}
+
+      <Dialog open={!!openNote} onOpenChange={(o) => !o && setOpenNoteId(null)}>
+        <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-4 sm:max-w-3xl">
+          <DialogHeader className="pb-1">
+            <DialogTitle className="text-sm">메모 편집</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            {openNote ? (
+              <UserNoteCard
+                key={openNote.id}
+                note={openNote}
+                showProjectLink={!projectId}
+                showConvertToProject={canConvertProject}
+                onPatch={handlePatch}
+                onDelete={async (id) => {
+                  await handleDelete(id);
+                }}
+                onRequestConvert={(n) => {
+                  setOpenNoteId(null);
+                  openConvert(n);
+                }}
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">

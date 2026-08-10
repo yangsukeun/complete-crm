@@ -74,8 +74,17 @@ async function boardGetHandler(req: Request) {
     const category = searchParams.get("category");
     const role = (session.user as { role?: string }).role ?? "";
     const vis = boardVisibilityWhere(session.user.id, role);
-    const where =
-      category && isBoardCategory(category) ? { AND: [vis, { category }] } : vis;
+    /** 제목 검색(부분 일치, 대소문자 무시) */
+    const q = (searchParams.get("q") ?? "").trim().slice(0, 100);
+    /** 목록형에서 이름순 훑기 지원 */
+    const sortByTitle = searchParams.get("sort") === "title";
+    const filters: Record<string, unknown>[] = [vis as Record<string, unknown>];
+    if (category && isBoardCategory(category)) filters.push({ category });
+    if (q) filters.push({ title: { contains: q, mode: "insensitive" } });
+    const where = (filters.length > 1 ? { AND: filters } : vis) as typeof vis;
+    const orderBy = (
+      sortByTitle ? { title: "asc" } : { createdAt: "desc" }
+    ) as { title: "asc" } | { createdAt: "desc" };
 
     const limit = Math.min(20, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10) || 0);
@@ -157,7 +166,7 @@ async function boardGetHandler(req: Request) {
         prisma.boardPost.count({ where }),
         prisma.boardPost.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy,
           skip: offset,
           take: limit,
           select: selectList,
