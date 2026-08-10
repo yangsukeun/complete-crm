@@ -114,14 +114,17 @@ const STATUS_LIST = [
 
 type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 
-const COLUMN_STORAGE_KEY = "tasks-board-visible-columns";
+/** v2: 완료 컬럼 기본 표시로 바뀌어 이전에 저장된 숨김 값을 이어받지 않도록 키를 올렸다 */
+const COLUMN_STORAGE_KEY = "tasks-board-visible-columns-v2";
 /** 보드/테이블 전환 (스펙: projectViewMode) — 이전 키는 load 시만 fallback */
 const PROJECT_VIEW_MODE_KEY = "projectViewMode";
 const LEGACY_PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
 /** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
 const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
 const MINDMAP_SHELL_STORAGE_KEY = "tasks-mindmap-shell-v1";
-const TASK_COMPLETION_SHELF_KEY = "tasks-completion-shelf-v1";
+const TASK_COMPLETION_SHELF_KEY = "tasks-completion-shelf-v2";
+/** 완료로 옮긴 프로젝트가 곧바로 사라지지 않도록 최근 완료분은 기본으로 보인다 */
+const DEFAULT_TASK_COMPLETION_SHELF: TaskCompletionShelf = "recent";
 type ProjectsViewMode = "board" | "table";
 type ProjectScopeFilter = "all" | "mine" | "shared";
 
@@ -129,7 +132,7 @@ type ColumnVisibility = Record<TaskStatus, boolean>;
 const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   TODO: true,
   IN_PROGRESS: true,
-  DONE: false,
+  DONE: true,
 };
 
 function loadColumnVisibility(): ColumnVisibility {
@@ -382,7 +385,9 @@ function TasksPageInner() {
   const [projectScopeFilter, setProjectScopeFilter] = useState<ProjectScopeFilter>("all");
   const [adminTasksUserId, setAdminTasksUserId] = useState<string>("");
   const [colorFilter, setColorFilter] = useState<string | null>(null);
-  const [taskCompletionShelf, setTaskCompletionShelf] = useState<TaskCompletionShelf>("active");
+  const [taskCompletionShelf, setTaskCompletionShelf] = useState<TaskCompletionShelf>(
+    DEFAULT_TASK_COMPLETION_SHELF
+  );
   const taskShelfHydratedRef = useRef(false);
   const projectScopeHydratedRef = useRef(false);
   const [mindmapToolbarHost, setMindmapToolbarHost] = useState<HTMLDivElement | null>(null);
@@ -651,7 +656,6 @@ function TasksPageInner() {
 
   const {
     data: taskPages,
-    size: taskPageSize,
     setSize: setTaskPageSize,
     isLoading: tasksPagesLoading,
     mutate: mutateTaskPages,
@@ -822,6 +826,13 @@ function TasksPageInner() {
           body: JSON.stringify({ status: newStatus, isCompleted: newStatus === "DONE" }),
         });
         if (!res.ok) throw new Error("수정 실패");
+        // 「활성만」이거나 완료 컬럼을 접어 둔 상태에서 완료로 옮기면 카드가 목록에서
+        // 빠져 처리가 안 된 것처럼 보인다. 결과가 보이도록 완료 칸을 열어 준다.
+        if (newStatus === "DONE") {
+          setTaskCompletionShelf((prev) => (prev === "active" ? "recent" : prev));
+          setColumnVisible((prev) => (prev.DONE ? prev : { ...prev, DONE: true }));
+          toast.success("완료로 옮겼습니다.");
+        }
         refreshTasks();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "수정에 실패했습니다.");
@@ -870,7 +881,7 @@ function TasksPageInner() {
     (filterPriority !== "" ? 1 : 0) +
     (filterDue !== "all" ? 1 : 0) +
     (colorFilter !== null ? 1 : 0) +
-    (taskCompletionShelf !== "active" ? 1 : 0) +
+    (taskCompletionShelf !== DEFAULT_TASK_COMPLETION_SHELF ? 1 : 0) +
     (adminTasksUserId !== "" ? 1 : 0) +
     (columnsReady &&
     STATUS_LIST.some((s) => columnVisible[s.value] !== DEFAULT_COLUMN_VISIBILITY[s.value])
@@ -999,8 +1010,8 @@ function TasksPageInner() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
-      <div className="border-border flex flex-col gap-4 border-b border-gray-200 pb-6">
+    <div className="flex flex-col gap-4 p-4 md:p-6">
+      <div className="border-border flex flex-col gap-3 border-b border-gray-200 pb-4">
         <PageHeadline
           title={view === "log" ? "Daily Report" : "프로젝트"}
           description={
@@ -1317,7 +1328,7 @@ function TasksPageInner() {
                       setFilterPriority("");
                       setFilterDue("all");
                       setColorFilter(null);
-                      setTaskCompletionShelf("active");
+                      setTaskCompletionShelf(DEFAULT_TASK_COMPLETION_SHELF);
                       setAdminTasksUserId("");
                       setColumnVisible(DEFAULT_COLUMN_VISIBILITY);
                     }}
@@ -1400,23 +1411,22 @@ function TasksPageInner() {
             </div>
           )
         ) : tasksLoading && tasks.length === 0 ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex flex-col gap-3 rounded-xl border bg-muted/10 p-3">
-                <Skeleton className="h-9 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
+              <div key={i} className="flex flex-col gap-2 rounded-xl border bg-muted/10 p-2">
+                <Skeleton className="h-8 w-full rounded-lg" />
+                <Skeleton className="h-20 w-full rounded-lg" />
+                <Skeleton className="h-20 w-full rounded-lg" />
               </div>
             ))}
           </div>
         ) : visibleStatusColumns.length === 0 ? (
-          <div className="border-border rounded-lg border border-dashed border-amber-300 bg-amber-50/50 py-12 text-center text-amber-900">
+          <div className="border-border rounded-lg border border-dashed border-amber-300 bg-amber-50/50 py-8 text-center text-amber-900">
             <p className="text-sm">보드에 표시할 컬럼을 하나 이상 선택해 주세요.</p>
           </div>
         ) : filteredTasks.length === 0 ? (
-          <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-16 text-center text-muted-foreground">
-            <p className="mb-4 text-sm">표시할 프로젝트가 없습니다. 새 프로젝트를 만들거나 일정 탭에서 일반 할일을 확인하세요.</p>
+          <div className="border-border rounded-lg border border-dashed border-gray-200 bg-muted/20 py-10 text-center text-muted-foreground">
+            <p className="mb-3 text-sm">표시할 프로젝트가 없습니다. 새 프로젝트를 만들거나 일정 탭에서 일반 할일을 확인하세요.</p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               <Button
                 onClick={() => {
@@ -1437,7 +1447,7 @@ function TasksPageInner() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
           {projectsViewMode === "table" ? (
             <ProjectTableView
               tasks={filteredTasks}
@@ -1457,7 +1467,7 @@ function TasksPageInner() {
           ) : (
           <div
             className={cn(
-              "grid gap-4",
+              "grid gap-3",
               visibleStatusColumns.length === 1 && "grid-cols-1",
               visibleStatusColumns.length === 2 && "grid-cols-1 md:grid-cols-2",
               visibleStatusColumns.length >= 3 && "grid-cols-1 md:grid-cols-3"
@@ -1472,18 +1482,18 @@ function TasksPageInner() {
                 >
                   <div
                     className={cn(
-                      "flex items-center justify-between border-b px-4 py-3",
+                      "flex items-center justify-between border-b px-3 py-2",
                       columnHeaderClass(col.value)
                     )}
                   >
-                    <span className="text-sm font-semibold">{col.label}</span>
-                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium tabular-nums">
-                      {list.length}개
+                    <span className="text-xs font-semibold">{col.label}</span>
+                    <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-medium tabular-nums">
+                      {list.length}
                     </span>
                   </div>
-                  <div className="flex min-h-[120px] flex-1 flex-col gap-2.5 p-3">
+                  <div className="flex min-h-[72px] flex-1 flex-col gap-2 p-2">
                     {list.length === 0 ? (
-                      <p className="text-muted-foreground py-8 text-center text-xs">없음</p>
+                      <p className="text-muted-foreground py-5 text-center text-xs">없음</p>
                     ) : (
                       list.map((task: Task) => {
                         const s = getEffectiveStatus(task);
@@ -1505,7 +1515,7 @@ function TasksPageInner() {
                             <Link
                               href={`/tasks/${task.id}`}
                               prefetch={false} // [PERF-claude-code] 카드마다 RSC 프리패치 방지
-                              className="block w-full px-3 pt-3 text-left outline-none"
+                              className="block w-full px-2.5 pt-2.5 text-left outline-none"
                               onClick={(e) => {
                                 if (!isPlainLeftClick(e)) return;
                                 e.preventDefault();
@@ -1514,13 +1524,13 @@ function TasksPageInner() {
                             >
                               <p
                                 className={cn(
-                                  "font-medium text-foreground line-clamp-2",
+                                  "line-clamp-2 text-sm font-medium text-foreground",
                                   task.isCompleted && "text-muted-foreground line-through"
                                 )}
                               >
                                 {task.title}
                               </p>
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                 <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
                                   {priorityLabel(task.priority)}
                                 </Badge>
@@ -1543,9 +1553,9 @@ function TasksPageInner() {
                                     : "마감 미정"}
                                 </span>
                               </div>
-                              <div className="mt-2 flex items-center gap-2">
-                                <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={24} />
-                                <span className="text-muted-foreground text-xs">
+                              <div className="mt-1.5 flex items-center gap-1.5">
+                                <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={20} />
+                                <span className="text-muted-foreground truncate text-xs">
                                   {task.assignees && task.assignees.length > 0
                                     ? task.assignees.map((a) => formatUserName(a)).join(", ")
                                     : task.assignedTo
@@ -1561,12 +1571,12 @@ function TasksPageInner() {
                                 />
                               </div>
                             </Link>
-                            <div className="mt-3 flex items-center gap-2 px-3 pb-3">
+                            <div className="mt-2 flex items-center gap-1.5 px-2.5 pb-2.5">
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-8 px-2 text-xs"
+                                className="h-7 px-1.5 text-xs"
                                 disabled={!prev || updatingStatusId === task.id}
                                 onClick={() => prev && updateTaskStatus(task.id, prev as any)}
                               >
@@ -1578,7 +1588,7 @@ function TasksPageInner() {
                                   onValueChange={(v: any) => updateTaskStatus(task.id, v as TaskStatus)}
                                   disabled={updatingStatusId === task.id}
                                 >
-                                  <SelectTrigger className="h-8 border-gray-200 text-xs">
+                                  <SelectTrigger className="h-7 border-gray-200 text-xs">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -1594,7 +1604,7 @@ function TasksPageInner() {
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-8 px-2 text-xs"
+                                className="h-7 px-1.5 text-xs"
                                 disabled={!next || updatingStatusId === task.id}
                                 onClick={() => next && updateTaskStatus(task.id, next as any)}
                               >
@@ -1605,7 +1615,7 @@ function TasksPageInner() {
                                   type="button"
                                   size="sm"
                                   variant="ghost"
-                                  className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                                  className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
                                   title="삭제(휴지통)"
                                   disabled={deletingTaskId === task.id}
                                   onClick={(e) => {
@@ -1618,9 +1628,6 @@ function TasksPageInner() {
                                 </Button>
                               )}
                             </div>
-                            <p className="mt-2 text-[10px] text-muted-foreground">
-                              현재: {statusLabel(s)}
-                            </p>
                           </div>
                         );
                       })
