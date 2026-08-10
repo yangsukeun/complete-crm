@@ -18,8 +18,12 @@ import {
   MessageSquare,
   Ghost,
   ClipboardList,
+  LayoutGrid,
+  Rows3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +67,25 @@ const CATEGORY_LABEL: Record<string, string> = {
   ANONYMOUS: "익명게시판",
   MEETING: "회의록",
 };
+
+/** 한 줄 목록에서 구분을 색으로 훑을 수 있게 */
+const CATEGORY_BADGE: Record<string, string> = {
+  COMPANY: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
+  TRAINING: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+  FREE: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+  ANONYMOUS: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  MEETING: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
+};
+
+const CATEGORY_ICON: Record<string, typeof FolderOpen> = {
+  TRAINING: GraduationCap,
+  FREE: MessageSquare,
+  ANONYMOUS: Ghost,
+  MEETING: ClipboardList,
+};
+
+const BOARD_VIEW_MODE_KEY = "board-view-mode-v1";
+type BoardViewMode = "list" | "gallery";
 
 type AttachmentItem = { url: string; name: string };
 
@@ -116,6 +139,202 @@ function stripMarkdownPreview(text: string, maxLen: number): string {
   return stripped.length > maxLen ? stripped.slice(0, maxLen) + "…" : stripped;
 }
 
+type BoardMedia = { type: "image" | "video"; url: string; name: string } | null;
+
+function resolveBoardPreview(b: BoardItem): { preview: string; media: BoardMedia } {
+  const preview =
+    b.listPreview?.text?.trim() ??
+    (b.description != null && b.description !== ""
+      ? previewPlainTextForBoard(b.description, 72)
+      : "");
+  const media: BoardMedia =
+    b.listPreview?.mediaType === "image" && b.listPreview.imageUrl
+      ? { type: "image", url: b.listPreview.imageUrl, name: b.title }
+      : b.listPreview?.mediaType === "video" && b.listPreview.videoUrl
+        ? { type: "video", url: b.listPreview.videoUrl, name: b.title }
+        : getPreviewMediaFromAttachmentsClient(b.attachments, b.description);
+  return { preview, media };
+}
+
+/**
+ * 목록형 한 줄. 썸네일은 40px로 작게 두고, 올려 두면 큰 미리보기를 띄운다.
+ * (마우스가 없는 환경에서는 행을 눌러 미리보기 시트를 연다)
+ */
+function BoardListRow({
+  item,
+  canDelete,
+  deleting,
+  onPeek,
+  onDelete,
+}: {
+  item: BoardItem;
+  canDelete: boolean;
+  deleting: boolean;
+  onPeek: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { preview, media } = resolveBoardPreview(item);
+  const Icon = CATEGORY_ICON[item.category] ?? FolderOpen;
+  const thumbSrc = media?.type === "image" ? getDriveThumbnailUrl(media.url, 160) : "";
+  const largeSrc = media?.type === "image" ? getDriveThumbnailUrl(media.url, 900) : "";
+
+  const thumb = (
+    <span className="bg-muted relative size-10 shrink-0 overflow-hidden rounded-md">
+      {media?.type === "image" ? (
+        <Image
+          src={thumbSrc}
+          alt={item.title}
+          fill
+          sizes="80px"
+          unoptimized={isUnoptimizedRemoteImageSrc(thumbSrc)}
+          loading="lazy"
+          className="object-cover"
+        />
+      ) : media?.type === "video" ? (
+        <video src={media.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+      ) : (
+        <span className="text-muted-foreground flex h-full w-full items-center justify-center">
+          <Icon className="size-4 opacity-60" />
+        </span>
+      )}
+    </span>
+  );
+
+  return (
+    <li>
+      <Link
+        href={`/board/${item.id}`}
+        prefetch={false}
+        className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 outline-none transition-colors"
+        onClick={(e) => {
+          if (!isPlainLeftClick(e)) return;
+          e.preventDefault();
+          onPeek(item.id);
+        }}
+      >
+        {media ? (
+          <HoverCard openDelay={120} closeDelay={60}>
+            <HoverCardTrigger asChild>{thumb}</HoverCardTrigger>
+            <HoverCardContent side="right" align="start" className="w-72 p-1.5">
+              <div className="bg-muted relative aspect-[4/3] w-full overflow-hidden rounded">
+                {media.type === "image" ? (
+                  <Image
+                    src={largeSrc}
+                    alt={item.title}
+                    fill
+                    sizes="288px"
+                    unoptimized={isUnoptimizedRemoteImageSrc(largeSrc)}
+                    className="object-contain"
+                  />
+                ) : (
+                  <video
+                    src={media.url}
+                    className="h-full w-full object-contain"
+                    muted
+                    playsInline
+                    loop
+                    autoPlay
+                    preload="metadata"
+                  />
+                )}
+              </div>
+              {preview && (
+                <p className="text-muted-foreground mt-1.5 line-clamp-3 px-0.5 text-xs">{preview}</p>
+              )}
+            </HoverCardContent>
+          </HoverCard>
+        ) : (
+          thumb
+        )}
+
+        <span
+          className={cn(
+            "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+            CATEGORY_BADGE[item.category] ?? "bg-muted text-muted-foreground"
+          )}
+        >
+          {CATEGORY_LABEL[item.category] ?? item.category}
+        </span>
+        {item.workspaceScope === "PERSONAL" && (
+          <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+            개인
+          </span>
+        )}
+
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+
+        {preview && (
+          <span className="text-muted-foreground hidden max-w-[28%] shrink truncate text-xs xl:block">
+            {preview}
+          </span>
+        )}
+        {item.attachments.length > 0 && (
+          <span className="text-muted-foreground hidden shrink-0 items-center gap-0.5 text-[11px] sm:flex">
+            <FileText className="size-3" />
+            {item.attachments.length}
+          </span>
+        )}
+        <span className="text-muted-foreground hidden w-20 shrink-0 truncate text-right text-xs sm:block">
+          {item.createdByName}
+        </span>
+        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+          {format(new Date(item.createdAt), "yy.MM.dd", { locale: ko })}
+        </span>
+        {canDelete ? (
+          <span onClick={(e) => e.preventDefault()} className="inline-flex shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-destructive size-7"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete(item.id);
+              }}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            </Button>
+          </span>
+        ) : (
+          <span className="size-7 shrink-0" />
+        )}
+      </Link>
+    </li>
+  );
+}
+
+function AnnouncementListRow({ item }: { item: AnnouncementItem }) {
+  return (
+    <li>
+      <Link
+        href={`/announcements/${item.id}`}
+        prefetch={false}
+        className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 outline-none transition-colors"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+          <Megaphone className="size-4" />
+        </span>
+        <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+          공지
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+        <span className="text-muted-foreground hidden max-w-[28%] shrink truncate text-xs xl:block">
+          {stripMarkdownPreview(item.content, 80)}
+        </span>
+        <span className="text-muted-foreground hidden w-20 shrink-0 truncate text-right text-xs sm:block">
+          {item.createdByName}
+        </span>
+        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+          {format(new Date(item.createdAt), "yy.MM.dd", { locale: ko })}
+        </span>
+        <span className="size-7 shrink-0" />
+      </Link>
+    </li>
+  );
+}
+
 export function BoardPageClient({
   canCreate,
   canCreateAnnouncement,
@@ -148,7 +367,26 @@ export function BoardPageClient({
   const [bodyContent, setBodyContent] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [peekBoardId, setPeekBoardId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<BoardViewMode>("list");
   const announcementEditorRef = useRef<ContentBodyEditorHandle | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BOARD_VIEW_MODE_KEY);
+      if (raw === "list" || raw === "gallery") setViewMode(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const changeViewMode = (mode: BoardViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(BOARD_VIEW_MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const BOARD_PAGE = 20;
 
@@ -315,8 +553,8 @@ export function BoardPageClient({
   };
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={filter === "" ? "default" : "outline"}
@@ -407,23 +645,63 @@ export function BoardPageClient({
       </div>
 
       <section>
-        <h2 className="mb-4 flex items-center gap-2 font-semibold">
-          <FolderOpen className="size-5" />
-          공지·자료 목록
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <FolderOpen className="size-5" />
+            공지·자료 목록
+          </h2>
+          <div className="flex items-center rounded-md border" role="group" aria-label="목록 표시 방식">
+            <button
+              type="button"
+              title="목록형 — 제목 위주로 훑기"
+              aria-pressed={viewMode === "list"}
+              onClick={() => changeViewMode("list")}
+              className={cn(
+                "text-muted-foreground hover:bg-muted/80 rounded-l-md p-1.5 transition-colors",
+                viewMode === "list" && "bg-muted text-foreground"
+              )}
+            >
+              <Rows3 className="size-4" />
+            </button>
+            <button
+              type="button"
+              title="갤러리형 — 이미지 크게 보기"
+              aria-pressed={viewMode === "gallery"}
+              onClick={() => changeViewMode("gallery")}
+              className={cn(
+                "text-muted-foreground hover:bg-muted/80 rounded-r-md border-l p-1.5 transition-colors",
+                viewMode === "gallery" && "bg-muted text-foreground"
+              )}
+            >
+              <LayoutGrid className="size-4" />
+            </button>
+          </div>
+        </div>
         {pageLoading ? (
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <li key={i} className="overflow-hidden rounded-lg border bg-card shadow-sm">
-                <Skeleton className="aspect-[5/4] w-full rounded-none" />
-                <div className="space-y-1.5 p-2.5">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              </li>
-            ))}
-          </ul>
+          viewMode === "list" ? (
+            <ul className="bg-card divide-y overflow-hidden rounded-xl border">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <li key={i} className="flex items-center gap-3 px-3 py-2">
+                  <Skeleton className="size-10 shrink-0 rounded-md" />
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-3 w-16 shrink-0" />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <li key={i} className="overflow-hidden rounded-lg border bg-card shadow-sm">
+                  <Skeleton className="aspect-[5/4] w-full rounded-none" />
+                  <div className="space-y-1.5 p-2.5">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
         ) : unifiedList.length === 0 ? (
           <div className="rounded-xl border border-dashed bg-muted/30 py-12 text-center text-muted-foreground">
             {filter === "ANNOUNCEMENT"
@@ -432,6 +710,23 @@ export function BoardPageClient({
                 ? "해당 구분의 자료가 없습니다."
                 : "등록된 공지·자료가 없습니다."}
           </div>
+        ) : viewMode === "list" ? (
+          <ul className="bg-card divide-y overflow-hidden rounded-xl border">
+            {unifiedList.map((item) =>
+              item.type === "ANNOUNCEMENT" ? (
+                <AnnouncementListRow key={`ann-${item.data.id}`} item={item.data} />
+              ) : (
+                <BoardListRow
+                  key={`board-${item.data.id}`}
+                  item={item.data}
+                  canDelete={canCreate && (!currentUserId || Boolean(item.data.isAuthorSelf))}
+                  deleting={deletingId === item.data.id}
+                  onPeek={setPeekBoardId}
+                  onDelete={(id) => void handleDeleteBoard(id)}
+                />
+              )
+            )}
+          </ul>
         ) : (
           <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {(() => {
