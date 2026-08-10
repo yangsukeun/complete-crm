@@ -2032,15 +2032,15 @@ function SchedulePageInner() {
           {session?.user?.role &&
             ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
               <p className="text-muted-foreground max-w-xl text-sm">
-                팀 휴가·연차 승인·처리는{" "}
+                팀 휴가·연차 승인은{" "}
                 <Link href="/leave" prefetch={false} className="font-medium text-foreground underline underline-offset-4 hover:no-underline">
                   연차/근태
                 </Link>
-                에서 합니다. 신청 알림은 헤더 알림(
+                에서 하고, 신청 알림은{" "}
                 <Link href="/notifications" prefetch={false} className="underline underline-offset-4 hover:no-underline">
                   알림함
                 </Link>
-                )에도 쌓입니다.
+                에도 쌓입니다.
               </p>
             )}
         </div>
@@ -2055,12 +2055,19 @@ function SchedulePageInner() {
                   할일 목록
                 </CardTitle>
                 <p className="text-muted-foreground mt-1 text-sm font-normal">
-                  이 목록에는 <strong className="text-foreground">직접 만든 할일(SCHEDULE)</strong>과{" "}
-                  <strong className="text-foreground">출처 미정(UNKNOWN)</strong>만 나옵니다. 캘린더의{" "}
-                  <strong className="text-foreground">할일 마감</strong> 칩에는 프로젝트·마인드맵 등 마감일이 있는 업무도 함께 표시됩니다.
-                  완료된 항목은 목록에 나오지 않습니다. 아래 <strong className="text-foreground">보라색 구역</strong>은 브랜드 프로젝트(마감일
-                  없음)입니다.
+                  직접 만든 할일만 나옵니다. 완료한 항목은 빠집니다.
                 </p>
+                <details className="group mt-1">
+                  <summary className="text-muted-foreground cursor-pointer text-xs underline underline-offset-4 hover:no-underline">
+                    무엇이 빠지나요?
+                  </summary>
+                  <ul className="text-muted-foreground mt-1.5 list-disc space-y-1 pl-4 text-xs leading-relaxed">
+                    <li>
+                      프로젝트·마인드맵에서 만든 업무는 여기 대신 캘린더의 「할일 마감」에 표시됩니다.
+                    </li>
+                    <li>아래 보라색 구역은 마감일이 없는 브랜드 프로젝트입니다.</li>
+                  </ul>
+                </details>
               </div>
               <Button size="sm" className="shrink-0 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600" onClick={() => setCreateTaskOpen(true)}>
                 <Plus className="mr-1.5 size-4" />

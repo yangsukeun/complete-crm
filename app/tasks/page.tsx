@@ -863,12 +863,19 @@ function TasksPageInner() {
     return list.map((a) => [a.id, a] as [string, NonNullable<Task["assignedTo"]>]);
   });
   const assigneeOptions = Array.from(new Map(assigneePairs).entries());
-  const hasActiveFilter =
-    filterStatus !== "" ||
-    filterAssigneeId !== "" ||
-    filterPriority !== "" ||
-    filterDue !== "all" ||
-    colorFilter !== null;
+  /** 「필터」 버튼 배지 — 기본값과 다른 조건 개수 */
+  const activeFilterCount =
+    (filterStatus !== "" ? 1 : 0) +
+    (filterAssigneeId !== "" ? 1 : 0) +
+    (filterPriority !== "" ? 1 : 0) +
+    (filterDue !== "all" ? 1 : 0) +
+    (colorFilter !== null ? 1 : 0) +
+    (taskCompletionShelf !== "active" ? 1 : 0) +
+    (adminTasksUserId !== "" ? 1 : 0) +
+    (columnsReady &&
+    STATUS_LIST.some((s) => columnVisible[s.value] !== DEFAULT_COLUMN_VISIBILITY[s.value])
+      ? 1
+      : 0);
 
   const visibleStatusColumns = useMemo(
     () => STATUS_LIST.filter((s) => columnVisible[s.value]),
@@ -999,10 +1006,10 @@ function TasksPageInner() {
           description={
             view === "log"
               ? "Record your daily work"
-              : "프로젝트만 표시됩니다. 일반 할일은 일정 탭에서, 마인드맵 노드는 Mindmap 탭에서 확인하세요. 카드 클릭 시 오른쪽에서 미리 볼 수 있고, Ctrl·⌘·Shift 클릭은 새 탭으로 열립니다."
+              : "프로젝트만 표시됩니다. 카드를 클릭하면 오른쪽에서 미리 볼 수 있습니다."
           }
         />
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Tabs value={view} onValueChange={(v: any) => setView(v as any)} className="w-auto">
             <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5" data-tour="tasks-view-tabs">
               <TabsTrigger value="list" className="gap-2 rounded-md px-3">
@@ -1022,6 +1029,7 @@ function TasksPageInner() {
             <TabsContent value="mindmap" className="mt-0" />
             <TabsContent value="log" className="mt-0" />
           </Tabs>
+
           {view === "list" && projectsViewModeReady ? (
             <div
               className="flex items-center rounded-md border border-gray-200"
@@ -1052,139 +1060,266 @@ function TasksPageInner() {
               </button>
             </div>
           ) : null}
-          {view === "mindmap" && (
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground hidden text-xs sm:inline">보기</span>
-              <Select
-                value={projectScopeFilter}
-                onValueChange={(v) => setProjectScopeFilter(v as ProjectScopeFilter)}
-              >
-                <SelectTrigger className="h-9 w-[148px] border-gray-200 text-left text-sm">
-                  <SelectValue placeholder="범위" />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  <SelectItem value="mine">내 프로젝트</SelectItem>
-                  <SelectItem value="shared">공유·참여</SelectItem>
-                  <SelectItem value="all">전체 보기</SelectItem>
-                </SelectContent>
-              </Select>
-              {isTasksAdmin && (
-                <Select
-                  value={adminTasksUserId || "__all_staff__"}
-                  onValueChange={(v) => setAdminTasksUserId(v === "__all_staff__" ? "" : v)}
-                >
-                  <SelectTrigger className="h-9 w-[148px] border-gray-200 text-left text-sm">
-                    <SelectValue placeholder="직원" />
-                  </SelectTrigger>
-                  <SelectContent align="start">
-                    <SelectItem value="__all_staff__">전체 직원</SelectItem>
-                    {(tasksAdminUsers as { id: string; name: string }[]).map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {formatUserName(u)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+
+          {view !== "log" && (
+            <Select
+              value={projectScopeFilter}
+              onValueChange={(v) => setProjectScopeFilter(v as ProjectScopeFilter)}
+            >
+              <SelectTrigger className="h-9 w-[150px] border-gray-200 text-left text-sm">
+                <SelectValue placeholder="보기 범위" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectItem value="mine">내 프로젝트</SelectItem>
+                <SelectItem value="shared">공유·참여</SelectItem>
+                <SelectItem value="all">전체 보기</SelectItem>
+              </SelectContent>
+            </Select>
           )}
-          {view === "list" && (
+
+          {view !== "log" && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
                   className={cn(
-                    "border-gray-200 text-muted-foreground",
-                    hasActiveFilter && "border-amber-400 text-amber-700"
+                    "h-9 border-gray-200 text-muted-foreground",
+                    activeFilterCount > 0 && "border-amber-400 text-amber-700"
                   )}
                 >
                   <Filter className="mr-2 size-4" />
                   필터
-                  {hasActiveFilter && (
-                    <span className="ml-1 rounded bg-amber-100 px-1 text-[10px]">적용중</span>
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1.5 rounded bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800">
+                      {activeFilterCount}
+                    </span>
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-72" align="start">
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">상태</p>
-                  <Select
-                    value={filterStatus || "all"}
-                    onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="전체" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체</SelectItem>
-                      {STATUS_LIST.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
+              <PopoverContent className="max-h-[70vh] w-80 overflow-y-auto" align="start">
+                <div className="space-y-4">
+                  {view === "list" && (
+                    <div className="space-y-2">
+                      <p className="text-muted-foreground text-xs font-semibold">상태</p>
+                      <Select
+                        value={filterStatus || "all"}
+                        onValueChange={(v) => setFilterStatus(v === "all" ? "" : (v as TaskStatus))}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="전체" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">전체</SelectItem>
+                          {STATUS_LIST.map((s) => (
+                            <SelectItem key={s.value} value={s.value}>
+                              {s.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <p className="text-muted-foreground pt-1 text-xs font-semibold">담당자</p>
+                      <Select
+                        value={filterAssigneeId || "all"}
+                        onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="전체" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">전체</SelectItem>
+                          {assigneeOptions.map(([id, u]: any) => (
+                            <SelectItem key={id} value={id}>
+                              {formatUserName(u)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <p className="text-muted-foreground pt-1 text-xs font-semibold">우선순위</p>
+                      <Select
+                        value={filterPriority || "all"}
+                        onValueChange={(v) =>
+                          setFilterPriority(v === "all" ? "" : (v as "HIGH" | "MEDIUM" | "LOW"))
+                        }
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="전체" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">전체</SelectItem>
+                          <SelectItem value="HIGH">높음</SelectItem>
+                          <SelectItem value="MEDIUM">보통</SelectItem>
+                          <SelectItem value="LOW">낮음</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <p className="text-muted-foreground pt-1 text-xs font-semibold">마감일</p>
+                      <Select value={filterDue} onValueChange={(v) => setFilterDue(v as DueFilterValue)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DUE_FILTER_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {isTasksAdmin && (
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="text-muted-foreground text-xs font-semibold">직원별 보기</p>
+                      <Select
+                        value={adminTasksUserId || "__all_staff__"}
+                        onValueChange={(v) => setAdminTasksUserId(v === "__all_staff__" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="전체 직원" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all_staff__">전체 직원</SelectItem>
+                          {(tasksAdminUsers as { id: string; name: string }[]).map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {formatUserName(u)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 border-t pt-3">
+                    <p className="text-muted-foreground text-xs font-semibold">색상</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setColorFilter(null)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                          colorFilter === null
+                            ? "border-gray-800 bg-gray-800 text-white"
+                            : "border-gray-200 hover:bg-muted"
+                        )}
+                      >
+                        전체
+                      </button>
+                      <button
+                        type="button"
+                        title="팔레트 미지정·기본 테두리"
+                        onClick={() =>
+                          setColorFilter((prev) =>
+                            prev === COLOR_FILTER_DEFAULT_ONLY ? null : COLOR_FILTER_DEFAULT_ONLY
+                          )
+                        }
+                        className={cn(
+                          "rounded-full border-2 border-dashed px-2.5 py-0.5 text-xs transition-colors",
+                          colorFilter === COLOR_FILTER_DEFAULT_ONLY
+                            ? "border-gray-800 bg-gray-100 text-gray-900"
+                            : "border-gray-300 text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        기본
+                      </button>
+                      {PROJECT_TASK_COLORS.map((c) => (
+                        <button
+                          key={c.value}
+                          type="button"
+                          title={c.label}
+                          onClick={() => setColorFilter(colorFilter === c.value ? null : c.value)}
+                          className={cn(
+                            "size-6 shrink-0 rounded-full border-2 transition-transform",
+                            colorFilter === c.value
+                              ? "scale-110 border-gray-800"
+                              : "border-transparent hover:scale-105"
+                          )}
+                          style={{ background: c.value }}
+                        />
                       ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm font-medium">담당자</p>
-                  <Select
-                    value={filterAssigneeId || "all"}
-                    onValueChange={(v) => setFilterAssigneeId(v === "all" ? "" : v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="전체" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체</SelectItem>
-                      {assigneeOptions.map(([id, u]: any) => (
-                        <SelectItem key={id} value={id}>
-                          {formatUserName(u)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm font-medium">우선순위</p>
-                  <Select
-                    value={filterPriority || "all"}
-                    onValueChange={(v) =>
-                      setFilterPriority(v === "all" ? "" : (v as "HIGH" | "MEDIUM" | "LOW"))
-                    }
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="전체" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체</SelectItem>
-                      <SelectItem value="HIGH">높음</SelectItem>
-                      <SelectItem value="MEDIUM">보통</SelectItem>
-                      <SelectItem value="LOW">낮음</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm font-medium">마감일</p>
-                  <Select
-                    value={filterDue}
-                    onValueChange={(v) => setFilterDue(v as DueFilterValue)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DUE_FILTER_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 border-t pt-3">
+                    <p className="text-muted-foreground text-xs font-semibold">완료·아카이브</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={taskCompletionShelf === "active" ? "default" : "outline"}
+                        className="h-8 border-gray-200 text-xs"
+                        onClick={() => setTaskCompletionShelf("active")}
+                      >
+                        활성만
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={taskCompletionShelf === "recent" ? "default" : "outline"}
+                        className="h-8 border-gray-200 text-xs"
+                        onClick={() => setTaskCompletionShelf("recent")}
+                      >
+                        최근 완료 7일
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={taskCompletionShelf === "all" ? "default" : "outline"}
+                        className="h-8 border-gray-200 text-xs"
+                        onClick={() => setTaskCompletionShelf("all")}
+                      >
+                        전체+아카이브
+                      </Button>
+                    </div>
+                  </div>
+
+                  {view === "list" && (
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="text-muted-foreground text-xs font-semibold">보드 컬럼</p>
+                      <div className="flex flex-wrap items-center gap-4">
+                        {STATUS_LIST.map((s) => (
+                          <div key={s.value} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`col-${s.value}`}
+                              checked={columnVisible[s.value]}
+                              onCheckedChange={(c) => {
+                                const on = c === true;
+                                setColumnVisible((prev) => {
+                                  const next = { ...prev, [s.value]: on };
+                                  if (!next.TODO && !next.IN_PROGRESS && !next.DONE) return prev;
+                                  return next;
+                                });
+                              }}
+                            />
+                            <Label
+                              htmlFor={`col-${s.value}`}
+                              className="cursor-pointer text-sm font-normal"
+                            >
+                              {s.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <Button
                     variant="ghost"
                     size="sm"
                     className="w-full"
+                    disabled={activeFilterCount === 0}
                     onClick={() => {
                       setFilterStatus("");
                       setFilterAssigneeId("");
                       setFilterPriority("");
                       setFilterDue("all");
                       setColorFilter(null);
+                      setTaskCompletionShelf("active");
+                      setAdminTasksUserId("");
+                      setColumnVisible(DEFAULT_COLUMN_VISIBILITY);
                     }}
                   >
                     필터 초기화
@@ -1193,6 +1328,7 @@ function TasksPageInner() {
               </PopoverContent>
             </Popover>
           )}
+
           <Button
             onClick={() => {
               setCreateParentId(null);
@@ -1216,147 +1352,6 @@ function TasksPageInner() {
         {(() => {
           const inner = (
             <>
-        {(view === "list" || view === "mindmap") && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-muted/10 px-3 py-2">
-            <span className="text-muted-foreground text-xs font-medium">색상</span>
-            <button
-              type="button"
-              onClick={() => setColorFilter(null)}
-              className={cn(
-                "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
-                colorFilter === null ? "border-gray-800 bg-gray-800 text-white" : "border-gray-200 hover:bg-muted"
-              )}
-            >
-              전체
-            </button>
-            <button
-              type="button"
-              title="팔레트 미지정·기본 테두리"
-              onClick={() =>
-                setColorFilter((prev) =>
-                  prev === COLOR_FILTER_DEFAULT_ONLY ? null : COLOR_FILTER_DEFAULT_ONLY
-                )
-              }
-              className={cn(
-                "rounded-full border-2 border-dashed px-2.5 py-0.5 text-xs transition-colors",
-                colorFilter === COLOR_FILTER_DEFAULT_ONLY
-                  ? "border-gray-800 bg-gray-100 text-gray-900"
-                  : "border-gray-300 text-muted-foreground hover:bg-muted"
-              )}
-            >
-              기본
-            </button>
-            {PROJECT_TASK_COLORS.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                title={c.label}
-                onClick={() => setColorFilter(colorFilter === c.value ? null : c.value)}
-                className={cn(
-                  "size-6 shrink-0 rounded-full border-2 transition-transform",
-                  colorFilter === c.value ? "scale-110 border-gray-800" : "border-transparent hover:scale-105"
-                )}
-                style={{ background: c.value }}
-              />
-            ))}
-          </div>
-        )}
-        {view === "list" && (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-muted/15 px-4 py-3">
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-              <span className="text-muted-foreground text-xs font-semibold tracking-wide">보기 범위</span>
-              <Select
-                value={projectScopeFilter}
-                onValueChange={(v) => setProjectScopeFilter(v as ProjectScopeFilter)}
-              >
-                <SelectTrigger className="h-9 w-full min-w-[160px] border-gray-200 sm:w-[180px]" size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  <SelectItem value="mine">내 프로젝트 (내가 생성)</SelectItem>
-                  <SelectItem value="shared">공유·참여 (담당·배정)</SelectItem>
-                  <SelectItem value="all">전체 보기 (팀에 허용된 목록)</SelectItem>
-                </SelectContent>
-              </Select>
-              {isTasksAdmin && (
-                <Select
-                  value={adminTasksUserId || "__all_staff__"}
-                  onValueChange={(v) => setAdminTasksUserId(v === "__all_staff__" ? "" : v)}
-                >
-                  <SelectTrigger className="h-9 w-full min-w-[160px] border-gray-200 sm:w-[200px]" size="sm">
-                    <SelectValue placeholder="직원별 보기" />
-                  </SelectTrigger>
-                  <SelectContent align="start">
-                    <SelectItem value="__all_staff__">전체 직원</SelectItem>
-                    {(tasksAdminUsers as { id: string; name: string }[]).map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {formatUserName(u)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-            <div className="flex w-full flex-col gap-2 border-t border-gray-200 pt-3 sm:flex-row sm:items-center sm:gap-3">
-              <span className="text-muted-foreground shrink-0 text-xs font-semibold tracking-wide">
-                완료·아카이브
-              </span>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={taskCompletionShelf === "active" ? "default" : "outline"}
-                  className="h-8 border-gray-200 text-xs"
-                  onClick={() => setTaskCompletionShelf("active")}
-                >
-                  활성만
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={taskCompletionShelf === "recent" ? "default" : "outline"}
-                  className="h-8 border-gray-200 text-xs"
-                  onClick={() => setTaskCompletionShelf("recent")}
-                >
-                  최근 완료 7일
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={taskCompletionShelf === "all" ? "default" : "outline"}
-                  className="h-8 border-gray-200 text-xs"
-                  onClick={() => setTaskCompletionShelf("all")}
-                >
-                  전체+아카이브
-                </Button>
-              </div>
-            </div>
-            <span className="text-muted-foreground w-full text-xs font-semibold tracking-wide sm:w-auto">
-              컬럼 표시
-            </span>
-            <div className="flex flex-wrap items-center gap-4">
-              {STATUS_LIST.map((s) => (
-                <div key={s.value} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`col-${s.value}`}
-                    checked={columnVisible[s.value]}
-                    onCheckedChange={(c) => {
-                      const on = c === true;
-                      setColumnVisible((prev) => {
-                        const next = { ...prev, [s.value]: on };
-                        if (!next.TODO && !next.IN_PROGRESS && !next.DONE) return prev;
-                        return next;
-                      });
-                    }}
-                  />
-                  <Label htmlFor={`col-${s.value}`} className="cursor-pointer text-sm font-normal">
-                    {s.label}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         {view === "log" ? (
           <WorkLogTab />
         ) : view === "mindmap" ? (
