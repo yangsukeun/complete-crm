@@ -46,6 +46,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
@@ -54,7 +55,6 @@ import {
   ListTodo,
   FileText,
   CalendarDays,
-  Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   Stethoscope,
@@ -210,6 +210,14 @@ function holidayToEvent(h: HolidayItem): ScheduleEvent {
 }
 
 const CALENDAR_LAYERS_STORAGE_KEY = "schedule-visible-calendars";
+
+/**
+ * 외부 캘린더 자동 재조회 주기.
+ * Google·네이버 모두 변경 알림(웹훅)을 주지 않으므로 폴링으로만 최신화할 수 있습니다.
+ */
+const EXTERNAL_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+/** 창 복귀 시 과도한 재조회 방지 */
+const EXTERNAL_REFRESH_MIN_GAP_MS = 30 * 1000;
 
 const DEFAULT_VISIBLE_CALENDARS: Record<CalendarLayerId, boolean> = {
   personal: true,
@@ -784,7 +792,7 @@ const CALENDAR_CHIP_COLORS: Record<CalendarLayerId, string> = {
   taskDue: EVENT_PALETTE.taskDue.bg,
 };
 
-type ScheduleHeaderGoogleProps = {
+type ScheduleHeaderProps = {
   showCalendarNav: boolean;
   tab: TabId;
   setTab: (t: TabId) => void;
@@ -795,17 +803,13 @@ type ScheduleHeaderGoogleProps = {
   onCalendarNavigate: (action: string, newDate?: Date) => void;
   onViewChange: (v: View) => void;
   headerMessages: { today: string; prev: string; next: string; month: string; week: string };
-  googleConnected: boolean;
-  onGoogleDisconnect: () => void | Promise<void>;
-  onGoogleConnect: () => void;
-  /** 네이버 가져오기(CalDAV·.ics) 또는 내보내기(OAuth) 중 하나라도 연결된 상태 */
-  naverActive: boolean;
-  onOpenNaver: () => void;
-  onOpenIcalFeed: () => void;
+  /** Google·네이버 중 하나라도 연결됨 — 연동 버튼에 표시점 */
+  anyIntegrationConnected: boolean;
+  onOpenIntegrations: () => void;
   onNewSchedule: () => void;
 };
 
-function ScheduleHeaderGoogle({
+function ScheduleHeader({
   showCalendarNav,
   tab,
   setTab,
@@ -816,14 +820,10 @@ function ScheduleHeaderGoogle({
   onCalendarNavigate,
   onViewChange,
   headerMessages,
-  googleConnected,
-  onGoogleDisconnect,
-  onGoogleConnect,
-  naverActive,
-  onOpenNaver,
-  onOpenIcalFeed,
+  anyIntegrationConnected,
+  onOpenIntegrations,
   onNewSchedule,
-}: ScheduleHeaderGoogleProps) {
+}: ScheduleHeaderProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const currentYear = date.getFullYear();
@@ -970,46 +970,21 @@ function ScheduleHeaderGoogle({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {showCalendarNav && (
             <>
-              {googleConnected ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
-                  onClick={() => void onGoogleDisconnect()}
-                >
-                  <CalendarIcon className="mr-1.5 size-4" />
-                  <span className="hidden sm:inline">Google · 해제</span>
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
-                  onClick={onGoogleConnect}
-                >
-                  <CalendarIcon className="mr-1.5 size-4" />
-                  <span className="hidden sm:inline">Google 연동</span>
-                </Button>
-              )}
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 shrink-0 border-[#03c75a]/40 text-[#03a94d] dark:border-emerald-700"
-                onClick={onOpenNaver}
-              >
-                <CalendarIcon className="mr-1.5 size-4" />
-                <span className="hidden sm:inline">
-                  {naverActive ? "네이버 · 연결됨" : "네이버 연동"}
-                </span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+                title="Google·네이버 캘린더 연동"
                 className="h-9 shrink-0 border-[#e0e0e0] text-[#3c4043] dark:border-border"
-                onClick={onOpenIcalFeed}
+                onClick={onOpenIntegrations}
               >
                 <Link2 className="mr-1.5 size-4" />
-                <span className="hidden sm:inline">iCal 구독</span>
+                <span className="hidden sm:inline">캘린더 연동</span>
+                {anyIntegrationConnected && (
+                  <span
+                    className="ml-1.5 size-1.5 rounded-full bg-[#03c75a]"
+                    aria-label="연결됨"
+                  />
+                )}
               </Button>
               <Button
                 size="sm"
@@ -1070,15 +1045,15 @@ function SchedulePageInner() {
   }, []);
   const [googleEvents, setGoogleEvents] = useState<ScheduleEvent[]>([]);
   const [naverEvents, setNaverEvents] = useState<ScheduleEvent[]>([]);
-  const [naverDialogOpen, setNaverDialogOpen] = useState(false);
+  const [integrationsOpen, setIntegrationsOpen] = useState(false);
   const [naverIdInput, setNaverIdInput] = useState("");
   const [naverPasswordInput, setNaverPasswordInput] = useState("");
   const [naverConnecting, setNaverConnecting] = useState(false);
   const [naverIcsUploading, setNaverIcsUploading] = useState(false);
-  /** 연결·업로드 직후 강제 재조회용 */
-  const [naverRefreshKey, setNaverRefreshKey] = useState(0);
+  /** 외부 캘린더(Google·네이버) 재조회 트리거 — 주기 폴링·창 복귀·수동 새로고침 */
+  const [externalRefreshKey, setExternalRefreshKey] = useState(0);
+  const lastExternalRefreshAtRef = useRef(0);
   const naverIcsInputRef = useRef<HTMLInputElement>(null);
-  const [icalDialogOpen, setIcalDialogOpen] = useState(false);
   const [icalFeedUrl, setIcalFeedUrl] = useState("");
   const [icalWebcalUrl, setIcalWebcalUrl] = useState("");
   const [icalLoading, setIcalLoading] = useState(false);
@@ -1339,6 +1314,33 @@ function SchedulePageInner() {
     return () => window.removeEventListener("workspace-changed", onWorkspaceChange);
   }, [revalidateSchedules]);
 
+  const refreshExternalCalendars = useCallback((minGapMs = 0) => {
+    const now = Date.now();
+    if (minGapMs > 0 && now - lastExternalRefreshAtRef.current < minGapMs) return;
+    lastExternalRefreshAtRef.current = now;
+    setExternalRefreshKey((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "schedule") return;
+    const onInterval = () => {
+      if (document.visibilityState === "visible") refreshExternalCalendars();
+    };
+    const onReturn = () => {
+      if (document.visibilityState === "visible") {
+        refreshExternalCalendars(EXTERNAL_REFRESH_MIN_GAP_MS);
+      }
+    };
+    const timer = window.setInterval(onInterval, EXTERNAL_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, [tab, refreshExternalCalendars]);
+
   useEffect(() => {
     // [PERF-2차] Google 캘린더 레이어가 꺼져 있으면 이벤트 API 호출 생략
     if (!googleConnected || tab !== "schedule" || visibleCalendars.google === false) {
@@ -1364,7 +1366,7 @@ function SchedulePageInner() {
         );
       })
       .catch(() => setGoogleEvents([]));
-  }, [googleConnected, tab, view, date, visibleCalendars.google]);
+  }, [googleConnected, tab, view, date, visibleCalendars.google, externalRefreshKey]);
 
   useEffect(() => {
     if (!naverHasReadSource || tab !== "schedule" || visibleCalendars.naver === false) {
@@ -1399,7 +1401,7 @@ function SchedulePageInner() {
     return () => {
       cancelled = true;
     };
-  }, [naverHasReadSource, tab, view, date, visibleCalendars.naver, naverRefreshKey]);
+  }, [naverHasReadSource, tab, view, date, visibleCalendars.naver, externalRefreshKey]);
 
   const handleSelectEvent = useCallback(
     (event: ScheduleEvent) => {
@@ -1757,14 +1759,14 @@ function SchedulePageInner() {
       if (!res.ok) throw new Error(data.error ?? "네이버 캘린더 연결에 실패했습니다.");
       setNaverPasswordInput("");
       await mutateNaverCalDav();
-      setNaverRefreshKey((k) => k + 1);
+      refreshExternalCalendars();
       toast.success("네이버 캘린더를 불러오도록 연결했습니다.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "네이버 캘린더 연결에 실패했습니다.");
     } finally {
       setNaverConnecting(false);
     }
-  }, [naverIdInput, naverPasswordInput, mutateNaverCalDav]);
+  }, [naverIdInput, naverPasswordInput, mutateNaverCalDav, refreshExternalCalendars]);
 
   const handleNaverCalDavDisconnect = useCallback(async () => {
     const res = await fetch(SWR_KEYS.naverCalDav, { method: "DELETE" });
@@ -1774,9 +1776,9 @@ function SchedulePageInner() {
     }
     await mutateNaverCalDav();
     setNaverEvents([]);
-    setNaverRefreshKey((k) => k + 1);
+    refreshExternalCalendars();
     toast.success("네이버 캘린더 불러오기를 해제했습니다.");
-  }, [mutateNaverCalDav]);
+  }, [mutateNaverCalDav, refreshExternalCalendars]);
 
   const handleNaverIcsUpload = useCallback(
     async (file: File) => {
@@ -1791,7 +1793,7 @@ function SchedulePageInner() {
         const data = (await res.json().catch(() => ({}))) as { imported?: number; error?: string };
         if (!res.ok) throw new Error(data.error ?? ".ics 파일을 읽지 못했습니다.");
         await mutateNaverCalDav();
-        setNaverRefreshKey((k) => k + 1);
+        refreshExternalCalendars();
         toast.success(`${data.imported ?? 0}건의 일정을 불러왔습니다.`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : ".ics 파일을 읽지 못했습니다.");
@@ -1800,7 +1802,7 @@ function SchedulePageInner() {
         if (naverIcsInputRef.current) naverIcsInputRef.current.value = "";
       }
     },
-    [mutateNaverCalDav]
+    [mutateNaverCalDav, refreshExternalCalendars]
   );
 
   const handleNaverIcsClear = useCallback(async () => {
@@ -1810,9 +1812,9 @@ function SchedulePageInner() {
       return;
     }
     await mutateNaverCalDav();
-    setNaverRefreshKey((k) => k + 1);
+    refreshExternalCalendars();
     toast.success("업로드한 네이버 일정을 삭제했습니다.");
-  }, [mutateNaverCalDav]);
+  }, [mutateNaverCalDav, refreshExternalCalendars]);
 
   const loadIcalFeedUrls = useCallback(async () => {
     setIcalLoading(true);
@@ -1829,10 +1831,19 @@ function SchedulePageInner() {
     }
   }, []);
 
-  const handleOpenIcalFeed = useCallback(() => {
-    setIcalDialogOpen(true);
+  const handleOpenIntegrations = useCallback(() => {
+    setIntegrationsOpen(true);
     void loadIcalFeedUrls();
   }, [loadIcalFeedUrls]);
+
+  const anyIntegrationConnected =
+    googleConnected || naverConnected || naverHasReadSource;
+
+  const handleManualSync = useCallback(() => {
+    refreshExternalCalendars();
+    void mutateNaverCalDav();
+    toast.success("외부 캘린더를 다시 불러옵니다.");
+  }, [refreshExternalCalendars, mutateNaverCalDav]);
 
   const handleCopyIcalUrl = useCallback(async () => {
     if (!icalFeedUrl) return;
@@ -1867,7 +1878,7 @@ function SchedulePageInner() {
   if (schedulesLoading && tab === "schedule") {
     return (
       <div className="schedule-gcal-root flex min-h-[60vh] flex-col">
-        <ScheduleHeaderGoogle
+        <ScheduleHeader
           showCalendarNav={true}
           tab={tab}
           setTab={setTab}
@@ -1878,12 +1889,8 @@ function SchedulePageInner() {
           onCalendarNavigate={handleCalendarNavigate}
           onViewChange={setView}
           headerMessages={headerMessages}
-          googleConnected={googleConnected}
-          onGoogleDisconnect={handleGoogleDisconnect}
-          onGoogleConnect={handleGoogleConnect}
-          naverActive={naverConnected || naverHasReadSource}
-          onOpenNaver={() => setNaverDialogOpen(true)}
-          onOpenIcalFeed={handleOpenIcalFeed}
+          anyIntegrationConnected={anyIntegrationConnected}
+          onOpenIntegrations={handleOpenIntegrations}
           onNewSchedule={() => setCreateOpen(true)}
         />
         <div className="flex flex-1 items-center justify-center p-6">
@@ -1895,7 +1902,7 @@ function SchedulePageInner() {
 
   return (
     <div className="schedule-gcal-root flex flex-col">
-      <ScheduleHeaderGoogle
+      <ScheduleHeader
         showCalendarNav={tab === "schedule"}
         tab={tab}
         setTab={setTab}
@@ -1906,12 +1913,8 @@ function SchedulePageInner() {
         onCalendarNavigate={handleCalendarNavigate}
         onViewChange={setView}
         headerMessages={headerMessages}
-        googleConnected={googleConnected}
-        onGoogleDisconnect={handleGoogleDisconnect}
-        onGoogleConnect={handleGoogleConnect}
-        naverActive={naverConnected || naverHasReadSource}
-        onOpenNaver={() => setNaverDialogOpen(true)}
-        onOpenIcalFeed={handleOpenIcalFeed}
+        anyIntegrationConnected={anyIntegrationConnected}
+        onOpenIntegrations={handleOpenIntegrations}
         onNewSchedule={() => setCreateOpen(true)}
       />
 
@@ -1919,7 +1922,7 @@ function SchedulePageInner() {
         <div className="space-y-1">
           <PageHeadline
             title="스케줄"
-            description="여기에는 직접 만든 할일과 출처 미정 데이터만 목록에 보입니다. Google·네이버 일정은 캘린더에 함께 겹쳐 보이며, 네이버는 CalDAV 연결이나 .ics 업로드로 불러옵니다."
+            description="여기에는 직접 만든 할일과 출처 미정 데이터만 목록에 보입니다. Google·네이버 일정은 「캘린더 연동」에서 설정하면 캘린더에 함께 겹쳐 보입니다."
           />
           {session?.user?.role &&
             ["TEAM_LEAD", "EXECUTIVE", "ADMIN"].includes(session.user.role) && (
@@ -2422,206 +2425,270 @@ function SchedulePageInner() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={naverDialogOpen} onOpenChange={setNaverDialogOpen}>
+      <Dialog open={integrationsOpen} onOpenChange={setIntegrationsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>네이버 캘린더</DialogTitle>
+            <DialogTitle>캘린더 연동</DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1 text-sm">
-            <section className="space-y-3">
-              <div>
-                <h3 className="font-semibold">네이버 일정 불러오기</h3>
-                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                  네이버는 구독용 URL을 제공하지 않아 CalDAV로 접속하거나 .ics 파일을 올려야 합니다.
-                </p>
-              </div>
+          <Tabs defaultValue="naver">
+            <TabsList className="w-full">
+              <TabsTrigger value="naver" className="flex-1">
+                네이버
+              </TabsTrigger>
+              <TabsTrigger value="google" className="flex-1">
+                Google
+              </TabsTrigger>
+            </TabsList>
 
-              <div className="rounded-lg border p-3">
-                <p className="text-xs font-semibold">방법 1. CalDAV 자동 동기화</p>
-                {naverReadConnected ? (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-muted-foreground text-xs">
-                      <span className="font-medium text-foreground">{naverCalDavStatus?.naverId}</span>{" "}
-                      계정으로 연결되어 있습니다.
-                    </p>
-                    {naverCalDavStatus?.lastError ? (
-                      <p className="text-xs text-red-600">{naverCalDavStatus.lastError}</p>
-                    ) : null}
+            <TabsContent
+              value="naver"
+              className="max-h-[58vh] space-y-4 overflow-y-auto pr-1 text-sm"
+            >
+              <section className="space-y-3">
+                <div>
+                  <h3 className="font-semibold">네이버 일정 가져오기</h3>
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    네이버는 변경 알림을 보내주지 않아 CRM이 2분마다 다시 확인합니다. 아래 두 방법 중
+                    하나만 설정하면 됩니다.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-semibold">방법 1. 계정 연결 (자동)</p>
+                  {naverReadConnected ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-muted-foreground text-xs">
+                        <span className="text-foreground font-medium">
+                          {naverCalDavStatus?.naverId}
+                        </span>{" "}
+                        계정으로 연결되어 있습니다.
+                      </p>
+                      {naverCalDavStatus?.lastSyncedAt ? (
+                        <p className="text-muted-foreground text-xs">
+                          마지막 확인{" "}
+                          {format(new Date(naverCalDavStatus.lastSyncedAt), "M월 d일 HH:mm", {
+                            locale: ko,
+                          })}
+                        </p>
+                      ) : null}
+                      {naverCalDavStatus?.lastError ? (
+                        <p className="text-xs text-red-600">{naverCalDavStatus.lastError}</p>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleNaverCalDavDisconnect()}
+                      >
+                        연결 해제
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-muted-foreground text-xs leading-relaxed">
+                        2단계 인증을 쓰면 네이버에서 「애플리케이션 비밀번호」를 발급받아 입력하세요.
+                        비밀번호는 암호화해서 보관하며 일정을 읽는 데만 사용합니다.
+                      </p>
+                      <Input
+                        placeholder="네이버 아이디"
+                        autoComplete="off"
+                        value={naverIdInput}
+                        onChange={(e) => setNaverIdInput(e.target.value)}
+                      />
+                      <Input
+                        type="password"
+                        placeholder="비밀번호 또는 애플리케이션 비밀번호"
+                        autoComplete="new-password"
+                        value={naverPasswordInput}
+                        onChange={(e) => setNaverPasswordInput(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={naverConnecting || !naverReadConfigured}
+                        onClick={() => void handleNaverCalDavConnect()}
+                      >
+                        {naverConnecting ? "연결 중..." : "연결"}
+                      </Button>
+                      {!naverReadConfigured ? (
+                        <p className="text-xs text-red-600">
+                          서버에 암호화 키(CALENDAR_CREDENTIAL_KEY 또는 AUTH_SECRET)가 없어 연결할 수
+                          없습니다.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-semibold">방법 2. 파일 올리기 (수동)</p>
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    네이버 캘린더의 「가져오기/내보내기(백업)」에서 받은 .ics 파일을 올리면 그 시점 일정이
+                    표시됩니다. 다시 올리면 이전 업로드분을 대체합니다.
+                  </p>
+                  <input
+                    ref={naverIcsInputRef}
+                    type="file"
+                    accept=".ics,text/calendar"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleNaverIcsUpload(file);
+                    }}
+                  />
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => void handleNaverCalDavDisconnect()}
+                      disabled={naverIcsUploading}
+                      onClick={() => naverIcsInputRef.current?.click()}
                     >
-                      연결 해제
+                      <Upload className="mr-1.5 size-4" />
+                      {naverIcsUploading ? "불러오는 중..." : ".ics 파일 선택"}
+                    </Button>
+                    {naverImportedCount > 0 ? (
+                      <>
+                        <span className="text-muted-foreground text-xs">
+                          {naverImportedCount}건 표시 중
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleNaverIcsClear()}
+                        >
+                          <Trash2 className="mr-1.5 size-4" />
+                          삭제
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3 border-t pt-4">
+                <div>
+                  <h3 className="font-semibold">CRM 일정 네이버로 보내기</h3>
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    반대 방향입니다. 필요 없으면 설정하지 않아도 됩니다.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-semibold">자동 등록</p>
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    연동하면 새로 만든 CRM 일정과 승인된 휴가가 네이버 캘린더에 등록됩니다.
+                  </p>
+                  <div className="mt-2">
+                    {!naverConfigured ? (
+                      <p className="text-muted-foreground text-xs">
+                        서버에 네이버 OAuth 설정이 없어 사용할 수 없습니다.
+                      </p>
+                    ) : naverConnected ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleNaverDisconnect()}
+                      >
+                        연동 해제
+                      </Button>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" onClick={handleNaverConnect}>
+                        네이버 로그인으로 연동
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-semibold">네이버에서 구독할 주소</p>
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    아래 주소를 네이버 캘린더의 「가져오기 → 외부 URL」에 넣으면 CRM 일정과 승인된 휴가를
+                    네이버에서 볼 수 있습니다. 비밀 링크이므로 외부에 공유하지 마세요.
+                  </p>
+                  {icalLoading ? (
+                    <p className="text-muted-foreground py-3 text-center text-xs">
+                      주소 불러오는 중...
+                    </p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      <Input readOnly value={icalFeedUrl} className="font-mono text-xs" />
+                      {icalWebcalUrl ? (
+                        <Input readOnly value={icalWebcalUrl} className="font-mono text-xs" />
+                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={!icalFeedUrl}
+                          onClick={() => void handleCopyIcalUrl()}
+                        >
+                          <Copy className="mr-1.5 size-4" />
+                          주소 복사
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={icalRegenerating || icalLoading}
+                          onClick={() => void handleRegenerateIcalUrl()}
+                        >
+                          <RefreshCw className="mr-1.5 size-4" />
+                          재발급
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </TabsContent>
+
+            <TabsContent value="google" className="space-y-3 text-sm">
+              <div>
+                <h3 className="font-semibold">Google 캘린더 가져오기</h3>
+                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                  연동하면 Google 일정이 캘린더에 함께 표시되고 2분마다 갱신됩니다. CRM 일정이 Google로
+                  넘어가지는 않습니다.
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                {googleConnected ? (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground text-xs">연동되어 있습니다.</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleGoogleDisconnect()}
+                    >
+                      연동 해제
                     </Button>
                   </div>
                 ) : (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-muted-foreground text-xs leading-relaxed">
-                      2단계 인증을 쓰면 네이버에서 「애플리케이션 비밀번호」를 발급받아 입력하세요.
-                      비밀번호는 암호화해서 보관하며 일정을 읽는 데만 사용합니다.
-                    </p>
-                    <Input
-                      placeholder="네이버 아이디"
-                      autoComplete="off"
-                      value={naverIdInput}
-                      onChange={(e) => setNaverIdInput(e.target.value)}
-                    />
-                    <Input
-                      type="password"
-                      placeholder="비밀번호 또는 애플리케이션 비밀번호"
-                      autoComplete="new-password"
-                      value={naverPasswordInput}
-                      onChange={(e) => setNaverPasswordInput(e.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={naverConnecting || !naverReadConfigured}
-                      onClick={() => void handleNaverCalDavConnect()}
-                    >
-                      {naverConnecting ? "연결 중..." : "연결"}
-                    </Button>
-                    {!naverReadConfigured ? (
-                      <p className="text-xs text-red-600">
-                        서버에 암호화 키(CALENDAR_CREDENTIAL_KEY 또는 AUTH_SECRET)가 없어 연결할 수 없습니다.
-                      </p>
-                    ) : null}
-                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={handleGoogleConnect}>
+                    Google 계정으로 연동
+                  </Button>
                 )}
               </div>
+            </TabsContent>
+          </Tabs>
 
-              <div className="rounded-lg border p-3">
-                <p className="text-xs font-semibold">방법 2. .ics 파일 올리기</p>
-                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                  네이버 캘린더의 「가져오기/내보내기(백업)」에서 받은 .ics 파일을 올리면 그 시점 일정이
-                  표시됩니다. 다시 올리면 이전 업로드분을 대체합니다.
-                </p>
-                <input
-                  ref={naverIcsInputRef}
-                  type="file"
-                  accept=".ics,text/calendar"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleNaverIcsUpload(file);
-                  }}
-                />
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={naverIcsUploading}
-                    onClick={() => naverIcsInputRef.current?.click()}
-                  >
-                    <Upload className="mr-1.5 size-4" />
-                    {naverIcsUploading ? "불러오는 중..." : ".ics 파일 선택"}
-                  </Button>
-                  {naverImportedCount > 0 ? (
-                    <>
-                      <span className="text-muted-foreground text-xs">
-                        {naverImportedCount}건 표시 중
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void handleNaverIcsClear()}
-                      >
-                        <Trash2 className="mr-1.5 size-4" />
-                        삭제
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-2 border-t pt-4">
-              <div>
-                <h3 className="font-semibold">CRM 일정 네이버로 보내기</h3>
-                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                  연동하면 새로 만든 CRM 일정과 승인된 휴가가 네이버 캘린더에 등록됩니다.
-                </p>
-              </div>
-              {!naverConfigured ? (
-                <p className="text-muted-foreground text-xs">
-                  서버에 네이버 OAuth 설정이 없어 사용할 수 없습니다.
-                </p>
-              ) : naverConnected ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleNaverDisconnect()}
-                >
-                  연동 해제
-                </Button>
-              ) : (
-                <Button type="button" variant="outline" size="sm" onClick={handleNaverConnect}>
-                  네이버 로그인으로 연동
-                </Button>
-              )}
-            </section>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setNaverDialogOpen(false)}>
-              닫기
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={icalDialogOpen} onOpenChange={setIcalDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>iCal 구독 URL</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground leading-relaxed">
-              아래 URL을 네이버 캘린더 앱·PC에서 「URL로 구독」에 등록하면 CRM 개인·팀 일정과 승인된 휴가가
-              주기적으로 동기화됩니다. URL은 비밀 링크이므로 외부에 공유하지 마세요.
-            </p>
-            {icalLoading ? (
-              <p className="text-muted-foreground py-4 text-center">URL 불러오는 중...</p>
-            ) : (
-              <>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground text-xs font-medium">HTTPS 구독 URL</p>
-                  <Input readOnly value={icalFeedUrl} className="font-mono text-xs" />
-                </div>
-                {icalWebcalUrl ? (
-                  <div className="space-y-1">
-                    <p className="text-muted-foreground text-xs font-medium">webcal (일부 앱용)</p>
-                    <Input readOnly value={icalWebcalUrl} className="font-mono text-xs" />
-                  </div>
-                ) : null}
-              </>
-            )}
-          </div>
           <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
             <Button
               type="button"
               variant="outline"
-              disabled={icalRegenerating || icalLoading}
-              onClick={() => void handleRegenerateIcalUrl()}
+              disabled={!anyIntegrationConnected}
+              onClick={handleManualSync}
             >
               <RefreshCw className="mr-1.5 size-4" />
-              URL 재발급
+              지금 새로고침
             </Button>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setIcalDialogOpen(false)}>
-                닫기
-              </Button>
-              <Button type="button" disabled={!icalFeedUrl} onClick={() => void handleCopyIcalUrl()}>
-                <Copy className="mr-1.5 size-4" />
-                URL 복사
-              </Button>
-            </div>
+            <Button type="button" variant="outline" onClick={() => setIntegrationsOpen(false)}>
+              닫기
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
