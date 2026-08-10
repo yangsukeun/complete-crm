@@ -36,7 +36,7 @@ import {
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid, CheckCircle2 } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import {
   addDays,
@@ -114,17 +114,19 @@ const STATUS_LIST = [
 
 type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 
-/** v2: 완료 컬럼 기본 표시로 바뀌어 이전에 저장된 숨김 값을 이어받지 않도록 키를 올렸다 */
-const COLUMN_STORAGE_KEY = "tasks-board-visible-columns-v2";
+/** 기본값이 바뀔 때마다 키를 올려 이전에 저장된 값을 물려받지 않게 한다 */
+const COLUMN_STORAGE_KEY = "tasks-board-visible-columns-v3";
 /** 보드/테이블 전환 (스펙: projectViewMode) — 이전 키는 load 시만 fallback */
 const PROJECT_VIEW_MODE_KEY = "projectViewMode";
 const LEGACY_PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
 /** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
 const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
 const MINDMAP_SHELL_STORAGE_KEY = "tasks-mindmap-shell-v1";
-const TASK_COMPLETION_SHELF_KEY = "tasks-completion-shelf-v2";
-/** 완료로 옮긴 프로젝트가 곧바로 사라지지 않도록 최근 완료분은 기본으로 보인다 */
-const DEFAULT_TASK_COMPLETION_SHELF: TaskCompletionShelf = "recent";
+const TASK_COMPLETION_SHELF_KEY = "tasks-completion-shelf-v3";
+/** 완료한 프로젝트는 기본으로 감추고, 「완료」 버튼으로 필요할 때만 꺼내 본다 */
+const DEFAULT_TASK_COMPLETION_SHELF: TaskCompletionShelf = "active";
+/** 완료를 볼 때의 기본 범위 */
+const DEFAULT_VISIBLE_COMPLETION_SHELF: TaskCompletionShelf = "recent";
 type ProjectsViewMode = "board" | "table";
 type ProjectScopeFilter = "all" | "mine" | "shared";
 
@@ -132,7 +134,7 @@ type ColumnVisibility = Record<TaskStatus, boolean>;
 const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   TODO: true,
   IN_PROGRESS: true,
-  DONE: true,
+  DONE: false,
 };
 
 function loadColumnVisibility(): ColumnVisibility {
@@ -816,6 +818,28 @@ function TasksPageInner() {
     [refreshTasks]
   );
 
+  /** 완료 표시 여부는 조회 범위와 보드 컬럼을 함께 움직여야 어긋나지 않는다 */
+  const completedVisible = taskCompletionShelf !== "active";
+
+  const showCompletedWithShelf = useCallback((shelf: TaskCompletionShelf) => {
+    setTaskCompletionShelf(shelf);
+    setColumnVisible((prev) => (prev.DONE ? prev : { ...prev, DONE: true }));
+  }, []);
+
+  const setCompletedVisible = useCallback(
+    (visible: boolean) => {
+      if (visible) {
+        showCompletedWithShelf(
+          taskCompletionShelf === "active" ? DEFAULT_VISIBLE_COMPLETION_SHELF : taskCompletionShelf
+        );
+        return;
+      }
+      setTaskCompletionShelf("active");
+      setColumnVisible((prev) => (prev.DONE ? { ...prev, DONE: false } : prev));
+    },
+    [showCompletedWithShelf, taskCompletionShelf]
+  );
+
   const updateTaskStatus = useCallback(
     async (taskId: string, newStatus: TaskStatus) => {
       setUpdatingStatusId(taskId);
@@ -826,12 +850,12 @@ function TasksPageInner() {
           body: JSON.stringify({ status: newStatus, isCompleted: newStatus === "DONE" }),
         });
         if (!res.ok) throw new Error("수정 실패");
-        // 「활성만」이거나 완료 컬럼을 접어 둔 상태에서 완료로 옮기면 카드가 목록에서
-        // 빠져 처리가 안 된 것처럼 보인다. 결과가 보이도록 완료 칸을 열어 준다.
-        if (newStatus === "DONE") {
-          setTaskCompletionShelf((prev) => (prev === "active" ? "recent" : prev));
-          setColumnVisible((prev) => (prev.DONE ? prev : { ...prev, DONE: true }));
-          toast.success("완료로 옮겼습니다.");
+        // 완료 칸은 기본으로 감춰 두므로 카드가 목록에서 사라진다. 처리가 안 된 것으로
+        // 오해하지 않도록 결과를 알리고, 확인하려면 바로 펼칠 수 있게 한다.
+        if (newStatus === "DONE" && !completedVisible) {
+          toast.success("완료로 옮겼습니다. 완료 칸은 숨겨져 있습니다.", {
+            action: { label: "완료 보기", onClick: () => setCompletedVisible(true) },
+          });
         }
         refreshTasks();
       } catch (e) {
@@ -840,7 +864,7 @@ function TasksPageInner() {
         setUpdatingStatusId(null);
       }
     },
-    [refreshTasks]
+    [refreshTasks, completedVisible, setCompletedVisible]
   );
 
   const scopeFilteredTasks = useMemo(() => {
@@ -874,19 +898,15 @@ function TasksPageInner() {
     return list.map((a) => [a.id, a] as [string, NonNullable<Task["assignedTo"]>]);
   });
   const assigneeOptions = Array.from(new Map(assigneePairs).entries());
-  /** 「필터」 버튼 배지 — 기본값과 다른 조건 개수 */
+  /** 「필터」 버튼 배지 — 기본값과 다른 조건 개수. 완료 표시는 전용 버튼이 상태를 드러내므로 제외 */
   const activeFilterCount =
     (filterStatus !== "" ? 1 : 0) +
     (filterAssigneeId !== "" ? 1 : 0) +
     (filterPriority !== "" ? 1 : 0) +
     (filterDue !== "all" ? 1 : 0) +
     (colorFilter !== null ? 1 : 0) +
-    (taskCompletionShelf !== DEFAULT_TASK_COMPLETION_SHELF ? 1 : 0) +
     (adminTasksUserId !== "" ? 1 : 0) +
-    (columnsReady &&
-    STATUS_LIST.some((s) => columnVisible[s.value] !== DEFAULT_COLUMN_VISIBILITY[s.value])
-      ? 1
-      : 0);
+    (columnsReady && (!columnVisible.TODO || !columnVisible.IN_PROGRESS) ? 1 : 0);
 
   const visibleStatusColumns = useMemo(
     () => STATUS_LIST.filter((s) => columnVisible[s.value]),
@@ -1089,6 +1109,28 @@ function TasksPageInner() {
           )}
 
           {view !== "log" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-pressed={completedVisible}
+              title={
+                completedVisible
+                  ? "완료한 프로젝트를 다시 숨깁니다"
+                  : "완료한 프로젝트를 함께 봅니다"
+              }
+              className={cn(
+                "h-9 border-gray-200 text-muted-foreground",
+                completedVisible && "border-emerald-400 bg-emerald-50 text-emerald-700"
+              )}
+              onClick={() => setCompletedVisible(!completedVisible)}
+            >
+              <CheckCircle2 className="mr-2 size-4" />
+              완료
+            </Button>
+          )}
+
+          {view !== "log" && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -1262,25 +1304,25 @@ function TasksPageInner() {
                         size="sm"
                         variant={taskCompletionShelf === "active" ? "default" : "outline"}
                         className="h-8 border-gray-200 text-xs"
-                        onClick={() => setTaskCompletionShelf("active")}
+                        onClick={() => setCompletedVisible(false)}
                       >
-                        활성만
+                        숨김
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant={taskCompletionShelf === "recent" ? "default" : "outline"}
                         className="h-8 border-gray-200 text-xs"
-                        onClick={() => setTaskCompletionShelf("recent")}
+                        onClick={() => showCompletedWithShelf("recent")}
                       >
-                        최근 완료 7일
+                        최근 7일
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant={taskCompletionShelf === "all" ? "default" : "outline"}
                         className="h-8 border-gray-200 text-xs"
-                        onClick={() => setTaskCompletionShelf("all")}
+                        onClick={() => showCompletedWithShelf("all")}
                       >
                         전체+아카이브
                       </Button>
@@ -1298,6 +1340,11 @@ function TasksPageInner() {
                               checked={columnVisible[s.value]}
                               onCheckedChange={(c) => {
                                 const on = c === true;
+                                // 완료 컬럼은 조회 범위와 짝을 이뤄야 빈 칸만 남지 않는다
+                                if (s.value === "DONE") {
+                                  setCompletedVisible(on);
+                                  return;
+                                }
                                 setColumnVisible((prev) => {
                                   const next = { ...prev, [s.value]: on };
                                   if (!next.TODO && !next.IN_PROGRESS && !next.DONE) return prev;
@@ -1328,9 +1375,9 @@ function TasksPageInner() {
                       setFilterPriority("");
                       setFilterDue("all");
                       setColorFilter(null);
-                      setTaskCompletionShelf(DEFAULT_TASK_COMPLETION_SHELF);
                       setAdminTasksUserId("");
-                      setColumnVisible(DEFAULT_COLUMN_VISIBILITY);
+                      // 완료 표시는 「완료」 버튼이 담당하므로 초기화에서 건드리지 않는다
+                      setColumnVisible((prev) => ({ ...prev, TODO: true, IN_PROGRESS: true }));
                     }}
                   >
                     필터 초기화
@@ -1405,7 +1452,9 @@ function TasksPageInner() {
                 onMindmapNavigate={onMindmapNavigate}
                 contextProjectId={mindmapMode === "project" ? mindmapProjectId : null}
                 taskCompletionShelf={taskCompletionShelf}
-                onTaskCompletionShelfChange={setTaskCompletionShelf}
+                onTaskCompletionShelfChange={(shelf) =>
+                  shelf === "active" ? setCompletedVisible(false) : showCompletedWithShelf(shelf)
+                }
                 canChangeTaskCreationSource={canChangeTaskCreationSource}
               />
             </div>
