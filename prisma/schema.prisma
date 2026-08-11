@@ -271,7 +271,10 @@ model User {
   taskMindmapStates      UserTaskMindmapState[]
   taskAuditLogs          TaskAuditLog[]          @relation("TaskAuditActor")
   userDailyUploadUsages  UserDailyUploadUsage[]
-  driveFiles             DriveFile[]
+  driveFiles             DriveFile[]             @relation("DriveFileCreatedBy")
+  driveFilesTrashedByMe  DriveFile[]             @relation("DriveFileTrashedBy")
+  driveFilesUpdatedByMe  DriveFile[]             @relation("DriveFileUpdatedBy")
+  driveActivityLogs      DriveActivityLog[]      @relation("DriveActivityActor")
   csToolClickLogs        CsToolClickLog[]
   @@index([currentProjectId])
 }
@@ -1074,10 +1077,19 @@ model DriveFile {
   rootId String?
 
   createdBy String?
-  user      User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  user      User? @relation("DriveFileCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  trashed   Boolean   @default(false)
+  trashedAt DateTime?
+  trashedBy String?
+  trashedByUser User? @relation("DriveFileTrashedBy", fields: [trashedBy], references: [id], onDelete: SetNull)
+
+  updatedBy String?
+  updatedByUser User? @relation("DriveFileUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   projectFiles ProjectDriveFile[]
   postFiles    PostDriveFile[]
+  activityLogs DriveActivityLog[]
 
   lastSyncedAt    DateTime?
   driveModifiedAt DateTime?
@@ -1092,6 +1104,30 @@ model DriveFile {
   @@index([createdBy])
   @@index([rootId])
   @@index([rootId, parentId])
+  @@index([trashed])
+  @@index([trashed, rootId])
+}
+
+enum DriveActivityAction {
+  DELETE
+  RESTORE
+  RENAME
+  MOVE
+}
+
+model DriveActivityLog {
+  id          String              @id @default(cuid())
+  driveFileId String
+  driveFile   DriveFile           @relation(fields: [driveFileId], references: [id], onDelete: Cascade)
+  action      DriveActivityAction
+  actorId     String
+  actor       User                @relation("DriveActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+  detail      String?
+  createdAt   DateTime            @default(now())
+
+  @@index([driveFileId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
 }
 
 model ProjectDriveFile {

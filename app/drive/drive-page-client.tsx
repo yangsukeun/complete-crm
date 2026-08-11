@@ -33,7 +33,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FolderPickerModal, type FolderPickerSelection } from "@/components/drive/folder-picker-modal";
 import { postExplorerFolder } from "@/lib/drive/explorer-folder-api";
+import { canManageExplorerFolderTrash } from "@/lib/drive/folder-trash-policy";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 type DriveFileRow = {
   id: string;
@@ -45,6 +47,7 @@ type DriveFileRow = {
   webViewLink: string | null;
   driveModifiedAt: string | null;
   parentId: string | null;
+  createdBy?: string | null;
   uploading?: boolean;
   /** 낙관적 새 폴더 생성 중 */
   creating?: boolean;
@@ -181,10 +184,16 @@ export function DrivePageClient({
   showExplorerSetupBanner = false,
   canDeleteFiles = false,
   explorerConfigured = false,
+  viewerUserId = "",
+  viewerRole = "",
+  isDriveAdmin = false,
 }: {
   showExplorerSetupBanner?: boolean;
   canDeleteFiles?: boolean;
   explorerConfigured?: boolean;
+  viewerUserId?: string;
+  viewerRole?: string;
+  isDriveAdmin?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -718,8 +727,25 @@ export function DrivePageClient({
   };
 
   const handleDelete = async (file: DriveFileRow) => {
-    if (!canDeleteFiles || file.isFolder || file.uploading || file.creating) return;
-    const ok = window.confirm("드라이브 휴지통으로 이동합니다");
+    if (file.uploading || file.creating) return;
+    if (file.isFolder) {
+      if (
+        !canManageExplorerFolderTrash({
+          role: viewerRole,
+          actorId: viewerUserId,
+          createdBy: file.createdBy,
+        })
+      ) {
+        return;
+      }
+    } else if (!canDeleteFiles) {
+      return;
+    }
+    const ok = window.confirm(
+      file.isFolder
+        ? "폴더를 휴지통으로 이동합니다. (하위 항목 포함)"
+        : "드라이브 휴지통으로 이동합니다"
+    );
     if (!ok) return;
 
     setDeletingId(file.id);
@@ -738,6 +764,18 @@ export function DrivePageClient({
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const canShowDeleteButton = (file: DriveFileRow) => {
+    if (file.uploading || file.creating) return false;
+    if (file.isFolder) {
+      return canManageExplorerFolderTrash({
+        role: viewerRole,
+        actorId: viewerUserId,
+        createdBy: file.createdBy,
+      });
+    }
+    return canDeleteFiles;
   };
 
   const openFolder = (folder: DriveFileRow) => {
@@ -837,6 +875,16 @@ export function DrivePageClient({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isDriveAdmin && (
+            <>
+              <Button type="button" variant="ghost" size="sm" className="text-xs" asChild>
+                <Link href="/drive/trash">휴지통</Link>
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="text-xs" asChild>
+                <Link href="/drive/activity">이력</Link>
+              </Button>
+            </>
+          )}
           {(isValidating || isAutoSyncing) && !isLoading && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -1147,16 +1195,38 @@ export function DrivePageClient({
               ) : file.uploading ? (
                 <span className="text-xs text-muted-foreground">업로드 중</span>
               ) : file.isFolder ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onMouseEnter={() => prefetchFolder(file.id)}
-                  onClick={() => openFolder(file)}
-                >
-                  열기
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onMouseEnter={() => prefetchFolder(file.id)}
+                    onClick={() => openFolder(file)}
+                  >
+                    열기
+                  </Button>
+                  {canShowDeleteButton(file) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs text-rose-700 hover:bg-rose-50"
+                      disabled={deletingId === file.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete(file);
+                      }}
+                    >
+                      {deletingId === file.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                      삭제
+                    </Button>
+                  )}
+                </>
               ) : (
                 <>
                   <Button
@@ -1179,7 +1249,7 @@ export function DrivePageClient({
                       구글에서 열기
                     </a>
                   )}
-                  {canDeleteFiles && (
+                  {canShowDeleteButton(file) && (
                     <Button
                       type="button"
                       variant="outline"

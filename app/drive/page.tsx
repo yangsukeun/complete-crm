@@ -30,6 +30,9 @@ export default async function DrivePage() {
           showExplorerSetupBanner={showExplorerSetupBanner}
           canDeleteFiles={canDeleteFiles}
           explorerConfigured={explorerConfigured}
+          viewerUserId={session.user.id}
+          viewerRole={role}
+          isDriveAdmin={isAdmin}
         />
       </Suspense>
     </div>

@@ -66,12 +66,13 @@ export async function GET(req: NextRequest) {
       const tQ = Date.now();
       const files = await prisma.driveFile.findMany({
         where: explorerListWhere({
+          trashed: false,
           name: { contains: search, mode: "insensitive" },
         }),
         orderBy: [{ isFolder: "desc" }, { name: "asc" }],
         take: 80,
         include: {
-          _count: { select: { children: true } },
+          _count: { select: { children: { where: { trashed: false } } } },
         },
       });
       const visible = await filterAccessibleDriveFiles(actor, files);
@@ -100,10 +101,10 @@ export async function GET(req: NextRequest) {
 
     const tQ = Date.now();
     const files = await prisma.driveFile.findMany({
-      where: explorerListWhere({ parentId }),
+      where: explorerListWhere({ parentId, trashed: false }),
       orderBy: [{ isFolder: "desc" }, { name: "asc" }],
       include: {
-        _count: { select: { children: true } },
+        _count: { select: { children: { where: { trashed: false } } } },
       },
     });
     const visible = await filterAccessibleDriveFiles(actor, files);

@@ -133,6 +133,8 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban, feature: "admin_projects" },
   { href: "/admin/trash", label: "삭제된 항목", icon: Trash2, masterOnly: true },
   { href: "/admin/company", label: "회사 정보", icon: Building2, feature: "admin_company" },
+  { href: "/drive/trash", label: "드라이브 휴지통", icon: HardDrive, executiveOnly: true },
+  { href: "/drive/activity", label: "드라이브 이력", icon: FileText, executiveOnly: true },
   { href: "/admin/settings/logo", label: "로고 설정", icon: Image, executiveOnly: true },
 ];
 
