@@ -77,13 +77,13 @@ const createSchema = z.object({
 
 export async function handleBoardPost(req: Request): Promise<Response> {
   console.log("[board POST] 엔드포인트 진입 (저장소: Prisma BoardPost)");
+  let body: unknown;
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let body: unknown;
     try {
       body = await req.json();
     } catch (e) {
@@ -167,6 +167,25 @@ export async function handleBoardPost(req: Request): Promise<Response> {
         },
       });
     } catch (dbErr: unknown) {
+      {
+        const error = dbErr as {
+          message?: string;
+          stack?: string;
+          code?: unknown;
+          meta?: unknown;
+        };
+        console.error("[BOARD_500_DIAG]", {
+          message: error?.message,
+          stack: error?.stack,
+          code: error?.code,
+          meta: error?.meta,
+          contentType:
+            body && typeof body === "object" && !Array.isArray(body)
+              ? (body as { contentType?: unknown }).contentType
+              : undefined,
+          timestamp: new Date().toISOString(),
+        });
+      }
       console.error("[board POST error]", dbErr);
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
       const code =
@@ -210,6 +229,25 @@ export async function handleBoardPost(req: Request): Promise<Response> {
       attachments: safeParseAttachments(created.attachments),
     });
   } catch (e) {
+    {
+      const error = e as {
+        message?: string;
+        stack?: string;
+        code?: unknown;
+        meta?: unknown;
+      };
+      console.error("[BOARD_500_DIAG]", {
+        message: error?.message,
+        stack: error?.stack,
+        code: error?.code,
+        meta: error?.meta,
+        contentType:
+          body && typeof body === "object" && !Array.isArray(body)
+            ? (body as { contentType?: unknown }).contentType
+            : undefined,
+        timestamp: new Date().toISOString(),
+      });
+    }
     console.error("[board POST catch]", e);
     console.error(
       "[board POST] 에러 타입:",

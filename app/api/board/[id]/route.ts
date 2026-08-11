@@ -150,6 +150,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let body: unknown;
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
@@ -199,7 +200,7 @@ export async function PATCH(
       return NextResponse.json({ error: "수정 권한이 없습니다." }, { status: 403 });
     }
 
-    const body = await req.json();
+    body = await req.json();
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -338,6 +339,25 @@ export async function PATCH(
       isAnonymous: boardCategoryIsAnonymous(updated.category),
     });
   } catch (e) {
+    {
+      const error = e as {
+        message?: string;
+        stack?: string;
+        code?: unknown;
+        meta?: unknown;
+      };
+      console.error("[BOARD_500_DIAG]", {
+        message: error?.message,
+        stack: error?.stack,
+        code: error?.code,
+        meta: error?.meta,
+        contentType:
+          body && typeof body === "object" && !Array.isArray(body)
+            ? (body as { contentType?: unknown }).contentType
+            : undefined,
+        timestamp: new Date().toISOString(),
+      });
+    }
     console.error("Board PATCH:", e);
     return NextResponse.json({ error: "수정에 실패했습니다." }, { status: 500 });
   }
