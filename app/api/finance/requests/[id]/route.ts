@@ -3,96 +3,37 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import {
+  canCenterChiefApprovePaymentRequest,
   canTeamLeadApprovePaymentRequest,
   fetchDepartmentsWithTeamLead,
+  isCsTeamDepartment,
   paymentRequestNeedsExecutiveDirectApproval,
   paymentRequestNeedsExecutiveFirstLineApproval,
 } from "@/lib/finance-payment-request-policy";
 import {
+  authorizePaymentStatusChange,
+  type PaymentStatus,
+} from "@/lib/finance-payment-request-authorize";
+import {
   ensurePaymentRequestAlerts,
   loadTransferExecutorIds,
+  notifyCenterChiefsOnCsTeamLeadApproval,
   notifyExecutivesOnTeamLeadApproval,
   notifyTransferExecutorsOnApproval,
 } from "@/lib/finance-payment-request-alerts";
 
-type PaymentStatus =
-  | "PENDING"
-  | "EXECUTIVE_PENDING"
-  | "TEAM_LEAD_APPROVED"
-  | "COMPLETED"
-  | "REJECTED";
+// TODO(security): /finance/requests URL 직접 접근·API는 finance_view 미검사(메뉴만 숨김). 후속 가드 이슈.
 
 const updateSchema = z.object({
-  status: z.enum(["PENDING", "EXECUTIVE_PENDING", "TEAM_LEAD_APPROVED", "COMPLETED", "REJECTED"]),
+  status: z.enum([
+    "PENDING",
+    "CENTER_CHIEF_APPROVED",
+    "EXECUTIVE_PENDING",
+    "TEAM_LEAD_APPROVED",
+    "COMPLETED",
+    "REJECTED",
+  ]),
 });
-
-function authorizePaymentStatusChange(params: {
-  cur: PaymentStatus;
-  next: PaymentStatus;
-  isTeamLead: boolean;
-  isExecutive: boolean;
-  isTransferExecutor: boolean;
-  needsExecutiveFirstLine: boolean;
-  needsExecutiveDirect: boolean;
-}): { ok: true } | { ok: false; status: number; error: string } {
-  const {
-    cur,
-    next,
-    isTeamLead,
-    isExecutive,
-    isTransferExecutor,
-    needsExecutiveFirstLine,
-    needsExecutiveDirect,
-  } = params;
-
-  const skipsTeamLeadApproval = needsExecutiveFirstLine || needsExecutiveDirect;
-
-  if (next === "COMPLETED") {
-    if (!isTransferExecutor) {
-      return { ok: false, status: 403, error: "이체 완료는 이체 담당자만 처리할 수 있습니다." };
-    }
-    if (cur !== "TEAM_LEAD_APPROVED") {
-      return { ok: false, status: 400, error: "승인 완료된 건만 이체 완료할 수 있습니다." };
-    }
-    return { ok: true };
-  }
-
-  // 이체 담당자 요청 또는 팀장 없는 부서: 대표만 PENDING → TEAM_LEAD_APPROVED
-  if (skipsTeamLeadApproval) {
-    if (isExecutive && cur === "PENDING" && (next === "TEAM_LEAD_APPROVED" || next === "REJECTED")) {
-      return { ok: true };
-    }
-    if (isExecutive && cur === "TEAM_LEAD_APPROVED" && (next === "PENDING" || next === "REJECTED")) {
-      return { ok: true };
-    }
-    if (isTeamLead && !isExecutive) {
-      const msg = needsExecutiveFirstLine
-        ? "이체 담당자가 올린 요청은 대표(임원)만 승인할 수 있습니다."
-        : "해당 부서는 팀장이 없어 대표(임원)만 승인할 수 있습니다.";
-      return { ok: false, status: 403, error: msg };
-    }
-    return { ok: false, status: 403, error: "승인·반려 권한이 없습니다." };
-  }
-
-  // 일반 직원 요청: 팀장 1차 → 대표 2차
-  if (isTeamLead && cur === "PENDING" && (next === "EXECUTIVE_PENDING" || next === "REJECTED")) {
-    return { ok: true };
-  }
-  if (isTeamLead && cur === "EXECUTIVE_PENDING" && (next === "PENDING" || next === "REJECTED")) {
-    return { ok: true };
-  }
-  if (isExecutive && cur === "EXECUTIVE_PENDING" && (next === "TEAM_LEAD_APPROVED" || next === "REJECTED")) {
-    return { ok: true };
-  }
-  if (isExecutive && cur === "EXECUTIVE_PENDING" && next === "PENDING") {
-    return { ok: true };
-  }
-  if (isExecutive && cur === "TEAM_LEAD_APPROVED" && (next === "PENDING" || next === "REJECTED")) {
-    return { ok: true };
-  }
-
-  return { ok: false, status: 403, error: "결재 권한이 없거나 처리할 수 없는 상태입니다." };
-}
 
 export async function PATCH(
   req: Request,
@@ -164,6 +105,7 @@ export async function PATCH(
     });
     const role = (dbUser?.role ?? session.user.role) as string | undefined;
     const isTeamLead = role === "TEAM_LEAD";
+    const isCenterChief = role === "CENTER_CHIEF";
     const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
 
     const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
@@ -175,6 +117,7 @@ export async function PATCH(
           select: { name: true, department: true },
         })
       : null;
+    const isCsRequest = isCsTeamDepartment(requesterRow?.department);
     const needsExecutiveFirstLine = paymentRequestNeedsExecutiveFirstLineApproval(
       current.requesterId,
       requesterRow?.name,
@@ -195,8 +138,11 @@ export async function PATCH(
       isTeamLead &&
       !isExecutive &&
       !needsExecutiveFirstLine &&
-      (cur === "PENDING" || cur === "EXECUTIVE_PENDING") &&
-      (nextStatus === "EXECUTIVE_PENDING" || nextStatus === "REJECTED" || nextStatus === "PENDING")
+      (cur === "PENDING" || cur === "EXECUTIVE_PENDING" || cur === "CENTER_CHIEF_APPROVED") &&
+      (nextStatus === "EXECUTIVE_PENDING" ||
+        nextStatus === "CENTER_CHIEF_APPROVED" ||
+        nextStatus === "REJECTED" ||
+        nextStatus === "PENDING")
     ) {
       if (
         !canTeamLeadApprovePaymentRequest(
@@ -210,16 +156,41 @@ export async function PATCH(
           { status: 403 }
         );
       }
+      // CS팀 건은 팀장이 EXECUTIVE_PENDING으로 건너뛰지 못함
+      if (isCsRequest && nextStatus === "EXECUTIVE_PENDING") {
+        return NextResponse.json(
+          { error: "CS팀 요청은 팀장 승인 후 센터장 결재가 필요합니다." },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (
+      isCenterChief &&
+      !isExecutive &&
+      (cur === "CENTER_CHIEF_APPROVED" || cur === "EXECUTIVE_PENDING") &&
+      (nextStatus === "EXECUTIVE_PENDING" ||
+        nextStatus === "CENTER_CHIEF_APPROVED" ||
+        nextStatus === "REJECTED")
+    ) {
+      if (!canCenterChiefApprovePaymentRequest(role, requesterRow?.department)) {
+        return NextResponse.json(
+          { error: "CS팀 요청만 센터장이 2차 승인·반려할 수 있습니다." },
+          { status: 403 }
+        );
+      }
     }
 
     const auth = authorizePaymentStatusChange({
       cur,
       next: nextStatus,
       isTeamLead,
+      isCenterChief,
       isExecutive,
       isTransferExecutor,
       needsExecutiveFirstLine,
       needsExecutiveDirect,
+      isCsRequest,
     });
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -240,7 +211,9 @@ export async function PATCH(
 
     try {
       if (
-        (cur === "TEAM_LEAD_APPROVED" || cur === "EXECUTIVE_PENDING") &&
+        (cur === "TEAM_LEAD_APPROVED" ||
+          cur === "EXECUTIVE_PENDING" ||
+          cur === "CENTER_CHIEF_APPROVED") &&
         (nextStatus === "PENDING" || nextStatus === "REJECTED")
       ) {
         await prisma.paymentRequestAlert.deleteMany({ where: { requestId: id } });
@@ -250,7 +223,13 @@ export async function PATCH(
     }
 
     try {
-      if (cur === "PENDING" && nextStatus === "EXECUTIVE_PENDING") {
+      if (cur === "PENDING" && nextStatus === "CENTER_CHIEF_APPROVED") {
+        await notifyCenterChiefsOnCsTeamLeadApproval(id);
+      }
+      if (
+        (cur === "PENDING" && nextStatus === "EXECUTIVE_PENDING") ||
+        (cur === "CENTER_CHIEF_APPROVED" && nextStatus === "EXECUTIVE_PENDING")
+      ) {
         await notifyExecutivesOnTeamLeadApproval(id);
       }
       if (
@@ -318,25 +297,22 @@ export async function DELETE(
 
     const current = await prisma.paymentRequest.findUnique({
       where: { id },
-      select: { id: true, status: true, requesterId: true },
+      select: { id: true, requesterId: true, status: true },
     });
     if (!current) {
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
-
-    if (current.status === "COMPLETED") {
-      return NextResponse.json({ error: "이체 완료된 건은 삭제할 수 없습니다." }, { status: 400 });
+    if (current.requesterId !== session.user.id) {
+      return NextResponse.json({ error: "본인 요청만 삭제할 수 있습니다." }, { status: 403 });
     }
-
-    if (!current.requesterId || current.requesterId !== session.user.id) {
-      return NextResponse.json({ error: "본인이 요청한 건만 삭제할 수 있습니다." }, { status: 403 });
+    if (current.status === "COMPLETED") {
+      return NextResponse.json({ error: "이체 완료된 요청은 삭제할 수 없습니다." }, { status: 400 });
     }
 
     await prisma.paymentRequest.delete({ where: { id } });
-    return NextResponse.json({ ok: true, id });
+    return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: "삭제에 실패했습니다.", details: msg }, { status: 500 });
+    return NextResponse.json({ error: "삭제에 실패했습니다." }, { status: 500 });
   }
 }

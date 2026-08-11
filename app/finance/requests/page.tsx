@@ -39,11 +39,15 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { postUploadFile } from "@/lib/upload-client-validate";
 import {
+  canCenterChiefApprovePaymentRequest,
   canTeamLeadManagePaymentApplicant,
+  isCsTeamDepartment,
   normalizeDepartment,
   paymentRequestNeedsExecutiveDirectApproval,
   paymentRequestNeedsExecutiveFirstLineApproval,
 } from "@/lib/finance-payment-request-policy";
+// TODO(security): /finance/requests 는 메뉴(featureKey)로만 숨기고 URL 직접 접근은 막지 않음.
+// 다른 페이지와 일관성 유지. CS팀 메뉴 숨김과 별도로 API/RSC 가드는 후속 이슈로 처리.
 import * as XLSX from "xlsx";
 
 type Vendor = {
@@ -67,7 +71,13 @@ type QuotationOption = {
 type PaymentRequest = {
   id: string;
   amount: number;
-  status: "PENDING" | "EXECUTIVE_PENDING" | "TEAM_LEAD_APPROVED" | "COMPLETED" | "REJECTED";
+  status:
+    | "PENDING"
+    | "CENTER_CHIEF_APPROVED"
+    | "EXECUTIVE_PENDING"
+    | "TEAM_LEAD_APPROVED"
+    | "COMPLETED"
+    | "REJECTED";
   requestedAt: string;
   completedAt: string | null;
   description: string | null;
@@ -162,12 +172,41 @@ function rowNeedsExecutiveDirectApproval(
 
 function approvalTargetStatus(
   r: PaymentRequest,
-  ctx: { isTeamLead: boolean; isExecutive: boolean; teamLeadDepartment?: string | null },
+  ctx: {
+    isTeamLead: boolean;
+    isCenterChief: boolean;
+    isExecutive: boolean;
+    role?: string | null;
+    teamLeadDepartment?: string | null;
+  },
   transferExecutorIds: readonly string[],
   departmentsWithTeamLead: readonly string[]
-): "EXECUTIVE_PENDING" | "TEAM_LEAD_APPROVED" | null {
+): "CENTER_CHIEF_APPROVED" | "EXECUTIVE_PENDING" | "TEAM_LEAD_APPROVED" | null {
   const execFirst = rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds);
   const execDirect = rowNeedsExecutiveDirectApproval(r, transferExecutorIds, departmentsWithTeamLead);
+  const csReq = isCsTeamDepartment(r.requester?.department);
+
+  // CS팀: 팀장 → 센터장 → 대표
+  if (csReq && !execFirst && !execDirect) {
+    if (
+      ctx.isTeamLead &&
+      r.status === "PENDING" &&
+      canTeamLeadManagePaymentApplicant(ctx.teamLeadDepartment, r.requester?.department)
+    ) {
+      return "CENTER_CHIEF_APPROVED";
+    }
+    if (
+      ctx.isCenterChief &&
+      r.status === "CENTER_CHIEF_APPROVED" &&
+      canCenterChiefApprovePaymentRequest(ctx.role, r.requester?.department)
+    ) {
+      return "EXECUTIVE_PENDING";
+    }
+    if (ctx.isExecutive && r.status === "EXECUTIVE_PENDING") return "TEAM_LEAD_APPROVED";
+    return null;
+  }
+
+  // 비-CS: 기존 팀장 → 대표
   if (
     ctx.isTeamLead &&
     r.status === "PENDING" &&
@@ -184,13 +223,21 @@ function approvalTargetStatus(
 
 function approvalButtonLabel(
   r: PaymentRequest,
-  ctx: { isTeamLead: boolean; isExecutive: boolean; teamLeadDepartment?: string | null },
+  ctx: {
+    isTeamLead: boolean;
+    isCenterChief: boolean;
+    isExecutive: boolean;
+    role?: string | null;
+    teamLeadDepartment?: string | null;
+  },
   transferExecutorIds: readonly string[],
   departmentsWithTeamLead: readonly string[]
 ): string {
   const target = approvalTargetStatus(r, ctx, transferExecutorIds, departmentsWithTeamLead);
+  if (target === "CENTER_CHIEF_APPROVED") return "1차 승인";
+  if (target === "EXECUTIVE_PENDING" && r.status === "CENTER_CHIEF_APPROVED") return "센터장 승인";
   if (target === "EXECUTIVE_PENDING") return "1차 승인";
-  if (target === "TEAM_LEAD_APPROVED" && r.status === "EXECUTIVE_PENDING") return "2차 승인";
+  if (target === "TEAM_LEAD_APPROVED" && r.status === "EXECUTIVE_PENDING") return "최종 승인";
   if (target === "TEAM_LEAD_APPROVED") return "승인";
   return "승인";
 }
@@ -640,7 +687,9 @@ export default function FinanceRequestsPage() {
       r,
       {
         isTeamLead: userRole === "TEAM_LEAD",
+        isCenterChief: userRole === "CENTER_CHIEF",
         isExecutive: userRole === "EXECUTIVE" || userRole === "ADMIN",
+        role: userRole as string | undefined,
         teamLeadDepartment: viewerDepartment,
       },
       transferExecutorIds,
@@ -660,11 +709,15 @@ export default function FinanceRequestsPage() {
       }
       const data = await res.json().catch(() => ({}));
       const msg =
-        target === "EXECUTIVE_PENDING"
-          ? "1차 승인했습니다. 대표에게 알림이 전달됩니다."
-          : target === "TEAM_LEAD_APPROVED" && r.status === "EXECUTIVE_PENDING"
-            ? "2차 승인했습니다. 이체 담당자에게 알림이 전달됩니다."
-            : "승인했습니다. 이체 담당자에게 알림이 전달됩니다.";
+        target === "CENTER_CHIEF_APPROVED"
+          ? "1차 승인했습니다. 센터장에게 알림이 전달됩니다."
+          : target === "EXECUTIVE_PENDING" && r.status === "CENTER_CHIEF_APPROVED"
+            ? "센터장 승인했습니다. 대표에게 알림이 전달됩니다."
+            : target === "EXECUTIVE_PENDING"
+              ? "1차 승인했습니다. 대표에게 알림이 전달됩니다."
+              : target === "TEAM_LEAD_APPROVED" && r.status === "EXECUTIVE_PENDING"
+                ? "최종 승인했습니다. 이체 담당자에게 알림이 전달됩니다."
+                : "승인했습니다. 이체 담당자에게 알림이 전달됩니다.";
       toastForActionResult(data, msg);
       optimisticApplyStatusPatch(r.id, { status: target });
       await fetchRequests(true);
@@ -824,29 +877,49 @@ export default function FinanceRequestsPage() {
   const role = session?.user?.role;
   const myUserId = session?.user?.id ?? "";
   const isTeamLead = role === "TEAM_LEAD";
+  const isCenterChief = role === "CENTER_CHIEF";
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
   const isTransferExecutor = transferExecutorIds.includes(myUserId);
   const canRequest = !isExecutive;
   const canComplete = isTransferExecutor;
-  const approvalCtx = { isTeamLead, isExecutive, teamLeadDepartment: viewerDepartment };
-  /** 팀장: 같은 부서 일반 건 1차 승인. 대표: 이체담당자·팀장 없는 부서 또는 팀장 승인 후 2차 승인 */
+  const approvalCtx = {
+    isTeamLead,
+    isCenterChief,
+    isExecutive,
+    role: role as string | undefined,
+    teamLeadDepartment: viewerDepartment,
+  };
+  /** 팀장/센터장/대표 승인 가능 행 */
   const canApproveRejectRow = (r: PaymentRequest) => {
     if (approvalTargetStatus(r, approvalCtx, transferExecutorIds, departmentsWithTeamLead)) return true;
     if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
     if (
       isTeamLead &&
       r.status === "EXECUTIVE_PENDING" &&
+      !isCsTeamDepartment(r.requester?.department) &&
       !rowNeedsExecutiveFirstLineApproval(r, transferExecutorIds) &&
       canTeamLeadManagePaymentApplicant(viewerDepartment, r.requester?.department)
     ) {
       return true;
     }
+    if (
+      isCenterChief &&
+      r.status === "EXECUTIVE_PENDING" &&
+      canCenterChiefApprovePaymentRequest(role, r.requester?.department)
+    ) {
+      return true;
+    }
     return false;
   };
-  const showApprovalActionsColumn = isTeamLead || isExecutive || canComplete;
+  const showApprovalActionsColumn = isTeamLead || isCenterChief || isExecutive || canComplete;
   const pendingList = isExecutiveTransferExecutor ? pendingRequests : requests;
   const pendingTotal = pendingList
-    .filter((r: PaymentRequest) => r.status === "PENDING" || r.status === "EXECUTIVE_PENDING")
+    .filter(
+      (r: PaymentRequest) =>
+        r.status === "PENDING" ||
+        r.status === "CENTER_CHIEF_APPROVED" ||
+        r.status === "EXECUTIVE_PENDING"
+    )
     .reduce((sum, r) => sum + r.amount, 0);
   const showTwoSections =
     isExecutiveTransferExecutor || (isExecutive && !loading && requests.length === 0);
@@ -863,6 +936,8 @@ export default function FinanceRequestsPage() {
 
   const statusBadge = (status: string) => {
     if (status === "PENDING") return <Badge className="bg-amber-500/90 hover:bg-amber-500/90">승인대기</Badge>;
+    if (status === "CENTER_CHIEF_APPROVED")
+      return <Badge className="bg-orange-600 hover:bg-orange-600">센터장승인대기</Badge>;
     if (status === "EXECUTIVE_PENDING") return <Badge className="bg-violet-600 hover:bg-violet-600">대표승인대기</Badge>;
     if (status === "TEAM_LEAD_APPROVED") return <Badge className="bg-blue-600 hover:bg-blue-600">이체대기</Badge>;
     if (status === "COMPLETED") return <Badge className="bg-emerald-600 hover:bg-emerald-600">완료</Badge>;

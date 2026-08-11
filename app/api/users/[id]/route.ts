@@ -11,7 +11,7 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
-  role: z.enum(["USER", "TEAM_LEAD", "EXECUTIVE", "ADMIN"]).optional(),
+  role: z.enum(["USER", "TEAM_LEAD", "CENTER_CHIEF", "EXECUTIVE", "ADMIN"]).optional(),
   department: z.string().nullable().optional(),
   position: z.string().nullable().optional(),
   bankAccount: z.string().nullable().optional(),

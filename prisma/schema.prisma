@@ -15,9 +15,10 @@ datasource db {
 
 enum Role {
   USER
-  TEAM_LEAD   // 팀장: 휴가 1차 승인, 자금이체 결재(확인)
-  EXECUTIVE   // 대표/임원: 휴가 2차 승인, 자금이체 완료 내역만 조회, 회사/직원 관리
-  ADMIN       // 레거시: 코드에서 EXECUTIVE와 동일 취급
+  TEAM_LEAD     // 팀장: 휴가 1차 승인, 자금이체 결재(확인)
+  CENTER_CHIEF  // 센터장: CS팀 2차 결재
+  EXECUTIVE     // 대표/임원: 휴가 2차 승인, 자금이체 완료 내역만 조회, 회사/직원 관리
+  ADMIN         // 레거시: 코드에서 EXECUTIVE와 동일 취급
 }
 
 enum TaskPriority {
@@ -90,10 +91,11 @@ enum ScheduleInviteStatus {
 }
 
 enum PaymentRequestStatus {
-  PENDING             // 신청됨 → 팀장(일반) 또는 대표(이체담당자 요청) 승인 대기
-  EXECUTIVE_PENDING   // 팀장 1차 승인 완료 → 대표 2차 승인 대기
-  TEAM_LEAD_APPROVED  // 대표 최종 승인 완료 → 이체 담당자 이체 대기
-  COMPLETED           // 이체 담당자가 이체 완료 처리
+  PENDING                // 신청됨 → 팀장(일반) 또는 대표(이체담당자 요청) 승인 대기
+  CENTER_CHIEF_APPROVED  // CS팀 전용: 팀장 1차 승인 완료 → 센터장 2차 승인 대기
+  EXECUTIVE_PENDING      // 팀장(또는 CS 센터장) 승인 완료 → 대표 최종 승인 대기
+  TEAM_LEAD_APPROVED     // 대표 최종 승인 완료 → 이체 담당자 이체 대기
+  COMPLETED              // 이체 담당자가 이체 완료 처리
   REJECTED
 }
 

@@ -5,12 +5,14 @@ import { z } from "zod";
 import {
   canTeamLeadApprovePaymentRequest,
   fetchDepartmentsWithTeamLead,
+  isCsTeamDepartment,
   paymentRequestNeedsExecutiveDirectApproval,
   paymentRequestNeedsExecutiveFirstLineApproval,
   teamLeadNotifyWhereForApplicantDepartment,
 } from "@/lib/finance-payment-request-policy";
 import {
   ensurePaymentRequestAlerts,
+  notifyCenterChiefsOnCsTeamLeadApproval,
   notifyExecutivesOnTeamLeadApproval,
 } from "@/lib/finance-payment-request-alerts";
 
@@ -25,6 +27,9 @@ const createSchema = z.object({
 
 function isTeamLead(role: string | undefined) {
   return role === "TEAM_LEAD";
+}
+function isCenterChief(role: string | undefined) {
+  return role === "CENTER_CHIEF";
 }
 function isExecutive(role: string | undefined) {
   return role === "EXECUTIVE" || role === "ADMIN";
@@ -239,6 +244,96 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
       );
     }
 
+    // 센터장(CS팀 2차): 전체 목록 + CS팀 CENTER_CHIEF_APPROVED 알람 보정
+    if (isCenterChief(role)) {
+      type Row = {
+        id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
+        description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
+        r_id: string; r_name: string; r_email: string; r_position: string | null; r_department: string | null;
+        v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
+        q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
+      };
+      const rawRows = await prisma.$queryRawUnsafe<Row[]>(
+        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
+         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position, u.department as r_department,
+         v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
+         q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
+         FROM "PaymentRequest" pr
+         LEFT JOIN "User" u ON pr."requesterId" = u.id
+         LEFT JOIN "Vendor" v ON pr."vendorId" = v.id
+         LEFT JOIN "Quotation" q ON pr."quotationId" = q.id
+         ORDER BY pr."requestedAt" DESC`
+      );
+      const requests = rawRows.map((r: any) => ({
+        id: r.id,
+        status: r.status,
+        amount: r.amount,
+        requestedAt: r.requestedAt,
+        completedAt: r.completedAt,
+        description: r.description,
+        attachment: r.attachment,
+        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
+        requesterId: r.requesterId,
+        vendorId: r.vendorId,
+        requester: {
+          id: r.r_id,
+          name: r.r_name,
+          email: r.r_email,
+          position: r.r_position,
+          department: r.r_department,
+        },
+        vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
+        quotation: r.q_id
+          ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
+          : null,
+      }));
+      const pendingIds = requests
+        .filter(
+          (r: any) =>
+            r.status === "CENTER_CHIEF_APPROVED" && isCsTeamDepartment(r.requester?.department)
+        )
+        .map((r: any) => r.id);
+      const now = new Date().toISOString();
+      const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
+      if (pendingIds.length > 0) {
+        try {
+          const placeholders = pendingIds.map((_, i) => `$${i + 2}`).join(",");
+          const existingRows = await prisma.$queryRawUnsafe<{ requestId: string }[]>(
+            `SELECT "requestId" FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "requestId" IN (${placeholders})`,
+            session.user.id,
+            ...pendingIds
+          );
+          const existingSet = new Set(existingRows.map((e: any) => e.requestId));
+          for (const requestId of pendingIds) {
+            if (existingSet.has(requestId)) continue;
+            try {
+              await prisma.$executeRawUnsafe(
+                'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
+                cuidLike(),
+                requestId,
+                session.user.id,
+                now
+              );
+            } catch (_) {}
+          }
+        } catch (e) {
+          console.error("센터장 알람 보정 실패:", e);
+        }
+      }
+      let finalUnread = 0;
+      try {
+        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
+          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
+          session.user.id
+        );
+        finalUnread = Number(countRows[0]?.count ?? 0);
+      } catch (_) {}
+      return NextResponse.json(
+        { requests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
+    }
+
     // 이체 담당자(일반/팀장 아님): 팀장과 동일하게 raw SQL로 전체 목록 조회 + 팀장 승인(이체대기) 건 알람 보정
     if (isTransferExecutor) {
       type Row = {
@@ -398,17 +493,39 @@ export async function POST(req: Request) {
       transferExecutorIdsPost
     );
     const isRequesterTeamLead = isTeamLead(requesterRole);
+    const isRequesterCenterChief = isCenterChief(requesterRole);
+    const requesterIsCs = isCsTeamDepartment(requesterUser?.department);
     const departmentsWithTeamLeadSet = await fetchDepartmentsWithTeamLead(prisma);
     const needsExecutiveDirect =
       !needsExecutiveFirstLine &&
       !isRequesterTeamLead &&
+      !isRequesterCenterChief &&
       paymentRequestNeedsExecutiveDirectApproval(
         requesterUser?.department,
         departmentsWithTeamLeadSet
       );
-    /** 이체 담당자·김소윤: 팀장 자동승인 없음 → 대표/임원·팀장이 1차 승인 */
-    const initialStatus =
-      needsExecutiveFirstLine ? "PENDING" : isRequesterTeamLead ? "TEAM_LEAD_APPROVED" : "PENDING";
+    /**
+     * 초기 상태:
+     * - 이체담당자·김소윤: PENDING(대표 1차)
+     * - CS팀장 신청: CENTER_CHIEF_APPROVED(센터장→대표)
+     * - CS 센터장 신청: EXECUTIVE_PENDING(대표)
+     * - 그 외 팀장 신청: TEAM_LEAD_APPROVED(이체대기) — 기존
+     * - 일반: PENDING
+     */
+    let initialStatus:
+      | "PENDING"
+      | "CENTER_CHIEF_APPROVED"
+      | "EXECUTIVE_PENDING"
+      | "TEAM_LEAD_APPROVED" = "PENDING";
+    if (needsExecutiveFirstLine) {
+      initialStatus = "PENDING";
+    } else if (requesterIsCs && isRequesterTeamLead) {
+      initialStatus = "CENTER_CHIEF_APPROVED";
+    } else if (requesterIsCs && isRequesterCenterChief) {
+      initialStatus = "EXECUTIVE_PENDING";
+    } else if (isRequesterTeamLead) {
+      initialStatus = "TEAM_LEAD_APPROVED";
+    }
 
     const normalizedAttachments = [
       ...(Array.isArray(parsed.data.attachments) ? parsed.data.attachments : []),
@@ -427,7 +544,7 @@ export async function POST(req: Request) {
         attachments: uniqAttachments.length > 0 ? (uniqAttachments as any) : undefined,
         requesterId: session.user.id,
         quotationId: parsed.data.quotationId && parsed.data.quotationId !== "" ? parsed.data.quotationId : null,
-        status: initialStatus as "PENDING" | "TEAM_LEAD_APPROVED",
+        status: initialStatus,
       },
       include: {
         requester: {
@@ -460,6 +577,18 @@ export async function POST(req: Request) {
             );
           } catch (_) {}
         }
+      } catch (alertErr) {
+        console.error("대표/임원 알람 생성 실패:", alertErr);
+      }
+    } else if (requesterIsCs && isRequesterTeamLead) {
+      try {
+        await notifyCenterChiefsOnCsTeamLeadApproval(paymentRequest.id);
+      } catch (alertErr) {
+        console.error("CS 센터장 알람 생성 실패:", alertErr);
+      }
+    } else if (requesterIsCs && isRequesterCenterChief) {
+      try {
+        await notifyExecutivesOnTeamLeadApproval(paymentRequest.id);
       } catch (alertErr) {
         console.error("대표/임원 알람 생성 실패:", alertErr);
       }

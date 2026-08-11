@@ -52,18 +52,21 @@ export type Employee = {
   permissions?: string | null;
 };
 
-type AppRole = "USER" | "TEAM_LEAD" | "EXECUTIVE" | "ADMIN";
+type AppRole = "USER" | "TEAM_LEAD" | "CENTER_CHIEF" | "EXECUTIVE" | "ADMIN";
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "USER", label: "일반 직원" },
   { value: "TEAM_LEAD", label: "팀장" },
+  { value: "CENTER_CHIEF", label: "센터장" },
   { value: "EXECUTIVE", label: "대표/임원" },
   { value: "ADMIN", label: "시스템 관리자" },
 ];
 
 function normalizeEmployeeRole(r: string | undefined): AppRole {
   const u = String(r ?? "USER").toUpperCase();
-  if (u === "TEAM_LEAD" || u === "EXECUTIVE" || u === "ADMIN") return u as AppRole;
+  if (u === "TEAM_LEAD" || u === "CENTER_CHIEF" || u === "EXECUTIVE" || u === "ADMIN") {
+    return u as AppRole;
+  }
   return "USER";
 }
 
@@ -71,6 +74,7 @@ function roleDisplayLabel(role: string): string {
   const r = String(role ?? "").toUpperCase();
   if (r === "EXECUTIVE") return "대표/임원";
   if (r === "ADMIN") return "관리자";
+  if (r === "CENTER_CHIEF") return "센터장";
   if (r === "TEAM_LEAD") return "팀장";
   return "직원";
 }
@@ -486,6 +490,7 @@ export function AdminEmployeesClient({
                       <SelectContent>
                         <SelectItem value="USER">직원 — 기본 권한(일정·프로젝트·연차·자금 요청)</SelectItem>
                         <SelectItem value="TEAM_LEAD">팀장 — 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
+                        <SelectItem value="CENTER_CHIEF">센터장 — CS팀 자금이체 2차 결재</SelectItem>
                         <SelectItem value="EXECUTIVE">대표/임원 — 경영·전체 관리</SelectItem>
                         <SelectItem value="ADMIN">시스템 관리자 — 직원 역할·설정</SelectItem>
                       </SelectContent>

@@ -1,0 +1,13 @@
+-- CS팀 3단계 결재: CENTER_CHIEF role + CENTER_CHIEF_APPROVED 상태
+
+DO $$ BEGIN
+  ALTER TYPE "Role" ADD VALUE 'CENTER_CHIEF';
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TYPE "PaymentRequestStatus" ADD VALUE 'CENTER_CHIEF_APPROVED';
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;

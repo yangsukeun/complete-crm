@@ -74,3 +74,15 @@ export async function notifyExecutivesOnTeamLeadApproval(requestId: string): Pro
     execs.map((u) => u.id)
   );
 }
+
+/** CS팀 팀장 1차 후 센터장에게 알람 */
+export async function notifyCenterChiefsOnCsTeamLeadApproval(requestId: string): Promise<void> {
+  const chiefs = await prisma.user.findMany({
+    where: { role: "CENTER_CHIEF", department: "CS팀" },
+    select: { id: true },
+  });
+  await ensurePaymentRequestAlerts(
+    requestId,
+    chiefs.map((u) => u.id)
+  );
+}

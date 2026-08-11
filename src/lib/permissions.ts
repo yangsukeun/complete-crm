@@ -6,7 +6,7 @@
  * `resolveEffectivePermissionsJson` 결과를 사용하는 것이 안전합니다.
  */
 
-export type RoleName = "USER" | "TEAM_LEAD" | "EXECUTIVE" | "ADMIN";
+export type RoleName = "USER" | "TEAM_LEAD" | "CENTER_CHIEF" | "EXECUTIVE" | "ADMIN";
 
 /** 기능 키 → 한글 라벨 (관리 화면·API용) */
 export const FEATURE_LABELS: Record<string, string> = {
@@ -35,7 +35,7 @@ export const FEATURE_LABELS: Record<string, string> = {
 
 export const FEATURE_KEYS = Object.keys(FEATURE_LABELS) as string[];
 
-/** 역할별 기본 허용 기능 (permissions 미설정 시 사용) */
+/** 역할별 기본 허용 기능 (permissions 미설정 시 사용). CS팀 분기는 cs-team-permissions / resolve 참고. */
 const DEFAULT_BY_ROLE: Record<RoleName, string[]> = {
   USER: [
     "dashboard",
@@ -65,6 +65,20 @@ const DEFAULT_BY_ROLE: Record<RoleName, string[]> = {
     "announcements",
     "board",
     "admin_logs", // 직원 Daily Report 조회 (/admin/logs) — 팀장 기본
+    "profile",
+  ],
+  /** 센터장: 자금 승인 중심 (CS팀 실제 기본값은 resolve에서 재조정) */
+  CENTER_CHIEF: [
+    "dashboard",
+    "schedule",
+    "leave",
+    "finance_request",
+    "finance_approve",
+    "finance_view",
+    "chat",
+    "attendance",
+    "announcements",
+    "board",
     "profile",
   ],
   EXECUTIVE: FEATURE_KEYS,
