@@ -9,6 +9,7 @@ export type UserNoteDto = {
   category?: string;
   attachments?: UserNoteAttachment[];
   colorHex: string | null;
+  pinned?: boolean;
   projectId: string | null;
   createdAt: string;
   updatedAt: string;

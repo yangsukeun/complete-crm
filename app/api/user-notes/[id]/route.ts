@@ -18,6 +18,7 @@ const patchSchema = z.object({
   attachments: userNoteAttachmentsFieldSchema.optional(),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
+  pinned: z.boolean().optional(),
 });
 
 const noteSelect = {
@@ -28,6 +29,7 @@ const noteSelect = {
   category: true,
   attachments: true,
   colorHex: true,
+  pinned: true,
   projectId: true,
   createdAt: true,
   updatedAt: true,
@@ -65,6 +67,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       attachments?: string;
       projectId?: string | null;
       colorHex?: string | null;
+      pinned?: boolean;
     } = {};
     if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
     const effectiveCt: "text" | "html" =
@@ -82,6 +85,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       data.attachments = userNoteAttachmentsToDbJson(parsed.data.attachments);
     }
     if (parsed.data.colorHex !== undefined) data.colorHex = parsed.data.colorHex;
+    if (parsed.data.pinned !== undefined) data.pinned = parsed.data.pinned;
     if (parsed.data.projectId !== undefined) {
       const pid = parsed.data.projectId;
       if (pid) {

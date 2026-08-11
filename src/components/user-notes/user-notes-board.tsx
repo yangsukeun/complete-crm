@@ -112,12 +112,19 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
 
   const visibleNotes = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return notes;
-    return notes.filter((n) => {
-      if (n.title.toLowerCase().includes(keyword)) return true;
-      return contentToPlainText(n.content, n.contentType ?? null)
-        .toLowerCase()
-        .includes(keyword);
+    const filtered = keyword
+      ? notes.filter((n) => {
+          if (n.title.toLowerCase().includes(keyword)) return true;
+          return contentToPlainText(n.content, n.contentType ?? null)
+            .toLowerCase()
+            .includes(keyword);
+        })
+      : notes;
+    // 고정 → 최근 수정순 (서버 orderBy와 동일, 낙관적 갱신 후에도 유지)
+    return [...filtered].sort((a, b) => {
+      const pinDiff = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+      if (pinDiff !== 0) return pinDiff;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
   }, [notes, search]);
 
@@ -182,6 +189,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       category?: string;
       attachments?: { url: string; name: string }[];
       colorHex?: string;
+      pinned?: boolean;
     }
   ) => {
     const updated = await fetchJson<UserNoteDto>(`/api/user-notes/${id}`, {
@@ -201,6 +209,15 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
       await handlePatch(id, { colorHex });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "색상을 바꾸지 못했습니다.");
+    }
+  };
+
+  const handleTogglePin = async (id: string, pinned: boolean) => {
+    try {
+      await handlePatch(id, { pinned });
+      toast.success(pinned ? "맨 위에 고정했습니다." : "고정을 해제했습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "고정을 바꾸지 못했습니다.");
     }
   };
 
@@ -353,6 +370,7 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
               showConvertToProject={canConvertProject}
               onOpen={setOpenNoteId}
               onColorChange={(id, colorHex) => void handleColorChange(id, colorHex)}
+              onTogglePin={(id, pinned) => void handleTogglePin(id, pinned)}
               onDelete={(id) => void handleDelete(id)}
               onRequestConvert={openConvert}
             />

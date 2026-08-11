@@ -502,11 +502,14 @@ model UserNote {
   category   String   @default("COMPANY") @db.VarChar(32)
   attachments String  @default("[]") @db.Text // JSON: [{ "url": "/uploads/...", "name": "파일명" }]
   colorHex   String?
+  /// 고정(핀) — 목록에서 맨 위에 표시
+  pinned     Boolean  @default(false)
   projectId  String?
   project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   @@index([userId])
+  @@index([userId, pinned])
   @@index([projectId])
   @@index([category])
 }

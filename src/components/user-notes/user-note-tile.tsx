@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreVertical, Trash2, FolderKanban, Paperclip, Palette } from "lucide-react";
+import { MoreVertical, Trash2, FolderKanban, Paperclip, Palette, Pin, PinOff } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +39,7 @@ export function UserNoteTile({
   showProjectLink,
   onOpen,
   onColorChange,
+  onTogglePin,
   onDelete,
   onRequestConvert,
 }: {
@@ -47,16 +48,21 @@ export function UserNoteTile({
   showProjectLink?: boolean;
   onOpen: (id: string) => void;
   onColorChange: (id: string, colorHex: string) => void;
+  onTogglePin: (id: string, pinned: boolean) => void;
   onDelete: (id: string) => void;
   onRequestConvert: (note: UserNoteDto) => void;
 }) {
   const excerpt = contentToPlainText(note.content, note.contentType ?? null).trim();
   const attachmentCount = Array.isArray(note.attachments) ? note.attachments.length : 0;
   const bg = note.colorHex ?? DEFAULT_NOTE_COLOR;
+  const isPinned = Boolean(note.pinned);
 
   return (
     <div
-      className="group relative flex h-44 flex-col rounded-lg border border-black/5 shadow-sm transition-shadow hover:shadow-md dark:border-white/10"
+      className={cn(
+        "group relative flex h-44 flex-col rounded-lg border shadow-sm transition-shadow hover:shadow-md dark:border-white/10",
+        isPinned ? "border-amber-400/70 ring-1 ring-amber-300/50" : "border-black/5"
+      )}
       style={{ backgroundColor: bg }}
     >
       <button
@@ -64,7 +70,10 @@ export function UserNoteTile({
         onClick={() => onOpen(note.id)}
         className="flex min-h-0 flex-1 flex-col items-start rounded-lg px-3 py-2.5 text-left outline-none"
       >
-        <p className="line-clamp-1 w-full pr-7 text-sm font-semibold text-neutral-900">
+        <p className="line-clamp-1 w-full pr-14 text-sm font-semibold text-neutral-900">
+          {isPinned && (
+            <Pin className="mr-1 inline size-3.5 fill-amber-600 text-amber-700 align-[-2px]" aria-hidden />
+          )}
           {note.title.trim() || "(제목 없음)"}
         </p>
         <p className="mt-1 line-clamp-5 min-h-0 w-full flex-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-700">
@@ -86,20 +95,56 @@ export function UserNoteTile({
         </span>
       </button>
 
-      <div className="absolute right-1 top-1 opacity-60 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-1 top-1 flex items-center gap-0.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "size-7 text-neutral-700 hover:bg-black/10",
+            isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+          title={isPinned ? "고정 해제" : "맨 위에 고정"}
+          aria-label={isPinned ? "고정 해제" : "맨 위에 고정"}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onTogglePin(note.id, !isPinned);
+          }}
+        >
+          {isPinned ? (
+            <PinOff className="size-3.5" />
+          ) : (
+            <Pin className="size-3.5" />
+          )}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7 text-neutral-700 hover:bg-black/10"
+              className="size-7 text-neutral-700 opacity-60 hover:bg-black/10 hover:opacity-100 group-hover:opacity-100"
               aria-label="메모 메뉴"
             >
               <MoreVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onSelect={() => onTogglePin(note.id, !isPinned)}>
+              {isPinned ? (
+                <>
+                  <PinOff className="mr-2 size-4" />
+                  고정 해제
+                </>
+              ) : (
+                <>
+                  <Pin className="mr-2 size-4" />
+                  맨 위에 고정
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-muted-foreground flex items-center gap-1.5 text-xs">
               <Palette className="size-3.5" />
               색상

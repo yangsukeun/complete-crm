@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { MoreVertical, Trash2, FolderKanban, FileText } from "lucide-react";
+import { MoreVertical, Trash2, FolderKanban, FileText, Pin, PinOff } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ type PatchBody = {
   contentType?: "text" | "html";
   category?: string;
   attachments?: UserNoteAttachment[];
+  pinned?: boolean;
 };
 
 function isBlockNoteDoc(content: string): boolean {
@@ -352,6 +353,25 @@ export function UserNoteCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onSelect={() => {
+                  void onPatch(note.id, { pinned: !note.pinned }).then(() => {
+                    toast.success(note.pinned ? "고정을 해제했습니다." : "맨 위에 고정했습니다.");
+                  });
+                }}
+              >
+                {note.pinned ? (
+                  <>
+                    <PinOff className="mr-2 size-4" />
+                    고정 해제
+                  </>
+                ) : (
+                  <>
+                    <Pin className="mr-2 size-4" />
+                    맨 위에 고정
+                  </>
+                )}
+              </DropdownMenuItem>
               {showConvertToProject ? (
                 <DropdownMenuItem onSelect={() => onRequestConvert(note)}>
                   <FolderKanban className="mr-2 size-4" />

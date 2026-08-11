@@ -24,6 +24,7 @@ const createSchema = z.object({
   attachments: userNoteAttachmentsFieldSchema.optional().default([]),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
+  pinned: z.boolean().optional(),
 });
 
 const patchSchema = z.object({
@@ -35,6 +36,7 @@ const patchSchema = z.object({
   attachments: userNoteAttachmentsFieldSchema.optional(),
   projectId: z.string().min(1).nullable().optional(),
   colorHex: z.string().min(1).max(32).nullable().optional(),
+  pinned: z.boolean().optional(),
 });
 
 const noteSelect = {
@@ -45,6 +47,7 @@ const noteSelect = {
   category: true,
   attachments: true,
   colorHex: true,
+  pinned: true,
   projectId: true,
   createdAt: true,
   updatedAt: true,
@@ -72,7 +75,8 @@ export async function GET(req: Request) {
     try {
       notes = await prisma.userNote.findMany({
         where,
-        orderBy: { updatedAt: "desc" },
+        // 고정된 메모를 맨 위에, 그다음 최근 수정순
+        orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
         select: noteSelect,
       });
     } catch (dbErr) {
@@ -147,7 +151,8 @@ export async function PATCH(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
     }
-    const { id, title, content, contentType, category, attachments, projectId, colorHex } = parsed.data;
+    const { id, title, content, contentType, category, attachments, projectId, colorHex, pinned } =
+      parsed.data;
 
     const owned = await prisma.userNote.findFirst({
       where: { id, userId: session.user.id },
@@ -165,6 +170,7 @@ export async function PATCH(req: Request) {
       attachments?: string;
       projectId?: string | null;
       colorHex?: string | null;
+      pinned?: boolean;
     } = {};
     if (title !== undefined) data.title = title.trim();
     const effectiveCt: "text" | "html" =
@@ -180,6 +186,7 @@ export async function PATCH(req: Request) {
     if (category !== undefined) data.category = category;
     if (attachments !== undefined) data.attachments = userNoteAttachmentsToDbJson(attachments);
     if (colorHex !== undefined) data.colorHex = colorHex;
+    if (pinned !== undefined) data.pinned = pinned;
     if (projectId !== undefined) {
       if (projectId) {
         const p = await prisma.project.findFirst({
