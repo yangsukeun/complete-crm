@@ -108,7 +108,8 @@ export async function POST(req: Request) {
       console.error("[user-notes POST] validation", parsed.error.flatten());
       return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
     }
-    const { title, content, contentType, category, attachments, projectId, colorHex } = parsed.data;
+    const { title, content, contentType, category, attachments, projectId, colorHex, pinned } =
+      parsed.data;
     const ct: "text" | "html" = contentType === "html" ? "html" : "text";
     let resolvedProjectId: string | null = projectId ?? null;
     if (resolvedProjectId) {
@@ -129,6 +130,7 @@ export async function POST(req: Request) {
         category,
         attachments: userNoteAttachmentsToDbJson(attachments ?? []),
         colorHex: colorHex ?? NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
+        pinned: pinned ?? false,
         projectId: resolvedProjectId,
       },
       select: noteSelect,

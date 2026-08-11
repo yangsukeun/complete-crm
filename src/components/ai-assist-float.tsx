@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AIRequestToEmployeeModal } from "@/components/ai-request-to-employee-modal";
+import { QuickNoteSheet } from "@/components/user-notes/quick-note-sheet";
 import { toast } from "sonner";
 import {
   Sparkles,
@@ -45,6 +45,7 @@ export function AIAssistFloat() {
   const canPickAiProvider =
     session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
   const [open, setOpen] = useState(false);
+  const [memoOpen, setMemoOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -386,28 +387,36 @@ export function AIAssistFloat() {
 
       {memoFabVisible && (
         <Button
-          asChild
-          size="lg"
+          type="button"
+          size="icon"
           variant="secondary"
-          className="h-14 rounded-full border border-amber-200/80 bg-amber-400 text-amber-950 shadow-lg hover:bg-amber-500 gap-2 px-5 dark:border-amber-700/50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
+          title="빠른 메모"
+          aria-label="빠른 메모"
+          className="size-12 rounded-full border border-amber-200/80 bg-amber-400 text-amber-950 shadow-lg hover:bg-amber-500 dark:border-amber-700/50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
+          onClick={() => {
+            setOpen(false);
+            setMemoOpen(true);
+          }}
         >
-          <Link href="/notes" prefetch={false} title="메모장">
-            <StickyNote className="size-5" />
-            <span className="font-medium">메모장</span>
-          </Link>
+          <StickyNote className="size-5" />
         </Button>
       )}
 
       <Button
         type="button"
-        size="lg"
-        className="h-14 rounded-full shadow-lg bg-violet-600 hover:bg-violet-700 text-white gap-2 px-5"
-        onClick={() => setOpen((o: any) => !o)}
+        size="icon"
+        title={open ? "AI 비서 닫기" : "AI 비서"}
+        aria-label={open ? "AI 비서 닫기" : "AI 비서"}
+        className="size-12 rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-700"
+        onClick={() => {
+          setMemoOpen(false);
+          setOpen((o) => !o);
+        }}
       >
-        <Sparkles className="size-5" />
-        <span className="font-medium">AI 비서</span>
+        {open ? <X className="size-5" /> : <Sparkles className="size-5" />}
       </Button>
 
+      <QuickNoteSheet open={memoOpen} onOpenChange={setMemoOpen} />
       <AIRequestToEmployeeModal open={requestModalOpen} onOpenChange={setRequestModalOpen} />
     </div>
   );
