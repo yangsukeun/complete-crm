@@ -36,6 +36,7 @@ import {
   Shield,
   Link2,
   Server,
+  Package,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -70,10 +71,11 @@ type NavLink = {
   hint?: string;
 };
 
-// [메인]: 대시보드·CS (자주 쓰는 단일 진입)
+// [메인]: 대시보드·CS·3PL (자주 쓰는 단일 진입)
 const mainGroupLinks: NavLink[] = [
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard, featureKey: "dashboard" },
   { href: "/cs-tools", label: "CS 링크", icon: Link2 },
+  { href: "/logistics", label: "3PL", icon: Package, hint: "3PL 물류 (준비중)" },
 ];
 
 /** 게시판·드라이브·NAS — 「자료」 드롭다운 */
@@ -600,6 +602,25 @@ export function AppNav() {
               <Link href="/cs-tools" prefetch={false} className="flex items-center gap-1.5">
                 <Link2 className="size-4" />
                 <span>CS 링크</span>
+              </Link>
+            </Button>
+          )}
+
+          {/* 3PL 물류 — 단독 (도약패키지 연동 예정) */}
+          {mainLinks.some((l) => l.href === "/logistics") && (
+            <Button
+              variant="ghost"
+              asChild
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+                pathname === "/logistics" || pathname.startsWith("/logistics/")
+                  ? "bg-gray-100 text-gray-900"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              )}
+            >
+              <Link href="/logistics" prefetch={false} className="flex items-center gap-1.5">
+                <Package className="size-4" />
+                <span>3PL</span>
               </Link>
             </Button>
           )}
