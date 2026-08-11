@@ -1264,7 +1264,7 @@ model AiConversationMessage {
   @@map("ai_conversation_messages")
 }
 
-/// CS 링크 허브 — 외부 도구 바로가기 (임시 시드 후 CS팀장 확인 필수)
+/// CS 링크 허브 — 외부 도구 바로가기
 model CsTool {
   id          String   @id @default(cuid())
   name        String

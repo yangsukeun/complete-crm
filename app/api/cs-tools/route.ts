@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { sortCsToolCategories } from "@/lib/cs-tools";
 
 export const runtime = "nodejs";
 
@@ -33,11 +34,7 @@ export async function GET() {
       byCategory[key].push(t);
     }
 
-    const categories = Object.keys(byCategory).sort((a, b) => {
-      const ao = byCategory[a]![0]?.order ?? 0;
-      const bo = byCategory[b]![0]?.order ?? 0;
-      return ao - bo || a.localeCompare(b, "ko");
-    });
+    const categories = sortCsToolCategories(Object.keys(byCategory));
 
     return NextResponse.json({
       tools,

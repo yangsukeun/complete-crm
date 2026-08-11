@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ExternalLink, Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CS_TOOL_CATEGORY_ORDER } from "@/lib/cs-tools";
 
 type CsTool = {
   id: string;
@@ -26,6 +27,7 @@ export function CsToolsPageClient() {
   const [data, setData] = useState<ListPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>("__ALL__");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,7 +53,6 @@ export function CsToolsPageClient() {
 
   const openTool = (tool: CsTool) => {
     window.open(tool.url, "_blank", "noopener,noreferrer");
-    // 비동기 — UI 블로킹 없음
     void fetch(`/api/cs-tools/${encodeURIComponent(tool.id)}/click`, { method: "POST" })
       .then(async (res) => {
         if (!res.ok) return;
@@ -74,6 +75,23 @@ export function CsToolsPageClient() {
         /* 클릭 로그 실패는 UX에 영향 없음 */
       });
   };
+
+  const categories = data?.categories ?? [];
+
+  /** 데이터에 있는 카테고리 + 정의된 순서 */
+  const filterOptions = useMemo(() => {
+    const present = new Set(categories);
+    const ordered = CS_TOOL_CATEGORY_ORDER.filter((c) => present.has(c));
+    const extras = categories.filter(
+      (c) => !(CS_TOOL_CATEGORY_ORDER as readonly string[]).includes(c)
+    );
+    return [...ordered, ...extras];
+  }, [categories]);
+
+  const visibleCategories = useMemo(() => {
+    if (filter === "__ALL__") return categories;
+    return categories.filter((c) => c === filter);
+  }, [categories, filter]);
 
   if (loading) {
     return (
@@ -99,8 +117,6 @@ export function CsToolsPageClient() {
     );
   }
 
-  const categories = data?.categories ?? [];
-
   if (categories.length === 0) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 py-16 text-center text-sm text-muted-foreground">
@@ -110,11 +126,41 @@ export function CsToolsPageClient() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-        임시 플레이스홀더입니다. CS팀장 확인 후 실제 도구명·URL로 교체해야 합니다.
-      </p>
-      {categories.map((cat) => {
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFilter("__ALL__")}
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            filter === "__ALL__"
+              ? "border-sky-600 bg-sky-600 text-white"
+              : "border-border bg-background text-muted-foreground hover:border-sky-300 hover:text-foreground"
+          )}
+        >
+          전체 ({data?.total ?? 0})
+        </button>
+        {filterOptions.map((cat) => {
+          const n = data?.byCategory[cat]?.length ?? 0;
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setFilter(cat)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                filter === cat
+                  ? "border-sky-600 bg-sky-600 text-white"
+                  : "border-border bg-background text-muted-foreground hover:border-sky-300 hover:text-foreground"
+              )}
+            >
+              {cat} ({n})
+            </button>
+          );
+        })}
+      </div>
+
+      {visibleCategories.map((cat) => {
         const tools = data?.byCategory[cat] ?? [];
         return (
           <section key={cat}>
