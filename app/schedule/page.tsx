@@ -318,22 +318,25 @@ function CustomDateHeader({
           {holidayName}
         </span>
       ) : null}
-      <div
-        className={cn(
-          "relative inline-flex h-6 w-6 items-center justify-center rounded-full text-sm",
-          className,
-          isToday ? "bg-blue-600 font-bold text-white" : "",
-          !isToday && legal && "font-semibold text-[#d93025]",
-          isOffRange && !isToday && "scale-[0.92] text-[#9aa0a6] dark:text-[#80868b]"
-        )}
-      >
-        {label}
-        {isToday && (
-          <span className="absolute -top-2 -right-2 text-[9px] font-semibold text-blue-500">
-            TODAY
+      {isToday ? (
+        <>
+          <span className="schedule-gcal-today-badge" aria-current="date">
+            {label}
           </span>
-        )}
-      </div>
+          <span className="schedule-gcal-today-label">오늘</span>
+        </>
+      ) : (
+        <div
+          className={cn(
+            "inline-flex h-6 w-6 items-center justify-center rounded-full text-sm",
+            className,
+            legal && "font-semibold text-[#d93025]",
+            isOffRange && "scale-[0.92] text-[#9aa0a6] dark:text-[#80868b]"
+          )}
+        >
+          {label}
+        </div>
+      )}
     </div>
   );
   if (drilldownView && onDrillDown) {
@@ -525,12 +528,14 @@ function createDateCellWrapper(
     const entries = leaveByDate[key] ?? [];
     const offMonth = !isSameMonth(value, calendarMonthDate);
     const monthStart = isSameMonth(value, calendarMonthDate) && value.getDate() === 1;
+    const isToday = isSameDay(value, new Date());
     return (
       <div
         className={cn(
           "rbc-date-cell-wrapper-inner flex h-full min-h-[140px] min-w-0 flex-col overflow-hidden",
           offMonth && "schedule-gcal-off-month",
-          monthStart && "schedule-gcal-month-start"
+          monthStart && "schedule-gcal-month-start",
+          isToday && "schedule-gcal-day-today"
         )}
         /* rbc-row-bg 의 flex 자식은 원래 .rbc-day-bg 가 flex:1 0 0% — 래퍼가 그 역할을 해야 요일별로 셀이 갈라짐 */
         style={{ flex: "1 0 0%" }}

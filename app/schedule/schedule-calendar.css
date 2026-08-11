@@ -7,8 +7,10 @@
   --gcal-text: #3c4043;
   --gcal-border: #d1d5db;
   --gcal-cell-border: #e2e8f0;
-  --gcal-row-sep: #cbd5e1;
-  --gcal-today-bg: #dbeafe;
+  /* 주(가로) 구분선 — 세로선보다 한 단계 또렷하게 */
+  --gcal-row-sep: #b0b8c4;
+  /* 오늘 칸 반투명 채움 */
+  --gcal-today-bg: rgba(26, 115, 232, 0.14);
   --gcal-primary: #1a73e8;
   --gcal-sun: #d93025;
   --gcal-sat: #1a73e8;
@@ -18,8 +20,8 @@
   --gcal-text: #e8eaed;
   --gcal-border: #4b5563;
   --gcal-cell-border: #3d4556;
-  --gcal-row-sep: #525c6f;
-  --gcal-today-bg: rgba(26, 115, 232, 0.28);
+  --gcal-row-sep: #6b7588;
+  --gcal-today-bg: rgba(138, 180, 248, 0.22);
   --gcal-sun: #f28b82;
   --gcal-sat: #8ab4f8;
 }
@@ -102,18 +104,22 @@
   flex: none;
 }
 
-/* 주간 행: 주 사이 경계를 헤더·셀 경계보다 한 단계 진하게 */
+/* 주간 행: 가로 구분선(날짜 행) — border + inset shadow로 레이어에 가려지지 않게 */
 .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
-  border-top: 1px solid var(--gcal-row-sep);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  border-top: 1px solid var(--gcal-row-sep) !important;
+  box-shadow: inset 0 -1px 0 0 var(--gcal-row-sep);
   flex: none !important;
   aspect-ratio: 7 / 1;
   min-height: 120px !important;
   height: auto !important;
 }
 
+.schedule-gcal-viewport .rbc-month-view .rbc-month-row:first-child {
+  border-top: 1px solid var(--gcal-border) !important;
+}
+
 .dark .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 -1px 0 0 var(--gcal-row-sep);
 }
 
 .schedule-gcal-viewport .rbc-day-bg {
@@ -141,15 +147,38 @@
   background: hsl(0 25% 16% / 0.45) !important;
 }
 
+/* 오늘: 칸 전체 반투명 채움 (주말·공휴일 배경보다 우선) */
 .schedule-gcal-viewport .rbc-day-bg.rbc-today,
-.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today {
+.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today,
+.schedule-gcal-viewport .rbc-day-bg.rbc-today.rbc-day--saturday,
+.schedule-gcal-viewport .rbc-day-bg.rbc-today.rbc-day--sunday,
+.schedule-gcal-viewport .rbc-day-bg.rbc-today.rbc-day--legal-holiday,
+.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today.rbc-day--saturday,
+.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today.rbc-day--sunday,
+.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today.rbc-day--legal-holiday {
   background: var(--gcal-today-bg) !important;
-  box-shadow: inset 0 0 0 1px rgba(26, 115, 232, 0.22);
+  box-shadow: inset 0 0 0 2px rgba(26, 115, 232, 0.35);
 }
 
 .dark .schedule-gcal-viewport .rbc-day-bg.rbc-today,
-.dark .schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today {
-  box-shadow: inset 0 0 0 1px rgba(138, 180, 248, 0.35);
+.dark .schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today,
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-today.rbc-day--saturday,
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-today.rbc-day--sunday,
+.dark .schedule-gcal-viewport .rbc-day-bg.rbc-today.rbc-day--legal-holiday,
+.dark .schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today.rbc-day--saturday,
+.dark .schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today.rbc-day--sunday,
+.dark .schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today.rbc-day--legal-holiday {
+  box-shadow: inset 0 0 0 2px rgba(138, 180, 248, 0.45);
+}
+
+/* 커스텀 셀 래퍼(휴가 푸터 포함)에도 오늘 틴트 */
+.schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-day-today {
+  background: var(--gcal-today-bg);
+}
+
+.schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-day-today .rbc-day-bg,
+.schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-day-today .rbc-day-bg.rbc-off-range-bg {
+  background: transparent !important;
 }
 
 /* 다른 달(월 그리드 padding 일): 배경을 본 달과 확실히 구분 */
@@ -201,9 +230,14 @@
   background: hsl(220 10% 20% / 0.6) !important;
 }
 
-.schedule-gcal-viewport .rbc-day-bg.rbc-today:hover {
+.schedule-gcal-viewport .rbc-day-bg.rbc-today:hover,
+.schedule-gcal-viewport .rbc-day-bg.schedule-gcal-day-today:hover {
   background: var(--gcal-today-bg) !important;
   filter: brightness(0.97);
+}
+
+.schedule-gcal-viewport .rbc-date-cell-wrapper-inner.schedule-gcal-day-today:hover {
+  filter: brightness(0.98);
 }
 
 /* 날짜 숫자 셀 (+ 커스텀 헤더 링크) */
@@ -227,6 +261,8 @@
   padding: 0;
   color: var(--gcal-text);
   text-decoration: none;
+  /* 오늘: 전체 폭 파란 바 금지 — 원형 배지·칸 배경으로만 표시 */
+  background: transparent !important;
   transition: background 0.1s ease, color 0.1s ease;
 }
 
@@ -237,10 +273,36 @@
   max-width: 100%;
 }
 
+/* 오늘은 버튼 전체를 칠하지 않음(원형 숫자 + 칸 반투명 배경) */
 .schedule-gcal-viewport .rbc-date-cell.rbc-now .rbc-button-link {
   font-weight: 700;
+  background: transparent !important;
+  color: inherit;
+}
+
+.schedule-gcal-today-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.35rem;
+  border-radius: 9999px;
   background: var(--gcal-primary);
   color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.schedule-gcal-today-label {
+  display: block;
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  color: var(--gcal-primary);
 }
 
 .schedule-gcal-viewport .rbc-off-range .rbc-button-link {
