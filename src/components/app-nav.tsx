@@ -61,15 +61,32 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// [메인]: 대시보드 (+ 공지·채팅 회사 모드 시)
-const mainGroupLinks: { href: string; label: string; icon: typeof LayoutDashboard; featureKey?: string; companyOnly?: boolean }[] = [
+type NavLink = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  featureKey?: string;
+  companyOnly?: boolean;
+  hint?: string;
+};
+
+// [메인]: 대시보드·CS (자주 쓰는 단일 진입)
+const mainGroupLinks: NavLink[] = [
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard, featureKey: "dashboard" },
-  { href: "/announcements", label: "공지사항", icon: Megaphone, featureKey: "announcements", companyOnly: true },
-  { href: "/board", label: "게시판", icon: FolderOpen, featureKey: "board", companyOnly: true },
-  { href: "/drive", label: "파일", icon: HardDrive },
-  { href: "/nas-drive", label: "NAS 문서함", icon: Server },
   { href: "/cs-tools", label: "CS 링크", icon: Link2 },
-  { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true },
+];
+
+/** 게시판·드라이브·NAS — 「자료」 드롭다운 */
+const resourceGroupLinks: NavLink[] = [
+  { href: "/board", label: "게시판", icon: FolderOpen, featureKey: "board", companyOnly: true, hint: "공지·자료 목록" },
+  { href: "/drive", label: "파일", icon: HardDrive, hint: "Google Drive" },
+  { href: "/nas-drive", label: "NAS 문서함", icon: Server, hint: "사내 파일 서버" },
+];
+
+/** 공지·채팅 — 「소통」 드롭다운 */
+const commsGroupLinks: NavLink[] = [
+  { href: "/announcements", label: "공지사항", icon: Megaphone, featureKey: "announcements", companyOnly: true, hint: "전사 공지" },
+  { href: "/chat", label: "채팅", icon: MessageCircle, featureKey: "chat", companyOnly: true, hint: "팀 대화" },
 ];
 
 // [AI]: 비서·허브를 한 메뉴로 묶어 상단 폭을 아낀다
@@ -78,8 +95,9 @@ const aiGroupLinks: { href: string; label: string; icon: typeof Sparkles; hint: 
   { href: "/ai-hub", label: "AI 허브", icon: BrainCircuit, hint: "모델·프롬프트 설정" },
 ];
 
-const workGroupLinks: { href: string; label: string; icon: typeof ListTodo; featureKey?: string }[] = [
+const workGroupLinks: NavLink[] = [
   { href: "/tasks", label: "Projects", icon: ListTodo, featureKey: "tasks" },
+  { href: "/trash", label: "휴지통", icon: Trash2, featureKey: "tasks", hint: "삭제된 프로젝트" },
 ];
 
 // [인사/일정 관리]: 인디고/블루 계열
@@ -335,11 +353,23 @@ export function AppNav() {
     }
   };
 
-  const mainLinks = mainGroupLinks.filter(
-    (l: any) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
-  );
-  const workLinks = workGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
+  const visibleNav = (links: NavLink[]) =>
+    links.filter((l) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany));
+
+  const mainLinks = visibleNav(mainGroupLinks);
+  const workLinks = visibleNav(workGroupLinks);
+  const resourceLinks = visibleNav(resourceGroupLinks);
+  const commsLinks = visibleNav(commsGroupLinks);
   const aiActive = aiGroupLinks.some(
+    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
+  );
+  const resourceActive = resourceLinks.some(
+    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
+  );
+  const commsActive = commsLinks.some(
+    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
+  );
+  const workActive = workLinks.some(
     (l) => pathname === l.href || pathname.startsWith(l.href + "/")
   );
   const hrLinks = hrGroupLinks.filter(
@@ -438,121 +468,202 @@ export function AppNav() {
             </Link>
           </Button>
 
-          {can("tasks") && (
-            <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/tasks" || pathname.startsWith("/tasks/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/tasks" prefetch={false} className="relative flex items-center gap-1.5">
-                <span className="relative inline-flex">
-                  <ListTodo className="size-4" />
-                  {projectAssignBadgeCount > 0 && (
-                    <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {projectAssignBadgeCount > 99 ? "99+" : projectAssignBadgeCount}
-                    </span>
+          {/* Projects + 휴지통 */}
+          {workLinks.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+                    workActive
+                      ? "bg-gray-100 text-gray-900"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                   )}
-                </span>
-                <span>Projects</span>
-              </Link>
-            </Button>
+                >
+                  <span className="relative inline-flex">
+                    <ListTodo className="size-4" />
+                    {projectAssignBadgeCount > 0 && (
+                      <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                        {projectAssignBadgeCount > 99 ? "99+" : projectAssignBadgeCount}
+                      </span>
+                    )}
+                  </span>
+                  <span>Projects</span>
+                  <ChevronDown className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-48">
+                <DropdownMenuLabel className="text-muted-foreground text-xs">프로젝트</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {workLinks.map(({ href, label, icon: Icon, hint }) => {
+                  const isActive = pathname === href || pathname.startsWith(href + "/");
+                  return (
+                    <DropdownMenuItem key={href} asChild>
+                      <Link
+                        href={href}
+                        prefetch={false}
+                        className={cn(
+                          "flex cursor-pointer items-start gap-2",
+                          isActive && "bg-gray-100 text-gray-900"
+                        )}
+                      >
+                        <Icon className="mt-0.5 size-4 shrink-0" />
+                        <span className="flex flex-col">
+                          <span>{label}</span>
+                          {hint && (
+                            <span className="text-muted-foreground text-[11px]">{hint}</span>
+                          )}
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
-          {can("tasks") && (
+          {/* 자료: 게시판·파일·NAS */}
+          {resourceLinks.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+                    resourceActive
+                      ? "bg-gray-100 text-gray-900"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  )}
+                >
+                  <span className="relative inline-flex shrink-0">
+                    <FolderOpen className="size-4" />
+                    {boardNewCount > 0 && (
+                      <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                        {boardNewCount > 99 ? "99+" : boardNewCount}
+                      </span>
+                    )}
+                  </span>
+                  <span>자료</span>
+                  <ChevronDown className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-52">
+                <DropdownMenuLabel className="text-muted-foreground text-xs">자료</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {resourceLinks.map(({ href, label, icon: Icon, hint }) => {
+                  const isActive = pathname === href || pathname.startsWith(href + "/");
+                  return (
+                    <DropdownMenuItem key={href} asChild>
+                      <Link
+                        href={href}
+                        prefetch={false}
+                        className={cn(
+                          "flex cursor-pointer items-start gap-2",
+                          isActive && "bg-gray-100 text-gray-900"
+                        )}
+                      >
+                        <span className="relative mt-0.5 inline-flex shrink-0">
+                          <Icon className="size-4" />
+                          {href === "/board" && boardNewCount > 0 && (
+                            <span className="absolute -right-2 -top-2 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
+                              {boardNewCount > 99 ? "99+" : boardNewCount}
+                            </span>
+                          )}
+                        </span>
+                        <span className="flex flex-col">
+                          <span>{label}</span>
+                          {hint && (
+                            <span className="text-muted-foreground text-[11px]">{hint}</span>
+                          )}
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {/* CS 링크 — 단독 유지 */}
+          {mainLinks.some((l) => l.href === "/cs-tools") && (
             <Button
               variant="ghost"
               asChild
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                pathname === "/trash" ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                pathname === "/cs-tools" || pathname.startsWith("/cs-tools/")
+                  ? "bg-gray-100 text-gray-900"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               )}
             >
-              <Link href="/trash" prefetch={false} className="flex items-center gap-1.5">
-                <Trash2 className="size-4" />
-                <span>휴지통</span>
+              <Link href="/cs-tools" prefetch={false} className="flex items-center gap-1.5">
+                <Link2 className="size-4" />
+                <span>CS 링크</span>
               </Link>
             </Button>
           )}
 
-          {/* 게시판(자료실) - 회사 모드에서만 */}
-          {isCompany && can("board") && (
-            <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/board" || pathname.startsWith("/board/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/board" prefetch={false} className="relative flex items-center gap-1.5">
-                <span className="relative inline-flex shrink-0">
-                  <FolderOpen className="size-4" />
-                  {boardNewCount > 0 && (
-                    <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {boardNewCount > 99 ? "99+" : boardNewCount}
-                    </span>
+          {/* 소통: 공지·채팅 */}
+          {commsLinks.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+                    commsActive
+                      ? "bg-gray-100 text-gray-900"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                   )}
-                </span>
-                <span>게시판</span>
-              </Link>
-            </Button>
-          )}
-
-          {/* 파일(Drive) — 전 직원 노출 */}
-          <Button
-            variant="ghost"
-            asChild
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-              pathname === "/drive" || pathname.startsWith("/drive/")
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            )}
-          >
-            <Link href="/drive" prefetch={false} className="flex items-center gap-1.5">
-              <HardDrive className="size-4" />
-              <span>파일</span>
-            </Link>
-          </Button>
-
-          {/* NAS 문서함 — File Station 목록 (GOOGLE_DRIVE_* 와 분리) */}
-          <Button
-            variant="ghost"
-            asChild
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-              pathname === "/nas-drive" || pathname.startsWith("/nas-drive/")
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            )}
-          >
-            <Link href="/nas-drive" prefetch={false} className="flex items-center gap-1.5">
-              <Server className="size-4" />
-              <span>NAS 문서함</span>
-            </Link>
-          </Button>
-
-          {/* CS 링크 허브 — 전 직원 접근 (대시보드 카드는 CS·관리자만) */}
-          <Button
-            variant="ghost"
-            asChild
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-              pathname === "/cs-tools" || pathname.startsWith("/cs-tools/")
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            )}
-          >
-            <Link href="/cs-tools" prefetch={false} className="flex items-center gap-1.5">
-              <Link2 className="size-4" />
-              <span>CS 링크</span>
-            </Link>
-          </Button>
-
-          {/* 채팅 - 회사 모드에서만 */}
-          {isCompany && can("chat") && (
-            <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/chat" || pathname.startsWith("/chat/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-              <Link href="/chat" prefetch={false} className="flex items-center gap-1.5">
-                <span className="relative inline-flex shrink-0">
-                  <MessageCircle className="size-4" />
-                  {chatUnreadCount > 0 && (
-                    <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                    </span>
-                  )}
-                </span>
-                <span>채팅</span>
-              </Link>
-            </Button>
+                >
+                  <span className="relative inline-flex shrink-0">
+                    <MessageCircle className="size-4" />
+                    {chatUnreadCount > 0 && (
+                      <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                        {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                      </span>
+                    )}
+                  </span>
+                  <span>소통</span>
+                  <ChevronDown className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-52">
+                <DropdownMenuLabel className="text-muted-foreground text-xs">소통</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {commsLinks.map(({ href, label, icon: Icon, hint }) => {
+                  const isActive = pathname === href || pathname.startsWith(href + "/");
+                  return (
+                    <DropdownMenuItem key={href} asChild>
+                      <Link
+                        href={href}
+                        prefetch={false}
+                        className={cn(
+                          "flex cursor-pointer items-start gap-2",
+                          isActive && "bg-gray-100 text-gray-900"
+                        )}
+                      >
+                        <span className="relative mt-0.5 inline-flex shrink-0">
+                          <Icon className="size-4" />
+                          {href === "/chat" && chatUnreadCount > 0 && (
+                            <span className="absolute -right-2 -top-2 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
+                              {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                            </span>
+                          )}
+                        </span>
+                        <span className="flex flex-col">
+                          <span>{label}</span>
+                          {hint && (
+                            <span className="text-muted-foreground text-[11px]">{hint}</span>
+                          )}
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {/* [AI] - 비서·허브 */}
@@ -806,7 +917,15 @@ export function AppNav() {
       {/* Mobile Navigation (shown below header on small screens) */}
       <div className="flex overflow-x-auto border-t border-gray-100 bg-white px-4 py-2 md:hidden">
         <div className="flex gap-1">
-          {[...mainLinks, ...workLinks, ...aiGroupLinks, ...hrLinks, ...financeLinks].map(({ href, label, icon: Icon }) => {
+          {[
+            ...mainLinks,
+            ...workLinks,
+            ...resourceLinks,
+            ...commsLinks,
+            ...aiGroupLinks,
+            ...hrLinks,
+            ...financeLinks,
+          ].map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
             const isHr = hrLinks.some((l: any) => l.href === href);
             const isFinance = financeLinks.some((l: any) => l.href === href);

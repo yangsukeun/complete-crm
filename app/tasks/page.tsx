@@ -1388,11 +1388,22 @@ function TasksPageInner() {
           )}
 
           <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="ml-auto text-muted-foreground"
+          >
+            <Link href="/trash" prefetch={false}>
+              <Trash2 className="mr-1.5 size-4" />
+              휴지통
+            </Link>
+          </Button>
+          <Button
             onClick={() => {
               setCreateParentId(null);
               setCreateOpen(true);
             }}
-            className="ml-auto bg-foreground text-background hover:bg-foreground/90"
+            className="bg-foreground text-background hover:bg-foreground/90"
           >
             <Plus className="mr-2 size-4" />
             새 프로젝트
