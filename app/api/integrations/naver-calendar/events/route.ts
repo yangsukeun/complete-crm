@@ -50,12 +50,12 @@ export async function GET(req: NextRequest) {
     if (account) {
       try {
         const password = decryptSecret(account.passwordCipher);
-        const caldavEvents = await fetchNaverCalDavEvents(
+        const result = await fetchNaverCalDavEvents(
           { naverId: account.naverId, password },
           timeMin,
           timeMax
         );
-        for (const event of caldavEvents) {
+        for (const event of result.events) {
           push(`${event.uid}|${event.start.getTime()}`, {
             id: `naver-${event.uid}-${event.start.getTime()}`,
             title: event.summary,
@@ -65,13 +65,31 @@ export async function GET(req: NextRequest) {
             source: "naver",
           });
         }
+
+        // 성공한 빈 파싱(href는 있는데 본문 0)은 lastError로 남겨 진단 가능하게
+        let lastError: string | null = null;
+        if (result.hrefCount > 0 && result.icsBodyCount === 0) {
+          lastError = `href ${result.hrefCount}건 중 본문 0건 회수 (calendar-multiget 실패 가능)`;
+          warning = lastError;
+          console.error("[NAVER_CALDAV]", {
+            step: "events-route",
+            hrefCount: result.hrefCount,
+            icsBodyCount: result.icsBodyCount,
+            eventCount: result.events.length,
+          });
+        }
+
         await prisma.naverCalDavAccount.update({
           where: { userId },
-          data: { lastSyncedAt: new Date(), lastError: null },
+          data: { lastSyncedAt: new Date(), lastError },
         });
       } catch (err) {
         warning = err instanceof Error ? err.message : "네이버 캘린더 조회에 실패했습니다.";
         console.error("[naver-calendar/events] caldav", err);
+        console.error("[NAVER_CALDAV]", {
+          step: "events-route-catch",
+          message: warning,
+        });
         await prisma.naverCalDavAccount
           .update({ where: { userId }, data: { lastError: warning } })
           .catch(() => undefined);
@@ -104,6 +122,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ events, warning });
   } catch (e) {
     console.error("[naver-calendar/events] GET", e);
+    console.error("[NAVER_CALDAV]", {
+      step: "events-route-fatal",
+      message: e instanceof Error ? e.message : String(e),
+    });
     return NextResponse.json({ error: "네이버 일정 조회에 실패했습니다." }, { status: 500 });
   }
 }

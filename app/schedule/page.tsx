@@ -1483,9 +1483,22 @@ function SchedulePageInner() {
     });
     let cancelled = false;
     fetch(`/api/integrations/naver-calendar/events?${params}`)
-      .then((r) => (r.ok ? r.json() : { events: [] }))
-      .then((data: { events?: { id: string; title: string; start: string; end: string; isAllDay: boolean }[] }) => {
+      .then(async (r) => {
+        if (!r.ok) {
+          console.error("[NAVER_CALDAV]", {
+            step: "client-events-fetch",
+            status: r.status,
+            href: `/api/integrations/naver-calendar/events?${params}`,
+          });
+          return { events: [] as { id: string; title: string; start: string; end: string; isAllDay: boolean }[] };
+        }
+        return r.json();
+      })
+      .then((data: { events?: { id: string; title: string; start: string; end: string; isAllDay: boolean }[]; warning?: string | null }) => {
         if (cancelled) return;
+        if (data.warning) {
+          console.error("[NAVER_CALDAV]", { step: "client-events-warning", warning: data.warning });
+        }
         setNaverEvents(
           (data.events ?? []).map((e) => ({
             id: e.id,
@@ -1497,7 +1510,11 @@ function SchedulePageInner() {
           }))
         );
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[NAVER_CALDAV]", {
+          step: "client-events-catch",
+          message: err instanceof Error ? err.message : String(err),
+        });
         if (!cancelled) setNaverEvents([]);
       });
     return () => {
