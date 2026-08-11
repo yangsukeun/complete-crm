@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  ChevronDown,
   File,
   FileImage,
   FileSpreadsheet,
@@ -17,12 +18,21 @@ import {
   HardDrive,
   Loader2,
   Plus,
+  Presentation,
   RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FolderPickerModal, type FolderPickerSelection } from "@/components/drive/folder-picker-modal";
+import { postExplorerFolder } from "@/lib/drive/explorer-folder-api";
 import { cn } from "@/lib/utils";
 
 type DriveFileRow = {
@@ -198,6 +208,11 @@ export function DrivePageClient({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingCreateType, setPendingCreateType] = useState<
+    "document" | "spreadsheet" | "presentation" | null
+  >(null);
+  const [isCreatingFile, setIsCreatingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const autoSyncInFlight = useRef<string | null>(null);
@@ -610,18 +625,13 @@ export function DrivePageClient({
     setNewFolderName("");
 
     try {
-      const res = await fetch("/api/drive/folder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, parentFolderId: currentDriveFolderId }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const result = await postExplorerFolder(name, currentDriveFolderId);
+      if (!result.ok) {
         setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
-        showToast(body?.error || "폴더 생성 실패");
+        showToast(result.error);
         return;
       }
-      const f = body.file as DriveFileRow;
+      const f = result.file as DriveFileRow;
       setOptimisticRows((prev) =>
         prev.map((r) =>
           r.id === tempId
@@ -650,6 +660,60 @@ export function DrivePageClient({
       showToast(e instanceof Error ? e.message : "폴더 생성 실패");
     } finally {
       setIsCreatingFolder(false);
+    }
+  };
+
+  const openCreatePicker = (type: "document" | "spreadsheet" | "presentation") => {
+    if (!explorerConfigured) {
+      showToast("직원용 공유 드라이브가 연결되지 않았습니다.");
+      return;
+    }
+    if (!currentDriveFolderId) {
+      showToast("폴더에 들어간 뒤 작성하거나, 피커에서 저장 위치를 고르세요.");
+    }
+    setPendingCreateType(type);
+    setPickerOpen(true);
+  };
+
+  const handlePickerConfirm = async (selection: FolderPickerSelection) => {
+    const type = pendingCreateType;
+    setPendingCreateType(null);
+    if (!type) return;
+    if (isCreatingFile) return;
+    setIsCreatingFile(true);
+    try {
+      const res = await fetch("/api/drive/create-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, folderId: selection.driveFolderId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(body?.error || "파일 생성 실패");
+        return;
+      }
+      const file = body.file as {
+        webViewLink?: string | null;
+        name?: string;
+        folderName?: string;
+        folderDriveId?: string;
+      };
+      if (file?.webViewLink) {
+        window.open(file.webViewLink, "_blank", "noopener,noreferrer");
+      }
+      const savedInCurrent =
+        selection.driveFolderId === currentDriveFolderId ||
+        file?.folderDriveId === currentDriveFolderId;
+      if (savedInCurrent) {
+        void refreshList();
+        showToast(`「${file?.name ?? "파일"}」을(를) 만들었습니다.`);
+      } else {
+        showToast(`「${selection.name}」 폴더에 저장됨`);
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "파일 생성 실패");
+    } finally {
+      setIsCreatingFile(false);
     }
   };
 
@@ -812,6 +876,55 @@ export function DrivePageClient({
             )}
             {isUploading ? "업로드 중…" : "+ 파일 업로드"}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="gap-1.5"
+                disabled={!explorerConfigured || isCreatingFile || Boolean(search.trim())}
+                title={
+                  !explorerConfigured
+                    ? "직원용 공유 드라이브가 연결되지 않았습니다"
+                    : search.trim()
+                      ? "검색 중에는 작성할 수 없습니다"
+                      : "문서·스프레드시트·슬라이드 작성"
+                }
+              >
+                {isCreatingFile ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <FileText className="size-4" />
+                )}
+                {isCreatingFile ? "작성 중…" : "작성"}
+                <ChevronDown className="size-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                className="gap-2"
+                onSelect={() => openCreatePicker("document")}
+              >
+                <FileText className="size-4" />
+                문서
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2"
+                onSelect={() => openCreatePicker("spreadsheet")}
+              >
+                <FileSpreadsheet className="size-4" />
+                스프레드시트
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2"
+                onSelect={() => openCreatePicker("presentation")}
+              >
+                <Presentation className="size-4" />
+                슬라이드
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             type="button"
             variant="outline"
@@ -1154,6 +1267,26 @@ export function DrivePageClient({
           </div>
         </div>
       )}
+
+      <FolderPickerModal
+        open={pickerOpen}
+        onOpenChange={(next) => {
+          setPickerOpen(next);
+          if (!next) setPendingCreateType(null);
+        }}
+        initialDriveFolderId={currentDriveFolderId}
+        initialDbId={currentId}
+        onConfirm={(selection) => {
+          void handlePickerConfirm(selection);
+        }}
+        title={
+          pendingCreateType === "spreadsheet"
+            ? "스프레드시트 저장 위치"
+            : pendingCreateType === "presentation"
+              ? "슬라이드 저장 위치"
+              : "문서 저장 위치"
+        }
+      />
     </div>
   );
 }
