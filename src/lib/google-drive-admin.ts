@@ -30,7 +30,7 @@ function getServiceAccountCreds(): { client_email: string; private_key: string }
   );
 }
 
-/** Drive API v3용 JWT (drive + drive.file). */
+/** Drive API v3용 JWT (drive + drive.file). 모듈 스코프에서 재사용. */
 export function getOrCreateDriveJwtAuth(): InstanceType<typeof google.auth.JWT> {
   const creds = getServiceAccountCreds();
   const key = creds.client_email + "|" + creds.private_key.slice(-32);
@@ -45,6 +45,11 @@ export function getOrCreateDriveJwtAuth(): InstanceType<typeof google.auth.JWT> 
   });
   _cachedAuthKey = key;
   return _cachedAuth;
+}
+
+/** 진단용: JWT 클라이언트가 모듈 캐시에 이미 있는지 */
+export function isDriveJwtAuthCached(): boolean {
+  return _cachedAuth != null;
 }
 
 export function getDriveV3() {
