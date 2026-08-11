@@ -6,7 +6,11 @@ import { UserNotesBoard } from "@/components/user-notes/user-notes-board";
 
 export const dynamic = "force-dynamic";
 
-export default async function NotesPage() {
+export default async function NotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ note?: string }>;
+}) {
   const session = await getAppSession();
   if (!session?.user?.id) {
     return (
@@ -19,6 +23,9 @@ export default async function NotesPage() {
     );
   }
 
+  const sp = await searchParams;
+  const initialNoteId = typeof sp.note === "string" && sp.note.trim() ? sp.note.trim() : null;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:px-6">
       <div className="mb-4">
@@ -27,7 +34,7 @@ export default async function NotesPage() {
         </Button>
         <PageHeadline title="메모장" description="카드를 눌러 편집하고, 색으로 분류합니다." />
       </div>
-      <UserNotesBoard />
+      <UserNotesBoard initialNoteId={initialNoteId} />
     </div>
   );
 }

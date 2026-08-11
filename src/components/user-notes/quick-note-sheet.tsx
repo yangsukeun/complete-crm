@@ -114,9 +114,9 @@ export function QuickNoteSheet({
       void mutate("/api/user-notes");
       toast.success(pin ? "고정 메모로 저장했습니다." : "메모를 저장했습니다.", {
         action: {
-          label: "메모장",
+          label: "열기",
           onClick: () => {
-            window.location.href = "/notes";
+            window.location.href = `/notes?note=${encodeURIComponent(created.id)}`;
           },
         },
       });
@@ -208,7 +208,7 @@ export function QuickNoteSheet({
                   return (
                     <li key={n.id}>
                       <Link
-                        href="/notes"
+                        href={`/notes?note=${encodeURIComponent(n.id)}`}
                         prefetch={false}
                         onClick={() => onOpenChange(false)}
                         className="hover:bg-muted/60 flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors"

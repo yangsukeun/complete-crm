@@ -84,9 +84,11 @@ type Props = {
   /** 페이지 상단 제목 (없으면 기본 문구) */
   heading?: string;
   description?: string;
+  /** URL ?note= 등으로 바로 열 메모 id */
+  initialNoteId?: string | null;
 };
 
-export function UserNotesBoard({ projectId, heading, description }: Props) {
+export function UserNotesBoard({ projectId, heading, description, initialNoteId }: Props) {
   const router = useRouter();
   const {
     data: notes = [],
@@ -108,7 +110,26 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
   const [canConvertProject, setCanConvertProject] = useState(false);
   const [search, setSearch] = useState("");
   /** 편집기는 한 번에 한 건만 띄운다 */
-  const [openNoteId, setOpenNoteId] = useState<string | null>(null);
+  const [openNoteId, setOpenNoteId] = useState<string | null>(initialNoteId ?? null);
+
+  // 빠른 메모·공유 링크에서 ?note=id 로 들어오면 편집창을 연다
+  useEffect(() => {
+    if (!initialNoteId) return;
+    if (!notes.some((n) => n.id === initialNoteId)) return;
+    setOpenNoteId(initialNoteId);
+  }, [initialNoteId, notes]);
+
+  const clearNoteQuery = () => {
+    if (!initialNoteId || projectId) return;
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has("note")) return;
+      url.searchParams.delete("note");
+      router.replace(url.pathname + (url.search || ""), { scroll: false });
+    } catch {
+      /* ignore */
+    }
+  };
 
   const visibleNotes = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -378,7 +399,15 @@ export function UserNotesBoard({ projectId, heading, description }: Props) {
         </div>
       )}
 
-      <Dialog open={!!openNote} onOpenChange={(o) => !o && setOpenNoteId(null)}>
+      <Dialog
+        open={!!openNote}
+        onOpenChange={(o) => {
+          if (!o) {
+            setOpenNoteId(null);
+            clearNoteQuery();
+          }
+        }}
+      >
         <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-4 sm:max-w-3xl">
           <DialogHeader className="pb-1">
             <DialogTitle className="text-sm">메모 편집</DialogTitle>

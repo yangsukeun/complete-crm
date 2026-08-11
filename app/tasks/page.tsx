@@ -36,7 +36,8 @@ import {
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
-import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid, CheckCircle2 } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid, CheckCircle2, Rows3 } from "lucide-react";
+import { ProjectListView } from "@/components/project-list-view";
 import { formatUserName } from "@/lib/utils";
 import {
   addDays,
@@ -116,9 +117,9 @@ type TaskStatus = (typeof STATUS_LIST)[number]["value"];
 
 /** 기본값이 바뀔 때마다 키를 올려 이전에 저장된 값을 물려받지 않게 한다 */
 const COLUMN_STORAGE_KEY = "tasks-board-visible-columns-v3";
-/** 보드/테이블 전환 (스펙: projectViewMode) — 이전 키는 load 시만 fallback */
-const PROJECT_VIEW_MODE_KEY = "projectViewMode";
-const LEGACY_PROJECTS_VIEW_MODE_KEY = "tasks-projects-view-mode";
+/** v2: 제목 일렬 목록을 기본으로 — 이전 board 기본값을 물려받지 않음 */
+const PROJECT_VIEW_MODE_KEY = "projectViewMode-v2";
+const LEGACY_PROJECT_VIEW_MODE_KEYS = ["projectViewMode", "tasks-projects-view-mode"] as const;
 /** 목록·마인드맵 공통: 대표/관리자의 팀 전체 혼탕 표시 구분용 */
 const PROJECT_SCOPE_STORAGE_KEY = "tasks-project-scope-filter";
 const MINDMAP_SHELL_STORAGE_KEY = "tasks-mindmap-shell-v1";
@@ -127,7 +128,7 @@ const TASK_COMPLETION_SHELF_KEY = "tasks-completion-shelf-v3";
 const DEFAULT_TASK_COMPLETION_SHELF: TaskCompletionShelf = "active";
 /** 완료를 볼 때의 기본 범위 */
 const DEFAULT_VISIBLE_COMPLETION_SHELF: TaskCompletionShelf = "recent";
-type ProjectsViewMode = "board" | "table";
+type ProjectsViewMode = "list" | "board" | "table";
 type ProjectScopeFilter = "all" | "mine" | "shared";
 
 type ColumnVisibility = Record<TaskStatus, boolean>;
@@ -155,16 +156,19 @@ function loadColumnVisibility(): ColumnVisibility {
 }
 
 function loadProjectsViewMode(): ProjectsViewMode {
-  if (typeof window === "undefined") return "board";
+  if (typeof window === "undefined") return "list";
   try {
     const raw = localStorage.getItem(PROJECT_VIEW_MODE_KEY);
-    if (raw === "table" || raw === "board") return raw;
-    const legacy = localStorage.getItem(LEGACY_PROJECTS_VIEW_MODE_KEY);
-    if (legacy === "table" || legacy === "board") return legacy;
+    if (raw === "list" || raw === "table" || raw === "board") return raw;
+    // 예전 키에 board/table만 있으면 그 선택을 존중, 없으면 목록형
+    for (const key of LEGACY_PROJECT_VIEW_MODE_KEYS) {
+      const legacy = localStorage.getItem(key);
+      if (legacy === "table" || legacy === "board") return legacy;
+    }
   } catch {
     /* ignore */
   }
-  return "board";
+  return "list";
 }
 
 const DUE_FILTER_OPTIONS = [
@@ -397,7 +401,7 @@ function TasksPageInner() {
   const [peekTaskId, setPeekTaskId] = useState<string | null>(null);
   /** 데스크톱 split 뷰용 선택 업무 */
   const [splitPeekTaskId, setSplitPeekTaskId] = useState<string | null>(null);
-  const [projectsViewMode, setProjectsViewMode] = useState<ProjectsViewMode>("board");
+  const [projectsViewMode, setProjectsViewMode] = useState<ProjectsViewMode>("list");
   const [projectsViewModeReady, setProjectsViewModeReady] = useState(false);
   const isMdUp = useIsMdUp();
 
@@ -1033,11 +1037,11 @@ function TasksPageInner() {
     <div className="flex flex-col gap-4 p-4 md:p-6">
       <div className="border-border flex flex-col gap-3 border-b border-gray-200 pb-4">
         <PageHeadline
-          title={view === "log" ? "Daily Report" : "프로젝트"}
+          title={view === "log" ? "일일 보고" : "프로젝트"}
           description={
             view === "log"
-              ? "Record your daily work"
-              : "프로젝트만 표시됩니다. 카드를 클릭하면 오른쪽에서 미리 볼 수 있습니다."
+              ? "오늘 한 일을 기록합니다."
+              : "제목을 눌러 오른쪽에서 미리 볼 수 있습니다."
           }
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -1045,15 +1049,15 @@ function TasksPageInner() {
             <TabsList className="bg-muted/50 h-9 rounded-lg border border-gray-200 p-0.5" data-tour="tasks-view-tabs">
               <TabsTrigger value="list" className="gap-2 rounded-md px-3">
                 <ListIcon className="size-4" />
-                Projects
+                프로젝트
               </TabsTrigger>
               <TabsTrigger value="mindmap" className="gap-2 rounded-md px-3">
                 <GitBranch className="size-4" />
-                Mindmap
+                마인드맵
               </TabsTrigger>
               <TabsTrigger value="log" className="gap-2 rounded-md px-3">
                 <FileText className="size-4" />
-                Daily Report
+                일일 보고
               </TabsTrigger>
             </TabsList>
             <TabsContent value="list" className="mt-0" />
@@ -1069,10 +1073,21 @@ function TasksPageInner() {
             >
               <button
                 type="button"
-                title="보드 뷰"
-                onClick={() => setProjectsViewModePersisted("board")}
+                title="목록 — 제목 위주로 훑기"
+                onClick={() => setProjectsViewModePersisted("list")}
                 className={cn(
                   "rounded-l-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
+                  projectsViewMode === "list" && "bg-muted text-foreground"
+                )}
+              >
+                <Rows3 className="size-4" />
+              </button>
+              <button
+                type="button"
+                title="보드 — 칸반"
+                onClick={() => setProjectsViewModePersisted("board")}
+                className={cn(
+                  "border-l border-gray-200 p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
                   projectsViewMode === "board" && "bg-muted text-foreground"
                 )}
               >
@@ -1080,7 +1095,7 @@ function TasksPageInner() {
               </button>
               <button
                 type="button"
-                title="테이블 뷰"
+                title="테이블 — 정렬·비교"
                 onClick={() => setProjectsViewModePersisted("table")}
                 className={cn(
                   "rounded-r-md border-l border-gray-200 p-1.5 text-muted-foreground transition-colors hover:bg-muted/80",
@@ -1480,7 +1495,7 @@ function TasksPageInner() {
               </div>
             ))}
           </div>
-        ) : visibleStatusColumns.length === 0 ? (
+        ) : projectsViewMode === "board" && visibleStatusColumns.length === 0 ? (
           <div className="border-border rounded-lg border border-dashed border-amber-300 bg-amber-50/50 py-8 text-center text-amber-900">
             <p className="text-sm">보드에 표시할 컬럼을 하나 이상 선택해 주세요.</p>
           </div>
@@ -1510,6 +1525,22 @@ function TasksPageInner() {
           <div className="flex flex-col gap-3">
           {projectsViewMode === "table" ? (
             <ProjectTableView
+              tasks={filteredTasks}
+              getEffectiveStatus={getEffectiveStatus}
+              statusLabel={statusLabel}
+              priorityLabel={priorityLabel}
+              priorityVariant={priorityVariant}
+              onActivateTask={openTaskPeek}
+              canDeleteTask={canDeleteTask}
+              onDeleteTask={(id) => {
+                void handleDeleteTask(id);
+              }}
+              deletingTaskId={deletingTaskId}
+              splitPeekTaskId={splitPeekTaskId}
+              isMdUp={isMdUp}
+            />
+          ) : projectsViewMode === "list" ? (
+            <ProjectListView
               tasks={filteredTasks}
               getEffectiveStatus={getEffectiveStatus}
               statusLabel={statusLabel}
@@ -1698,7 +1729,7 @@ function TasksPageInner() {
             })}
           </div>
           )}
-          {projectsViewMode === "board" && hasMoreTasksPaged ? (
+          {hasMoreTasksPaged ? (
             <div className="flex justify-center">
               <Button
                 type="button"
