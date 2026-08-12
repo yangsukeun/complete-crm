@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { cookies, headers } from "next/headers";
 import { getCompanyLogoUrl } from "@/lib/header-bootstrap";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
@@ -12,21 +11,6 @@ import { NotificationEntryBanner } from "@/components/notification-entry-banner"
 /* OneSignal: init·권한은 DeferredRealtimeBridges의 OneSignalBridge, 구독 ID 등록은 providers의 OneSignalPushTokenRegister. */
 import { Providers } from "@/components/providers";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  // [PERF-2차] 실사용은 CSS 변수만 즉시 적용·하이드레이션 직후 텍스트 페인트와 맞춤 (불필요 preload 경고 완화)
-  preload: false,
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  preload: false,
-  display: "swap",
-});
 
 const defaultMetadata: Metadata = {
   title: "COMPLETE CRM",
@@ -125,9 +109,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${typeof geistSans?.variable === "string" ? geistSans.variable : ""} ${typeof geistMono?.variable === "string" ? geistMono.variable : ""} antialiased`}
-      >
+      <body className="antialiased">
         <Providers
           session={session ?? undefined}
           headerBootstrap={headerBootstrap}
