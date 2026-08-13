@@ -16,7 +16,7 @@
   --secondary: #F2F4F6;
   --secondary-foreground: #333D4B;
   --muted: #F2F4F6;
-  --muted-foreground: #8B95A1;
+  --muted-foreground: #6B7684;
   --accent: #F2F4F6;
   --accent-foreground: #333D4B;
   --destructive: oklch(0.577 0.245 27.325);
@@ -138,19 +138,35 @@ html.dark[data-workspace="MY"] {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    font-size: 16px;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
   }
+  /* 본문만 14→15px. 헤더·버튼·뱃지의 rem(html 16px)은 유지 */
+  main {
+    --text-sm: 0.9375rem;
+    font-size: 0.9375rem;
+  }
+  main .text-sm {
+    font-size: 0.9375rem;
+  }
 }
 
-/* 대시보드 큰 숫자: 토스식 굵기·자간 */
+/* 대시보드 큰 숫자: 토스식 굵기·자간 + 1.2배 */
 @layer utilities {
   .text-2xl.font-semibold,
-  .text-2xl.font-bold,
+  .text-2xl.font-bold {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
   .text-3xl.font-semibold,
   .text-3xl.font-bold {
+    font-size: 2.25rem;
     font-weight: 800;
     letter-spacing: -0.02em;
   }
@@ -158,8 +174,8 @@ html.dark[data-workspace="MY"] {
 
 /* 기본 카드 제목(사이즈 유틸이 없는 경우만): 라벨 위계 */
 [data-slot="card-title"]:not([class*="text-"]) {
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.9375rem;
+  font-weight: 600;
   color: var(--muted-foreground);
 }
 

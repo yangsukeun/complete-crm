@@ -83,6 +83,27 @@
   border-left: 1px solid var(--gcal-cell-border) !important;
 }
 
+/* 월간 7열 균일: RBC는 table/grid가 아니라 flex row.
+   minmax(0,1fr)로 내용물(긴 제목·휴가 칩)이 칸 폭을 밀지 못하게 함 */
+.schedule-gcal-viewport .rbc-month-view .rbc-month-header,
+.schedule-gcal-viewport .rbc-month-view .rbc-row-bg {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  width: 100%;
+}
+
+.schedule-gcal-viewport .rbc-month-view .rbc-header,
+.schedule-gcal-viewport .rbc-month-view .rbc-row-bg > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.schedule-gcal-viewport .rbc-month-view .rbc-row-segment {
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* 월: 첫 열=월 … 마지막=일 — rbc week start 1 → 헤더 순서 월~일 */
 .schedule-gcal-viewport .rbc-month-view .rbc-row.rbc-month-header .rbc-header:nth-child(6) {
   color: var(--gcal-sat);
@@ -465,6 +486,7 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   flex: 1 1 auto;
 }
 
@@ -585,7 +607,7 @@
  * rbc-row-bg 가 flex row 일 때, 원래 직접 자식이던 .rbc-day-bg 대신 래퍼가 들어가면
  * flex: 1 0 0% 가 없으면 칸이 붕괴해 휴가 라벨이 주의 첫 열(월)에만 겹쳐 보임 → 반드시 균등 분배 */
 .schedule-gcal-viewport .rbc-row-bg > .rbc-date-cell-wrapper-inner {
-  flex: 1 0 0%;
+  flex: 1 1 0%;
   min-width: 0;
   max-width: 100%;
 }

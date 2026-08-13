@@ -538,7 +538,7 @@ function createDateCellWrapper(
           isToday && "schedule-gcal-day-today"
         )}
         /* rbc-row-bg 의 flex 자식은 원래 .rbc-day-bg 가 flex:1 0 0% — 래퍼가 그 역할을 해야 요일별로 셀이 갈라짐 */
-        style={{ flex: "1 0 0%" }}
+        style={{ flex: "1 1 0%", minWidth: 0 }}
       >
         <div className="rbc-date-cell-bg-area min-h-0 flex-1 overflow-hidden">{children}</div>
         {entries.length > 0 ? (

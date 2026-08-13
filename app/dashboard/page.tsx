@@ -102,7 +102,8 @@ export default async function DashboardPage() {
           description="개인 모드 — 내 일정·할 일만 간단히 관리합니다."
         />
         <DashboardTodayBrief />
-        {showCsToolsCard && (
+        {/* 디자인 2단계: 대시보드에서 숨김 (페이지·API 유지) — CS 링크 허브 */}
+        {false && showCsToolsCard && (
           <Link
             href="/cs-tools"
             className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -117,35 +118,21 @@ export default async function DashboardPage() {
             <span className="text-primary shrink-0 text-sm font-medium">열기 →</span>
           </Link>
         )}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Link
-            href="/schedule"
-            className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
-          >
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Calendar className="size-5" />
-              <span className="text-sm">일정</span>
-            </div>
-            <p className="mt-2 text-2xl font-semibold">{upcomingSchedules.length}건</p>
-            <p className="text-muted-foreground text-sm">다음 7일 일정</p>
-            <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-              일정표 →
-            </span>
-          </Link>
-          <Link
-            href="/tasks"
-            className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
-          >
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <ListTodo className="size-5" />
-              <span className="text-sm">프로젝트</span>
-            </div>
-            <p className="mt-2 text-2xl font-semibold">{myTasks.length}건</p>
-            <p className="text-muted-foreground text-sm">미완료 할 일</p>
-            <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-              프로젝트 목록 →
-            </span>
-          </Link>
+        <Link
+          href="/tasks"
+          className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+        >
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <ListTodo className="size-5" />
+            <span className="text-sm">프로젝트</span>
+          </div>
+          <p className="mt-2 text-2xl font-semibold">{myTasks.length}건</p>
+          <p className="text-muted-foreground text-sm">미완료 할 일</p>
+          <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
+            프로젝트 목록 →
+          </span>
+        </Link>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-lg border bg-card p-4 opacity-90">
             <div className="flex items-center gap-2 text-muted-foreground">
               <CalendarClock className="size-5" />
@@ -165,7 +152,24 @@ export default async function DashboardPage() {
             </p>
           </div>
         </div>
-        {upcomingSchedules.length > 0 && (
+        {/* 디자인 2단계: 대시보드에서 숨김 — 일정 바로가기 카드 (/schedule 유지) */}
+        {false && (
+          <Link
+            href="/schedule"
+            className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          >
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Calendar className="size-5" />
+              <span className="text-sm">일정</span>
+            </div>
+            <p className="mt-2 text-2xl font-semibold">{upcomingSchedules.length}건</p>
+            <p className="text-muted-foreground text-sm">다음 7일 일정</p>
+            <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
+              일정표 →
+            </span>
+          </Link>
+        )}
+        {false && upcomingSchedules.length > 0 && (
           <section>
             <h2 className="mb-3 flex items-center gap-2 font-semibold">
               <Calendar className="size-5" />
@@ -191,6 +195,7 @@ export default async function DashboardPage() {
             </Link>
           </section>
         )}
+        {false && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/schedule"
@@ -213,6 +218,7 @@ export default async function DashboardPage() {
             </div>
           </Link>
         </div>
+        )}
       </div>
     );
   }
@@ -294,9 +300,18 @@ export default async function DashboardPage() {
           />
         </div>
 
+        <section>
+          <DashboardAnnouncements
+            canCreate={canCreateAnnouncement}
+            fallbackData={announcementsFallback}
+            nowMs={nowMs}
+          />
+        </section>
+
         <DashboardTodayBrief />
 
-        {showCsToolsCard && (
+        {/* 디자인 2단계: 대시보드에서 숨김 (페이지·API 유지) — CS 링크 허브 */}
+        {false && showCsToolsCard && (
           <Link
             href="/cs-tools"
             className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -312,28 +327,20 @@ export default async function DashboardPage() {
           </Link>
         )}
 
-        <section>
-          <DashboardAnnouncements
-            canCreate={canCreateAnnouncement}
-            fallbackData={announcementsFallback}
-            nowMs={nowMs}
-          />
-        </section>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <ListTodo className="size-5" />
-              <span className="text-sm">프로젝트</span>
-            </div>
-            <p className="mt-2 text-2xl font-semibold">{progressPercent}%</p>
-            <p className="text-muted-foreground text-sm">
-              완료 {completedTasks.length} / 전체 {tasksCreatedByMe.length}건
-            </p>
-            <Link href="/tasks" className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-              프로젝트 목록 →
-            </Link>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <ListTodo className="size-5" />
+            <span className="text-sm">프로젝트</span>
           </div>
+          <p className="mt-2 text-2xl font-semibold">{progressPercent}%</p>
+          <p className="text-muted-foreground text-sm">
+            완료 {completedTasks.length} / 전체 {tasksCreatedByMe.length}건
+          </p>
+          <Link href="/tasks" className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
+            프로젝트 목록 →
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/leave"
             className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -362,6 +369,8 @@ export default async function DashboardPage() {
           </div>
         </div>
 
+        {/* 디자인 2단계: 대시보드에서 숨김 — 전체 직원 / 금일 출근 카드 */}
+        {false && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -397,7 +406,10 @@ export default async function DashboardPage() {
             </span>
           </Link>
         </div>
+        )}
 
+        {/* 디자인 2단계: 대시보드에서 숨김 — 일정 / 프로젝트 리마인드 바로가기 */}
+        {false && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/schedule"
@@ -422,6 +434,7 @@ export default async function DashboardPage() {
             </div>
           </Link>
         </div>
+        )}
 
       </div>
     );
@@ -493,9 +506,18 @@ export default async function DashboardPage() {
         />
       </div>
 
+      <section>
+        <DashboardAnnouncements
+          canCreate={canCreateAnnouncement}
+          fallbackData={announcementsFallbackUser}
+          nowMs={nowMs}
+        />
+      </section>
+
       <DashboardTodayBrief />
 
-      {showCsToolsCard && (
+      {/* 디자인 2단계: 대시보드에서 숨김 (페이지·API 유지) — CS 링크 허브 */}
+      {false && showCsToolsCard && (
         <Link
           href="/cs-tools"
           className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -511,29 +533,21 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      <section>
-        <DashboardAnnouncements
-          canCreate={canCreateAnnouncement}
-          fallbackData={announcementsFallbackUser}
-          nowMs={nowMs}
-        />
-      </section>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link
-          href="/tasks"
-          className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
-        >
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <ListTodo className="size-5" />
-            <span className="text-sm">프로젝트</span>
-          </div>
-          <p className="mt-2 text-2xl font-semibold">{myTasks.length}건</p>
-          <p className="text-muted-foreground text-sm">미완료 할 일</p>
-          <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
-            프로젝트 목록 →
-          </span>
-        </Link>
+      <Link
+        href="/tasks"
+        className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <ListTodo className="size-5" />
+          <span className="text-sm">프로젝트</span>
+        </div>
+        <p className="mt-2 text-2xl font-semibold">{myTasks.length}건</p>
+        <p className="text-muted-foreground text-sm">미완료 할 일</p>
+        <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
+          프로젝트 목록 →
+        </span>
+      </Link>
+      <div className="grid gap-4 sm:grid-cols-2">
         <Link
           href="/leave"
           className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
@@ -562,6 +576,8 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* 디자인 2단계: 대시보드에서 숨김 — 지시사항 목록은 브리핑 할일로 대체 */}
+      {false && (
       <section>
         <h2 className="mb-3 flex items-center gap-2 font-semibold">
           <ListTodo className="size-5" />
@@ -597,7 +613,10 @@ export default async function DashboardPage() {
           전체 프로젝트 보기 →
         </Link>
       </section>
+      )}
 
+      {/* 디자인 2단계: 대시보드에서 숨김 — 일정 / 프로젝트 리마인드 바로가기 */}
+      {false && (
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
           href="/schedule"
@@ -622,6 +641,7 @@ export default async function DashboardPage() {
           </div>
         </Link>
       </div>
+      )}
 
     </div>
   );
