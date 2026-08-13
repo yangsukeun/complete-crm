@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 
 type Row = Record<string, unknown>;
 
@@ -23,7 +24,11 @@ function parseDate(v: unknown): Date | null {
 export async function POST(req: Request) {
   try {
     const session = await getAppSession();
-    if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const manager = await getEmployeeManagerContext(session.user.id);
+    if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -31,9 +31,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Pencil, Shield, ChevronDown } from "lucide-react";
+import { Pencil, Shield, ChevronDown, KeyRound } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
+import { canManageEmployeesSync, isPrivilegedStaffRole } from "@/lib/employee-admin-access";
 
 /** 직원 목록/편집용 타입. currentProject.brand는 객체 { name: string } 또는 null만 사용 */
 export type Employee = {
@@ -87,6 +88,8 @@ export function AdminEmployeesClient({
   const { data: session } = useSession();
   const myId = (session?.user as any)?.id as string | undefined;
   const myRole = String((session?.user as any)?.role ?? "").toUpperCase();
+  const myPosition = (session?.user as { position?: string | null } | undefined)?.position ?? null;
+  const canAlwaysEditLeave = canManageEmployeesSync({ role: myRole, position: myPosition });
 
   const [employees, setEmployees] = useState(initial);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -116,6 +119,9 @@ export function AdminEmployeesClient({
     totalAvailable?: number;
   } | null>(null);
   const [annualCarryOver, setAnnualCarryOver] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
   const saveSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -156,6 +162,8 @@ export function AdminEmployeesClient({
     setManualDeduction("");
     setAnnualCarryOver("");
     setLeaveBalance(null);
+    setNewPassword("");
+    setNewPasswordConfirm("");
     if (e?.permissions != null && e?.permissions !== "") {
       try {
         const arr = JSON.parse(String(e?.permissions ?? "")) as unknown;
@@ -185,6 +193,38 @@ export function AdminEmployeesClient({
           }
         })
         .catch(() => setLeaveBalance(null));
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!editing || resettingPassword) return;
+    const pw = newPassword.trim();
+    if (pw.length < 4) {
+      toast.error("비밀번호는 4자 이상 입력하세요.");
+      return;
+    }
+    if (pw !== newPasswordConfirm.trim()) {
+      toast.error("비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
+    setResettingPassword(true);
+    try {
+      const res = await fetch(`/api/users/${editing.id}/password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "비밀번호 재설정 실패");
+      }
+      setNewPassword("");
+      setNewPasswordConfirm("");
+      toast.success("비밀번호를 재설정했습니다.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "비밀번호 재설정에 실패했습니다.");
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -411,7 +451,7 @@ export function AdminEmployeesClient({
                         disabled={
                           deletingBusy ||
                           (myId != null && emp.id === myId) ||
-                          (myRole !== "EXECUTIVE" && String(emp.role ?? "").toUpperCase() === "EXECUTIVE")
+                          (isPrivilegedStaffRole(emp.role) && !isPrivilegedStaffRole(myRole))
                         }
                         onClick={() => setDeleting(emp)}
                       >
@@ -462,6 +502,39 @@ export function AdminEmployeesClient({
               <div className="space-y-2">
                 <Label>이메일</Label>
                 <Input value={editing.email} disabled className="bg-muted" />
+              </div>
+              <div className="space-y-2 border-b pb-4">
+                <Label>비밀번호 재설정</Label>
+                <p className="text-muted-foreground text-xs">
+                  새 비밀번호를 입력한 뒤 재설정하세요. 직원 정보 저장과는 따로 적용됩니다.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e: any) => setNewPassword(e.target.value)}
+                    placeholder="새 비밀번호 (4자 이상)"
+                  />
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPasswordConfirm}
+                    onChange={(e: any) => setNewPasswordConfirm(e.target.value)}
+                    placeholder="비밀번호 확인"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-1"
+                  disabled={resettingPassword}
+                  onClick={() => void handleResetPassword()}
+                >
+                  <KeyRound className="mr-1.5 size-3.5" />
+                  {resettingPassword ? "재설정 중..." : "비밀번호 재설정"}
+                </Button>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-name">이름</Label>
@@ -586,15 +659,15 @@ export function AdminEmployeesClient({
               {/* 휴가 소진(차감): 대표/관리자는 언제든 수정·되돌리기 가능, 그 외는 최초 1회만 */}
               <div className="space-y-2 border-t pt-4">
                 <Label className="text-sm font-medium">휴가 소진 (이미 사용한 연차, 일)</Label>
-                {leaveBalance && leaveBalance.manualDeduction > 0 && myRole !== "EXECUTIVE" && myRole !== "ADMIN" ? (
+                {leaveBalance && leaveBalance.manualDeduction > 0 && !canAlwaysEditLeave ? (
                   <p className="text-muted-foreground text-sm">
                     이미 소진 처리됨: <strong>{leaveBalance.manualDeduction}일</strong> (수정 불가)
                   </p>
                 ) : (
                   <>
                     <p className="text-muted-foreground text-xs">
-                      {(myRole === "EXECUTIVE" || myRole === "ADMIN")
-                        ? "대표/관리자: 연차 차감을 언제든 다시 입력하거나 0으로 되돌릴 수 있습니다."
+                      {(canAlwaysEditLeave)
+                        ? "대표/관리자·경영관리 매니저: 연차 차감을 언제든 다시 입력하거나 0으로 되돌릴 수 있습니다."
                         : "시스템 도입 전에 이미 사용한 연차가 있으면 여기 입력 후 저장하세요. 최초 1회만 설정 가능합니다."}
                     </p>
                     <Input

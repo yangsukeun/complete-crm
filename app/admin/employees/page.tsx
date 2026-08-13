@@ -4,11 +4,13 @@ import { AdminEmployeesClient, type Employee } from "./admin-employees-client";
 import { EmployeeHeaderActions } from "./employee-header-actions";
 import { PageHeadline } from "@/components/page-headline";
 import prisma from "@/lib/prisma";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 
 export default async function AdminEmployeesPage() {
   const session = await getAppSession();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
+  const manager = await getEmployeeManagerContext(session.user.id);
+  if (!manager?.ok) redirect("/dashboard");
 
   // 직원(USER, TEAM_LEAD) + 관리자(ADMIN, EXECUTIVE) 모두 표시 (DB에 있는 계정이 목록에 보이도록)
   const rows = await prisma.user.findMany({

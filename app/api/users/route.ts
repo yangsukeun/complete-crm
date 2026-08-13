@@ -5,6 +5,8 @@ import prisma from "@/lib/prisma";
 import { getCachedUsersWithProject } from "@/lib/cache/users-list";
 import { hash } from "bcryptjs";
 import { z } from "zod";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
+import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -47,7 +49,11 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const session = await getAppSession();
-    if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const manager = await getEmployeeManagerContext(session.user.id);
+    if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -62,8 +68,11 @@ export async function POST(req: Request) {
 
     // ADMIN은 EXECUTIVE 생성 불가 (대표/임원은 대표/임원만 생성)
     const requestedRole = parsed.data.role ?? "USER";
-    if (requestedRole === "EXECUTIVE" && session.user.role !== "EXECUTIVE") {
+    if (requestedRole === "EXECUTIVE" && !canMutatePrivilegedEmployeeAccount(manager.role)) {
       return NextResponse.json({ error: "대표/임원 계정은 대표/임원만 생성할 수 있습니다." }, { status: 403 });
+    }
+    if (requestedRole === "ADMIN" && !canMutatePrivilegedEmployeeAccount(manager.role)) {
+      return NextResponse.json({ error: "관리자 계정은 대표/관리자만 생성할 수 있습니다." }, { status: 403 });
     }
 
     const existing = await prisma.user.findUnique({

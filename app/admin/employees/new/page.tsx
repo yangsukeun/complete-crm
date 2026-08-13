@@ -2,11 +2,13 @@ import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { NewEmployeeForm } from "./new-employee-form";
 import { PageHeadline } from "@/components/page-headline";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 
 export default async function NewEmployeePage() {
   const session = await getAppSession();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN") redirect("/dashboard");
+  const manager = await getEmployeeManagerContext(session.user.id);
+  if (!manager?.ok) redirect("/dashboard");
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 max-w-3xl">

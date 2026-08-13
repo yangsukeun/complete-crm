@@ -1,8 +1,9 @@
 import "server-only";
 import prisma from "@/lib/prisma";
-import { parsePermissions } from "@/lib/permissions";
+import { getDefaultPermissionsForRole, parsePermissions, type RoleName } from "@/lib/permissions";
 import { getCsTeamDefaultPermissions, isCsTeamDepartment } from "@/lib/cs-team-permissions";
 import { getLogisticsDefaultPermissions, isCsOrgDepartment, isLogisticsOrgDepartment } from "@/lib/org-access";
+import { isManagementManagerPosition } from "@/lib/employee-admin-access";
 
 /**
  * 로그인·세션 갱신용: JWT에 넣을 기능 권한 JSON 문자열.
@@ -19,17 +20,26 @@ export async function resolveEffectivePermissionsJson(userId: string): Promise<s
   if (!user) return null;
 
   const userParsed = parsePermissions(user.permissions);
-  if (userParsed !== null) return JSON.stringify(userParsed);
-
   const posName = user.position?.trim();
+  let posParsed: string[] | null = null;
   if (posName) {
     const posRow = await prisma.position.findFirst({
       where: { name: posName },
       select: { permissions: true },
     });
-    const posParsed = parsePermissions(posRow?.permissions ?? null);
-    if (posParsed !== null) return JSON.stringify(posParsed);
+    posParsed = parsePermissions(posRow?.permissions ?? null);
   }
+
+  // 경영관리 매니저: 직원 관리를 대표와 같이 쓸 수 있게 admin_employees 항상 포함
+  if (isManagementManagerPosition(user.position)) {
+    const r = String(user.role ?? "USER").toUpperCase() as RoleName;
+    const base = userParsed ?? posParsed ?? getDefaultPermissionsForRole(r);
+    const list = base.includes("admin_employees") ? base : [...base, "admin_employees"];
+    return JSON.stringify(list);
+  }
+
+  if (userParsed !== null) return JSON.stringify(userParsed);
+  if (posParsed !== null) return JSON.stringify(posParsed);
 
   // CS센터: 세션에 명시 JSON을 넣어 프로젝트·게시판 등 숨김
   if (isCsOrgDepartment(user.department) || isCsTeamDepartment(user.department)) {

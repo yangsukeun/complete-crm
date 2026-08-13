@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 
 /**
  * GET: 관리자 전용 — 해당 직원의 연차 풀(근기법 정합)
@@ -17,8 +18,8 @@ export async function GET(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const role = String(session.user.role ?? "").toUpperCase();
-    if (role !== "EXECUTIVE" && role !== "ADMIN") {
+    const manager = await getEmployeeManagerContext(session.user.id);
+    if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

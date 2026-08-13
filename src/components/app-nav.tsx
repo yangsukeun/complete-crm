@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { userHasPermission } from "@/lib/permissions";
 import { isMasterEmail } from "@/lib/master-account";
 import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
+import { canManageEmployeesSync } from "@/lib/employee-admin-access";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -354,6 +355,10 @@ export function AppNav() {
   });
   const homePath = homePathForOrg(orgUnit);
   const isHqOrg = orgUnit === "HQ";
+  const canManageEmployees = canManageEmployeesSync({
+    role: session?.user?.role,
+    position: session?.user?.position,
+  });
 
   const userForPermission = session?.user as { role?: string; permissions?: string | null } | undefined;
   const can = (featureKey: string) => {
@@ -406,6 +411,7 @@ export function AppNav() {
     if (d.executiveOnly) return isExecutive;
     if (d.feature) {
       if (orgUnit === "LOGISTICS" && d.href === "/admin/company") return true;
+      if (d.feature === "admin_employees" && canManageEmployees) return true;
       return isExecutive || can(d.feature);
     }
     return isExecutive;

@@ -7,6 +7,8 @@ import {
 } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
+import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -43,10 +45,11 @@ export async function PATCH(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const sessionRole = String(session.user.role ?? "").toUpperCase();
-    if (sessionRole !== "EXECUTIVE" && sessionRole !== "ADMIN") {
+    const manager = await getEmployeeManagerContext(session.user.id);
+    if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    const sessionRole = String(manager.role ?? "").toUpperCase();
 
     const { id } = await params;
     const body = await req.json();
@@ -133,7 +136,7 @@ export async function PATCH(
           where: { userId_year: { userId: id, year } },
         });
         // EXECUTIVE/ADMIN: 언제든 연차 차감(소진) 재입력 가능. 그 외: 최초 1회만.
-        const canAlwaysEditDeduction = sessionRole === "EXECUTIVE" || sessionRole === "ADMIN";
+        const canAlwaysEditDeduction = manager.ok;
         if (!balance) {
           await prisma.leaveBalance.create({
             data: {
@@ -207,7 +210,10 @@ export async function DELETE(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const myRole = String(session.user.role ?? "").toUpperCase();
+    const manager = await getEmployeeManagerContext(session.user.id);
+    if (!manager?.ok) {
+      return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
+    }
 
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "Bad Request" }, { status: 400 });
@@ -225,35 +231,28 @@ export async function DELETE(
 
     const targetRole = String(target.role ?? "").toUpperCase();
 
-    // EXECUTIVE, ADMIN: 전체 삭제 권한
-    if (myRole === "EXECUTIVE" || myRole === "ADMIN") {
-      if (targetRole === "ADMIN" || targetRole === "EXECUTIVE") {
-        const adminCount = await prisma.user.count({
-          where: { role: { in: ["ADMIN", "EXECUTIVE"] as any } },
-        });
-        if (adminCount <= 1) {
-          return NextResponse.json(
-            { error: "마지막 관리자 계정은 삭제할 수 없습니다." },
-            { status: 400 }
-          );
-        }
-        if (targetRole === "EXECUTIVE" && myRole !== "EXECUTIVE") {
-          return NextResponse.json(
-            { error: "대표/임원 계정은 대표/임원만 삭제할 수 있습니다." },
-            { status: 403 }
-          );
-        }
-      }
-    } else if (myRole === "TEAM_LEAD") {
-      // 팀장: USER 역할만 삭제 가능 (직원 삭제)
-      if (targetRole !== "USER") {
+    if (targetRole === "ADMIN" || targetRole === "EXECUTIVE") {
+      if (!canMutatePrivilegedEmployeeAccount(manager.role)) {
         return NextResponse.json(
-          { error: "팀장은 일반 직원(USER)만 삭제할 수 있습니다." },
+          { error: "대표/관리자 계정은 대표·관리자만 삭제할 수 있습니다." },
           { status: 403 }
         );
       }
-    } else {
-      return NextResponse.json({ error: "삭제 권한이 없습니다." }, { status: 403 });
+      const adminCount = await prisma.user.count({
+        where: { role: { in: ["ADMIN", "EXECUTIVE"] as any } },
+      });
+      if (adminCount <= 1) {
+        return NextResponse.json(
+          { error: "마지막 관리자 계정은 삭제할 수 없습니다." },
+          { status: 400 }
+        );
+      }
+      if (targetRole === "EXECUTIVE" && String(manager.role).toUpperCase() !== "EXECUTIVE") {
+        return NextResponse.json(
+          { error: "대표/임원 계정은 대표/임원만 삭제할 수 있습니다." },
+          { status: 403 }
+        );
+      }
     }
 
     await prisma.user.delete({ where: { id } });

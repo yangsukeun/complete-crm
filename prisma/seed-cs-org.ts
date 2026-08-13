@@ -76,6 +76,7 @@ async function ensureTestUser(opts: {
 
 async function main() {
   await ensureDepartment("CS팀", 4);
+  await ensurePosition("CS", 9);
   await ensurePosition("CS팀장", 10);
   await ensurePosition("센터장", 11);
 

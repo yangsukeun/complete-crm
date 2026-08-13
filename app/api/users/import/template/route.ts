@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import * as XLSX from "xlsx";
+import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 
 export async function GET() {
   try {
     const session = await getAppSession();
-    if (!session?.user?.id || (session.user.role !== "EXECUTIVE" && session.user.role !== "ADMIN")) {
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const manager = await getEmployeeManagerContext(session.user.id);
+    if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

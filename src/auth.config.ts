@@ -40,6 +40,7 @@ export const authConfig: NextAuthConfig = {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
         token.department = (user as { department?: string | null }).department ?? "";
+        token.position = (user as { position?: string | null }).position ?? "";
         token.permissions = await resolveEffectivePermissionsJson(user.id);
       }
       return token;
@@ -49,6 +50,7 @@ export const authConfig: NextAuthConfig = {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         session.user.department = (token.department as string | null | undefined) ?? null;
+        session.user.position = (token.position as string | null | undefined) ?? null;
         (session.user as { permissions?: string | null }).permissions = (token.permissions as string | null) ?? undefined;
       }
       return session;
