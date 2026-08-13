@@ -1,0 +1,43 @@
+export function serializeCsClient(row: {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  note: string | null;
+  isActive: boolean;
+  updatedAt: Date;
+  assignments: {
+    id: string;
+    userId: string;
+    roleLabel: string;
+    user: { name: string };
+  }[];
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    startDate: row.startDate ?? "",
+    endDate: row.endDate ?? "",
+    note: row.note ?? "",
+    isActive: row.isActive,
+    updatedAt: row.updatedAt.toISOString(),
+    assignments: row.assignments.map((a) => ({
+      id: a.id,
+      userId: a.userId,
+      name: a.user.name,
+      roleLabel: a.roleLabel,
+    })),
+  };
+}
+
+export const csClientInclude = {
+  assignments: {
+    select: {
+      id: true,
+      userId: true,
+      roleLabel: true,
+      user: { select: { name: true } },
+    },
+    orderBy: { roleLabel: "asc" as const },
+  },
+};

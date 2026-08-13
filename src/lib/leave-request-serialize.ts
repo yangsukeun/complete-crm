@@ -1,11 +1,20 @@
 import type { Prisma } from "@prisma/client";
 import { isCsTeamDepartment } from "@/lib/cs-team-permissions";
 import { normalizeDepartment } from "@/lib/leave-department-access";
+import { CS_DEPARTMENT_ALIASES, isCsGroup } from "@/lib/cs-tools-access";
 
 /** 팀장·임원·관리자·CS 센터장 — 목록 조회 (팀장·CS센터장은 동일 부서 + 본인 + 타 부서 승인 완료) */
 export function isLeaveManagementRole(role: string | undefined): boolean {
   const r = String(role ?? "").toUpperCase();
   return r === "TEAM_LEAD" || r === "CENTER_CHIEF" || r === "EXECUTIVE" || r === "ADMIN";
+}
+
+function approvedPeersWhere(viewerDepartment?: string | null): Prisma.LeaveRequestWhereInput {
+  const csDepts = [...CS_DEPARTMENT_ALIASES];
+  if (isCsGroup(viewerDepartment)) {
+    return { status: "APPROVED", user: { department: { in: csDepts } } };
+  }
+  return { status: "APPROVED", user: { NOT: { department: { in: csDepts } } } };
 }
 
 /** 일반 직원: 승인된 건 전사 + 본인 신청 전부(대기·반려 등) */
@@ -22,7 +31,7 @@ export function leaveRequestListWhere(
     const dept = normalizeDepartment(viewerDepartment);
     const or: Prisma.LeaveRequestWhereInput[] = [
       { userId: sessionUserId },
-      { status: "APPROVED" },
+      approvedPeersWhere(viewerDepartment),
     ];
     if (dept) {
       or.push({ user: { department: dept } });
@@ -30,7 +39,7 @@ export function leaveRequestListWhere(
     return { OR: or };
   }
   return {
-    OR: [{ status: "APPROVED" as const }, { userId: sessionUserId }],
+    OR: [approvedPeersWhere(viewerDepartment), { userId: sessionUserId }],
   };
 }
 

@@ -52,7 +52,11 @@ export function CsToolsPageClient() {
   }, [load]);
 
   const openTool = (tool: CsTool) => {
-    window.open(tool.url, "_blank", "noopener,noreferrer");
+    if (tool.url.startsWith("/")) {
+      window.location.assign(tool.url);
+    } else {
+      window.open(tool.url, "_blank", "noopener,noreferrer");
+    }
     void fetch(`/api/cs-tools/${encodeURIComponent(tool.id)}/click`, { method: "POST" })
       .then(async (res) => {
         if (!res.ok) return;
@@ -184,7 +188,9 @@ export function CsToolsPageClient() {
                     <span className="font-medium text-gray-900 group-hover:text-sky-900">
                       {tool.name}
                     </span>
-                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-60 group-hover:opacity-100" />
+                    {!tool.url.startsWith("/") && (
+                      <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-60 group-hover:opacity-100" />
+                    )}
                   </div>
                   {tool.description && (
                     <p className="line-clamp-2 text-xs text-muted-foreground">{tool.description}</p>

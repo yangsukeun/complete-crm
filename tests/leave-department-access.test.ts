@@ -109,12 +109,12 @@ describe("leave-department-access", () => {
 });
 
 describe("leaveRequestListWhere", () => {
-  it("scopes team lead list to own, approved peers, and same department", () => {
+  it("scopes team lead list to own, HQ-approved peers, and same department", () => {
     const where = leaveRequestListWhere("u1", "TEAM_LEAD", "마케팅");
     expect(where).toEqual({
       OR: [
         { userId: "u1" },
-        { status: "APPROVED" },
+        { status: "APPROVED", user: { NOT: { department: { in: ["CS", "CS팀"] } } } },
         { user: { department: "마케팅" } },
       ],
     });
@@ -124,11 +124,11 @@ describe("leaveRequestListWhere", () => {
     expect(leaveRequestListWhere("u1", "EXECUTIVE", "마케팅")).toEqual({});
   });
 
-  it("CS center chief list matches team-lead scope", () => {
+  it("CS center chief list matches team-lead scope with CS-only approved", () => {
     expect(leaveRequestListWhere("u1", "CENTER_CHIEF", "CS팀")).toEqual({
       OR: [
         { userId: "u1" },
-        { status: "APPROVED" },
+        { status: "APPROVED", user: { department: { in: ["CS", "CS팀"] } } },
         { user: { department: "CS팀" } },
       ],
     });
@@ -136,7 +136,19 @@ describe("leaveRequestListWhere", () => {
 
   it("non-CS center chief does not get team-lead list scope", () => {
     expect(leaveRequestListWhere("u1", "CENTER_CHIEF", "마케팅")).toEqual({
-      OR: [{ status: "APPROVED" }, { userId: "u1" }],
+      OR: [
+        { status: "APPROVED", user: { NOT: { department: { in: ["CS", "CS팀"] } } } },
+        { userId: "u1" },
+      ],
+    });
+  });
+
+  it("CS staff see only CS-group approved leaves plus own", () => {
+    expect(leaveRequestListWhere("u1", "USER", "CS팀")).toEqual({
+      OR: [
+        { status: "APPROVED", user: { department: { in: ["CS", "CS팀"] } } },
+        { userId: "u1" },
+      ],
     });
   });
 });

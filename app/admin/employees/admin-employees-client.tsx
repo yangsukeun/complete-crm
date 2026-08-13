@@ -92,6 +92,8 @@ export function AdminEmployeesClient({
   const canAlwaysEditLeave = canManageEmployeesSync({ role: myRole, position: myPosition });
 
   const [employees, setEmployees] = useState(initial);
+  const [deptFilter, setDeptFilter] = useState<string>("__ALL__");
+  const [posFilter, setPosFilter] = useState<string>("__ALL__");
   const [editing, setEditing] = useState<Employee | null>(null);
   const [deleting, setDeleting] = useState<Employee | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
@@ -360,8 +362,42 @@ export function AdminEmployeesClient({
     }
   };
 
+  const visibleEmployees = employees.filter((emp) => {
+    if (deptFilter !== "__ALL__" && (emp.department || "") !== deptFilter) return false;
+    if (posFilter !== "__ALL__" && (emp.position || "") !== posFilter) return false;
+    return true;
+  });
+
   return (
     <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Select value={deptFilter} onValueChange={setDeptFilter}>
+          <SelectTrigger className="w-40" size="sm">
+            <SelectValue placeholder="부서" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__ALL__">전체 부서</SelectItem>
+            {departments.map((d) => (
+              <SelectItem key={d.id} value={d.name}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={posFilter} onValueChange={setPosFilter}>
+          <SelectTrigger className="w-40" size="sm">
+            <SelectValue placeholder="직책" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__ALL__">전체 직책</SelectItem>
+            {positions.map((p) => (
+              <SelectItem key={p.id} value={p.name}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
@@ -376,14 +412,14 @@ export function AdminEmployeesClient({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {employees.length === 0 ? (
+            {visibleEmployees.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-muted-foreground text-center">
                   등록된 직원이 없습니다.
                 </TableCell>
               </TableRow>
             ) : (
-              employees.map((emp: Employee) => (
+              visibleEmployees.map((emp: Employee) => (
                 <TableRow key={emp.id}>
                   <TableCell className="font-medium">
                     <span className="inline-flex flex-wrap items-center gap-2">

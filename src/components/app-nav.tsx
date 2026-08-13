@@ -51,6 +51,7 @@ import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-
 import { canManageEmployeesSync } from "@/lib/employee-admin-access";
 import { canViewAwayOverview } from "@/lib/attendance-away-access";
 import { canViewEmployeeLeaveSummary } from "@/lib/leave-overview-access";
+import { canSeeCsToolsDashboardCard } from "@/lib/cs-tools-access";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -77,6 +78,7 @@ type NavLink = {
   companyOnly?: boolean;
   hint?: string;
   awayOverviewOnly?: boolean;
+  csAccessOnly?: boolean;
 };
 
 // [메인]: 대시보드·CS·3PL (자주 쓰는 단일 진입)
@@ -118,9 +120,13 @@ const hrGroupLinks: {
   featureKey?: string;
   companyOnly?: boolean;
   awayOverviewOnly?: boolean;
+  csAccessOnly?: boolean;
 }[] = [
   { href: "/schedule", label: "스케줄", icon: Calendar, featureKey: "schedule" },
   { href: "/leave", label: "연차/근태", icon: CalendarClock, featureKey: "leave", companyOnly: true },
+  { href: "/cs-lounge", label: "CS 라운지", icon: MessageCircle, csAccessOnly: true },
+  { href: "/cs-clients", label: "CS 업체", icon: Building2, csAccessOnly: true },
+  { href: "/cs-org", label: "CS 조직도", icon: Users, csAccessOnly: true },
   { href: "/cs-tools/attendance", label: "CS 근태", icon: Clock, companyOnly: true, awayOverviewOnly: true },
   { href: "/cs-tools/away", label: "이석 현황", icon: Timer, companyOnly: true, awayOverviewOnly: true },
 ];
@@ -146,7 +152,7 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
   { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
   { href: "/admin/employee-leave-summary", label: "직원 연차 현황", icon: CalendarClock, csLeaveOverview: true },
-  { href: "/admin/attendance-import", label: "기록기 근태 임포트", icon: Upload, feature: "attendance_import" },
+  { href: "/admin/attendance-import", label: "근태 기록 가져오기", icon: Upload, feature: "attendance_import" },
   { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, feature: "attendance_import" },
   { href: "/admin/permissions", label: "기능 권한", icon: Shield, executiveOnly: true },
   { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
@@ -372,6 +378,10 @@ export function AppNav() {
     role: session?.user?.role,
     department: session?.user?.department,
   });
+  const canSeeCsTools = canSeeCsToolsDashboardCard({
+    role: session?.user?.role,
+    department: session?.user?.department,
+  });
   const homePath = homePathForOrg(orgUnit);
   const isHqOrg = orgUnit === "HQ";
   const canManageEmployees = canManageEmployeesSync({
@@ -393,6 +403,7 @@ export function AppNav() {
       (l) =>
         (!l.featureKey || can(l.featureKey)) &&
         (!l.companyOnly || isCompany) &&
+        (!l.csAccessOnly || canSeeCsTools) &&
         navHrefAllowedForOrg(l.href, orgUnit)
     );
 
@@ -422,6 +433,7 @@ export function AppNav() {
       (!l.featureKey || can(l.featureKey)) &&
       (!l.companyOnly || isCompany) &&
       (!l.awayOverviewOnly || canSeeAwayOverview) &&
+      (!l.csAccessOnly || canSeeCsTools) &&
       navHrefAllowedForOrg(l.href, orgUnit)
   );
   const financeLinks = financeGroupLinks.filter(

@@ -96,6 +96,16 @@ enum LeaveAccrualType {
   MANUAL_ADJUSTMENT      // 관리자 가감 조정
 }
 
+enum CsLoungePostType {
+  NOTICE
+  LOUNGE
+}
+
+enum CsLoungeVoteValue {
+  LIKE
+  DISLIKE
+}
+
 enum ScheduleInviteStatus {
   PENDING
   ACCEPTED
@@ -252,6 +262,11 @@ model User {
   leaveAccruals    LeaveAccrual[]
   leaveAdjustmentsReceived LeaveAdjustment[] @relation("LeaveAdjustmentTarget")
   leaveAdjustmentsMade     LeaveAdjustment[] @relation("LeaveAdjustmentActor")
+  csLoungePostsAuthored    CsLoungePost[]    @relation("CsLoungeAuthor")
+  csLoungePostsDeleted     CsLoungePost[]    @relation("CsLoungeDeletedBy")
+  csLoungeVotes            CsLoungeVote[]
+  csClientsUpdated         CsClient[]        @relation("CsClientUpdatedBy")
+  csClientAssignments      CsClientAssignment[]
   taskComments     TaskComment[]
   chatParticipants ChatParticipant[]
   chatMessages     ChatMessage[]
@@ -1399,6 +1414,65 @@ model CsToolClickLog {
 
   @@index([toolId, clickedAt])
   @@index([userId, clickedAt])
+}
+
+model CsLoungePost {
+  id        String           @id @default(cuid())
+  type      CsLoungePostType
+  content   String
+  nickname  String?
+  authorId  String
+  author    User             @relation("CsLoungeAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
+  deletedAt DateTime?
+  deletedBy String?
+  deleter   User?            @relation("CsLoungeDeletedBy", fields: [deletedBy], references: [id], onDelete: SetNull)
+  votes     CsLoungeVote[]
+
+  @@index([type, createdAt])
+  @@index([deletedAt])
+}
+
+model CsLoungeVote {
+  id     String             @id @default(cuid())
+  postId String
+  post   CsLoungePost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  value  CsLoungeVoteValue
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+model CsClient {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  startDate String?
+  endDate   String?
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  updater   User?    @relation("CsClientUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  deletedAt DateTime?
+  assignments CsClientAssignment[]
+
+  @@index([isActive, name])
+  @@index([deletedAt])
+}
+
+model CsClientAssignment {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    CsClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleLabel String
+
+  @@unique([clientId, userId])
+  @@index([userId])
 }
 
 model CompanyInfo {
