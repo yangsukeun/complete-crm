@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
+import { isCsTeamDepartment } from "@/lib/cs-team-permissions";
 import { normalizeDepartment } from "@/lib/leave-department-access";
 
-/** 팀장·임원·관리자 — 목록 조회 (팀장은 동일 부서 + 본인 + 타 부서 승인 완료) */
+/** 팀장·임원·관리자·CS 센터장 — 목록 조회 (팀장·CS센터장은 동일 부서 + 본인 + 타 부서 승인 완료) */
 export function isLeaveManagementRole(role: string | undefined): boolean {
   const r = String(role ?? "").toUpperCase();
-  return r === "TEAM_LEAD" || r === "EXECUTIVE" || r === "ADMIN";
+  return r === "TEAM_LEAD" || r === "CENTER_CHIEF" || r === "EXECUTIVE" || r === "ADMIN";
 }
 
 /** 일반 직원: 승인된 건 전사 + 본인 신청 전부(대기·반려 등) */
@@ -15,7 +16,9 @@ export function leaveRequestListWhere(
 ): Prisma.LeaveRequestWhereInput {
   const r = String(role ?? "").toUpperCase();
   if (r === "EXECUTIVE" || r === "ADMIN") return {};
-  if (r === "TEAM_LEAD") {
+  const firstApprover =
+    r === "TEAM_LEAD" || (r === "CENTER_CHIEF" && isCsTeamDepartment(viewerDepartment));
+  if (firstApprover) {
     const dept = normalizeDepartment(viewerDepartment);
     const or: Prisma.LeaveRequestWhereInput[] = [
       { userId: sessionUserId },

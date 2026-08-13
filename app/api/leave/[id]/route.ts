@@ -11,15 +11,12 @@ import { isSickLeaveType, leaveRequestDays } from "@/lib/leave/leave-request-day
 import {
   applicantSkipsTeamLeadLeaveStep,
   canExecutiveFinalApproveLeave,
-  canTeamLeadManageLeaveApplicant,
+  canFirstApproveLeave,
   fetchDepartmentsWithTeamLead,
   teamLeadNotifyWhereForApplicantDepartment,
 } from "@/lib/leave-department-access";
 import { syncLeaveToNaverCalendar } from "@/lib/naver-calendar-sync";
 
-function isTeamLead(role: string | undefined) {
-  return role === "TEAM_LEAD";
-}
 function isExecutive(role: string | undefined) {
   return role === "EXECUTIVE" || role === "ADMIN";
 }
@@ -30,7 +27,9 @@ function canOwnerRequestCancel(current: string) {
 
 function canManagerFinalizeCancel(cancelFromStatus: string | null | undefined, role: string | undefined) {
   if (!cancelFromStatus) return false;
-  if (cancelFromStatus === "PENDING") return isTeamLead(role) || isExecutive(role);
+  const r = String(role ?? "").toUpperCase();
+  const isFirst = r === "TEAM_LEAD" || r === "CENTER_CHIEF";
+  if (cancelFromStatus === "PENDING") return isFirst || isExecutive(role);
   if (cancelFromStatus === "TEAM_LEAD_APPROVED" || cancelFromStatus === "APPROVED") return isExecutive(role);
   return false;
 }
@@ -175,25 +174,26 @@ export async function PATCH(
       }
     }
 
-    // 팀장: 1차 승인/반려 (PENDING → TEAM_LEAD_APPROVED | REJECTED) — 동일 부서만
-    if (isTeamLead(role)) {
-      const teamLeadRow = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { department: true },
-      });
-      if (!canTeamLeadManageLeaveApplicant(teamLeadRow?.department, leave.user?.department)) {
-        return NextResponse.json(
-          { error: "같은 부서(팀) 소속 직원의 휴가만 1차 승인·반려할 수 있습니다." },
-          { status: 403 }
-        );
-      }
+    const viewer = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { department: true, role: true },
+    });
+    const viewerRole = String(viewer?.role ?? role ?? "").toUpperCase();
+    const firstApprover = canFirstApproveLeave({
+      viewerRole,
+      viewerDepartment: viewer?.department,
+      applicantDepartment: leave.user?.department,
+    });
+
+    // 1차 승인자(팀장, CS팀 센터장): PENDING → TEAM_LEAD_APPROVED | REJECTED — 동일 부서만
+    if (firstApprover) {
 
       // 취소 요청 처리: cancelFromStatus 기준으로 가능 여부 결정
       if (leave.status === "CANCEL_REQUESTED") {
         if (requestedStatus !== "CANCELLED") {
           return NextResponse.json({ error: "취소 요청 건은 취소 처리(CANCELLED)만 가능합니다." }, { status: 400 });
         }
-        if (!canManagerFinalizeCancel(leave.cancelFromStatus, role)) {
+        if (!canManagerFinalizeCancel(leave.cancelFromStatus, viewerRole)) {
           return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
         }
         const updated = await prisma.leaveRequest.update({
@@ -233,7 +233,7 @@ export async function PATCH(
           await createNotificationWithOptions({
             userId: u.id,
             type: "LEAVE_REQUEST",
-            message: `${name}님 휴가 신청이 팀장 1차 승인되었습니다. 연차/근태에서 최종 승인해 주세요.`,
+            message: `${name}님 휴가 신청이 1차 승인되었습니다. 연차/근태에서 최종 승인해 주세요.`,
             link: "/leave",
             actorId: leave.userId,
           });

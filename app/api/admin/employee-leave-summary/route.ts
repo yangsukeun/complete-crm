@@ -4,6 +4,13 @@ import prisma from "@/lib/prisma";
 import { getCurrentLeaveCalendarYearKst, completedFullMonthsSinceJoinKst } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { toKstYmd } from "@/lib/date-kst";
+import { currentLeavePeriodYmd } from "@/lib/leave/leave-period";
+import {
+  canViewEmployeeLeaveSummary,
+  isCsLeaveOverviewDepartment,
+  leaveSummaryScope,
+} from "@/lib/leave-overview-access";
+import { normalizeDepartment } from "@/lib/work-log-access";
 
 type Bd = {
   available: number;
@@ -13,22 +20,33 @@ type Bd = {
 };
 
 /**
- * 대표·시스템 관리자: 전 직원 연차 풀(근기법 정합) 한눈에 조회.
+ * 대표·관리자: 전부. CS 팀장·센터장: CS 소속만.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const role = String(session.user.role ?? "").toUpperCase();
-    if (role !== "EXECUTIVE" && role !== "ADMIN") {
+
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, department: true },
+    });
+    const viewer = {
+      role: me?.role ?? session.user.role,
+      department: me?.department ?? session.user.department,
+    };
+    if (!canViewEmployeeLeaveSummary(viewer)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const scope = leaveSummaryScope(viewer);
     const year = getCurrentLeaveCalendarYearKst();
     const asOf = new Date();
     const asOfYmd = toKstYmd(asOf);
+    const url = new URL(req.url);
+    const deptQ = (url.searchParams.get("department") ?? "").trim();
 
     const users = await prisma.user.findMany({
       orderBy: { name: "asc" },
@@ -40,22 +58,38 @@ export async function GET() {
         position: true,
         role: true,
         joinDate: true,
+        accountDisabled: true,
       },
     });
 
+    const departments = [
+      ...new Set(
+        users
+          .map((u) => normalizeDepartment(u.department))
+          .filter((d) => d.length > 0)
+      ),
+    ].sort((a, b) => a.localeCompare(b, "ko"));
+
+    const filtered = users.filter((u) => {
+      if (scope === "cs") return isCsLeaveOverviewDepartment(u.department);
+      if (!deptQ || deptQ === "__ALL__") return true;
+      return normalizeDepartment(u.department) === normalizeDepartment(deptQ);
+    });
+
     const rows = await Promise.all(
-      users.map(async (u) => {
+      filtered.map(async (u) => {
         const joinDate = u.joinDate instanceof Date ? u.joinDate : new Date(u.joinDate);
         const joinYmd = toKstYmd(joinDate);
         const fullMonths = joinYmd ? completedFullMonthsSinceJoinKst(joinYmd, asOfYmd) : 0;
         const tenureYears = Math.floor(fullMonths / 12);
         const tenureExtraMonths = fullMonths % 12;
+        const period =
+          joinYmd && asOfYmd ? currentLeavePeriodYmd(joinYmd, asOfYmd) : { start: "", end: "" };
 
         let pool;
         try {
           pool = await calculateLeavePool(u.id, asOf);
         } catch (perUser) {
-          // [DIAG] 어느 직원의 풀 계산에서 터지는지 식별 (배포 후 Vercel 로그용)
           console.error(
             `[employee-leave-summary] calculateLeavePool failed userId=${u.id} name=${u.name}`,
             perUser
@@ -78,7 +112,10 @@ export async function GET() {
           department: u.department,
           position: u.position,
           role: u.role,
+          accountDisabled: u.accountDisabled,
           joinDate: joinDate.toISOString(),
+          periodStart: period.start,
+          periodEnd: period.end,
           year,
           tenureYears,
           tenureExtraMonths,
@@ -88,6 +125,7 @@ export async function GET() {
           carryOver: bd(b.carryOver),
           priorCrmUsageDays: pool.priorCrmUsageDays,
           annualCarryOverDaysReported: pool.annualCarryOverDaysReported,
+          totalGranted: pool.totalEntitled,
           totalUsed: pool.totalConsumedDaysFromAccruals,
           totalExpired: pool.totalExpired,
           remaining: pool.available,
@@ -101,9 +139,20 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({ year, rows });
+    const totalGranted = rows.reduce((s, r) => s + r.totalGranted, 0);
+    const totalUsed = rows.reduce((s, r) => s + r.totalUsed, 0);
+    const usageRate = totalGranted > 1e-6 ? (totalUsed / totalGranted) * 100 : 0;
+
+    return NextResponse.json({
+      year,
+      scope,
+      departments,
+      defaultDepartment: scope === "cs" ? "CS팀" : "CS팀",
+      lockedDepartment: scope === "cs" ? "CS팀" : null,
+      stats: { totalGranted, totalUsed, usageRate },
+      rows,
+    });
   } catch (e) {
-    // [DIAG] 실제 예외를 명확히 출력 (name/message/code/stack) — 배포 후 Vercel Functions 로그에서 확인
     const err = e as { name?: string; message?: string; code?: string; meta?: unknown; stack?: string };
     console.error("[employee-leave-summary] 500", {
       name: err?.name,

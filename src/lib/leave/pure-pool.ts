@@ -52,6 +52,8 @@ function bucketFor(type: LeaveAccrualType): keyof LeavePool["breakdown"] {
       return "tenureBonus";
     case "CARRY_OVER":
       return "carryOver";
+    case "MANUAL_ADJUSTMENT":
+      return "carryOver";
     default:
       return "carryOver";
   }

@@ -50,6 +50,7 @@ import { isMasterEmail } from "@/lib/master-account";
 import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
 import { canManageEmployeesSync } from "@/lib/employee-admin-access";
 import { canViewAwayOverview } from "@/lib/attendance-away-access";
+import { canViewEmployeeLeaveSummary } from "@/lib/leave-overview-access";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -139,10 +140,12 @@ const ADMIN_MENU_DEFS: {
   /** 마스터 계정 전용(감사용 화면). 대표/관리자에게도 숨김 */
   masterOnly?: boolean;
   feature?: string;
+  /** 대표·관리자 + CS 팀장/센터장 */
+  csLeaveOverview?: boolean;
 }[] = [
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
   { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
-  { href: "/admin/employee-leave-summary", label: "직원 연차 현황", icon: CalendarClock, executiveOnly: true },
+  { href: "/admin/employee-leave-summary", label: "직원 연차 현황", icon: CalendarClock, csLeaveOverview: true },
   { href: "/admin/attendance-import", label: "기록기 근태 임포트", icon: Upload, feature: "attendance_import" },
   { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, feature: "attendance_import" },
   { href: "/admin/permissions", label: "기능 권한", icon: Shield, executiveOnly: true },
@@ -430,6 +433,12 @@ export function AppNav() {
       return false;
     }
     if (d.masterOnly) return isMaster;
+    if (d.csLeaveOverview) {
+      return canViewEmployeeLeaveSummary({
+        role: session?.user?.role,
+        department: session?.user?.department,
+      });
+    }
     if (d.executiveOnly) return isExecutive;
     if (d.feature) {
       if (orgUnit === "LOGISTICS" && d.href === "/admin/company") return true;

@@ -93,6 +93,7 @@ enum LeaveAccrualType {
   ANNUAL_AFTER_ONE_YEAR  // §60① 1년 만근 연차(매 입사기념일 15일)
   TENURE_BONUS           // §60④ 근속 가산
   CARRY_OVER             // 레거시 이월·실사용차감 호환
+  MANUAL_ADJUSTMENT      // 관리자 가감 조정
 }
 
 enum ScheduleInviteStatus {
@@ -249,6 +250,8 @@ model User {
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]
   leaveAccruals    LeaveAccrual[]
+  leaveAdjustmentsReceived LeaveAdjustment[] @relation("LeaveAdjustmentTarget")
+  leaveAdjustmentsMade     LeaveAdjustment[] @relation("LeaveAdjustmentActor")
   taskComments     TaskComment[]
   chatParticipants ChatParticipant[]
   chatMessages     ChatMessage[]
@@ -839,6 +842,20 @@ model LeaveBalance {
   manualDeduction Float    @default(0)   // 실제 사용한 일수 (최초 1회만 설정 가능)
   @@unique([userId, year])
   @@index([userId])
+}
+
+/// 관리자 연차 가감 이력(사유·조정자). 풀 반영은 LeaveAccrual MANUAL_ADJUSTMENT 또는 FIFO 차감.
+model LeaveAdjustment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("LeaveAdjustmentTarget", fields: [userId], references: [id], onDelete: Cascade)
+  days      Float
+  reason    String
+  actorId   String
+  actor     User     @relation("LeaveAdjustmentActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Chat {

@@ -2,6 +2,7 @@ import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { resolveAppModeForUser } from "@/lib/app-mode-server";
+import { isCsTeamDepartment } from "@/lib/cs-team-permissions";
 import { LeavePageClient } from "./leave-page-client";
 
 export default async function LeavePage() {
@@ -12,7 +13,9 @@ export default async function LeavePage() {
   const appMode = await resolveAppModeForUser(session.user.id, cookieStore);
   if (appMode !== "company") redirect("/choose-mode");
 
-  const isTeamLead = session.user.role === "TEAM_LEAD";
-  const isExecutive = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-  return <LeavePageClient isTeamLead={isTeamLead} isExecutive={isExecutive} />;
+  const role = String(session.user.role ?? "").toUpperCase();
+  const isFirstApprover =
+    role === "TEAM_LEAD" || (role === "CENTER_CHIEF" && isCsTeamDepartment(session.user.department));
+  const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
+  return <LeavePageClient isTeamLead={isFirstApprover} isExecutive={isExecutive} />;
 }

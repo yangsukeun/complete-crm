@@ -4,6 +4,7 @@ export function leaveAccrualTypeLabel(type: string): string {
     ANNUAL_AFTER_ONE_YEAR: "정규 연차",
     TENURE_BONUS: "근속가산",
     CARRY_OVER: "이월",
+    MANUAL_ADJUSTMENT: "관리자 조정",
   };
   return m[type] ?? type;
 }

@@ -65,7 +65,14 @@ function pathAllowed(path: string, prefixes: string[]): boolean {
 }
 
 /** CS센터 직원 메뉴 — CS 링크·연차·스케줄·자금(권한 있는 경우) */
-const CS_NAV_PREFIXES = ["/cs-tools", "/leave", "/schedule", "/finance/requests", "/profile"];
+const CS_NAV_PREFIXES = [
+  "/cs-tools",
+  "/leave",
+  "/schedule",
+  "/finance/requests",
+  "/profile",
+  "/admin/employee-leave-summary",
+];
 
 /** 3PL 직원 메뉴 — 물류 홈·연차·이체·회사정보 */
 const LOGISTICS_NAV_PREFIXES = [

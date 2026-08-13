@@ -6,6 +6,12 @@ import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { leaveRequestDays } from "@/lib/leave/leave-request-days";
 import { LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 import { toKstYmd } from "@/lib/date-kst";
+import {
+  canAdjustEmployeeLeave,
+  canViewEmployeeLeaveSummary,
+  isCsLeaveOverviewDepartment,
+  leaveSummaryScope,
+} from "@/lib/leave-overview-access";
 
 type AllocationRow = { days: number; accrualId: string };
 
@@ -26,8 +32,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const role = String(session.user.role ?? "").toUpperCase();
-    if (role !== "EXECUTIVE" && role !== "ADMIN") {
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true, department: true },
+    });
+    const viewer = {
+      role: me?.role ?? session.user.role,
+      department: me?.department ?? session.user.department,
+    };
+    if (!canViewEmployeeLeaveSummary(viewer)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -48,6 +61,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
     if (!user) {
       return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
     }
+    if (leaveSummaryScope(viewer) === "cs" && !isCsLeaveOverviewDepartment(user.department)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const asOf = new Date();
     const joinDate = user.joinDate instanceof Date ? user.joinDate : new Date(user.joinDate);
@@ -57,7 +73,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
     const tenureYears = Math.floor(fullMonths / 12);
     const tenureExtraMonths = fullMonths % 12;
 
-    const [accruals, requests, balances, pool] = await Promise.all([
+    const [accruals, requests, balances, pool, adjustments] = await Promise.all([
       prisma.leaveAccrual.findMany({
         where: { userId: user.id },
         orderBy: { accrualDateYmd: "asc" },
@@ -71,6 +87,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
         orderBy: { year: "desc" },
       }),
       calculateLeavePool(user.id, asOf),
+      prisma.leaveAdjustment.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        include: { actor: { select: { name: true } } },
+      }),
     ]);
 
     const accrualYmdById = new Map(accruals.map((a) => [a.id, a.accrualDateYmd]));
@@ -134,6 +155,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
         nextAccrualDate: pool.nextAccrualDate?.toISOString() ?? null,
         nextExpirationDate: pool.nextExpirationDate?.toISOString() ?? null,
       },
+      adjustments: adjustments.map((a) => ({
+        id: a.id,
+        days: a.days,
+        reason: a.reason,
+        createdAt: a.createdAt.toISOString(),
+        actorName: a.actor.name,
+      })),
+      canAdjust: canAdjustEmployeeLeave(viewer.role),
     });
   } catch (e) {
     console.error("[employee-leave-detail]", e);

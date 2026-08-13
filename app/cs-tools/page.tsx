@@ -3,6 +3,8 @@ import { getAppSession } from "@/auth";
 import { PageHeadline } from "@/components/page-headline";
 import { CsToolsPageClient } from "./cs-tools-page-client";
 import { DashboardAttendance } from "@/components/dashboard-attendance";
+import Link from "next/link";
+import { CalendarPlus } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { startOfDayKst } from "@/lib/date-kst";
 import { canUseAwayFeature, canViewAwayOverview, summarizeAwayLogs } from "@/lib/attendance-away-access";
@@ -55,6 +57,18 @@ export default async function CsToolsPage() {
             : null
         }
       />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link
+          href="/leave"
+          className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+        >
+          <span className="flex items-center gap-2 font-medium">
+            <CalendarPlus className="size-4 text-muted-foreground" />
+            휴가 신청
+          </span>
+          <span className="text-muted-foreground text-sm">연차/근태 화면에서 신청합니다.</span>
+        </Link>
+      </div>
       <CsToolsPageClient />
     </div>
   );

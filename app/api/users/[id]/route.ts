@@ -7,6 +7,7 @@ import {
 } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
+import { ensureAccrualsUpTo } from "@/lib/leave/ensure-accruals";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
 import { updateEmployeePassword } from "@/lib/employee-password";
@@ -193,6 +194,7 @@ export async function PATCH(
       }
     }
 
+    await ensureAccrualsUpTo(id);
     await ensureLegacyCarryAccrual(id);
 
     revalidateTag("users-list", "max");

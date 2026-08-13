@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { isCsTeamDepartment } from "@/lib/cs-team-permissions";
 import { normalizeDepartment } from "@/lib/work-log-access";
 
 export { normalizeDepartment };
@@ -14,12 +15,36 @@ export function canTeamLeadManageLeaveApplicant(
   return leadDept === applicantDept;
 }
 
-/** 휴가 알림 대상 팀장 조회용 Prisma where (신청자 부서와 일치하는 TEAM_LEAD) */
+/**
+ * CS팀 한정: CENTER_CHIEF도 TEAM_LEAD와 같이 1차 승인 가능.
+ * 타 부서 CENTER_CHIEF·자금 3단계는 해당 없음.
+ */
+export function canFirstApproveLeave(opts: {
+  viewerRole: string | null | undefined;
+  viewerDepartment: string | null | undefined;
+  applicantDepartment: string | null | undefined;
+}): boolean {
+  const role = String(opts.viewerRole ?? "").toUpperCase();
+  if (!canTeamLeadManageLeaveApplicant(opts.viewerDepartment, opts.applicantDepartment)) {
+    return false;
+  }
+  if (role === "TEAM_LEAD") return true;
+  return role === "CENTER_CHIEF" && isCsTeamDepartment(opts.viewerDepartment);
+}
+
+export type FirstApproverNotifyWhere =
+  | { role: "TEAM_LEAD"; department: string }
+  | { department: string; role: { in: ["TEAM_LEAD", "CENTER_CHIEF"] } };
+
+/** 휴가 알림 대상 1차 승인자. CS팀은 팀장+센터장, 그 외는 팀장만. */
 export function teamLeadNotifyWhereForApplicantDepartment(
   applicantDepartment: string | null | undefined
-): { role: "TEAM_LEAD"; department: string } | null {
+): FirstApproverNotifyWhere | null {
   const dept = normalizeDepartment(applicantDepartment);
   if (!dept) return null;
+  if (isCsTeamDepartment(dept)) {
+    return { department: dept, role: { in: ["TEAM_LEAD", "CENTER_CHIEF"] } };
+  }
   return { role: "TEAM_LEAD", department: dept };
 }
 

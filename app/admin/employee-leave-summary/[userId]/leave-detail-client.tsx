@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { jsonFetcher } from "@/lib/api-swr";
@@ -12,6 +13,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -20,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { toast } from "sonner";
 
 type AccrualRow = {
   id: string;
@@ -65,6 +70,14 @@ type PoolPayload = {
   shortageLeaveRequestIds?: string[];
 };
 
+type AdjustmentRow = {
+  id: string;
+  days: number;
+  reason: string;
+  createdAt: string;
+  actorName: string;
+};
+
 type DetailApi = {
   user: {
     id: string;
@@ -81,6 +94,8 @@ type DetailApi = {
   requests: RequestRow[];
   balances: BalanceRow[];
   pool: PoolPayload;
+  adjustments?: AdjustmentRow[];
+  canAdjust?: boolean;
 };
 
 function fmt1(n: number): string {
@@ -311,6 +326,9 @@ export function LeaveDetailClient({ userId }: { userId: string }) {
     jsonFetcher,
     { revalidateOnFocus: true }
   );
+  const [days, setDays] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
 
   if (isLoading && !data) {
     return <p className="text-muted-foreground text-sm">불러오는 중…</p>;
@@ -327,8 +345,40 @@ export function LeaveDetailClient({ userId }: { userId: string }) {
   }
 
   const { user, accruals, requests, balances, pool, tenureYears, tenureExtraMonths } = data;
+  const adjustments = data.adjustments ?? [];
+  const canAdjust = Boolean(data.canAdjust);
   const poolAccruals = accruals.filter((a) => !a.isLegacyCarry);
   const legacyAccruals = accruals.filter((a) => a.isLegacyCarry);
+
+  const submitAdjust = async () => {
+    const n = Number(days);
+    if (!Number.isFinite(n) || n === 0) {
+      toast.error("조정 일수는 0이 아닌 숫자여야 합니다.");
+      return;
+    }
+    if (!reason.trim()) {
+      toast.error("사유를 입력하세요.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/employee-leave-detail/${userId}/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: n, reason: reason.trim() }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "조정에 실패했습니다.");
+      toast.success("연차 조정이 반영되었습니다.");
+      setDays("");
+      setReason("");
+      await mutate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "조정에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-0">
@@ -394,6 +444,70 @@ export function LeaveDetailClient({ userId }: { userId: string }) {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-semibold">연차 조정 내역</h2>
+        {canAdjust && (
+          <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[8rem_1fr_auto]">
+            <div className="space-y-1.5">
+              <Label htmlFor="adj-days">일수 (±)</Label>
+              <Input
+                id="adj-days"
+                type="number"
+                step="0.5"
+                value={days}
+                onChange={(e) => setDays(e.target.value)}
+                placeholder="예: 1 또는 -0.5"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="adj-reason">사유</Label>
+              <Textarea
+                id="adj-reason"
+                rows={2}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="조정 사유 (필수)"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button type="button" onClick={() => void submitAdjust()} disabled={saving}>
+                {saving ? "반영 중…" : "조정 반영"}
+              </Button>
+            </div>
+          </div>
+        )}
+        {adjustments.length === 0 ? (
+          <p className="text-muted-foreground text-sm">조정 이력이 없습니다.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>일시</TableHead>
+                  <TableHead className="text-right">일수</TableHead>
+                  <TableHead>사유</TableHead>
+                  <TableHead>조정자</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {adjustments.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="tabular-nums text-sm">
+                      {a.createdAt.slice(0, 16).replace("T", " ")}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">
+                      {a.days > 0 ? `+${fmt1(a.days)}` : fmt1(a.days)}일
+                    </TableCell>
+                    <TableCell>{a.reason}</TableCell>
+                    <TableCell className="text-muted-foreground">{a.actorName}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-semibold">사용 신청 ({requests.length}건)</h2>
         <RequestsTable requests={requests} />
       </section>
@@ -411,9 +525,11 @@ export function LeaveDetailClient({ userId }: { userId: string }) {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">관리</h2>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/admin/employees">직원 관리 (이전 사용분·입사일)</Link>
-          </Button>
+          {canAdjust && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/employees">직원 관리 (이전 사용분·입사일)</Link>
+            </Button>
+          )}
         </div>
         <p className="text-muted-foreground text-xs leading-relaxed">
           FIFO 재차감은 서버 스크립트(reapply-consumption)로 실행합니다. 이 화면에서는 데이터 조회만 합니다.

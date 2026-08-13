@@ -214,8 +214,8 @@ export async function POST(req: Request) {
     });
 
     for (const r of managers) {
-      const isTeamLeadRole = r.role === "TEAM_LEAD";
-      const message = isTeamLeadRole
+      const isFirstApproverRole = r.role === "TEAM_LEAD" || r.role === "CENTER_CHIEF";
+      const message = isFirstApproverRole
         ? `${applicantName}님이 휴가를 신청했습니다. 아래 목록에서 1차 승인해 주세요.`
         : skipTeamLeadStep
           ? `${applicantName} 팀장님이 휴가를 신청했습니다. 연차/근태(/leave)에서 최종 승인해 주세요.`

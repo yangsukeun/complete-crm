@@ -21,6 +21,7 @@ export function EmployeeHeaderActions() {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{
     created: number;
+    updated?: number;
     failed: number;
     createdList: { email: string; name: string }[];
     errors: { row: number; email?: string; message: string }[];
@@ -57,8 +58,14 @@ export function EmployeeHeaderActions() {
         throw new Error(data.error ?? "업로드에 실패했습니다.");
       }
       setResult(data);
-      if (data.created > 0) {
-        toast.success(`${data.created}명 등록되었습니다.`);
+      const createdN = Number(data.created) || 0;
+      const updatedN = Number(data.updated) || 0;
+      if (createdN > 0 || updatedN > 0) {
+        toast.success(
+          [createdN > 0 ? `${createdN}명 등록` : null, updatedN > 0 ? `${updatedN}명 보완` : null]
+            .filter(Boolean)
+            .join(" · ")
+        );
         router.refresh();
       }
       if (data.failed > 0) {
@@ -98,7 +105,7 @@ export function EmployeeHeaderActions() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-muted-foreground text-sm">
-              엑셀 파일로 직원 정보를 일괄 등록할 수 있습니다. 첫 번째 행은 헤더로 사용됩니다.
+              신규는 등록하고, 이미 있는 이메일은 입사일·연락처 등 빈 필드만 보완합니다. 역할·부서·직책·비밀번호는 덮어쓰지 않습니다.
             </p>
             <a
               href="/api/users/import/template"
@@ -109,9 +116,9 @@ export function EmployeeHeaderActions() {
               템플릿 다운로드 (직원등록_템플릿.xlsx)
             </a>
             <div className="space-y-2">
-              <p className="text-sm font-medium">필수 컬럼: 이메일, 비밀번호, 이름</p>
+              <p className="text-sm font-medium">필수 컬럼: 이메일, 이름 (신규는 비밀번호도 필수)</p>
               <p className="text-muted-foreground text-xs">
-                선택: 역할(USER/TEAM_LEAD), 연락처, 업무 연락처, 업무 이메일, 은행계좌번호, 주소지, 주민번호, 부서, 직책, 입사일(YYYY-MM-DD)
+                선택: 역할(USER/TEAM_LEAD, 신규만), 연락처, 업무 연락처, 업무 이메일, 은행계좌번호, 주소지, 주민번호, 부서, 직책, 입사일(YYYY-MM-DD)
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -131,6 +138,12 @@ export function EmployeeHeaderActions() {
               <div className="space-y-2 rounded-lg border bg-muted/50 p-3 text-sm">
                 <p>
                   <span className="font-medium text-green-600">{result.created}명</span> 등록됨
+                  {(result.updated ?? 0) > 0 && (
+                    <>
+                      {" · "}
+                      <span className="font-medium">{result.updated}명</span> 보완됨
+                    </>
+                  )}
                   {result.failed > 0 && (
                     <>
                       {" · "}

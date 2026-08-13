@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canTeamLeadManageLeaveApplicant,
+  canFirstApproveLeave,
   teamLeadNotifyWhereForApplicantDepartment,
 } from "@/lib/leave-department-access";
 import { leaveRequestListWhere } from "@/lib/leave-request-serialize";
@@ -27,6 +28,44 @@ describe("leave-department-access", () => {
       department: "경영지원",
     });
     expect(teamLeadNotifyWhereForApplicantDepartment("  ")).toBeNull();
+  });
+
+  it("notifies CS team lead and center chief together", () => {
+    expect(teamLeadNotifyWhereForApplicantDepartment("CS팀")).toEqual({
+      department: "CS팀",
+      role: { in: ["TEAM_LEAD", "CENTER_CHIEF"] },
+    });
+  });
+
+  it("lets CS center chief first-approve same department only", () => {
+    expect(
+      canFirstApproveLeave({
+        viewerRole: "CENTER_CHIEF",
+        viewerDepartment: "CS팀",
+        applicantDepartment: "CS팀",
+      })
+    ).toBe(true);
+    expect(
+      canFirstApproveLeave({
+        viewerRole: "CENTER_CHIEF",
+        viewerDepartment: "마케팅",
+        applicantDepartment: "마케팅",
+      })
+    ).toBe(false);
+    expect(
+      canFirstApproveLeave({
+        viewerRole: "TEAM_LEAD",
+        viewerDepartment: "마케팅",
+        applicantDepartment: "마케팅",
+      })
+    ).toBe(true);
+    expect(
+      canFirstApproveLeave({
+        viewerRole: "TEAM_LEAD",
+        viewerDepartment: "물류",
+        applicantDepartment: "마케팅",
+      })
+    ).toBe(false);
   });
 
   it("detects departments with team lead and executive direct approval", () => {
@@ -83,5 +122,21 @@ describe("leaveRequestListWhere", () => {
 
   it("executive sees all requests", () => {
     expect(leaveRequestListWhere("u1", "EXECUTIVE", "마케팅")).toEqual({});
+  });
+
+  it("CS center chief list matches team-lead scope", () => {
+    expect(leaveRequestListWhere("u1", "CENTER_CHIEF", "CS팀")).toEqual({
+      OR: [
+        { userId: "u1" },
+        { status: "APPROVED" },
+        { user: { department: "CS팀" } },
+      ],
+    });
+  });
+
+  it("non-CS center chief does not get team-lead list scope", () => {
+    expect(leaveRequestListWhere("u1", "CENTER_CHIEF", "마케팅")).toEqual({
+      OR: [{ status: "APPROVED" }, { userId: "u1" }],
+    });
   });
 });
