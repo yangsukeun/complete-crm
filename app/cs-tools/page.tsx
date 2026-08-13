@@ -6,7 +6,6 @@ import { DashboardAttendance } from "@/components/dashboard-attendance";
 import prisma from "@/lib/prisma";
 import { startOfDayKst } from "@/lib/date-kst";
 import { canUseAwayFeature, canViewAwayOverview, summarizeAwayLogs } from "@/lib/attendance-away-access";
-import Link from "next/link";
 
 export default async function CsToolsPage() {
   const session = await getAppSession();
@@ -34,24 +33,13 @@ export default async function CsToolsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <PageHeadline
-          title="CS 링크 허브"
-          description="CS 업무에 쓰는 외부 도구·링크를 한곳에서 엽니다."
-        />
-        {showOverview && (
-          <div className="flex flex-col items-start gap-1 sm:items-end">
-            <Link href="/cs-tools/attendance" className="text-primary text-sm font-medium hover:underline">
-              팀 출퇴근 →
-            </Link>
-            <Link href="/cs-tools/away" className="text-primary text-sm font-medium hover:underline">
-              이석 현황 →
-            </Link>
-          </div>
-        )}
-      </div>
+      <PageHeadline
+        title="CS 링크 허브"
+        description="CS 업무에 쓰는 외부 도구·링크를 한곳에서 엽니다."
+      />
       <DashboardAttendance
         emphasized
+        showManagerLinks={showOverview}
         showAway={canUseAwayFeature({
           department: me?.department ?? session.user.department,
         })}

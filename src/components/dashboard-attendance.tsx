@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Bath, Cigarette, LogIn, LogOut } from "lucide-react";
+import { Bath, Cigarette, Clock, LogIn, LogOut, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatKstHm } from "@/lib/date-kst";
@@ -48,6 +49,7 @@ export function DashboardAttendance({
   onUpdate,
   emphasized = false,
   showAway: showAwayProp,
+  showManagerLinks = false,
 }: {
   initial: TodayAttendance;
   initialAway?: AwayDaySummary;
@@ -55,6 +57,8 @@ export function DashboardAttendance({
   /** CS 홈: 큰 버튼 + 출근·자리비움 시각 */
   emphasized?: boolean;
   showAway?: boolean;
+  /** CS 팀장·센터장: 팀 출퇴근·이석 현황 */
+  showManagerLinks?: boolean;
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -259,6 +263,36 @@ export function DashboardAttendance({
           >
             <Cigarette className="mr-2 size-4" />
             흡연
+          </Button>
+        </>
+      )}
+      {showManagerLinks && (
+        <>
+          <Button
+            variant={emphasized ? "ghost" : "outline"}
+            asChild
+            className={cn(
+              btnBase,
+              emphasized && "bg-violet-600 text-white hover:bg-violet-700 hover:text-white",
+            )}
+          >
+            <Link href="/cs-tools/attendance">
+              <Clock className="mr-2 size-4" />
+              팀 출퇴근
+            </Link>
+          </Button>
+          <Button
+            variant={emphasized ? "ghost" : "outline"}
+            asChild
+            className={cn(
+              btnBase,
+              emphasized && "bg-teal-600 text-white hover:bg-teal-700 hover:text-white",
+            )}
+          >
+            <Link href="/cs-tools/away">
+              <Timer className="mr-2 size-4" />
+              이석 현황
+            </Link>
           </Button>
         </>
       )}
