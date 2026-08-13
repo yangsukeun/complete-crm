@@ -1,7 +1,7 @@
 "use server";
 
 import prisma from "@/lib/prisma";
-import { hash } from "bcryptjs";
+import { hashPasswordForStore } from "@/lib/employee-password";
 
 /**
  * 비밀번호 재설정 (서버에서 시크릿 검증 후 처리, 클라이언트에 시크릿 노출 없음)
@@ -14,8 +14,8 @@ export async function resetPassword(formData: FormData) {
   if (typeof email !== "string" || !email.trim()) {
     return { error: "이메일을 입력하세요." };
   }
-  if (typeof newPassword !== "string" || newPassword.trim().length < 4) {
-    return { error: "비밀번호는 4자 이상 입력하세요." };
+  if (typeof newPassword !== "string" || newPassword.trim().length < 8) {
+    return { error: "비밀번호는 8자 이상 입력하세요." };
   }
   const confirm = typeof confirmPassword === "string" ? confirmPassword.trim() : "";
   if (newPassword.trim() !== confirm) {
@@ -31,10 +31,13 @@ export async function resetPassword(formData: FormData) {
       return { error: "해당 이메일로 등록된 사용자가 없습니다." };
     }
 
-    const hashedPassword = await hash(newPassword.trim(), 10);
+    const hashed = await hashPasswordForStore(newPassword.trim());
+    if (!hashed.ok) {
+      return { error: hashed.error };
+    }
     await prisma.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword },
+      data: { password: hashed.hashed },
     });
 
     return { success: true };

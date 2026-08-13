@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { z } from "zod";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
+import {
+  MIN_PASSWORD_CHANGE_LENGTH,
+  PASSWORD_CHANGE_TOO_SHORT_MESSAGE,
+} from "@/lib/password-policy";
 import { updateEmployeePassword } from "@/lib/employee-password";
 
 const schema = z.object({
-  password: z.string().min(4, "비밀번호는 4자 이상이어야 합니다."),
+  password: z.string().min(MIN_PASSWORD_CHANGE_LENGTH, PASSWORD_CHANGE_TOO_SHORT_MESSAGE),
 });
 
 export async function POST(
@@ -31,7 +35,7 @@ export async function POST(
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "비밀번호는 4자 이상 입력하세요." },
+        { error: PASSWORD_CHANGE_TOO_SHORT_MESSAGE },
         { status: 400 }
       );
     }

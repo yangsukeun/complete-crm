@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { hash } from "bcryptjs";
+import { hashPasswordForStore } from "@/lib/employee-password";
 import { z } from "zod";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
@@ -254,7 +254,7 @@ async function userUpdateWithSchemaFallback(
 const updateByUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.union([z.string().email(), z.literal("")]).optional(),
-  password: z.string().min(4).optional(),
+  password: z.string().min(8).optional(),
   phone: z.string().optional().nullable(),
   workPhone: z.string().optional().nullable(),
   workEmail: z.union([z.string().email(), z.literal("")]).optional().nullable(),
@@ -316,8 +316,12 @@ export async function PATCH(req: Request) {
     if (parsed.data.name != null && parsed.data.name.trim()) data.name = parsed.data.name.trim();
     if (parsed.data.email != null) data.email = parsed.data.email.trim() || undefined;
     if (parsed.data.badgePreset !== undefined) data.badgePreset = parsed.data.badgePreset || null;
-    if (parsed.data.password != null && parsed.data.password.length >= 4) {
-      data.password = await hash(parsed.data.password, 10);
+    if (parsed.data.password != null && parsed.data.password.length > 0) {
+      const hashed = await hashPasswordForStore(parsed.data.password);
+      if (!hashed.ok) {
+        return NextResponse.json({ error: hashed.error }, { status: 400 });
+      }
+      data.password = hashed.hashed;
     }
     if (parsed.data.phone !== undefined) data.phone = parsed.data.phone?.trim() || null;
     if (parsed.data.workPhone !== undefined) data.workPhone = parsed.data.workPhone?.trim() || null;

@@ -146,8 +146,8 @@ export function ProfilePageClient({
       toast.error("비밀번호와 비밀번호 확인이 일치하지 않습니다.");
       return;
     }
-    if (password && password.length < 4) {
-      toast.error("비밀번호는 4자 이상 입력하세요.");
+    if (password && password.length < 8) {
+      toast.error("비밀번호는 8자 이상 입력하세요.");
       return;
     }
     setSaving(true);
@@ -277,7 +277,7 @@ export function ProfilePageClient({
                   type="password"
                   value={password}
                   onChange={(e: any) => setPassword(e.target.value)}
-                  placeholder="변경 시에만 입력 (4자 이상)"
+                  placeholder="변경 시에만 입력 (8자 이상)"
                   className="h-10 border bg-background"
                 />
               </div>

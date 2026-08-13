@@ -1,19 +1,20 @@
 /**
- * 직원 비밀번호 변경 후 로그인 비교가 성공하는지 검증.
- * 임시 계정을 만들고 끝나면 삭제한다. CS 실계정은 건드리지 않는다.
- *
- * 사용: npx tsx scripts/verify-password-change-login.ts
+ * 관리자 재설정·본인(프로필과 동일 해싱) 경로 각각 변경 → 로그인 compare 성공.
+ * 8자 미만은 거부. 임시 계정은 끝나면 삭제.
  */
 import { compare, hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
-import { updateEmployeePassword } from "../src/lib/employee-password";
+import { hashPasswordForStore, updateEmployeePassword } from "../src/lib/employee-password";
 
 const prisma = new PrismaClient();
 const EMAIL = "pwd.change.verify@complete.local";
 
+async function storedHash(id: string) {
+  return (await prisma.user.findUniqueOrThrow({ where: { id }, select: { password: true } })).password;
+}
+
 async function main() {
   const oldPlain = "OldPass!1";
-  const newPlain = "NewPass!2";
   await prisma.user.deleteMany({ where: { email: EMAIL } });
   const user = await prisma.user.create({
     data: {
@@ -27,28 +28,37 @@ async function main() {
   });
 
   try {
-    const oldOk = await compare(
-      oldPlain,
-      (await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { password: true } })).password
-    );
-    if (!oldOk) throw new Error("초기 비밀번호 compare 실패");
-
-    const result = await updateEmployeePassword({
+    const tooShort = await updateEmployeePassword({
       targetId: user.id,
       managerRole: "ADMIN",
-      password: newPlain,
+      password: "short7!",
     });
-    if (!result.ok) throw new Error(result.error);
+    if (tooShort.ok) throw new Error("8자 미만이 통과함");
 
-    const stored = (
-      await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { password: true } })
-    ).password;
-    if (!stored.startsWith("$2")) throw new Error("bcrypt 해시가 아님");
-    const newOk = await compare(newPlain, stored);
-    const oldStill = await compare(oldPlain, stored);
-    if (!newOk) throw new Error("새 비밀번호 로그인 비교 실패");
-    if (oldStill) throw new Error("이전 비밀번호가 여전히 통과함");
-    console.log("PASSWORD_CHANGE_LOGIN_OK");
+    const adminNew = "AdminNew!2";
+    const adminResult = await updateEmployeePassword({
+      targetId: user.id,
+      managerRole: "ADMIN",
+      password: adminNew,
+    });
+    if (!adminResult.ok) throw new Error(adminResult.error);
+    const afterAdmin = await storedHash(user.id);
+    if (!afterAdmin.startsWith("$2")) throw new Error("bcrypt 해시가 아님");
+    if (!(await compare(adminNew, afterAdmin))) throw new Error("관리자 경로 새 비번 로그인 비교 실패");
+    if (await compare(oldPlain, afterAdmin)) throw new Error("관리자 경로: 이전 비번이 통과함");
+    console.log("ADMIN_PASSWORD_CHANGE_LOGIN_OK");
+
+    const selfNew = "SelfNew!3";
+    const selfHashed = await hashPasswordForStore(selfNew);
+    if (!selfHashed.ok) throw new Error(selfHashed.error);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: selfHashed.hashed },
+    });
+    const afterSelf = await storedHash(user.id);
+    if (!(await compare(selfNew, afterSelf))) throw new Error("본인 경로 새 비번 로그인 비교 실패");
+    if (await compare(adminNew, afterSelf)) throw new Error("본인 경로: 이전 비번이 통과함");
+    console.log("SELF_PASSWORD_CHANGE_LOGIN_OK");
   } finally {
     await prisma.user.deleteMany({ where: { email: EMAIL } });
     await prisma.$disconnect();

@@ -199,8 +199,8 @@ export function AdminEmployeesClient({
   const handleResetPassword = async () => {
     if (!editing || resettingPassword) return;
     const pw = newPassword.trim();
-    if (pw.length < 4) {
-      toast.error("비밀번호는 4자 이상 입력하세요.");
+    if (pw.length < 8) {
+      toast.error("비밀번호는 8자 이상 입력하세요.");
       return;
     }
     if (pw !== newPasswordConfirm.trim()) {
@@ -256,8 +256,8 @@ export function AdminEmployeesClient({
     const pw = newPassword.trim();
     const pwConfirm = newPasswordConfirm.trim();
     if (pw || pwConfirm) {
-      if (pw.length < 4) {
-        toast.error("비밀번호는 4자 이상 입력하세요.");
+      if (pw.length < 8) {
+        toast.error("비밀번호는 8자 이상 입력하세요.");
         return;
       }
       if (pw !== pwConfirm) {
@@ -527,7 +527,7 @@ export function AdminEmployeesClient({
                     autoComplete="new-password"
                     value={newPassword}
                     onChange={(e: any) => setNewPassword(e.target.value)}
-                    placeholder="새 비밀번호 (4자 이상)"
+                    placeholder="새 비밀번호 (8자 이상)"
                   />
                   <Input
                     type="password"

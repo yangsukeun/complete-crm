@@ -37,7 +37,7 @@ const updateSchema = z.object({
   /** 전년도 이월 연차 일수 */
   annualCarryOver: z.number().min(0).optional(),
   /** 직원 수정 저장 시 비밀번호도 함께 변경 */
-  password: z.string().trim().min(4).optional(),
+  password: z.string().trim().min(8).optional(),
 });
 
 export async function PATCH(

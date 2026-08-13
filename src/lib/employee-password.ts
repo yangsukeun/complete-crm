@@ -1,15 +1,29 @@
 import { hash } from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
+import {
+  MIN_PASSWORD_CHANGE_LENGTH,
+  PASSWORD_CHANGE_TOO_SHORT_MESSAGE,
+} from "@/lib/password-policy";
+
+export async function hashPasswordForStore(
+  password: string
+): Promise<{ ok: true; hashed: string } | { ok: false; error: string }> {
+  const pw = password.trim();
+  if (pw.length < MIN_PASSWORD_CHANGE_LENGTH) {
+    return { ok: false, error: PASSWORD_CHANGE_TOO_SHORT_MESSAGE };
+  }
+  return { ok: true, hashed: await hash(pw, 10) };
+}
 
 export async function updateEmployeePassword(opts: {
   targetId: string;
   managerRole: string | null | undefined;
   password: string;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const pw = opts.password.trim();
-  if (pw.length < 4) {
-    return { ok: false, status: 400, error: "비밀번호는 4자 이상 입력하세요." };
+  const hashed = await hashPasswordForStore(opts.password);
+  if (!hashed.ok) {
+    return { ok: false, status: 400, error: hashed.error };
   }
 
   const target = await prisma.user.findUnique({
@@ -32,10 +46,9 @@ export async function updateEmployeePassword(opts: {
     };
   }
 
-  const hashed = await hash(pw, 10);
   await prisma.user.update({
-    where: { id: opts.targetId },
-    data: { password: hashed },
+    where: { id: target.id },
+    data: { password: hashed.hashed },
   });
   return { ok: true };
 }
