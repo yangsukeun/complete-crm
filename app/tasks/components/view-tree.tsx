@@ -62,6 +62,8 @@ import {
   ArrowLeft,
   RotateCcw,
   Inbox,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor } from "@/lib/project-task-colors";
@@ -789,6 +791,7 @@ function TreeViewInner({
     y: number;
     task: TaskData;
   } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const quickInputRef = useRef<HTMLInputElement>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1353,6 +1356,35 @@ function TreeViewInner({
     [deleteSelectedTasks, deletableSelectedIds.length]
   );
 
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      e.preventDefault();
+      setIsFullscreen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        fitView({ padding: 0.2, duration: 200 });
+      } catch {
+        /* unmount */
+      }
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [isFullscreen, fitView]);
+
   const openMindmapTaskMenu = useCallback((task: TaskData, clientX: number, clientY: number) => {
     setTaskContextMenu({ x: clientX, y: clientY, task });
   }, []);
@@ -1785,8 +1817,8 @@ function TreeViewInner({
         >
           미분류
         </Button>
-        {mindmapMode !== "all" ? (
-          <span className="ml-auto flex shrink-0 items-center gap-0.5">
+        <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          {mindmapMode !== "all" ? (
             <Button
               type="button"
               size="sm"
@@ -1799,8 +1831,19 @@ function TreeViewInner({
               <RotateCcw className="size-3.5" />
               되돌리기
             </Button>
-          </span>
-        ) : null}
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant={isFullscreen ? "default" : "outline"}
+            className="mindmap-toolbar-btn h-8 shrink-0 gap-1 px-2 text-xs"
+            onClick={() => setIsFullscreen((v) => !v)}
+            title={isFullscreen ? "전체화면 닫기 (Esc)" : "마인드맵 전체화면"}
+          >
+            {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            {isFullscreen ? "닫기" : "전체화면"}
+          </Button>
+        </span>
       </div>
 
       {mindmapMode !== "all" && onTaskCompletionShelfChange ? (
@@ -2050,8 +2093,15 @@ function TreeViewInner({
   );
 
   return (
-    <div className="space-y-4" onKeyDown={handleKeyDown} tabIndex={0}>
-      {toolbarPortalEl
+    <div
+      className={cn(
+        "space-y-4",
+        isFullscreen && "fixed inset-0 z-[200] flex flex-col space-y-2 overflow-hidden bg-background p-3"
+      )}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+    >
+      {!isFullscreen && toolbarPortalEl
         ? createPortal(mindmapToolbar, toolbarPortalEl)
         : mindmapToolbar}
 
@@ -2059,7 +2109,8 @@ function TreeViewInner({
       <div
         ref={reactFlowWrapper}
         className={cn(
-          "h-[500px] w-full rounded-lg border-2 border-dashed transition-all",
+          "w-full rounded-lg border-2 border-dashed transition-all",
+          isFullscreen ? "min-h-0 flex-1" : "h-[min(65vh,640px)] min-h-[480px]",
           isDraggingOver
             ? "border-violet-500 bg-violet-50 dark:bg-violet-950/20"
             : "border-gray-200"
@@ -2129,8 +2180,8 @@ function TreeViewInner({
         )}
       </div>
 
-      {/* Uncategorized Tasks List (전체 조감도에서는 숨김) */}
-      {mindmapMode === "all" ? null : (
+      {/* Uncategorized Tasks List (전체 조감도·전체화면에서는 숨김) */}
+      {isFullscreen || mindmapMode === "all" ? null : (
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -2174,10 +2225,10 @@ function TreeViewInner({
       {taskContextMenu &&
         typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed inset-0 z-[100]" onMouseDown={() => setTaskContextMenu(null)}>
+          <div className="fixed inset-0 z-[250]" onMouseDown={() => setTaskContextMenu(null)}>
             <div
               role="menu"
-              className="bg-popover text-popover-foreground absolute z-[101] min-w-[220px] rounded-md border p-1 shadow-md"
+              className="bg-popover text-popover-foreground absolute z-[251] min-w-[220px] rounded-md border p-1 shadow-md"
               style={{ left: taskContextMenu.x, top: taskContextMenu.y }}
               onMouseDown={(e) => e.stopPropagation()}
             >
