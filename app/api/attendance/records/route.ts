@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAttendanceAdmin } from "@/lib/attendance-admin";
+import { requireAttendanceImport } from "@/lib/attendance-admin";
 import { kstYmdToUtcDayStart, toKstYmd } from "@/lib/date-kst";
 
 export const runtime = "nodejs";
@@ -27,7 +27,7 @@ function machineNoSortKey(no: string | null): [number, string] {
 
 export async function GET(req: Request) {
   try {
-    const auth = await requireAttendanceAdmin();
+    const auth = await requireAttendanceImport();
     if (!auth.ok) return auth.response;
 
     const { searchParams } = new URL(req.url);

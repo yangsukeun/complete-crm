@@ -63,6 +63,11 @@ enum AttendanceRecordSource {
   MANUAL
 }
 
+enum AwayType {
+  BATHROOM
+  SMOKING
+}
+
 enum LeaveType {
   ANNUAL    // 연차
   HALF_AM   // 오전 반차
@@ -236,6 +241,7 @@ model User {
   sessions      Session[]
   attendances      Attendance[]
   attendanceRecords AttendanceRecord[]
+  awayLogs          AwayLog[]
   schedules        Schedule[]         @relation("ScheduleOwner")
   assignedTasks    Task[]             @relation("TaskAssignee")
   taskAssigneeRows TaskAssignee[]
@@ -514,6 +520,20 @@ model AttendanceRecord {
   @@index([userId])
   @@index([date])
   @@index([source, date])
+}
+
+/// CS 이석(화장실·흡연). endedAt null = 현재 부재중
+model AwayLog {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      AwayType
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, startedAt])
+  @@index([endedAt])
 }
 
 model DailyMemo {

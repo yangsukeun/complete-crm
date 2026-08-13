@@ -25,6 +25,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   attendance: "출퇴근",
   announcements: "공지사항",
   board: "게시판",
+  attendance_import: "기록기 근태 임포트",
+  attendance_away: "CS 이석(화장실·흡연) 예외",
   admin_employees: "직원 관리",
   admin_logs: "Daily Report 조회",
   admin_departments: "부서·직책",

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import prisma from "@/lib/prisma";
-import { requireAttendanceAdmin } from "@/lib/attendance-admin";
+import { requireAttendanceImport } from "@/lib/attendance-admin";
 import { kstYmdToUtcDayStart } from "@/lib/date-kst";
 
 export const runtime = "nodejs";
@@ -26,7 +26,7 @@ function isYmd(s: string): boolean {
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireAttendanceAdmin();
+    const auth = await requireAttendanceImport();
     if (!auth.ok) return auth.response;
 
     const body = (await req.json()) as Body;

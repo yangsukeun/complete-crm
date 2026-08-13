@@ -2,9 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { LogIn, LogOut } from "lucide-react";
+import { Bath, Cigarette, LogIn, LogOut } from "lucide-react";
 import { toast } from "sonner";
+import {
+  canUseAwayFeature,
+  notifyAwayStatusChanged,
+  type AwayTypeName,
+} from "@/lib/attendance-away-access";
 
 type TodayAttendance = {
   id: string;
@@ -21,11 +27,15 @@ export function DashboardAttendance({
   onUpdate?: () => void;
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const [attendance, setAttendance] = useState(initial);
   const [loading, setLoading] = useState(false);
 
-  // 서버에서 넘어온 '오늘 출근함' 상태가 있으면 퇴근 버튼 유지 (새로고침/다른 페이지 갔다 와도 퇴근 누를 때까지 고정)
-  // initial에 checkIn이 있을 때만 반영 (null이나 빈 값으로 덮어쓰지 않음)
+  const showAway = canUseAwayFeature({
+    department: session?.user?.department,
+    permissions: (session?.user as { permissions?: string | null } | undefined)?.permissions,
+  });
+
   useEffect(() => {
     const next = normalize(initial as Record<string, unknown> | null);
     if (next != null && next.checkIn != null) {
@@ -60,7 +70,6 @@ export function DashboardAttendance({
       if (!res.ok) throw new Error(data.error ?? "출근 처리 실패");
       setAttendance(normalize(data));
       toast.success("출근 처리되었습니다.");
-      // 버튼이 퇴근으로 바뀐 뒤에만 새로고침 (refresh가 상태를 덮어쓰지 않도록 지연)
       setTimeout(afterUpdate, 0);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "출근 처리에 실패했습니다.");
@@ -80,6 +89,7 @@ export function DashboardAttendance({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "퇴근 처리 실패");
       setAttendance(normalize(data));
+      notifyAwayStatusChanged();
       toast.success("퇴근 처리되었습니다.");
       setTimeout(afterUpdate, 0);
     } catch (e) {
@@ -89,8 +99,27 @@ export function DashboardAttendance({
     }
   };
 
+  const handleAway = async (type: AwayTypeName) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/attendance/away/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "이석 시작 실패");
+      notifyAwayStatusChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "이석을 시작하지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const hasCheckedIn = attendance?.checkIn != null;
   const hasCheckedOut = attendance?.checkOut != null;
+  const awayEnabled = showAway && hasCheckedIn && !hasCheckedOut;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -110,10 +139,30 @@ export function DashboardAttendance({
         <LogOut className="mr-2 size-4" />
         퇴근
       </Button>
+      {showAway && (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleAway("BATHROOM")}
+            disabled={loading || !awayEnabled}
+          >
+            <Bath className="mr-2 size-4" />
+            화장실
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleAway("SMOKING")}
+            disabled={loading || !awayEnabled}
+          >
+            <Cigarette className="mr-2 size-4" />
+            흡연
+          </Button>
+        </>
+      )}
       {hasCheckedOut && (
-        <span className="text-muted-foreground text-sm">
-          오늘 퇴근 완료
-        </span>
+        <span className="text-muted-foreground text-sm">오늘 퇴근 완료</span>
       )}
     </div>
   );

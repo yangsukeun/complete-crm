@@ -7,6 +7,7 @@ import { getClientIp, ensureAccessLog } from "@/lib/access-log";
 import { authWithTimeout } from "@/lib/auth-safe";
 import { buildSwrLayoutFallback, getHeaderBootstrapData } from "@/lib/header-bootstrap";
 import { AppNavClient } from "@/components/app-nav-client";
+import { AwayPresenceGate } from "@/components/away-presence-gate";
 import { NotificationEntryBanner } from "@/components/notification-entry-banner";
 /* OneSignal: init·권한은 DeferredRealtimeBridges의 OneSignalBridge, 구독 ID 등록은 providers의 OneSignalPushTokenRegister. */
 import { Providers } from "@/components/providers";
@@ -115,15 +116,17 @@ export default async function RootLayout({
           headerBootstrap={headerBootstrap}
           swrLayoutFallback={swrLayoutFallback}
         >
-          <Suspense fallback={null}>
-            <AppNavClient />
-          </Suspense>
-          <main>
+          <AwayPresenceGate>
             <Suspense fallback={null}>
-              <NotificationEntryBanner />
+              <AppNavClient />
             </Suspense>
-            {children}
-          </main>
+            <main>
+              <Suspense fallback={null}>
+                <NotificationEntryBanner />
+              </Suspense>
+              {children}
+            </main>
+          </AwayPresenceGate>
           <Toaster richColors position="top-center" />
         </Providers>
       </body>

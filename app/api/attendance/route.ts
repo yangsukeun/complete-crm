@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { createActivityLog } from "@/lib/activity-log";
+import { closeOpenAwayLogs } from "@/lib/attendance-admin";
 import { kstYmdToUtcDayStart, startOfDayKst } from "@/lib/date-kst";
 import prisma from "@/lib/prisma";
 import { getClientIpFromRequest, getClientUserAgent } from "@/lib/request-client-meta";
@@ -113,6 +114,8 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+
+      await closeOpenAwayLogs(session.user.id, now);
 
       const attendance = await prisma.attendance.update({
         where: { userId_date: { userId: session.user.id, date: dateStart } },

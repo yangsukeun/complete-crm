@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import prisma from "@/lib/prisma";
-import { requireAttendanceAdmin } from "@/lib/attendance-admin";
+import { requireAttendanceCsAccountCreate } from "@/lib/attendance-admin";
 import { createEmployee, CreateEmployeeError } from "@/lib/create-employee";
 import { suggestedCsLogin } from "@/lib/attendance-import-match";
 
@@ -25,7 +25,7 @@ async function uniqueCsEmail(baseEmail: string): Promise<string> {
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireAttendanceAdmin();
+    const auth = await requireAttendanceCsAccountCreate();
     if (!auth.ok) return auth.response;
 
     const body = (await req.json()) as Body;

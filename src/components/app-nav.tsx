@@ -38,6 +38,7 @@ import {
   Server,
   Package,
   Upload,
+  Timer,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -47,6 +48,7 @@ import { userHasPermission } from "@/lib/permissions";
 import { isMasterEmail } from "@/lib/master-account";
 import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
 import { canManageEmployeesSync } from "@/lib/employee-admin-access";
+import { canViewAwayOverview } from "@/lib/attendance-away-access";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -72,6 +74,7 @@ type NavLink = {
   featureKey?: string;
   companyOnly?: boolean;
   hint?: string;
+  awayOverviewOnly?: boolean;
 };
 
 // [메인]: 대시보드·CS·3PL (자주 쓰는 단일 진입)
@@ -106,9 +109,17 @@ const workGroupLinks: NavLink[] = [
 ];
 
 // [인사/일정 관리]: 인디고/블루 계열
-const hrGroupLinks: { href: string; label: string; icon: typeof Calendar; featureKey?: string; companyOnly?: boolean }[] = [
+const hrGroupLinks: {
+  href: string;
+  label: string;
+  icon: typeof Calendar;
+  featureKey?: string;
+  companyOnly?: boolean;
+  awayOverviewOnly?: boolean;
+}[] = [
   { href: "/schedule", label: "스케줄", icon: Calendar, featureKey: "schedule" },
   { href: "/leave", label: "연차/근태", icon: CalendarClock, featureKey: "leave", companyOnly: true },
+  { href: "/cs-tools/away", label: "이석 현황", icon: Timer, companyOnly: true, awayOverviewOnly: true },
 ];
 
 // [재무/영업 관리]: 에메랄드/그린 계열
@@ -130,8 +141,8 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
   { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
   { href: "/admin/employee-leave-summary", label: "직원 연차 현황", icon: CalendarClock, executiveOnly: true },
-  { href: "/admin/attendance-import", label: "기록기 근태 임포트", icon: Upload, executiveOnly: true },
-  { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, executiveOnly: true },
+  { href: "/admin/attendance-import", label: "기록기 근태 임포트", icon: Upload, feature: "attendance_import" },
+  { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, feature: "attendance_import" },
   { href: "/admin/permissions", label: "기능 권한", icon: Shield, executiveOnly: true },
   { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
   { href: "/admin/departments-positions", label: "부서·직책", icon: Layers, feature: "admin_departments" },
@@ -396,10 +407,16 @@ export function AppNav() {
   const workActive = workLinks.some(
     (l) => pathname === l.href || pathname.startsWith(l.href + "/")
   );
+  const canSeeAwayOverview = canViewAwayOverview({
+    role: session?.user?.role,
+    department: session?.user?.department,
+  });
+
   const hrLinks = hrGroupLinks.filter(
     (l: any) =>
       (!l.featureKey || can(l.featureKey)) &&
       (!l.companyOnly || isCompany) &&
+      (!l.awayOverviewOnly || canSeeAwayOverview) &&
       navHrefAllowedForOrg(l.href, orgUnit)
   );
   const financeLinks = financeGroupLinks.filter(

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAttendanceAdmin } from "@/lib/attendance-admin";
+import { requireAttendanceImport } from "@/lib/attendance-admin";
 import { parseAttendanceBuffer } from "@/lib/attendance-xls-parse";
 import { matchAttendanceEmployees } from "@/lib/attendance-import-match";
 
@@ -10,7 +10,7 @@ const MAX_BYTES = 12 * 1024 * 1024;
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireAttendanceAdmin();
+    const auth = await requireAttendanceImport();
     if (!auth.ok) return auth.response;
 
     const formData = await req.formData();

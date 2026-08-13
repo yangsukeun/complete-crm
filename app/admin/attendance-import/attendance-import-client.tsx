@@ -61,7 +61,11 @@ const STATUS_LABEL: Record<MatchStatus, string> = {
   unmatched: "미매칭",
 };
 
-export function AttendanceImportClient() {
+export function AttendanceImportClient({
+  canCreateCsAccounts,
+}: {
+  canCreateCsAccounts: boolean;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -240,10 +244,13 @@ export function AttendanceImportClient() {
                   <CardTitle className="text-base">
                     {STATUS_LABEL[status]} ({rows.length})
                   </CardTitle>
-                  {status === "unmatched" && (
+                  {status === "unmatched" && canCreateCsAccounts && (
                     <Button type="button" onClick={() => void createCs()} disabled={creating}>
                       {creating ? "생성 중…" : "CS팀 계정 일괄 생성"}
                     </Button>
+                  )}
+                  {status === "unmatched" && !canCreateCsAccounts && (
+                    <p className="text-muted-foreground text-sm">관리자에게 계정 생성을 요청하세요</p>
                   )}
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
