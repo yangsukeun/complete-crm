@@ -57,6 +57,12 @@ enum AttendanceStatus {
   LATE
 }
 
+/// 기록기 엑셀 임포트 vs 관리자 수동
+enum AttendanceRecordSource {
+  MACHINE_IMPORT
+  MANUAL
+}
+
 enum LeaveType {
   ANNUAL    // 연차
   HALF_AM   // 오전 반차
@@ -222,11 +228,14 @@ model User {
   lastAppMode   String?
   /// true면 로그인·API 접근 불가(퇴사 등). 행·연관 기록은 유지.
   accountDisabled Boolean @default(false)
+  /// 출퇴근 기록기 사원번호 (엑셀 임포트 매핑)
+  attendanceMachineNo String? @unique
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
   sessions      Session[]
   attendances      Attendance[]
+  attendanceRecords AttendanceRecord[]
   schedules        Schedule[]         @relation("ScheduleOwner")
   assignedTasks    Task[]             @relation("TaskAssignee")
   taskAssigneeRows TaskAssignee[]
@@ -482,6 +491,29 @@ model Attendance {
   @@unique([userId, date])
   @@index([userId])
   @@index([date])
+}
+
+/// 기록기 엑셀·수동 근태 (대시보드 버튼 Attendance와 분리 — 급여 근거 보존)
+model AttendanceRecord {
+  id         String                  @id @default(cuid())
+  userId     String
+  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// KST 해당일 00:00 (Attendance.date와 동일 규약)
+  date       DateTime
+  clockIn    DateTime?
+  clockOut   DateTime?
+  source     AttendanceRecordSource
+  /// 원본 타각 문자열 전체
+  raw        String?
+  /// 타각이 1개뿐인 날
+  incomplete Boolean                 @default(false)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@unique([userId, date, source])
+  @@index([userId])
+  @@index([date])
+  @@index([source, date])
 }
 
 model DailyMemo {

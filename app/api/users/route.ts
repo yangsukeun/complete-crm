@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
-import prisma from "@/lib/prisma";
 import { getCachedUsersWithProject } from "@/lib/cache/users-list";
-import { hash } from "bcryptjs";
 import { z } from "zod";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
+import { createEmployee, CreateEmployeeError } from "@/lib/create-employee";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -75,45 +74,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "관리자 계정은 대표/관리자만 생성할 수 있습니다." }, { status: 403 });
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: parsed.data.email.trim() },
-    });
-    if (existing) {
-      return NextResponse.json(
-        { error: "이미 사용 중인 이메일(아이디)입니다." },
-        { status: 400 }
-      );
-    }
-
-    const hashedPassword = await hash(parsed.data.password, 10);
-    const joinDate = parsed.data.joinDate
-      ? new Date(parsed.data.joinDate)
-      : new Date();
-
-    const user = await prisma.user.create({
-      data: {
-        email: parsed.data.email.trim(),
-        password: hashedPassword,
-        name: parsed.data.name.trim(),
-        role: requestedRole,
-        phone: parsed.data.phone?.trim() || null,
-        workPhone: parsed.data.workPhone?.trim() || null,
-        workEmail: parsed.data.workEmail?.trim() || null,
-        bankAccount: parsed.data.bankAccount?.trim() || null,
-        residentId: parsed.data.residentId?.trim() || null,
-        address: parsed.data.address?.trim() || null,
-        department: parsed.data.department?.trim() || null,
-        position: parsed.data.position?.trim() || null,
-        joinDate,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        department: true,
-        position: true,
-        joinDate: true,
-      },
+    const user = await createEmployee({
+      email: parsed.data.email.trim(),
+      password: parsed.data.password,
+      name: parsed.data.name.trim(),
+      role: requestedRole,
+      phone: parsed.data.phone,
+      workPhone: parsed.data.workPhone,
+      workEmail: parsed.data.workEmail,
+      bankAccount: parsed.data.bankAccount,
+      residentId: parsed.data.residentId,
+      address: parsed.data.address,
+      department: parsed.data.department,
+      position: parsed.data.position,
+      joinDate: parsed.data.joinDate ? new Date(parsed.data.joinDate) : new Date(),
     });
 
     revalidateTag("users-list", "max");
@@ -123,6 +97,9 @@ export async function POST(req: Request) {
       joinDate: user.joinDate.toISOString().slice(0, 10),
     });
   } catch (e) {
+    if (e instanceof CreateEmployeeError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
     console.error(e);
     return NextResponse.json(
       { error: "계정 생성에 실패했습니다." },

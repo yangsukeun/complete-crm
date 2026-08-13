@@ -37,6 +37,7 @@ import {
   Link2,
   Server,
   Package,
+  Upload,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -129,6 +130,8 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
   { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
   { href: "/admin/employee-leave-summary", label: "직원 연차 현황", icon: CalendarClock, executiveOnly: true },
+  { href: "/admin/attendance-import", label: "기록기 근태 임포트", icon: Upload, executiveOnly: true },
+  { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, executiveOnly: true },
   { href: "/admin/permissions", label: "기능 권한", icon: Shield, executiveOnly: true },
   { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
   { href: "/admin/departments-positions", label: "부서·직책", icon: Layers, feature: "admin_departments" },

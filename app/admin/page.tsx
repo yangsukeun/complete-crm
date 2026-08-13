@@ -14,6 +14,8 @@ import {
   Image,
   Shield,
   Trash2,
+  CalendarClock,
+  Upload,
 } from "lucide-react";
 
 type MenuItem = {
@@ -29,6 +31,8 @@ type MenuItem = {
 const menuItems: MenuItem[] = [
   { href: "/admin/permissions", label: "기능 권한", description: "직책별·사용자별 메뉴·기능 접근 설정", icon: Shield },
   { href: "/admin/employees", label: "직원 관리", description: "직원 계정 추가·수정·역할 관리", icon: Users },
+  { href: "/admin/attendance-import", label: "기록기 근태 임포트", description: "출퇴근 기록기 엑셀 미리보기·계정 매핑·저장", icon: Upload },
+  { href: "/admin/attendance", label: "월별 근태", description: "기록기 사원번호순 출근·퇴근 그리드", icon: CalendarClock },
   { href: "/admin/logs", label: "Daily Report 조회", description: "직원별 Daily Report 조회", icon: FileText },
   { href: "/admin/departments-positions", label: "부서·직책", description: "부서·직책 마스터 관리", icon: Layers },
   { href: "/admin/projects", label: "브랜드/프로젝트", description: "브랜드·프로젝트 관리", icon: FolderKanban },
