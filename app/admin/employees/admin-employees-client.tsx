@@ -253,6 +253,18 @@ export function AdminEmployeesClient({
 
   const handleSave = async () => {
     if (!editing || saving) return;
+    const pw = newPassword.trim();
+    const pwConfirm = newPasswordConfirm.trim();
+    if (pw || pwConfirm) {
+      if (pw.length < 4) {
+        toast.error("비밀번호는 4자 이상 입력하세요.");
+        return;
+      }
+      if (pw !== pwConfirm) {
+        toast.error("비밀번호 확인이 일치하지 않습니다.");
+        return;
+      }
+    }
     setSaving(true);
     const ac = new AbortController();
     const timeoutId = setTimeout(() => ac.abort(), 18_000);
@@ -271,6 +283,7 @@ export function AdminEmployeesClient({
             : undefined,
         permissions: useCustomPermissions ? selectedPermissions : null,
       };
+      if (pw) body.password = pw;
       if (myRole === "ADMIN" && editing.id !== myId) {
         (body as { role?: AppRole }).role = role;
       }
@@ -317,7 +330,7 @@ export function AdminEmployeesClient({
             : p
         )
       );
-      toast.success("저장되었습니다.");
+      toast.success(pw ? "저장했습니다. 새 비밀번호로 로그인할 수 있습니다." : "저장되었습니다.");
       setEditing(null);
     } catch (e) {
       const isAbort = e instanceof Error && e.name === "AbortError";
@@ -506,7 +519,7 @@ export function AdminEmployeesClient({
               <div className="space-y-2 border-b pb-4">
                 <Label>비밀번호 재설정</Label>
                 <p className="text-muted-foreground text-xs">
-                  새 비밀번호를 입력한 뒤 재설정하세요. 직원 정보 저장과는 따로 적용됩니다.
+                  새 비밀번호를 입력한 뒤 아래 저장을 누르면 함께 변경됩니다. 비밀번호만 바꾸려면 재설정 버튼을 누르세요.
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Input

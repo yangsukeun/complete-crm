@@ -9,6 +9,7 @@ import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
+import { updateEmployeePassword } from "@/lib/employee-password";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -34,6 +35,8 @@ const updateSchema = z.object({
   manualDeduction: z.number().min(0).optional(),
   /** 전년도 이월 연차 일수 */
   annualCarryOver: z.number().min(0).optional(),
+  /** 직원 수정 저장 시 비밀번호도 함께 변경 */
+  password: z.string().trim().min(4).optional(),
 });
 
 export async function PATCH(
@@ -93,6 +96,17 @@ export async function PATCH(
         parsed.data.permissions == null || parsed.data.permissions.length === 0
           ? null
           : JSON.stringify(parsed.data.permissions);
+    }
+
+    if (parsed.data.password) {
+      const pwResult = await updateEmployeePassword({
+        targetId: id,
+        managerRole: manager.role,
+        password: parsed.data.password,
+      });
+      if (!pwResult.ok) {
+        return NextResponse.json({ error: pwResult.error }, { status: pwResult.status });
+      }
     }
 
     const user = await prisma.user.update({
