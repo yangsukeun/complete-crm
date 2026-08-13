@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { syncScheduleToNaverCalendar } from "@/lib/naver-calendar-sync";
+import { loadCsSchedulerUserIds } from "@/lib/schedule-team-access-db";
+import { sameScheduleSharePool } from "@/lib/schedule-team-access";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -36,6 +38,10 @@ export async function PATCH(
       return NextResponse.json({ error: "초대를 찾을 수 없습니다." }, { status: 404 });
     }
     if (invite.toUserId !== session.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const csUserIds = await loadCsSchedulerUserIds();
+    if (!sameScheduleSharePool(invite.fromUserId, session.user.id, csUserIds)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     if (invite.status !== "PENDING") {

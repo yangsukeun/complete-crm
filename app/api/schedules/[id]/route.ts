@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { canMutateSchedule, canViewSchedule, isCsSchedulerMember } from "@/lib/schedule-team-access";
 
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -10,6 +11,22 @@ const updateSchema = z.object({
   endTime: z.string().datetime().optional(),
   isAllDay: z.boolean().optional(),
 });
+
+async function loadViewerAndSchedule(userId: string, scheduleId: string) {
+  const [me, schedule] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, department: true },
+    }),
+    prisma.schedule.findUnique({
+      where: { id: scheduleId },
+      include: {
+        user: { select: { name: true, position: true, department: true, role: true } },
+      },
+    }),
+  ]);
+  return { me, schedule };
+}
 
 export async function GET(
   _req: Request,
@@ -22,16 +39,23 @@ export async function GET(
     }
 
     const { id } = await params;
-    const schedule = await prisma.schedule.findUnique({
-      where: { id },
-      include: { user: { select: { name: true, position: true } } },
-    });
+    const { me, schedule } = await loadViewerAndSchedule(session.user.id, id);
+    if (!me) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     if (!schedule) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    if (!isAdmin && schedule.userId !== session.user.id) {
+    const ownerIsCsScheduler = isCsSchedulerMember(schedule.user);
+    if (
+      !canViewSchedule({
+        viewer: me,
+        scheduleUserId: schedule.userId,
+        scheduleScope: schedule.scope,
+        ownerIsCsScheduler,
+      })
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -56,13 +80,16 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const existing = await prisma.schedule.findUnique({ where: { id } });
+    const { me, schedule: existing } = await loadViewerAndSchedule(session.user.id, id);
+    if (!me) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    if (!isAdmin && existing.userId !== session.user.id) {
+    const ownerIsCsScheduler = isCsSchedulerMember(existing.user);
+    if (!canMutateSchedule({ viewer: me, scheduleUserId: existing.userId, ownerIsCsScheduler })) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -108,13 +135,16 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const existing = await prisma.schedule.findUnique({ where: { id } });
+    const { me, schedule: existing } = await loadViewerAndSchedule(session.user.id, id);
+    if (!me) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    if (!isAdmin && existing.userId !== session.user.id) {
+    const ownerIsCsScheduler = isCsSchedulerMember(existing.user);
+    if (!canMutateSchedule({ viewer: me, scheduleUserId: existing.userId, ownerIsCsScheduler })) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

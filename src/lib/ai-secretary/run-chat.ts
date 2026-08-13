@@ -23,6 +23,8 @@ import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prom
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { createActivityLog } from "@/lib/activity-log";
 import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
+import { filterScheduleInviteeIds } from "@/lib/schedule-team-access";
+import { loadCsSchedulerUserIds } from "@/lib/schedule-team-access-db";
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -253,7 +255,14 @@ async function executeTool(
         if (found.length === 1) invitees.add(found[0].id);
       }
       invitees.delete(userId);
-      const inviteeList = [...invitees];
+      const me = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, department: true },
+      });
+      const csUserIds = await loadCsSchedulerUserIds();
+      const inviteeList = me
+        ? filterScheduleInviteeIds(me, [...invitees], csUserIds)
+        : [];
 
       const schedule = await prisma.schedule.create({
         data: {

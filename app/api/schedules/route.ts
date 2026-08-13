@@ -5,6 +5,8 @@ import { getServerWorkspaceScope, getServerWorkspaceScopeFromRequest } from "@/l
 import { createActivityLog } from "@/lib/activity-log";
 import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
 import { syncScheduleToNaverCalendar } from "@/lib/naver-calendar-sync";
+import { loadCsSchedulerUserIds } from "@/lib/schedule-team-access-db";
+import { filterScheduleInviteeIds, teamScheduleWhere } from "@/lib/schedule-team-access";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -24,11 +26,18 @@ export async function GET(req: Request) {
     }
 
     const scope = await getServerWorkspaceScopeFromRequest(req);
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true, department: true },
+    });
+    if (!me) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const csUserIds = await loadCsSchedulerUserIds();
     const where =
       scope === "PERSONAL"
         ? { scope: "PERSONAL" as const, userId: session.user.id }
-        : { scope: "TEAM" as const, ...(isAdmin ? {} : { userId: session.user.id }) };
+        : teamScheduleWhere(me, csUserIds);
 
     const schedules = await prisma.schedule.findMany({
       where,
@@ -79,14 +88,26 @@ export async function POST(req: Request) {
 
     await createActivityLog(session.user.id, "SCHEDULE_CREATED", schedule.title, undefined, { timestamp: schedule.startTime });
 
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true, department: true },
+    });
+    if (!me) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const csUserIds = await loadCsSchedulerUserIds();
     const rawInvites = parsed.data.inviteUserIds ?? [];
-    const inviteUserIds = [
-      ...new Set(
-        rawInvites.filter(
-          (id): id is string => typeof id === "string" && id.length > 0 && id !== session.user.id
-        )
-      ),
-    ];
+    const inviteUserIds = filterScheduleInviteeIds(
+      me,
+      [
+        ...new Set(
+          rawInvites.filter(
+            (id): id is string => typeof id === "string" && id.length > 0 && id !== session.user.id
+          )
+        ),
+      ],
+      csUserIds,
+    );
 
     if (inviteUserIds.length > 0) {
       await prisma.scheduleInvite.createMany({

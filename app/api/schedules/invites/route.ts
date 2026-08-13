@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { loadCsSchedulerUserIds } from "@/lib/schedule-team-access-db";
+import { sameScheduleSharePool } from "@/lib/schedule-team-access";
 
 /** 내가 받은 일정 공유 초대 (PENDING만) */
 export async function GET() {
@@ -10,6 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const csUserIds = await loadCsSchedulerUserIds();
     const invites = await prisma.scheduleInvite.findMany({
       where: { toUserId: session.user.id, status: "PENDING" },
       include: {
@@ -28,7 +31,11 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(invites);
+    const visible = invites.filter((inv) =>
+      sameScheduleSharePool(inv.fromUserId, session.user.id, csUserIds),
+    );
+
+    return NextResponse.json(visible);
   } catch (e) {
     console.error(e);
     return NextResponse.json(

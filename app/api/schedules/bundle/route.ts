@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { loadCsSchedulerUserIds } from "@/lib/schedule-team-access-db";
+import { teamScheduleWhere } from "@/lib/schedule-team-access";
 const userListSelect = { name: true, position: true } as const;
 
 function defaultRange(): { from: Date; to: Date } {
@@ -43,13 +45,20 @@ export async function GET(req: Request) {
       endTime: { gte: from },
     };
 
-    const isAdmin = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
     const uid = session.user.id;
+
+    const me = await prisma.user.findUnique({
+      where: { id: uid },
+      select: { id: true, role: true, department: true },
+    });
+    if (!me) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const csUserIds = await loadCsSchedulerUserIds();
 
     const personalWhere = { scope: "PERSONAL" as const, userId: uid, ...rangeWhere };
     const teamWhere = {
-      scope: "TEAM" as const,
-      ...(isAdmin ? {} : { userId: uid }),
+      ...teamScheduleWhere(me, csUserIds),
       ...rangeWhere,
     };
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import {
   Dialog,
   DialogContent,
@@ -14,8 +15,15 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { isCsSchedulerMember } from "@/lib/schedule-team-access";
 
-type User = { id: string; name: string; email: string; department: string | null };
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  department: string | null;
+  role?: string | null;
+};
 
 function toDatetimeLocal(d: Date): string {
   const y = d.getFullYear();
@@ -38,6 +46,7 @@ type Props = {
 };
 
 export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStart, defaultEnd, defaultInviteUserIds }: Props) {
+  const { data: session } = useSession();
   const [users, setUsers] = useState<User[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -67,6 +76,15 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
     }
   }, [open, defaultStart?.getTime(), defaultEnd?.getTime(), defaultInviteUserIds?.join(",")]);
 
+  const viewerIsCs = isCsSchedulerMember({
+    department: session?.user?.department,
+    role: session?.user?.role,
+  });
+  const inviteUsers = useMemo(
+    () => users.filter((u) => isCsSchedulerMember(u) === viewerIsCs),
+    [users, viewerIsCs],
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -75,6 +93,7 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
     }
     setLoading(true);
     try {
+      const filteredInvites = inviteUserIds.filter((id) => inviteUsers.some((u) => u.id === id));
       const res = await fetch("/api/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,14 +103,14 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
           startTime: new Date(startTime).toISOString(),
           endTime: new Date(endTime).toISOString(),
           isAllDay: isAllDay,
-          inviteUserIds: inviteUserIds.length > 0 ? inviteUserIds : undefined,
+          inviteUserIds: filteredInvites.length > 0 ? filteredInvites : undefined,
         }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "일정 생성 실패");
       }
-      toast.success(inviteUserIds.length > 0 ? "일정이 등록되었고 공유 초대를 보냈습니다." : "일정이 등록되었습니다.");
+      toast.success(filteredInvites.length > 0 ? "일정이 등록되었고 공유 초대를 보냈습니다." : "일정이 등록되었습니다.");
       onCreated();
       onOpenChange(false);
     } catch (e) {
@@ -161,10 +180,12 @@ export function CreateScheduleModal({ open, onOpenChange, onCreated, defaultStar
           <div className="space-y-2">
             <Label>공유할 직원 (선택)</Label>
             <p className="text-muted-foreground text-xs">
-              선택한 직원에게 일정 공유 초대가 전송됩니다. 동의 시 해당 직원 일정표에 추가됩니다.
+              {viewerIsCs
+                ? "CS팀 직원에게만 공유 초대가 전송됩니다. 동의 시 해당 직원 일정표에 추가됩니다."
+                : "선택한 직원에게 일정 공유 초대가 전송됩니다. 동의 시 해당 직원 일정표에 추가됩니다."}
             </p>
             <div className="max-h-32 space-y-1 overflow-y-auto rounded border p-2">
-              {users.map((u: any) => (
+              {inviteUsers.map((u: any) => (
                 <label
                   key={u.id}
                   className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
