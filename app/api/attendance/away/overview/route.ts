@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { requireAwayOverview } from "@/lib/attendance-admin";
 import { addDaysKstYmd, kstDateBoundsUtc, kstYmdToUtcDayStart, todayYmdKst } from "@/lib/date-kst";
 import { getKstWeekday } from "@/lib/date-kst";
+import { isCsSchedulerMember } from "@/lib/schedule-team-access";
 
 export const runtime = "nodejs";
 
@@ -67,14 +68,17 @@ export async function GET() {
     const [openRows, monthRows] = await Promise.all([
       prisma.awayLog.findMany({
         where: { endedAt: null },
-        include: { user: { select: { id: true, name: true, department: true } } },
+        include: { user: { select: { id: true, name: true, department: true, role: true } } },
         orderBy: { startedAt: "asc" },
       }),
       prisma.awayLog.findMany({
         where: { startedAt: { gte: from } },
-        include: { user: { select: { id: true, name: true, department: true } } },
+        include: { user: { select: { id: true, name: true, department: true, role: true } } },
       }),
     ]);
+
+    const csOpen = openRows.filter((r) => isCsSchedulerMember(r.user));
+    const csMonth = monthRows.filter((r) => isCsSchedulerMember(r.user));
 
     const todayStart = kstDateBoundsUtc(today).start.getTime();
     const weekStartMs = kstYmdToUtcDayStart(weekStart).getTime();
@@ -108,7 +112,7 @@ export async function GET() {
       return row;
     };
 
-    for (const row of monthRows) {
+    for (const row of csMonth) {
       const ms = durationMs(row.startedAt, row.endedAt, now);
       const startMs = row.startedAt.getTime();
       const agg = ensure(row.user.id, row.user.name, row.user.department);
@@ -119,7 +123,7 @@ export async function GET() {
 
     return NextResponse.json({
       now: now.toISOString(),
-      current: openRows.map((r) => ({
+      current: csOpen.map((r) => ({
         id: r.id,
         userId: r.user.id,
         name: r.user.name,

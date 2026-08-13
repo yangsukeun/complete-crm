@@ -40,9 +40,14 @@ export default async function CsToolsPage() {
           description="CS 업무에 쓰는 외부 도구·링크를 한곳에서 엽니다."
         />
         {showOverview && (
-          <Link href="/cs-tools/away" className="text-primary text-sm font-medium hover:underline">
-            이석 현황 →
-          </Link>
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <Link href="/cs-tools/attendance" className="text-primary text-sm font-medium hover:underline">
+              팀 출퇴근 →
+            </Link>
+            <Link href="/cs-tools/away" className="text-primary text-sm font-medium hover:underline">
+              이석 현황 →
+            </Link>
+          </div>
         )}
       </div>
       <DashboardAttendance

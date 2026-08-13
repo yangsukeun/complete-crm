@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canUseAwayFeature, canViewAwayOverview, formatAwayDuration, summarizeAwayLogs } from "@/lib/attendance-away-access";
+import { canUseAwayFeature, canViewAwayOverview, computeWorkedMs, formatAwayDuration, formatDurationMinutes, isCsTeamManager, summarizeAwayLogs } from "@/lib/attendance-away-access";
 import { getDefaultPermissionsForRole, hasPermission } from "@/lib/permissions";
 
 describe("canUseAwayFeature", () => {
@@ -36,6 +36,49 @@ describe("canViewAwayOverview", () => {
     expect(canViewAwayOverview({ role: "EXECUTIVE", department: "경영지원" })).toBe(true);
     expect(canViewAwayOverview({ role: "USER", department: "CS팀" })).toBe(false);
     expect(canViewAwayOverview({ role: "TEAM_LEAD", department: "마케팅" })).toBe(false);
+  });
+});
+
+describe("isCsTeamManager", () => {
+  it("is CS team lead or center chief only", () => {
+    expect(isCsTeamManager({ role: "TEAM_LEAD", department: "CS팀" })).toBe(true);
+    expect(isCsTeamManager({ role: "CENTER_CHIEF", department: "CS센터" })).toBe(true);
+    expect(isCsTeamManager({ role: "ADMIN", department: "CS팀" })).toBe(false);
+    expect(isCsTeamManager({ role: "TEAM_LEAD", department: "마케팅" })).toBe(false);
+  });
+});
+
+describe("computeWorkedMs", () => {
+  it("subtracts away time from check-in to check-out", () => {
+    const checkIn = new Date("2026-08-13T00:00:00.000Z");
+    const checkOut = new Date("2026-08-13T09:00:00.000Z");
+    expect(
+      computeWorkedMs({
+        checkIn,
+        checkOut,
+        awayMs: 30 * 60 * 1000,
+        nowMs: checkOut.getTime(),
+        dayEndMs: checkOut.getTime(),
+      }),
+    ).toBe(8.5 * 60 * 60 * 1000);
+  });
+
+  it("returns null when not checked in", () => {
+    expect(
+      computeWorkedMs({
+        checkIn: null,
+        checkOut: null,
+        awayMs: 0,
+        nowMs: Date.now(),
+        dayEndMs: Date.now(),
+      }),
+    ).toBeNull();
+  });
+
+  it("formats minute durations", () => {
+    expect(formatDurationMinutes(0)).toBe("0분");
+    expect(formatDurationMinutes(90_000)).toBe("1분");
+    expect(formatDurationMinutes(3_600_000)).toBe("1시간 0분");
   });
 });
 

@@ -39,6 +39,7 @@ import {
   Package,
   Upload,
   Timer,
+  Clock,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -119,6 +120,7 @@ const hrGroupLinks: {
 }[] = [
   { href: "/schedule", label: "스케줄", icon: Calendar, featureKey: "schedule" },
   { href: "/leave", label: "연차/근태", icon: CalendarClock, featureKey: "leave", companyOnly: true },
+  { href: "/cs-tools/attendance", label: "CS 근태", icon: Clock, companyOnly: true, awayOverviewOnly: true },
   { href: "/cs-tools/away", label: "이석 현황", icon: Timer, companyOnly: true, awayOverviewOnly: true },
 ];
 
@@ -438,13 +440,15 @@ export function AppNav() {
   }).map(({ href, label, icon }) => ({ href, label, icon }));
 
   const roleLabel =
-    session?.user?.role === "TEAM_LEAD"
-      ? "팀장"
-      : session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN"
-        ? "대표"
-        : session?.user
-          ? "직원"
-          : null;
+    session?.user?.role === "CENTER_CHIEF"
+      ? "센터장"
+      : session?.user?.role === "TEAM_LEAD"
+        ? "팀장"
+        : session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN"
+          ? "대표"
+          : session?.user
+            ? "직원"
+            : null;
 
   const badgePreset = (session?.user as { badgePreset?: string | null } | undefined)?.badgePreset ?? "default";
 
