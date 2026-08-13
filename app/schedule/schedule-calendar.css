@@ -40,6 +40,9 @@
   min-height: 0;
   overflow: visible;
   overflow-x: hidden;
+  /* 일자 구분선 — dashed 로 바꾸면 점선 */
+  --gcal-cell-line: var(--border);
+  --gcal-cell-line-style: solid;
 }
 
 .schedule-gcal-viewport.schedule-gcal-viewport--month .rbc-calendar {
@@ -81,6 +84,16 @@
 
 .schedule-gcal-viewport .rbc-header + .rbc-header {
   border-left: 1px solid var(--gcal-cell-border) !important;
+}
+
+/* 월간 요일 헤더: 셀과 같은 세로선(오른쪽만) */
+.schedule-gcal-viewport.schedule-gcal-viewport--month .rbc-month-header .rbc-header {
+  border-left: none !important;
+  border-right: 1px var(--gcal-cell-line-style) var(--gcal-cell-line);
+  border-bottom-color: var(--gcal-cell-line) !important;
+}
+.schedule-gcal-viewport.schedule-gcal-viewport--month .rbc-month-header .rbc-header:nth-child(7) {
+  border-right: none;
 }
 
 /* 월간 7열 균일: RBC는 table/grid가 아니라 flex row.
@@ -125,28 +138,41 @@
   flex: none;
 }
 
-/* 주간 행: 가로 구분선(날짜 행) — border + inset shadow로 레이어에 가려지지 않게 */
 .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
-  border-top: 1px solid var(--gcal-row-sep) !important;
-  box-shadow: inset 0 -1px 0 0 var(--gcal-row-sep);
   flex: none !important;
   aspect-ratio: 7 / 1;
   min-height: 120px !important;
   height: auto !important;
+  border-top: none !important;
+  box-shadow: none;
 }
 
-.schedule-gcal-viewport .rbc-month-view .rbc-month-row:first-child {
-  border-top: 1px solid var(--gcal-border) !important;
+.schedule-gcal-viewport .rbc-month-view .rbc-month-row + .rbc-month-row {
+  border-top: none !important;
 }
 
-.dark .schedule-gcal-viewport .rbc-month-view .rbc-month-row {
-  box-shadow: inset 0 -1px 0 0 var(--gcal-row-sep);
+/* 월간 일자 구분선 — 스타일은 이 클래스에서만 관리 (solid ↔ dashed) */
+.schedule-gcal-month-cell {
+  border-right: 1px var(--gcal-cell-line-style) var(--gcal-cell-line);
+  border-bottom: 1px var(--gcal-cell-line-style) var(--gcal-cell-line);
+  box-sizing: border-box;
+}
+.schedule-gcal-viewport--month .rbc-row-bg > .schedule-gcal-month-cell:last-child {
+  border-right: none;
+}
+.schedule-gcal-viewport--month .rbc-month-row:last-child .schedule-gcal-month-cell {
+  border-bottom: none;
 }
 
 .schedule-gcal-viewport .rbc-day-bg {
   border-left: 1px solid var(--gcal-cell-border) !important;
   overflow: hidden;
   min-width: 0;
+}
+
+/* 월간은 셀 래퍼가 구분선을 담당 — day-bg 왼쪽선 제거(이중선·주간 뷰 영향 방지) */
+.schedule-gcal-viewport.schedule-gcal-viewport--month .rbc-day-bg {
+  border-left: none !important;
 }
 
 /* 토·일 배경 — surface-1급으로 옅게 (다른 달 off-range 는 기존 톤 유지) */

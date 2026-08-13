@@ -532,7 +532,7 @@ function createDateCellWrapper(
     return (
       <div
         className={cn(
-          "rbc-date-cell-wrapper-inner flex h-full min-h-[140px] min-w-0 flex-col overflow-hidden",
+          "rbc-date-cell-wrapper-inner schedule-gcal-month-cell flex h-full min-h-[140px] min-w-0 flex-col overflow-hidden",
           offMonth && "schedule-gcal-off-month",
           monthStart && "schedule-gcal-month-start",
           isToday && "schedule-gcal-day-today"
