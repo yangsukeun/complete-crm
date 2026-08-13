@@ -57,3 +57,21 @@ export function needsExecutiveDirectLeaveApproval(
   if (!dept) return true;
   return !departmentsWithTeamLead.has(dept);
 }
+
+/** 팀장 본인 휴가는 1차(팀장)를 건너뛰고 대표 최종만 받는다 */
+export function applicantSkipsTeamLeadLeaveStep(applicantRole: string | null | undefined): boolean {
+  return String(applicantRole ?? "").toUpperCase() === "TEAM_LEAD";
+}
+
+/** 대표/임원이 최종 승인·반려할 수 있는 상태인지 */
+export function canExecutiveFinalApproveLeave(opts: {
+  status: string;
+  applicantDepartment: string | null | undefined;
+  applicantRole: string | null | undefined;
+  departmentsWithTeamLead: ReadonlySet<string>;
+}): boolean {
+  if (opts.status === "TEAM_LEAD_APPROVED") return true;
+  if (opts.status !== "PENDING") return false;
+  if (applicantSkipsTeamLeadLeaveStep(opts.applicantRole)) return true;
+  return needsExecutiveDirectLeaveApproval(opts.applicantDepartment, opts.departmentsWithTeamLead);
+}

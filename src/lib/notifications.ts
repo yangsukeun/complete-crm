@@ -53,6 +53,8 @@ type CreateNotificationInput = {
   priority?: NotificationPriority;
   /** 지정 시 OneSignal 제목(기본: "새 알림") */
   pushTitle?: string;
+  /** true면 DB만 저장하고 푸시는 보내지 않음 */
+  skipPush?: boolean;
 };
 
 const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriority> = {
@@ -144,7 +146,7 @@ const DEDUP_UNREAD_BY_LINK_TYPES: NotificationTypeEnum[] = [
 ];
 
 export async function createNotificationWithOptions(input: CreateNotificationInput): Promise<void> {
-  const { userId, type, message, link = "", actorId = null, pushTitle } = input;
+  const { userId, type, message, link = "", actorId = null, pushTitle, skipPush = false } = input;
   const priority: NotificationPriority = input.priority ?? DEFAULT_PRIORITY_BY_TYPE[type] ?? "medium";
 
   let persisted = false;
@@ -185,9 +187,10 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
 
   if (!persisted) return;
 
-  /** 푸시: high/medium 이고 본인이 행한 알림(actor === 수신자)이 아닐 때 (수동 발송과 동일하게 CRM 이벤트도 전송) */
-  const skipPushOnMerge = mergedExistingUnread && type !== "CHAT_MESSAGE";
+  /** 동일 링크 미읽음이면 푸시 재발송하지 않음(채팅 포함 — 메시지마다 푸시 폭주 방지) */
+  const skipPushOnMerge = mergedExistingUnread;
   const shouldSendPush =
+    !skipPush &&
     !skipPushOnMerge &&
     (priority === "high" || priority === "medium") &&
     (actorId == null || actorId !== userId);
@@ -199,11 +202,15 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
       priority,
       actorId: actorId ?? null,
       reason:
-        priority !== "high" && priority !== "medium"
-          ? "priority가 low"
-          : actorId != null && actorId === userId
-            ? "actorId === 수신자(본인 알림)"
-            : "기타",
+        skipPush
+          ? "skipPush"
+          : skipPushOnMerge
+            ? "미읽음 병합"
+            : priority !== "high" && priority !== "medium"
+              ? "priority가 low"
+              : actorId != null && actorId === userId
+                ? "actorId === 수신자(본인 알림)"
+                : "기타",
     });
   } else {
     console.log("[Notification→push] sendPushToUser 호출", { userId, type, actorId: actorId ?? null });

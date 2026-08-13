@@ -8,6 +8,8 @@ import { leaveRequestListWhere } from "@/lib/leave-request-serialize";
 import {
   departmentHasTeamLead,
   needsExecutiveDirectLeaveApproval,
+  applicantSkipsTeamLeadLeaveStep,
+  canExecutiveFinalApproveLeave,
 } from "@/lib/leave-department-access";
 
 describe("leave-department-access", () => {
@@ -34,6 +36,36 @@ describe("leave-department-access", () => {
     expect(needsExecutiveDirectLeaveApproval("경영지원", withLead)).toBe(true);
     expect(needsExecutiveDirectLeaveApproval("마케팅", withLead)).toBe(false);
     expect(needsExecutiveDirectLeaveApproval(null, withLead)).toBe(true);
+  });
+
+  it("sends team-lead applications straight to executive", () => {
+    expect(applicantSkipsTeamLeadLeaveStep("TEAM_LEAD")).toBe(true);
+    expect(applicantSkipsTeamLeadLeaveStep("USER")).toBe(false);
+    const withLead = new Set(["마케팅"]);
+    expect(
+      canExecutiveFinalApproveLeave({
+        status: "PENDING",
+        applicantDepartment: "마케팅",
+        applicantRole: "TEAM_LEAD",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(true);
+    expect(
+      canExecutiveFinalApproveLeave({
+        status: "PENDING",
+        applicantDepartment: "마케팅",
+        applicantRole: "USER",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(false);
+    expect(
+      canExecutiveFinalApproveLeave({
+        status: "TEAM_LEAD_APPROVED",
+        applicantDepartment: "마케팅",
+        applicantRole: "USER",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(true);
   });
 });
 

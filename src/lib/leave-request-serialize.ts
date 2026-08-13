@@ -37,6 +37,7 @@ type LeaveUserSelect = {
   email: string;
   department: string | null;
   position: string | null;
+  role?: string;
   currentProject: { name: string; brand: { name: string } } | null;
 };
 

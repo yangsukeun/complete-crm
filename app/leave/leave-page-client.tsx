@@ -64,6 +64,7 @@ const LEAVE_TYPES: { value: string; label: string }[] = [
 
 type LeaveRequest = {
   id: string;
+  userId?: string;
   type: string;
   startDate: string;
   endDate: string;
@@ -76,6 +77,7 @@ type LeaveRequest = {
     email?: string;
     department: string | null;
     position?: string | null;
+    role?: string;
     currentProject?: { name: string; brand: { name: string } } | null;
   };
 };
@@ -351,9 +353,21 @@ export function LeavePageClient({
       myDept.length > 0 && (dept ?? "").trim() === myDept;
 
     return requests.filter((r) => {
-      if (isTeamLead && r.status === "PENDING") return sameDept(r.user?.department);
+      const isOwn = Boolean(myUid) && (r.userId === myUid || r.user?.id === myUid);
+      const applicantIsTeamLead = String(r.user?.role ?? "").toUpperCase() === "TEAM_LEAD";
+      if (isTeamLead && isOwn && !isExecutive) return false;
+      if (isTeamLead && r.status === "PENDING") {
+        if (applicantIsTeamLead) return false;
+        return sameDept(r.user?.department);
+      }
       if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
-      if (isExecutive && r.status === "PENDING" && !deptHasTeamLead(r.user?.department)) return true;
+      if (
+        isExecutive &&
+        r.status === "PENDING" &&
+        (applicantIsTeamLead || !deptHasTeamLead(r.user?.department))
+      ) {
+        return true;
+      }
       if (r.status === "CANCEL_REQUESTED") {
         if (isTeamLead && r.cancelFromStatus === "PENDING") return sameDept(r.user?.department);
         if (
@@ -370,7 +384,7 @@ export function LeavePageClient({
       }
       return false;
     });
-  }, [requests, canApprove, isTeamLead, isExecutive, viewerDepartment, deptHasTeamLead]);
+  }, [requests, canApprove, isTeamLead, isExecutive, viewerDepartment, deptHasTeamLead, myUid]);
 
   if (loading) {
     return (
@@ -851,7 +865,7 @@ export function LeavePageClient({
                                   </Button>
                                 </div>
                               )}
-                              {r.status === "PENDING" && isExecutive && !deptHasTeamLead(r.user?.department) && (
+                              {r.status === "PENDING" && isExecutive && (String(r.user?.role ?? "").toUpperCase() === "TEAM_LEAD" || !deptHasTeamLead(r.user?.department)) && (
                                 <div className="flex flex-wrap gap-1">
                                   <Button
                                     size="sm"

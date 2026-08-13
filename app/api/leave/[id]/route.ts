@@ -9,9 +9,10 @@ import {
 import { createNotificationWithOptions } from "@/lib/notifications";
 import { isSickLeaveType, leaveRequestDays } from "@/lib/leave/leave-request-days";
 import {
+  applicantSkipsTeamLeadLeaveStep,
+  canExecutiveFinalApproveLeave,
   canTeamLeadManageLeaveApplicant,
   fetchDepartmentsWithTeamLead,
-  needsExecutiveDirectLeaveApproval,
   teamLeadNotifyWhereForApplicantDepartment,
 } from "@/lib/leave-department-access";
 import { syncLeaveToNaverCalendar } from "@/lib/naver-calendar-sync";
@@ -203,6 +204,13 @@ export async function PATCH(
         return NextResponse.json(updated);
       }
 
+      if (applicantSkipsTeamLeadLeaveStep(leave.user?.role)) {
+        return NextResponse.json(
+          { error: "팀장 본인 휴가는 대표·관리자가 최종 승인합니다." },
+          { status: 400 }
+        );
+      }
+
       if (leave.status !== "PENDING") {
         return NextResponse.json({ error: "이미 처리된 신청이거나 2차 승인 대기 중입니다." }, { status: 400 });
       }
@@ -236,13 +244,15 @@ export async function PATCH(
     }
 
     // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED)
-    // 팀장 없는 부서: PENDING → APPROVED | REJECTED (바로 최종 승인)
+    // 팀장 없는 부서·팀장 본인 신청: PENDING → APPROVED | REJECTED (바로 최종 승인)
     if (isExecutive(role)) {
       const departmentsWithTeamLead = await fetchDepartmentsWithTeamLead(prisma);
-      const directFromPending = needsExecutiveDirectLeaveApproval(
-        leave.user?.department,
-        departmentsWithTeamLead
-      );
+      const canFinalApprove = canExecutiveFinalApproveLeave({
+        status: leave.status,
+        applicantDepartment: leave.user?.department,
+        applicantRole: leave.user?.role,
+        departmentsWithTeamLead,
+      });
 
       // 취소 요청 처리 (CANCEL_REQUESTED → CANCELLED). APPROVED 취소면 연차 사용 복구
       if (leave.status === "CANCEL_REQUESTED") {
@@ -266,10 +276,6 @@ export async function PATCH(
         });
         return NextResponse.json(updated);
       }
-
-      const canFinalApprove =
-        leave.status === "TEAM_LEAD_APPROVED" ||
-        (leave.status === "PENDING" && directFromPending);
 
       if (!canFinalApprove) {
         if (leave.status === "PENDING") {

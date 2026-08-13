@@ -115,6 +115,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       oneSignalPlayerId: string | null;
       playerId?: string | null;
       playerIds?: string[] | null;
+      lastActiveAt?: Date | null;
     };
     try {
 
@@ -182,6 +183,31 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       }
       if (rows.length === 0) {
         console.log("[OneSignal push] ② 스킵: DB에 존재하는 userId 없음", { requestedExternalIds });
+        return;
+      }
+      const ACTIVE_MS = 3 * 60 * 1000;
+      try {
+        const presence = await prisma.user.findMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          select: { id: true, lastActiveAt: true },
+        });
+        const now = Date.now();
+        const activeIds = new Set(
+          presence
+            .filter((p) => p.lastActiveAt && now - p.lastActiveAt.getTime() < ACTIVE_MS)
+            .map((p) => p.id)
+        );
+        if (activeIds.size > 0) {
+          console.log("[OneSignal push] CRM 사용 중 — 푸시 생략", { userIds: [...activeIds] });
+          rows = rows.filter((r) => !activeIds.has(r.id));
+        }
+      } catch (presenceErr) {
+        console.warn("[OneSignal push] lastActiveAt 조회 실패 — 사용 중 생략 건너뜀", {
+          err: presenceErr instanceof Error ? presenceErr.message : String(presenceErr),
+        });
+      }
+      if (rows.length === 0) {
+        console.log("[OneSignal push] ② 스킵: 수신자 모두 CRM 사용 중");
         return;
       }
       externalIds = rows.map((r) => r.id);
@@ -330,9 +356,8 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     }
 
     /**
-     * external_id(include_aliases)와 DB 구독 ID(include_subscription_ids)를 항상 병행 발송.
-     * (이전: external만 성공 시 recipients≥1이면 구독 폴백 미실행 → 모바일 등 미연동 기기 누락)
-     * 동일 기기가 두 경로 모두에 잡히면 알림이 중복될 수 있음(수용·또는 OS/OneSignal이 일부 흡수).
+     * external_id 우선. 수신 0이거나 alias 무효일 때만 구독 ID 폴백.
+     * 둘 다 보내면 같은 기기에 알림이 두 번 간다.
      */
     const extBody: Record<string, unknown> = {
       ...baseBody,
@@ -346,12 +371,12 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     };
     if (webPushTopic) subBody.web_push_topic = webPushTopic;
 
-    const parallel: Promise<PostPushResult>[] = [postOneSignal(extBody)];
-    if (subscriptionIds.length > 0) {
-      parallel.push(postOneSignal(subBody));
+    const ext = await postOneSignal(extBody);
+    const extDelivered = ext.recipients > 0 && !ext.invalidExternalAliases;
+    let sub: PostPushResult | undefined;
+    if (subscriptionIds.length > 0 && !extDelivered) {
+      sub = await postOneSignal(subBody);
     }
-
-    const [ext, sub] = await Promise.all(parallel);
 
     const oneSignalId = ext.oneSignalId ?? sub?.oneSignalId ?? null;
     if (payload.notificationDbId && oneSignalId) {
@@ -370,10 +395,10 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       }
     }
 
-    console.log("[OneSignal push] ⑥ 병행 발송 요약", {
+    console.log("[OneSignal push] ⑥ 발송 요약", {
       external_id_recipients: ext.recipients,
       external_id_invalid_aliases: ext.invalidExternalAliases,
-      subscription_path_sent: subscriptionIds.length > 0,
+      subscription_path_sent: Boolean(sub),
       subscription_ids_count: subscriptionIds.length,
       subscription_id_recipients: sub?.recipients ?? null,
       oneSignalId,

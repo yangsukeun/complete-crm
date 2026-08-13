@@ -40,7 +40,7 @@ const emptyForm = {
   annualLeaveDaysAfterFirstFullYear: "",
 };
 
-export function AdminCompanyForm() {
+export function AdminCompanyForm({ canEdit = true }: { canEdit?: boolean }) {
   const [form, setForm] = useState(emptyForm);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +121,7 @@ export function AdminCompanyForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!form.name.trim()) {
       toast.error("회사명을 입력하세요.");
       return;
@@ -186,6 +187,7 @@ export function AdminCompanyForm() {
 
   return (
     <form onSubmit={handleSubmit} className="rounded-xl border-2 border-slate-200 bg-card p-6 shadow-sm dark:border-slate-800 space-y-4">
+      <fieldset disabled={!canEdit} className="space-y-4 border-0 p-0">
       <div className="grid gap-2">
         <Label htmlFor="name">회사명 *</Label>
         <Input
@@ -396,12 +398,15 @@ export function AdminCompanyForm() {
         </div>
       </div>
 
+      </fieldset>
+      {canEdit && (
       <div className="pt-2">
         <Button type="submit" disabled={saving} className="bg-slate-800 hover:bg-slate-900">
           <Save className="mr-2 size-4" />
           {saving ? "저장 중..." : "저장"}
         </Button>
       </div>
+      )}
     </form>
   );
 }

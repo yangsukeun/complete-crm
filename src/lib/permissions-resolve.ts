@@ -2,6 +2,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import { parsePermissions } from "@/lib/permissions";
 import { getCsTeamDefaultPermissions, isCsTeamDepartment } from "@/lib/cs-team-permissions";
+import { getLogisticsDefaultPermissions, isCsOrgDepartment, isLogisticsOrgDepartment } from "@/lib/org-access";
 
 /**
  * 로그인·세션 갱신용: JWT에 넣을 기능 권한 JSON 문자열.
@@ -30,11 +31,18 @@ export async function resolveEffectivePermissionsJson(userId: string): Promise<s
     if (posParsed !== null) return JSON.stringify(posParsed);
   }
 
-  // CS팀만: 세션에 명시 JSON을 넣어 메뉴(tasks/quotations) 숨김. 다른 부서는 null → 기존 역할 기본.
-  if (isCsTeamDepartment(user.department)) {
+  // CS센터: 세션에 명시 JSON을 넣어 프로젝트·게시판 등 숨김
+  if (isCsOrgDepartment(user.department) || isCsTeamDepartment(user.department)) {
     const role = String(user.role ?? "USER").toUpperCase();
     if (role === "USER" || role === "TEAM_LEAD" || role === "CENTER_CHIEF") {
       return JSON.stringify(getCsTeamDefaultPermissions(role));
+    }
+  }
+
+  if (isLogisticsOrgDepartment(user.department)) {
+    const role = String(user.role ?? "USER").toUpperCase();
+    if (role === "USER" || role === "TEAM_LEAD" || role === "CENTER_CHIEF") {
+      return JSON.stringify(getLogisticsDefaultPermissions(role));
     }
   }
 

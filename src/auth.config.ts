@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
+import { homePathForUser } from "@/lib/org-access";
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
@@ -22,7 +23,11 @@ export const authConfig: NextAuthConfig = {
         ) {
           return Response.redirect(new URL(raw, request.nextUrl));
         }
-        return Response.redirect(new URL("/dashboard", request.nextUrl));
+        const home = homePathForUser({
+          role: (auth?.user as { role?: string } | undefined)?.role,
+          department: (auth?.user as { department?: string | null } | undefined)?.department,
+        });
+        return Response.redirect(new URL(home, request.nextUrl));
       }
       if (isSignup) return true; // 숨겨진 초기 관리자 가입용 (비로그인 허용)
       return isLoggedIn ? true : false;
@@ -34,6 +39,7 @@ export const authConfig: NextAuthConfig = {
       if (user?.id) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
+        token.department = (user as { department?: string | null }).department ?? "";
         token.permissions = await resolveEffectivePermissionsJson(user.id);
       }
       return token;
@@ -42,6 +48,7 @@ export const authConfig: NextAuthConfig = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        session.user.department = (token.department as string | null | undefined) ?? null;
         (session.user as { permissions?: string | null }).permissions = (token.permissions as string | null) ?? undefined;
       }
       return session;

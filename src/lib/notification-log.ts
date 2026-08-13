@@ -9,7 +9,8 @@ export type NotificationLogKind =
   | "DUE_DAY" // 레거시(마감 경과 윈도우)
   | "DUE_DDAY" // D-DAY(당일 마감)
   | "DUE_PLUS1" // D+1(하루 지연)
-  | "DIGEST";
+  | "DIGEST"
+  | "LEAVE_EXPIRING";
 
 /** 동일 업무·종류의 로그가 since 이후 존재하면 true (중복 발송 방지) */
 export async function hasTaskNotificationLog(
@@ -47,8 +48,16 @@ export async function hasDueAlertLog(opts: {
 
 /** 동일 유저·DIGEST·since 이후 발송 여부 (KST 일 시작 시각을 since로 넘기면 하루 1회) */
 export async function hasDigestSince(userId: string, since: Date): Promise<boolean> {
+  return hasUserKindLogSince(userId, "DIGEST", since);
+}
+
+export async function hasUserKindLogSince(
+  userId: string,
+  kind: NotificationLogKind,
+  since: Date
+): Promise<boolean> {
   const n = await prisma.notificationLog.count({
-    where: { userId, kind: "DIGEST", sentAt: { gte: since } },
+    where: { userId, kind, sentAt: { gte: since } },
   });
   return n > 0;
 }

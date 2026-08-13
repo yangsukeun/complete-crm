@@ -10,7 +10,16 @@ export function isCsTeamDepartment(department: string | null | undefined): boole
   return normalizeDepartment(department) === "CS팀";
 }
 
-const CS_HIDE = new Set(["tasks", "quotations", "finance_view"]);
+const CS_HIDE = new Set([
+  "dashboard",
+  "tasks",
+  "quotations",
+  "finance_view",
+  "board",
+  "announcements",
+  "admin_projects",
+  "admin_company",
+]);
 
 /**
  * CS팀 USER / TEAM_LEAD / CENTER_CHIEF 기본 권한.

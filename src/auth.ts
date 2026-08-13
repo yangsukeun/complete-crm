@@ -33,6 +33,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   callbacks: {
     ...authConfig.callbacks,
+    async jwt(params) {
+      const base = authConfig.callbacks?.jwt
+        ? await authConfig.callbacks.jwt(params)
+        : params.token;
+      const token = base ?? params.token;
+      if (params.user) {
+        token.department = (params.user as { department?: string | null }).department ?? "";
+      } else if (token.department === undefined && token.id) {
+        try {
+          const u = await prisma.user.findUnique({
+            where: { id: String(token.id) },
+            select: { department: true },
+          });
+          token.department = u?.department ?? "";
+        } catch {
+          token.department = "";
+        }
+      }
+      return token;
+    },
     async session(params) {
       const base = authConfig.callbacks?.session
         ? await authConfig.callbacks.session(params)
@@ -101,7 +121,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           try {
             const user = await prisma.user.findUnique({
               where: { id: tokenUserId },
-              select: { id: true, email: true, name: true, image: true, role: true, permissions: true },
+              select: { id: true, email: true, name: true, image: true, role: true, permissions: true, department: true },
             });
             if (user) {
               return {
@@ -110,6 +130,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 name: user.name,
                 image: user.image ?? undefined,
                 role: user.role,
+                department: user.department ?? null,
                 permissions: (user as { permissions?: string | null }).permissions ?? undefined,
               };
             }
@@ -122,7 +143,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const user = await prisma.user.findFirst({
             where: { email: { equals: emailRaw, mode: "insensitive" } },
-            select: { id: true, email: true, name: true, image: true, password: true, role: true, permissions: true },
+            select: { id: true, email: true, name: true, image: true, password: true, role: true, permissions: true, department: true },
           });
           if (!user) {
             if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 해당 이메일 사용자 없음", emailRaw);
@@ -149,6 +170,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: user.name,
             image: user.image ?? undefined,
             role: user.role,
+            department: user.department ?? null,
             permissions: (user as { permissions?: string | null }).permissions ?? undefined,
           };
         } catch (err) {

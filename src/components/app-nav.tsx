@@ -44,6 +44,7 @@ import { useLayoutShared } from "@/components/layout-shared-context";
 import { cn } from "@/lib/utils";
 import { userHasPermission } from "@/lib/permissions";
 import { isMasterEmail } from "@/lib/master-account";
+import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -347,6 +348,12 @@ export function AppNav() {
   const isExecutive = session?.user?.role === "EXECUTIVE" || session?.user?.role === "ADMIN";
   const isTeamLead = session?.user?.role === "TEAM_LEAD";
   const isMaster = isMasterEmail(session?.user?.email);
+  const orgUnit = resolveOrgUnit({
+    role: session?.user?.role,
+    department: session?.user?.department,
+  });
+  const homePath = homePathForOrg(orgUnit);
+  const isHqOrg = orgUnit === "HQ";
 
   const userForPermission = session?.user as { role?: string; permissions?: string | null } | undefined;
   const can = (featureKey: string) => {
@@ -358,7 +365,12 @@ export function AppNav() {
   };
 
   const visibleNav = (links: NavLink[]) =>
-    links.filter((l) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany));
+    links.filter(
+      (l) =>
+        (!l.featureKey || can(l.featureKey)) &&
+        (!l.companyOnly || isCompany) &&
+        navHrefAllowedForOrg(l.href, orgUnit)
+    );
 
   const mainLinks = visibleNav(mainGroupLinks);
   const workLinks = visibleNav(workGroupLinks);
@@ -377,14 +389,25 @@ export function AppNav() {
     (l) => pathname === l.href || pathname.startsWith(l.href + "/")
   );
   const hrLinks = hrGroupLinks.filter(
-    (l: any) => (!l.featureKey || can(l.featureKey)) && (!l.companyOnly || isCompany)
+    (l: any) =>
+      (!l.featureKey || can(l.featureKey)) &&
+      (!l.companyOnly || isCompany) &&
+      navHrefAllowedForOrg(l.href, orgUnit)
   );
-  const financeLinks = financeGroupLinks.filter((l: any) => !l.featureKey || can(l.featureKey));
+  const financeLinks = financeGroupLinks.filter(
+    (l: any) => (!l.featureKey || can(l.featureKey)) && navHrefAllowedForOrg(l.href, orgUnit)
+  );
 
   const adminLinks = ADMIN_MENU_DEFS.filter((d) => {
+    if (!navHrefAllowedForOrg(d.href, orgUnit) && !(orgUnit === "LOGISTICS" && d.href === "/admin/company")) {
+      return false;
+    }
     if (d.masterOnly) return isMaster;
     if (d.executiveOnly) return isExecutive;
-    if (d.feature) return isExecutive || can(d.feature);
+    if (d.feature) {
+      if (orgUnit === "LOGISTICS" && d.href === "/admin/company") return true;
+      return isExecutive || can(d.feature);
+    }
     return isExecutive;
   }).map(({ href, label, icon }) => ({ href, label, icon }));
 
@@ -432,7 +455,7 @@ export function AppNav() {
         <div className="flex items-center gap-2 sm:gap-3">
           <HistoryNavButtons className="shrink-0" />
           <Link
-            href="/dashboard"
+            href={homePath}
             prefetch={false}
             className="flex items-center gap-2 font-bold text-gray-900 transition-colors hover:text-violet-600"
           >
@@ -465,12 +488,14 @@ export function AppNav() {
         {/* Center: 네비게이션 */}
         <nav className="hidden flex-1 items-center justify-center gap-1 md:flex">
           {/* 대시보드 단일 버튼 */}
+          {isHqOrg && (
           <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/dashboard" || pathname.startsWith("/dashboard/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
             <Link href="/dashboard" prefetch={false} className="flex items-center gap-1.5">
               <LayoutDashboard className="size-4" />
               <span>대시보드</span>
             </Link>
           </Button>
+          )}
 
           {/* Projects + 휴지통 */}
           {workLinks.length > 0 && (
@@ -690,6 +715,7 @@ export function AppNav() {
           )}
 
           {/* [AI] - 비서·허브 */}
+          {isHqOrg && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -732,6 +758,7 @@ export function AppNav() {
               })}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
 
           {/* [인사/일정 관리] - 인디고/블루 */}
           {hrLinks.length > 0 && (
@@ -867,7 +894,7 @@ export function AppNav() {
 
         {/* Right: 워크스페이스 토글 + 알림 + 사용자 메뉴(이름 클릭 시 로그아웃 등) */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <WorkspaceSwitcher />
+          {isHqOrg && <WorkspaceSwitcher />}
           <NotificationBell />
 
           {/* User Dropdown (프로필/내 정보/로그아웃) */}
@@ -914,12 +941,14 @@ export function AppNav() {
                     내 정보
                   </Link>
                 </DropdownMenuItem>
+                {isHqOrg && (
                 <DropdownMenuItem asChild>
                   <Link href="/my-project" prefetch={false} className="flex items-center gap-2 cursor-pointer">
                     <FolderKanban className="size-4" />
                     내 프로젝트
                   </Link>
                 </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={async () => {
@@ -945,7 +974,7 @@ export function AppNav() {
             ...workLinks,
             ...resourceLinks,
             ...commsLinks,
-            ...aiGroupLinks,
+            ...(isHqOrg ? aiGroupLinks : []),
             ...hrLinks,
             ...financeLinks,
           ].map(({ href, label, icon: Icon }) => {

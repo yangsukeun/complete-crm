@@ -20,6 +20,7 @@ import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
 import { canPostAnnouncement } from "@/lib/role-access";
 import { canSeeCsToolsDashboardCard } from "@/lib/cs-tools-access";
+import { homePathForOrg, resolveOrgUnit } from "@/lib/org-access";
 
 const DashboardAttendance = dynamic(
   () => import("@/components/dashboard-attendance").then((m) => m.DashboardAttendance),
@@ -37,6 +38,23 @@ const DashboardTodayBrief = dynamic(
 export default async function DashboardPage() {
   const session = await authWithTimeout();
   if (!session?.user?.id) redirect("/login");
+
+  let department = session.user.department ?? null;
+  if (department == null || department === "") {
+    try {
+      const row = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { department: true },
+      });
+      department = row?.department ?? null;
+    } catch {
+      /* JWT 부서만 사용 */
+    }
+  }
+  const org = resolveOrgUnit({ role: session.user.role, department });
+  if (org !== "HQ") {
+    redirect(homePathForOrg(org));
+  }
 
   // Hydration 불일치 방지: 클라이언트 컴포넌트(Date.now 등) 기준 시각을 SSR에서 고정 전달
   const nowMs = Date.now();

@@ -13,7 +13,7 @@ import {
   insertNotificationLogs,
   type NotificationLogKind,
 } from "@/lib/notification-log";
-import { createNotification } from "@/lib/notifications";
+import { createNotificationWithOptions } from "@/lib/notifications";
 import type { NotificationTypeEnum } from "@/lib/notifications";
 
 export const runtime = "nodejs";
@@ -71,7 +71,13 @@ async function notifyRecipients(opts: {
   const message = messageFor(kind, title, entity);
   const type = KIND_TO_TYPE[kind];
   for (const userId of recipients) {
-    await createNotification(userId, type, message, link);
+    await createNotificationWithOptions({
+      userId,
+      type,
+      message,
+      link,
+      skipPush: true,
+    });
   }
   await insertNotificationLogs(
     recipients.map((userId) => ({
