@@ -5,7 +5,7 @@ import { CsToolsPageClient } from "./cs-tools-page-client";
 import { DashboardAttendance } from "@/components/dashboard-attendance";
 import prisma from "@/lib/prisma";
 import { startOfDayKst } from "@/lib/date-kst";
-import { canViewAwayOverview } from "@/lib/attendance-away-access";
+import { canUseAwayFeature, canViewAwayOverview, summarizeAwayLogs } from "@/lib/attendance-away-access";
 import Link from "next/link";
 
 export default async function CsToolsPage() {
@@ -13,13 +13,17 @@ export default async function CsToolsPage() {
   if (!session?.user?.id) redirect("/login");
 
   const todayStart = startOfDayKst(new Date());
-  const [attendance, me] = await Promise.all([
+  const [attendance, me, awayLogs] = await Promise.all([
     prisma.attendance.findUnique({
       where: { userId_date: { userId: session.user.id, date: todayStart } },
     }),
     prisma.user.findUnique({
       where: { id: session.user.id },
       select: { role: true, department: true },
+    }),
+    prisma.awayLog.findMany({
+      where: { userId: session.user.id, startedAt: { gte: todayStart } },
+      select: { id: true, type: true, startedAt: true, endedAt: true },
     }),
   ]);
 
@@ -35,26 +39,29 @@ export default async function CsToolsPage() {
           title="CS 링크 허브"
           description="CS 업무에 쓰는 외부 도구·링크를 한곳에서 엽니다."
         />
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <DashboardAttendance
-            initial={
-              attendance
-                ? {
-                    id: attendance.id,
-                    checkIn: attendance.checkIn?.toISOString() ?? null,
-                    checkOut: attendance.checkOut?.toISOString() ?? null,
-                    date: attendance.date.toISOString(),
-                  }
-                : null
-            }
-          />
-          {showOverview && (
-            <Link href="/cs-tools/away" className="text-primary text-sm font-medium hover:underline">
-              이석 현황 →
-            </Link>
-          )}
-        </div>
+        {showOverview && (
+          <Link href="/cs-tools/away" className="text-primary text-sm font-medium hover:underline">
+            이석 현황 →
+          </Link>
+        )}
       </div>
+      <DashboardAttendance
+        emphasized
+        showAway={canUseAwayFeature({
+          department: me?.department ?? session.user.department,
+        })}
+        initialAway={summarizeAwayLogs(awayLogs)}
+        initial={
+          attendance
+            ? {
+                id: attendance.id,
+                checkIn: attendance.checkIn?.toISOString() ?? null,
+                checkOut: attendance.checkOut?.toISOString() ?? null,
+                date: attendance.date.toISOString(),
+              }
+            : null
+        }
+      />
       <CsToolsPageClient />
     </div>
   );

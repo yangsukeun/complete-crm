@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getAppSession } from "@/auth";
+import { startOfDayKst } from "@/lib/date-kst";
+import { summarizeAwayLogs } from "@/lib/attendance-away-access";
 
 export const runtime = "nodejs";
 
@@ -12,18 +14,28 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const open = await prisma.awayLog.findFirst({
-      where: { userId: session.user.id, endedAt: null },
-      select: { id: true, type: true, startedAt: true },
+    const todayStart = startOfDayKst(new Date());
+    const logs = await prisma.awayLog.findMany({
+      where: { userId: session.user.id, startedAt: { gte: todayStart } },
+      select: { id: true, type: true, startedAt: true, endedAt: true },
     });
-    if (!open) {
-      return NextResponse.json({ open: false });
+    const summary = summarizeAwayLogs(logs);
+    if (!summary.open) {
+      return NextResponse.json({
+        open: false,
+        todayEndedMs: summary.todayEndedMs,
+        bathroomEndedMs: summary.bathroomEndedMs,
+        smokingEndedMs: summary.smokingEndedMs,
+      });
     }
     return NextResponse.json({
       open: true,
-      id: open.id,
-      type: open.type,
-      startedAt: open.startedAt.toISOString(),
+      id: summary.open.id,
+      type: summary.open.type,
+      startedAt: summary.open.startedAt,
+      todayEndedMs: summary.todayEndedMs,
+      bathroomEndedMs: summary.bathroomEndedMs,
+      smokingEndedMs: summary.smokingEndedMs,
     });
   } catch (e) {
     console.error("away status:", e);

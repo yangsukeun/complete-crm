@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { AWAY_STATUS_EVENT, awayTypeLabel, type AwayTypeName } from "@/lib/attendance-away-access";
+import {
+  AWAY_STATUS_EVENT,
+  awayTypeLabel,
+  formatAwayDuration,
+  notifyAwayStatusChanged,
+  type AwayTypeName,
+} from "@/lib/attendance-away-access";
 import { toast } from "sonner";
 
 type AwayOpen = {
@@ -13,15 +19,6 @@ type AwayOpen = {
   type: AwayTypeName;
   startedAt: string;
 };
-
-function formatElapsed(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h > 0) return `${h}시간 ${String(m).padStart(2, "0")}분 ${String(s).padStart(2, "0")}초`;
-  return `${m}분 ${String(s).padStart(2, "0")}초`;
-}
 
 export function AwayPresenceGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -83,6 +80,7 @@ export function AwayPresenceGate({ children }: { children: React.ReactNode }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "복귀에 실패했습니다.");
       setAway(null);
+      notifyAwayStatusChanged();
       toast.success("복귀했습니다.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "복귀에 실패했습니다.");
@@ -92,7 +90,7 @@ export function AwayPresenceGate({ children }: { children: React.ReactNode }) {
   };
 
   if (!isPublic && away) {
-    const elapsed = formatElapsed(now - new Date(away.startedAt).getTime());
+    const elapsed = formatAwayDuration(now - new Date(away.startedAt).getTime());
     return (
       <div className="bg-background flex min-h-screen flex-col items-center justify-center gap-8 p-6">
         <p className="text-muted-foreground text-sm tracking-wide">부재중</p>

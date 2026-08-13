@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canUseAwayFeature, canViewAwayOverview } from "@/lib/attendance-away-access";
+import { canUseAwayFeature, canViewAwayOverview, formatAwayDuration, summarizeAwayLogs } from "@/lib/attendance-away-access";
 import { getDefaultPermissionsForRole, hasPermission } from "@/lib/permissions";
 
 describe("canUseAwayFeature", () => {
@@ -39,6 +39,27 @@ describe("canViewAwayOverview", () => {
   });
 });
 
+describe("summarizeAwayLogs / formatAwayDuration", () => {
+  it("sums closed logs and keeps the open session", () => {
+    const t0 = new Date("2026-08-13T01:00:00.000Z");
+    const t1 = new Date("2026-08-13T01:05:00.000Z");
+    const t2 = new Date("2026-08-13T02:00:00.000Z");
+    const summary = summarizeAwayLogs([
+      { id: "a", type: "BATHROOM", startedAt: t0, endedAt: t1 },
+      { id: "b", type: "SMOKING", startedAt: t2, endedAt: null },
+    ]);
+    expect(summary.todayEndedMs).toBe(5 * 60 * 1000);
+    expect(summary.bathroomEndedMs).toBe(5 * 60 * 1000);
+    expect(summary.open?.id).toBe("b");
+  });
+
+  it("formats durations in Korean", () => {
+    expect(formatAwayDuration(0)).toBe("0초");
+    expect(formatAwayDuration(45_000)).toBe("45초");
+    expect(formatAwayDuration(90_000)).toBe("1분 30초");
+    expect(formatAwayDuration(3_600_000)).toBe("1시간");
+  });
+});
 describe("attendance_import permission defaults", () => {
   it("is on ADMIN/EXECUTIVE defaults and off for USER", () => {
     expect(getDefaultPermissionsForRole("ADMIN")).toContain("attendance_import");
