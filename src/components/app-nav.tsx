@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import NextImage from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { jsonFetcher, SWR_KEYS, SWR_LOGO_SETTINGS_KEY } from "@/lib/api-swr";
 import type { LogoSettingsApiPayload } from "@/lib/header-bootstrap";
@@ -81,6 +81,73 @@ type NavLink = {
   csAccessOnly?: boolean;
 };
 
+const CS_LOUNGE_TOP_LINKS: NavLink[] = [
+  { href: "/cs-lounge?tab=notice", label: "공지사항", icon: Megaphone, csAccessOnly: true },
+  { href: "/cs-lounge?tab=lounge", label: "익명 라운지", icon: MessageCircle, csAccessOnly: true },
+];
+
+function csLoungeTabOf(href: string): string | null {
+  if (!href.startsWith("/cs-lounge")) return null;
+  const q = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
+  return new URLSearchParams(q).get("tab");
+}
+
+function CsLoungeTopNav({
+  className,
+  size = "desktop",
+}: {
+  className?: string;
+  size?: "desktop" | "mobile";
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = pathname === "/cs-lounge" ? (searchParams.get("tab") ?? "") : "";
+
+  return (
+    <>
+      {CS_LOUNGE_TOP_LINKS.map(({ href, label, icon: Icon }) => {
+        const tab = csLoungeTabOf(href);
+        const isActive = pathname === "/cs-lounge" && currentTab === tab;
+        if (size === "mobile") {
+          return (
+            <Link
+              key={href}
+              href={href}
+              prefetch={false}
+              className={cn(
+                "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                isActive ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+              )}
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          );
+        }
+        return (
+          <Button
+            key={href}
+            variant="ghost"
+            asChild
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
+              isActive
+                ? "bg-gray-100 text-gray-900"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+              className
+            )}
+          >
+            <Link href={href} prefetch={false} className="flex items-center gap-1.5">
+              <Icon className="size-4" />
+              <span>{label}</span>
+            </Link>
+          </Button>
+        );
+      })}
+    </>
+  );
+}
+
 // [메인]: 대시보드·CS·3PL (자주 쓰는 단일 진입)
 const mainGroupLinks: NavLink[] = [
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard, featureKey: "dashboard" },
@@ -124,7 +191,6 @@ const hrGroupLinks: {
 }[] = [
   { href: "/schedule", label: "스케줄", icon: Calendar, featureKey: "schedule" },
   { href: "/leave", label: "연차/근태", icon: CalendarClock, featureKey: "leave", companyOnly: true },
-  { href: "/cs-lounge", label: "CS 라운지", icon: MessageCircle, csAccessOnly: true },
   { href: "/cs-clients", label: "CS 업체", icon: Building2, csAccessOnly: true },
   { href: "/cs-org", label: "CS 조직도", icon: Users, csAccessOnly: true },
   { href: "/cs-tools/attendance", label: "CS 근태", icon: Clock, companyOnly: true, awayOverviewOnly: true },
@@ -683,6 +749,11 @@ export function AppNav() {
               </Link>
             </Button>
           )}
+          {canSeeCsTools && (
+            <Suspense fallback={null}>
+              <CsLoungeTopNav />
+            </Suspense>
+          )}
 
           {/* 3PL 물류 — 단독 (도약패키지 연동 예정) */}
           {mainLinks.some((l) => l.href === "/logistics") && (
@@ -1020,8 +1091,29 @@ export function AppNav() {
       {/* Mobile Navigation (shown below header on small screens) */}
       <div className="flex overflow-x-auto border-t border-gray-100 bg-white px-4 py-2 md:hidden">
         <div className="flex gap-1">
+          {mainLinks.map(({ href, label, icon: Icon }) => {
+            const isActive = pathname === href || pathname.startsWith(href + "/");
+            return (
+              <Link
+                key={href}
+                href={href}
+                prefetch={false}
+                className={cn(
+                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                  isActive ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                )}
+              >
+                <Icon className="size-4" />
+                {label}
+              </Link>
+            );
+          })}
+          {canSeeCsTools && (
+            <Suspense fallback={null}>
+              <CsLoungeTopNav size="mobile" />
+            </Suspense>
+          )}
           {[
-            ...mainLinks,
             ...workLinks,
             ...resourceLinks,
             ...commsLinks,

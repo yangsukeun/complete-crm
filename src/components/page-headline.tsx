@@ -12,11 +12,11 @@ export function PageHeadline({
 }) {
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}>
-      <span className="inline-flex shrink-0 items-center rounded-md bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm">
+      <span className="inline-flex shrink-0 items-center rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground shadow-sm">
         {title}
       </span>
       {description && (
-        <span className="text-muted-foreground text-sm">{description}</span>
+        <span className="text-muted-foreground text-sm font-medium">{description}</span>
       )}
     </div>
   );

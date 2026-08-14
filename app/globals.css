@@ -6,19 +6,19 @@
 
 :root {
   --background: #F9FAFB;
-  --foreground: #333D4B;
+  --foreground: #191F28;
   --card: #FFFFFF;
-  --card-foreground: #333D4B;
+  --card-foreground: #191F28;
   --popover: #FFFFFF;
-  --popover-foreground: #333D4B;
+  --popover-foreground: #191F28;
   --primary: #6D28D9;
   --primary-foreground: #FFFFFF;
   --secondary: #F2F4F6;
-  --secondary-foreground: #333D4B;
+  --secondary-foreground: #191F28;
   --muted: #F2F4F6;
-  --muted-foreground: #6B7684;
+  --muted-foreground: #4E5968;
   --accent: #F2F4F6;
-  --accent-foreground: #333D4B;
+  --accent-foreground: #191F28;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: #FFFFFF;
   --border: #E5E8EB;
@@ -31,11 +31,11 @@
   --chart-5: oklch(0.769 0.188 70.08);
   --radius: 1rem;
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #333D4B;
+  --sidebar-foreground: #191F28;
   --sidebar-primary: #6D28D9;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #F2F4F6;
-  --sidebar-accent-foreground: #333D4B;
+  --sidebar-accent-foreground: #191F28;
   --sidebar-border: #E5E8EB;
   --sidebar-ring: #6D28D9;
 }
@@ -126,6 +126,11 @@ html.dark[data-workspace="MY"] {
   --color-sidebar-ring: var(--sidebar-ring);
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", "Fira Code", Menlo, monospace;
+  --font-weight-normal: 500;
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 800;
+  --font-weight-extrabold: 800;
   --shadow-2xs: 0 1px 2px rgba(0, 0, 0, 0.02);
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -145,15 +150,32 @@ html.dark[data-workspace="MY"] {
     @apply bg-background text-foreground;
     font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+  h1 {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+  }
+  h2,
+  h3 {
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--foreground);
   }
   /* 본문만 14→15px. 헤더·버튼·뱃지의 rem(html 16px)은 유지 */
   main {
     --text-sm: 0.9375rem;
     font-size: 0.9375rem;
+    overflow-wrap: break-word;
   }
   main .text-sm {
     font-size: 0.9375rem;
   }
+}
+
+[data-slot="button"] {
+  font-weight: 700;
 }
 
 /* 대시보드 큰 숫자: 토스식 굵기·자간 + 1.2배 */
@@ -175,8 +197,9 @@ html.dark[data-workspace="MY"] {
 /* 기본 카드 제목(사이즈 유틸이 없는 경우만): 라벨 위계 */
 [data-slot="card-title"]:not([class*="text-"]) {
   font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--muted-foreground);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
 }
 
 /* ========================================

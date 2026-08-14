@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { canAccessCsLounge } from "@/lib/cs-lounge-access";
 import { homePathForUser } from "@/lib/org-access";
 import { CsLoungeClient } from "./cs-lounge-client";
+import { Suspense } from "react";
 
 export default async function CsLoungePage() {
   const session = await getAppSession();
@@ -17,5 +18,9 @@ export default async function CsLoungePage() {
     redirect(homePathForUser({ role: me?.role ?? session.user.role, department: me?.department ?? session.user.department }));
   }
 
-  return <CsLoungeClient />;
+  return (
+    <Suspense fallback={null}>
+      <CsLoungeClient />
+    </Suspense>
+  );
 }

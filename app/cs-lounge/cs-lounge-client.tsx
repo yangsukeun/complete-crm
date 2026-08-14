@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Megaphone, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Loader2, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { PageHeadline } from "@/components/page-headline";
 import { toast } from "sonner";
 
 type LoungePost = {
@@ -28,6 +29,7 @@ type ListPayload = {
 };
 
 const GUIDE = "닉네임으로 익명 표시됩니다. 자유롭게 이야기해 주세요 (욕설 금지)";
+const PREVIEW = 3;
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);
@@ -53,13 +55,13 @@ function PostCard({
   onDelete: (id: string) => void;
 }) {
   return (
-    <article className="rounded-lg border bg-card p-4">
+    <article className="rounded-xl border bg-card p-4">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
+          <p className="truncate text-sm font-semibold text-foreground">
             {post.type === "NOTICE" ? (post.authorName || "공지") : post.nickname || "익명"}
           </p>
-          <p className="text-muted-foreground text-xs">{formatWhen(post.createdAt)}</p>
+          <p className="text-muted-foreground text-xs font-medium">{formatWhen(post.createdAt)}</p>
         </div>
         {(post.isMine || canModerate) && (
           <Button
@@ -75,7 +77,7 @@ function PostCard({
         )}
       </div>
       <div
-        className="whitespace-pre-wrap break-words text-sm leading-relaxed"
+        className="whitespace-pre-wrap break-words text-sm font-normal leading-relaxed text-foreground"
         dangerouslySetInnerHTML={{ __html: post.content }}
       />
       <div className="mt-3 flex items-center gap-1">
@@ -104,7 +106,32 @@ function PostCard({
   );
 }
 
+function SectionHeader({
+  title,
+  href,
+  showAll,
+}: {
+  title: string;
+  href: string;
+  showAll: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      {showAll && (
+        <Link href={href} className="text-sm font-semibold text-primary hover:underline">
+          전체보기
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export function CsLoungeClient() {
+  const searchParams = useSearchParams();
+  const tabRaw = searchParams.get("tab");
+  const tab = tabRaw === "notice" || tabRaw === "lounge" ? tabRaw : "home";
+
   const [data, setData] = useState<ListPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [loungeText, setLoungeText] = useState("");
@@ -184,13 +211,30 @@ export function CsLoungeClient() {
     }
   };
 
-  const notices = data?.posts.filter((p) => p.type === "NOTICE") ?? [];
-  const lounge = data?.posts.filter((p) => p.type === "LOUNGE") ?? [];
-  const greeting = data?.viewerName ? `${data.viewerName}님, 안녕하세요` : "안녕하세요";
+  const notices = useMemo(
+    () => data?.posts.filter((p) => p.type === "NOTICE") ?? [],
+    [data]
+  );
+  const lounge = useMemo(
+    () => data?.posts.filter((p) => p.type === "LOUNGE") ?? [],
+    [data]
+  );
+
+  const showNotice = tab === "home" || tab === "notice";
+  const showLounge = tab === "home" || tab === "lounge";
+  const noticeList = tab === "home" ? notices.slice(0, PREVIEW) : notices;
+  const loungeList = tab === "home" ? lounge.slice(0, PREVIEW) : lounge;
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
-      <PageHeadline title="CS 라운지" description={greeting} />
+      <section className="rounded-2xl border border-primary/15 bg-primary/5 px-6 py-8 md:px-8 md:py-10">
+        <p className="text-3xl font-extrabold tracking-tight break-keep text-foreground md:text-4xl">
+          좋은 하루! 오늘 하루도 화이팅입니다! 💪
+        </p>
+        <p className="text-muted-foreground mt-3 text-base font-medium">
+          CS 업무의 효율을 높여주는 사내 통합 플랫폼입니다
+        </p>
+      </section>
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
@@ -198,87 +242,96 @@ export function CsLoungeClient() {
           불러오는 중…
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="flex flex-col gap-3">
-            <h2 className="flex items-center gap-2 text-base font-semibold">
-              <Megaphone className="size-4 text-muted-foreground" />
-              최근 공지
-            </h2>
-            {data?.canPostNotice && (
-              <div className="rounded-lg border bg-card p-3">
+        <div className={tab === "home" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
+          {showNotice && (
+            <section id="notice" className="flex flex-col gap-3">
+              <SectionHeader
+                title="최근 공지사항"
+                href="/cs-lounge?tab=notice"
+                showAll={tab === "home"}
+              />
+              {data?.canPostNotice && tab !== "home" && (
+                <div className="rounded-xl border bg-card p-3">
+                  <Textarea
+                    value={noticeText}
+                    onChange={(e) => setNoticeText(e.target.value)}
+                    placeholder="공지 내용을 입력하세요"
+                    maxLength={2000}
+                    className="min-h-20 font-normal"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!noticeText.trim() || posting === "NOTICE"}
+                      onClick={() => void submit("NOTICE")}
+                    >
+                      {posting === "NOTICE" && <Loader2 className="size-3.5 animate-spin" />}
+                      공지 등록
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {noticeList.length === 0 ? (
+                <p className="text-muted-foreground text-sm font-medium">등록된 공지가 없습니다.</p>
+              ) : (
+                noticeList.map((p) => (
+                  <PostCard
+                    key={p.id}
+                    post={p}
+                    canModerate={!!data?.canPostNotice}
+                    onVote={onVote}
+                    onDelete={onDelete}
+                  />
+                ))
+              )}
+            </section>
+          )}
+
+          {showLounge && (
+            <section id="lounge" className="flex flex-col gap-3">
+              <SectionHeader
+                title="실시간 익명 라운지"
+                href="/cs-lounge?tab=lounge"
+                showAll={tab === "home"}
+              />
+              <div className="rounded-xl border bg-card p-3">
+                <p className="mb-1 text-sm font-semibold text-foreground">속마음 털어놓기</p>
+                <p className="text-muted-foreground mb-2 text-xs font-medium">{GUIDE}</p>
                 <Textarea
-                  value={noticeText}
-                  onChange={(e) => setNoticeText(e.target.value)}
-                  placeholder="공지 내용을 입력하세요"
+                  value={loungeText}
+                  onChange={(e) => setLoungeText(e.target.value)}
+                  placeholder="속마음 털어놓기"
                   maxLength={2000}
-                  className="min-h-20"
+                  className="min-h-24 font-normal"
                 />
                 <div className="mt-2 flex justify-end">
                   <Button
                     type="button"
                     size="sm"
-                    disabled={!noticeText.trim() || posting === "NOTICE"}
-                    onClick={() => void submit("NOTICE")}
+                    disabled={!loungeText.trim() || posting === "LOUNGE"}
+                    onClick={() => void submit("LOUNGE")}
                   >
-                    {posting === "NOTICE" && <Loader2 className="size-3.5 animate-spin" />}
-                    공지 등록
+                    {posting === "LOUNGE" && <Loader2 className="size-3.5 animate-spin" />}
+                    익명으로 남기기
                   </Button>
                 </div>
               </div>
-            )}
-            {notices.length === 0 ? (
-              <p className="text-muted-foreground text-sm">등록된 공지가 없습니다.</p>
-            ) : (
-              notices.map((p) => (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  canModerate={!!data?.canPostNotice}
-                  onVote={onVote}
-                  onDelete={onDelete}
-                />
-              ))
-            )}
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <h2 className="text-base font-semibold">실시간 익명 라운지</h2>
-            <div className="rounded-lg border bg-card p-3">
-              <p className="mb-2 text-sm font-medium">속마음 털어놓기</p>
-              <p className="text-muted-foreground mb-2 text-xs">{GUIDE}</p>
-              <Textarea
-                value={loungeText}
-                onChange={(e) => setLoungeText(e.target.value)}
-                placeholder="속마음 털어놓기"
-                maxLength={2000}
-                className="min-h-24"
-              />
-              <div className="mt-2 flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!loungeText.trim() || posting === "LOUNGE"}
-                  onClick={() => void submit("LOUNGE")}
-                >
-                  {posting === "LOUNGE" && <Loader2 className="size-3.5 animate-spin" />}
-                  익명으로 남기기
-                </Button>
-              </div>
-            </div>
-            {lounge.length === 0 ? (
-              <p className="text-muted-foreground text-sm">아직 글이 없습니다.</p>
-            ) : (
-              lounge.map((p) => (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  canModerate={!!data?.canPostNotice}
-                  onVote={onVote}
-                  onDelete={onDelete}
-                />
-              ))
-            )}
-          </section>
+              {loungeList.length === 0 ? (
+                <p className="text-muted-foreground text-sm font-medium">아직 글이 없습니다.</p>
+              ) : (
+                loungeList.map((p) => (
+                  <PostCard
+                    key={p.id}
+                    post={p}
+                    canModerate={!!data?.canPostNotice}
+                    onVote={onVote}
+                    onDelete={onDelete}
+                  />
+                ))
+              )}
+            </section>
+          )}
         </div>
       )}
     </div>
