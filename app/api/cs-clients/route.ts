@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { canManageCsClients, canViewCsClients } from "@/lib/cs-client-access";
+import { canManageCsClients, canViewCsClients, csClientListWhere } from "@/lib/cs-client-access";
 import { serializeCsClient, csClientInclude } from "@/lib/cs-client-serialize";
 
 async function loadMe(userId: string) {
@@ -22,9 +22,10 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const manage = canManageCsClients(me);
     const [rows, staff] = await Promise.all([
       prisma.csClient.findMany({
-        where: { deletedAt: null },
+        where: csClientListWhere(me.id, manage),
         orderBy: [{ isActive: "desc" }, { name: "asc" }],
         include: csClientInclude,
       }),
@@ -38,7 +39,8 @@ export async function GET() {
     return NextResponse.json({
       clients: rows.map(serializeCsClient),
       staff,
-      canManage: canManageCsClients(me),
+      canManage: manage,
+      scope: manage ? "all" : "mine",
     });
   } catch {
     console.error("[cs-clients] list failed");

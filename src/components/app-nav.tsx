@@ -52,6 +52,7 @@ import { canManageEmployeesSync } from "@/lib/employee-admin-access";
 import { canViewAwayOverview } from "@/lib/attendance-away-access";
 import { canViewEmployeeLeaveSummary } from "@/lib/leave-overview-access";
 import { canSeeCsToolsDashboardCard } from "@/lib/cs-tools-access";
+import { canManageCsClients, csClientNavLabel } from "@/lib/cs-client-access";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -494,6 +495,10 @@ export function AppNav() {
     department: session?.user?.department,
   });
 
+  const canManageClients = canManageCsClients({
+    role: session?.user?.role,
+    department: session?.user?.department,
+  });
   const hrLinks = hrGroupLinks.filter(
     (l: any) =>
       (!l.featureKey || can(l.featureKey)) &&
@@ -501,6 +506,8 @@ export function AppNav() {
       (!l.awayOverviewOnly || canSeeAwayOverview) &&
       (!l.csAccessOnly || canSeeCsTools) &&
       navHrefAllowedForOrg(l.href, orgUnit)
+  ).map((l) =>
+    l.href === "/cs-clients" ? { ...l, label: csClientNavLabel(canManageClients) } : l
   );
   const financeLinks = financeGroupLinks.filter(
     (l: any) => (!l.featureKey || can(l.featureKey)) && navHrefAllowedForOrg(l.href, orgUnit)

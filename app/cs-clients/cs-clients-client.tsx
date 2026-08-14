@@ -208,7 +208,14 @@ export function CsClientsClient() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageHeadline title="CS 업체" description="담당·계약 기간을 한 화면에서 관리합니다." />
+        <PageHeadline
+          title={canManage ? "업체 관리" : "내 담당 업체"}
+          description={
+            canManage
+              ? "전체 업체 리스트에서 담당을 배정하고 계약 기간을 수정합니다."
+              : "내가 맡은 업체만 표시됩니다."
+          }
+        />
         {canManage && (
           <Button type="button" size="sm" onClick={() => void addRow()}>
             <Plus className="size-4" />
@@ -271,7 +278,7 @@ export function CsClientsClient() {
               {visible.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-muted-foreground px-3 py-8 text-center">
-                    업체가 없습니다.
+                  {canManage ? "업체가 없습니다." : "맡은 업체가 없습니다."}
                   </td>
                 </tr>
               ) : (

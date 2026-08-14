@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { canManageCsClients, canViewCsClients } from "@/lib/cs-client-access";
+import { canManageCsClients, canViewCsClients, csClientListWhere } from "@/lib/cs-client-access";
 import { serializeCsClient, csClientInclude, csClientActiveFromPatch } from "@/lib/cs-client-serialize";
 
 async function loadMe(userId: string) {
@@ -110,8 +110,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await params;
+  const manage = canManageCsClients(me);
   const row = await prisma.csClient.findFirst({
-    where: { id, deletedAt: null },
+    where: { id, ...csClientListWhere(me.id, manage) },
     include: csClientInclude,
   });
   if (!row) return NextResponse.json({ error: "업체를 찾을 수 없습니다." }, { status: 404 });

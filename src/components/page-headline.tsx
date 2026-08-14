@@ -1,5 +1,5 @@
 /**
- * 페이지 헤드라인: 보라색 뱃지 스타일로 한 줄에 표시해 구분
+ * 페이지 제목: CS 화면과 같은 큰 스케일 (22px/800)
  */
 export function PageHeadline({
   title,
@@ -11,12 +11,14 @@ export function PageHeadline({
   className?: string;
 }) {
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}>
-      <span className="inline-flex shrink-0 items-center rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground shadow-sm">
+    <div className={`flex min-w-0 flex-col gap-1.5 ${className ?? ""}`}>
+      <h1 className="text-[1.375rem] font-extrabold tracking-tight text-foreground md:text-2xl">
         {title}
-      </span>
+      </h1>
       {description && (
-        <span className="text-muted-foreground text-sm font-medium">{description}</span>
+        <p className="text-muted-foreground max-w-3xl text-sm font-medium leading-relaxed">
+          {description}
+        </p>
       )}
     </div>
   );

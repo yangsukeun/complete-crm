@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { ColorChip } from "@/components/ui/color-chip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -110,21 +109,8 @@ function leaveStatusLabel(s: string) {
   return "반려";
 }
 
-function LeaveStatusMark({ status, csScreen }: { status: string; csScreen: boolean }) {
-  const label = leaveStatusLabel(status);
-  if (csScreen) {
-    return <ColorChip tone={leaveStatusChipTone(status)}>{label}</ColorChip>;
-  }
-  return (
-    <Badge
-      variant={
-        status === "APPROVED" ? "default" : status === "REJECTED" ? "destructive" : "secondary"
-      }
-      className="w-fit"
-    >
-      {label}
-    </Badge>
-  );
+function LeaveStatusMark({ status }: { status: string }) {
+  return <ColorChip tone={leaveStatusChipTone(status)}>{leaveStatusLabel(status)}</ColorChip>;
 }
 
 export function LeavePageClient({
@@ -417,7 +403,7 @@ export function LeavePageClient({
   }
 
   return (
-    <div data-cs-screen={csScreen || undefined} className={cn("flex flex-col p-4 md:p-6", csScreen ? "gap-8 p-6 md:p-8" : "gap-6")}>
+    <div data-cs-screen className="flex flex-col gap-8 p-6 md:p-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2 min-w-0">
           <PageHeadline
@@ -451,7 +437,7 @@ export function LeavePageClient({
             <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-muted-foreground text-xs">{balance.year}년 사용 가능 잔여</p>
-                <p className={csScreen ? "cs-stat tracking-tight" : "text-3xl font-semibold tracking-tight"}>
+                <p className="cs-stat tracking-tight">
                   <span className="text-primary">{balance.remaining.toFixed(1)}</span>
                   <span className="text-muted-foreground ml-1 text-base font-medium">일</span>
                 </p>
@@ -624,15 +610,9 @@ export function LeavePageClient({
                 <TabsTrigger value="approve" className="gap-1.5">
                   승인
                   {approvalQueue.length > 0 ? (
-                    csScreen ? (
-                      <ColorChip tone="red" size="sm">
-                        {approvalQueue.length}
-                      </ColorChip>
-                    ) : (
-                      <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-[11px]">
-                        {approvalQueue.length}
-                      </Badge>
-                    )
+                    <ColorChip tone="red" size="sm">
+                      {approvalQueue.length}
+                    </ColorChip>
                   ) : null}
                 </TabsTrigger>
               ) : null}
@@ -662,7 +642,7 @@ export function LeavePageClient({
                             </p>
                           </div>
                           <div className="text-right">
-                            <LeaveStatusMark status={r.status} csScreen={csScreen} />
+                            <LeaveStatusMark status={r.status} />
                             <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
                               {statusHint(r.status)}
                             </p>
@@ -707,7 +687,7 @@ export function LeavePageClient({
                             </td>
                             <td className="py-2 pr-2">
                               <div className="flex flex-col gap-0.5">
-                                <LeaveStatusMark status={r.status} csScreen={csScreen} />
+                                <LeaveStatusMark status={r.status} />
                                 <span className="text-muted-foreground text-[11px]">{statusHint(r.status)}</span>
                               </div>
                             </td>
@@ -846,7 +826,7 @@ export function LeavePageClient({
                                 ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
                             </td>
                             <td className="py-2 pr-2">
-                              <LeaveStatusMark status={r.status} csScreen={csScreen} />
+                              <LeaveStatusMark status={r.status} />
                             </td>
                             <td className="max-w-[160px] truncate py-2 text-muted-foreground text-xs" title={r.reason ?? ""}>
                               {r.reason ?? "—"}

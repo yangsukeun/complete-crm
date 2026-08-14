@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
-import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock, Link2 } from "lucide-react";
+import { Calendar, ListTodo, Users, ClipboardList, Target, CalendarClock, Link2, Building2 } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { startOfDayKst, formatKstHm } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
@@ -20,6 +20,7 @@ import { PageHeadline } from "@/components/page-headline";
 import { Badge } from "@/components/ui/badge";
 import { canPostAnnouncement } from "@/lib/role-access";
 import { canSeeCsToolsDashboardCard } from "@/lib/cs-tools-access";
+import { canManageCsClients, csClientNavDescription, csClientNavLabel } from "@/lib/cs-client-access";
 import { homePathForOrg, resolveOrgUnit } from "@/lib/org-access";
 
 const DashboardAttendance = dynamic(
@@ -79,6 +80,10 @@ export default async function DashboardPage() {
     role,
     department: meDept?.department,
   });
+  const manageClients = canManageCsClients({
+    role,
+    department: meDept?.department,
+  });
 
   // 개인 모드: 연차/출퇴근 없이 일정·업무·목표만
   if (!isCompanyMode) {
@@ -114,7 +119,7 @@ export default async function DashboardPage() {
       }),
     ]);
     return (
-      <div className="flex flex-col gap-6 p-4 md:p-6">
+      <div className="flex flex-col gap-8 p-4 md:p-6">
         <PageHeadline
           title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
           description="개인 모드 — 내 일정·할 일만 간단히 관리합니다."
@@ -124,7 +129,7 @@ export default async function DashboardPage() {
         {false && showCsToolsCard && (
           <Link
             href="/cs-tools"
-            className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="flex items-center justify-between gap-3 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <div>
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -138,7 +143,7 @@ export default async function DashboardPage() {
         )}
         <Link
           href="/tasks"
-          className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
         >
           <div className="flex items-center gap-2 text-muted-foreground">
             <ListTodo className="size-5" />
@@ -151,7 +156,7 @@ export default async function DashboardPage() {
           </span>
         </Link>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border bg-card p-4 opacity-90">
+          <div className="rounded-xl border bg-card p-5 opacity-90">
             <div className="flex items-center gap-2 text-muted-foreground">
               <CalendarClock className="size-5" />
               <span className="text-sm">남은 연차</span>
@@ -159,7 +164,7 @@ export default async function DashboardPage() {
             <p className="mt-2 text-2xl font-semibold">—</p>
             <p className="text-muted-foreground text-sm">회사 모드에서 확인</p>
           </div>
-          <div className="rounded-lg border bg-card p-4">
+          <div className="rounded-xl border bg-card p-5">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Target className="size-5" />
               <span className="text-sm">목표</span>
@@ -174,7 +179,7 @@ export default async function DashboardPage() {
         {false && (
           <Link
             href="/schedule"
-            className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="size-5" />
@@ -298,7 +303,7 @@ export default async function DashboardPage() {
     const incompleteCount = tasksCreatedByMe.filter((t: any) => !t.isCompleted).length;
 
     return (
-      <div className="flex flex-col gap-6 p-4 md:p-6">
+      <div className="flex flex-col gap-8 p-4 md:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <PageHeadline
             title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
@@ -328,11 +333,13 @@ export default async function DashboardPage() {
 
         <DashboardTodayBrief />
 
+        {showCsToolsCard && <CsClientsEntryCard canManage={manageClients} />}
+
         {/* 디자인 2단계: 대시보드에서 숨김 (페이지·API 유지) — CS 링크 허브 */}
         {false && showCsToolsCard && (
           <Link
             href="/cs-tools"
-            className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="flex items-center justify-between gap-3 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <div>
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -345,7 +352,7 @@ export default async function DashboardPage() {
           </Link>
         )}
 
-        <div className="rounded-lg border bg-card p-4">
+        <div className="rounded-xl border bg-card p-5">
           <div className="flex items-center gap-2 text-muted-foreground">
             <ListTodo className="size-5" />
             <span className="text-sm">프로젝트</span>
@@ -361,7 +368,7 @@ export default async function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/leave"
-            className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <div className="flex items-center gap-2 text-muted-foreground">
               <CalendarClock className="size-5" />
@@ -375,7 +382,7 @@ export default async function DashboardPage() {
               연차/근태 →
             </span>
           </Link>
-          <div className="rounded-lg border bg-card p-4">
+          <div className="rounded-xl border bg-card p-5">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Target className="size-5" />
               <span className="text-sm">목표</span>
@@ -390,7 +397,7 @@ export default async function DashboardPage() {
         {/* 디자인 2단계: 대시보드에서 숨김 — 전체 직원 / 금일 출근 카드 */}
         {false && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border bg-card p-4">
+          <div className="rounded-xl border bg-card p-5">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Users className="size-5" />
               <span className="text-sm">전체 직원</span>
@@ -403,7 +410,7 @@ export default async function DashboardPage() {
           <Link
             href="/dashboard/today-attendance"
             prefetch={false}
-            className="block rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="block rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <div className="flex items-center gap-2 text-muted-foreground">
               <ClipboardList className="size-5" />
@@ -504,7 +511,7 @@ export default async function DashboardPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-col gap-8 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageHeadline
           title={`안녕하세요, ${session.user.name ?? session.user.email}님`}
@@ -534,11 +541,13 @@ export default async function DashboardPage() {
 
       <DashboardTodayBrief />
 
+      {showCsToolsCard && <CsClientsEntryCard canManage={manageClients} />}
+
       {/* 디자인 2단계: 대시보드에서 숨김 (페이지·API 유지) — CS 링크 허브 */}
       {false && showCsToolsCard && (
         <Link
           href="/cs-tools"
-          className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          className="flex items-center justify-between gap-3 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
         >
           <div>
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -553,7 +562,7 @@ export default async function DashboardPage() {
 
       <Link
         href="/tasks"
-        className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+        className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
       >
         <div className="flex items-center gap-2 text-muted-foreground">
           <ListTodo className="size-5" />
@@ -568,7 +577,7 @@ export default async function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
           href="/leave"
-          className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+          className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
         >
           <div className="flex items-center gap-2 text-muted-foreground">
             <CalendarClock className="size-5" />
@@ -582,7 +591,7 @@ export default async function DashboardPage() {
             연차/근태 →
           </span>
         </Link>
-        <div className="rounded-lg border bg-card p-4">
+        <div className="rounded-xl border bg-card p-5">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Target className="size-5" />
             <span className="text-sm">목표</span>
@@ -614,7 +623,7 @@ export default async function DashboardPage() {
                 <li key={task.id}>
                   <Link
                     href="/tasks"
-                    className="flex items-center gap-2 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+                    className="flex items-center gap-2 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
                   >
                     <span className="flex-1 font-medium">{task.title}</span>
                     {urgent && <Badge variant="destructive">마감 임박</Badge>}
@@ -662,6 +671,21 @@ export default async function DashboardPage() {
       )}
 
     </div>
+  );
+}
+
+function CsClientsEntryCard({ canManage }: { canManage: boolean }) {
+  return (
+    <Link
+      href="/cs-clients"
+      className="chip-accent-border chip-accent-border--blue flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
+    >
+      <span className="flex items-center gap-2 text-base font-semibold">
+        <Building2 className="size-5 text-muted-foreground" />
+        {csClientNavLabel(canManage)}
+      </span>
+      <span className="text-muted-foreground text-sm">{csClientNavDescription(canManage)}</span>
+    </Link>
   );
 }
 

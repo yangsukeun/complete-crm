@@ -11,6 +11,7 @@ import prisma from "@/lib/prisma";
 import { startOfDayKst } from "@/lib/date-kst";
 import { canUseAwayFeature, canViewAwayOverview, summarizeAwayLogs } from "@/lib/attendance-away-access";
 import { canAccessCsLounge } from "@/lib/cs-lounge-access";
+import { canManageCsClients, csClientNavDescription, csClientNavLabel } from "@/lib/cs-client-access";
 import { isExecutiveOrAdmin } from "@/lib/role-access";
 import { pickCsBirthdaysThisMonth } from "@/lib/cs-org";
 
@@ -38,6 +39,10 @@ export default async function CsToolsPage() {
     department: me?.department ?? session.user.department,
   });
   const loungeOk = canAccessCsLounge({
+    role: me?.role ?? session.user.role,
+    department: me?.department ?? session.user.department,
+  });
+  const manageClients = canManageCsClients({
     role: me?.role ?? session.user.role,
     department: me?.department ?? session.user.department,
   });
@@ -98,13 +103,13 @@ export default async function CsToolsPage() {
           </Link>
           <Link
             href="/cs-clients"
-            className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
+            className="chip-accent-border chip-accent-border--blue flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <span className="flex items-center gap-2 text-base font-semibold">
               <Building2 className="size-4 text-muted-foreground" />
-              업체·담당
+              {csClientNavLabel(manageClients)}
             </span>
-            <span className="text-muted-foreground text-sm">CS 업체와 담당자를 관리합니다.</span>
+            <span className="text-muted-foreground text-sm">{csClientNavDescription(manageClients)}</span>
           </Link>
           <Link
             href="/cs-lounge"
