@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ColorChip } from "@/components/ui/color-chip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -34,6 +35,7 @@ import { cn, formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { leaveDisplayDays } from "@/lib/leave-request-serialize";
+import { leaveStatusChipTone } from "@/lib/color-chip";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 import { mutate } from "swr";
 import { SWR_KEYS } from "@/lib/api-swr";
@@ -99,12 +101,40 @@ type TodayAttendance = {
   date: string;
 } | null;
 
+function leaveStatusLabel(s: string) {
+  if (s === "PENDING") return "1차 대기";
+  if (s === "TEAM_LEAD_APPROVED") return "2차 대기";
+  if (s === "APPROVED") return "승인";
+  if (s === "CANCEL_REQUESTED") return "취소 요청";
+  if (s === "CANCELLED") return "취소 완료";
+  return "반려";
+}
+
+function LeaveStatusMark({ status, csScreen }: { status: string; csScreen: boolean }) {
+  const label = leaveStatusLabel(status);
+  if (csScreen) {
+    return <ColorChip tone={leaveStatusChipTone(status)}>{label}</ColorChip>;
+  }
+  return (
+    <Badge
+      variant={
+        status === "APPROVED" ? "default" : status === "REJECTED" ? "destructive" : "secondary"
+      }
+      className="w-fit"
+    >
+      {label}
+    </Badge>
+  );
+}
+
 export function LeavePageClient({
   isTeamLead,
   isExecutive,
+  csScreen = false,
 }: {
   isTeamLead: boolean;
   isExecutive: boolean;
+  csScreen?: boolean;
 }) {
   const canApprove = isTeamLead || isExecutive;
   const { data: session } = useSession();
@@ -290,14 +320,6 @@ export function LeavePageClient({
     }
   };
 
-  const statusLabel = (s: string) => {
-    if (s === "PENDING") return "1차 대기";
-    if (s === "TEAM_LEAD_APPROVED") return "2차 대기";
-    if (s === "APPROVED") return "승인";
-    if (s === "CANCEL_REQUESTED") return "취소 요청";
-    if (s === "CANCELLED") return "취소 완료";
-    return "반려";
-  };
   const typeLabel = (t: string) => LEAVE_TYPES.find((x) => x.value === t)?.label ?? t;
 
   const formatLeaveRange = (r: LeaveRequest) => {
@@ -395,7 +417,7 @@ export function LeavePageClient({
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-6">
+    <div data-cs-screen={csScreen || undefined} className={cn("flex flex-col p-4 md:p-6", csScreen ? "gap-8 p-6 md:p-8" : "gap-6")}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2 min-w-0">
           <PageHeadline
@@ -429,7 +451,7 @@ export function LeavePageClient({
             <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-muted-foreground text-xs">{balance.year}년 사용 가능 잔여</p>
-                <p className="text-3xl font-semibold tracking-tight">
+                <p className={csScreen ? "cs-stat tracking-tight" : "text-3xl font-semibold tracking-tight"}>
                   <span className="text-primary">{balance.remaining.toFixed(1)}</span>
                   <span className="text-muted-foreground ml-1 text-base font-medium">일</span>
                 </p>
@@ -588,7 +610,7 @@ export function LeavePageClient({
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>휴가 내역</CardTitle>
+          <CardTitle className="cs-section-title">휴가 내역</CardTitle>
           <p className="text-muted-foreground text-xs font-normal">
             내 신청은 전 상태를 볼 수 있고, 동료의 승인된 휴가만 열람됩니다.
           </p>
@@ -602,9 +624,15 @@ export function LeavePageClient({
                 <TabsTrigger value="approve" className="gap-1.5">
                   승인
                   {approvalQueue.length > 0 ? (
-                    <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-[11px]">
-                      {approvalQueue.length}
-                    </Badge>
+                    csScreen ? (
+                      <ColorChip tone="red" size="sm">
+                        {approvalQueue.length}
+                      </ColorChip>
+                    ) : (
+                      <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-[11px]">
+                        {approvalQueue.length}
+                      </Badge>
+                    )
                   ) : null}
                 </TabsTrigger>
               ) : null}
@@ -634,17 +662,7 @@ export function LeavePageClient({
                             </p>
                           </div>
                           <div className="text-right">
-                            <Badge
-                              variant={
-                                r.status === "APPROVED"
-                                  ? "default"
-                                  : r.status === "REJECTED"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                            >
-                              {statusLabel(r.status)}
-                            </Badge>
+                            <LeaveStatusMark status={r.status} csScreen={csScreen} />
                             <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
                               {statusHint(r.status)}
                             </p>
@@ -689,18 +707,7 @@ export function LeavePageClient({
                             </td>
                             <td className="py-2 pr-2">
                               <div className="flex flex-col gap-0.5">
-                                <Badge
-                                  variant={
-                                    r.status === "APPROVED"
-                                      ? "default"
-                                      : r.status === "REJECTED"
-                                        ? "destructive"
-                                        : "secondary"
-                                  }
-                                  className="w-fit"
-                                >
-                                  {statusLabel(r.status)}
-                                </Badge>
+                                <LeaveStatusMark status={r.status} csScreen={csScreen} />
                                 <span className="text-muted-foreground text-[11px]">{statusHint(r.status)}</span>
                               </div>
                             </td>
@@ -839,7 +846,7 @@ export function LeavePageClient({
                                 ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
                             </td>
                             <td className="py-2 pr-2">
-                              <Badge variant="secondary">{statusLabel(r.status)}</Badge>
+                              <LeaveStatusMark status={r.status} csScreen={csScreen} />
                             </td>
                             <td className="max-w-[160px] truncate py-2 text-muted-foreground text-xs" title={r.reason ?? ""}>
                               {r.reason ?? "—"}

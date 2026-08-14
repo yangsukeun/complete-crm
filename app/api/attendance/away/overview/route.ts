@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { requireAwayOverview } from "@/lib/attendance-admin";
 import { addDaysKstYmd, kstDateBoundsUtc, kstYmdToUtcDayStart, todayYmdKst } from "@/lib/date-kst";
 import { getKstWeekday } from "@/lib/date-kst";
+import { isCsBirthdayToday } from "@/lib/cs-org";
 import { isCsSchedulerMember } from "@/lib/schedule-team-access";
 
 export const runtime = "nodejs";
@@ -53,12 +54,12 @@ export async function GET() {
     const [openRows, monthRows] = await Promise.all([
       prisma.awayLog.findMany({
         where: { endedAt: null },
-        include: { user: { select: { id: true, name: true, department: true, role: true } } },
+        include: { user: { select: { id: true, name: true, department: true, role: true, birthDate: true } } },
         orderBy: { startedAt: "asc" },
       }),
       prisma.awayLog.findMany({
         where: { startedAt: { gte: from } },
-        include: { user: { select: { id: true, name: true, department: true, role: true } } },
+        include: { user: { select: { id: true, name: true, department: true, role: true, birthDate: true } } },
       }),
     ]);
 
@@ -75,19 +76,21 @@ export async function GET() {
         userId: string;
         name: string;
         department: string | null;
+        birthdayToday: boolean;
         today: Totals;
         week: Totals;
         month: Totals;
       }
     >();
 
-    const ensure = (userId: string, name: string, department: string | null) => {
+    const ensure = (userId: string, name: string, department: string | null, birthdayToday: boolean) => {
       let row = byUser.get(userId);
       if (!row) {
         row = {
           userId,
           name,
           department,
+          birthdayToday,
           today: emptyTotals(),
           week: emptyTotals(),
           month: emptyTotals(),
@@ -100,7 +103,12 @@ export async function GET() {
     for (const row of csMonth) {
       const ms = durationMs(row.startedAt, row.endedAt, now);
       const startMs = row.startedAt.getTime();
-      const agg = ensure(row.user.id, row.user.name, row.user.department);
+      const agg = ensure(
+        row.user.id,
+        row.user.name,
+        row.user.department,
+        isCsBirthdayToday(row.user.birthDate, now)
+      );
       addLog(agg.month, ms);
       if (startMs >= weekStartMs) addLog(agg.week, ms);
       if (startMs >= todayStart) addLog(agg.today, ms);
@@ -115,6 +123,7 @@ export async function GET() {
         department: r.user.department,
         startedAt: r.startedAt.toISOString(),
         elapsedMs: now.getTime() - r.startedAt.getTime(),
+        birthdayToday: isCsBirthdayToday(r.user.birthDate, now),
       })),
       totals: [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name, "ko")),
     });

@@ -38,6 +38,24 @@
   --sidebar-accent-foreground: #191F28;
   --sidebar-border: #E5E8EB;
   --sidebar-ring: #6D28D9;
+
+  /* 컬러 칩 토큰 — hex는 여기만. 컴포넌트는 클래스명으로만 참조 */
+  --chip-red-bg: #FDECEC;
+  --chip-red-fg: #D92D20;
+  --chip-yellow-bg: #FFF6DD;
+  --chip-yellow-fg: #B54708;
+  --chip-green-bg: #E6F9F0;
+  --chip-green-fg: #12805C;
+  --chip-blue-bg: #E8F1FD;
+  --chip-blue-fg: #1B64DA;
+  --chip-purple-bg: #EFEDFC;
+  --chip-purple-fg: #6C5CE7;
+  --chip-pink-bg: #FDEBF3;
+  --chip-pink-fg: #D6336C;
+  --chip-pink-emphasis-bg: #F7C4D8;
+  --chip-pink-emphasis-fg: #C2255C;
+  --chip-gray-bg: #F2F4F6;
+  --chip-gray-fg: #4E5968;
 }
 
 .dark {
@@ -200,6 +218,99 @@ html.dark[data-workspace="MY"] {
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--foreground);
+}
+
+/* ========================================
+   Color chips — 토큰은 :root 만. 화면은 클래스만 사용
+   ======================================== */
+.color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  padding: 0.28rem 0.7rem;
+  line-height: 1.25;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.color-chip--sm {
+  border-radius: 0.625rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.6875rem;
+  gap: 0.2rem;
+}
+.color-chip__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.color-chip__icon > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.color-chip--sm .color-chip__icon > svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.color-chip--selected {
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.color-chip--red { background: var(--chip-red-bg); color: var(--chip-red-fg); }
+.color-chip--yellow { background: var(--chip-yellow-bg); color: var(--chip-yellow-fg); }
+.color-chip--green { background: var(--chip-green-bg); color: var(--chip-green-fg); }
+.color-chip--blue { background: var(--chip-blue-bg); color: var(--chip-blue-fg); }
+.color-chip--purple { background: var(--chip-purple-bg); color: var(--chip-purple-fg); }
+.color-chip--pink { background: var(--chip-pink-bg); color: var(--chip-pink-fg); }
+.color-chip--gray { background: var(--chip-gray-bg); color: var(--chip-gray-fg); }
+.color-chip--pink.color-chip--emphasis {
+  background: var(--chip-pink-emphasis-bg);
+  color: var(--chip-pink-emphasis-fg);
+}
+
+.chip-accent-border {
+  border-left-width: 4px;
+  border-left-style: solid;
+}
+.chip-accent-border--red { border-left-color: var(--chip-red-fg); }
+.chip-accent-border--yellow { border-left-color: var(--chip-yellow-fg); }
+.chip-accent-border--green { border-left-color: var(--chip-green-fg); }
+.chip-accent-border--blue { border-left-color: var(--chip-blue-fg); }
+.chip-accent-border--purple { border-left-color: var(--chip-purple-fg); }
+.chip-accent-border--pink { border-left-color: var(--chip-pink-fg); }
+.chip-accent-border--gray { border-left-color: var(--chip-gray-fg); }
+
+.chip-card-hover--red:hover { background: var(--chip-red-bg); }
+.chip-card-hover--yellow:hover { background: var(--chip-yellow-bg); }
+.chip-card-hover--green:hover { background: var(--chip-green-bg); }
+.chip-card-hover--blue:hover { background: var(--chip-blue-bg); }
+.chip-card-hover--purple:hover { background: var(--chip-purple-bg); }
+.chip-card-hover--pink:hover { background: var(--chip-pink-bg); }
+.chip-card-hover--gray:hover { background: var(--chip-gray-bg); }
+
+/* CS 화면만 한 단계 큰 스케일 — 본사 대시보드·게시판에는 data-cs-screen 없음 */
+[data-cs-screen] .cs-section-title {
+  font-size: 1.3125rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  color: var(--foreground);
+}
+[data-cs-screen] .cs-stat {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+[data-cs-screen] [data-slot="card"] {
+  gap: 1.5rem;
+}
+[data-cs-screen] [data-slot="card-header"],
+[data-cs-screen] [data-slot="card-content"] {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
 }
 
 /* ========================================

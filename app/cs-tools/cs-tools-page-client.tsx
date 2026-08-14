@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ExternalLink, Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CS_TOOL_CATEGORY_ORDER } from "@/lib/cs-tools";
+import { CS_TOOL_CATEGORY_ORDER, csToolCategoryTone } from "@/lib/cs-tools";
+import { chipAccentBorderClass, chipCardHoverClass } from "@/lib/color-chip";
+import { ColorChip } from "@/components/ui/color-chip";
 
 type CsTool = {
   id: string;
@@ -130,35 +132,30 @@ export function CsToolsPageClient() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setFilter("__ALL__")}
-          className={cn(
-            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-            filter === "__ALL__"
-              ? "border-sky-600 bg-sky-600 text-white"
-              : "border-border bg-background text-muted-foreground hover:border-sky-300 hover:text-foreground"
-          )}
+          className="cursor-pointer rounded-[0.75rem] border-0 bg-transparent p-0"
         >
-          전체 ({data?.total ?? 0})
+          <ColorChip tone="gray" selected={filter === "__ALL__"}>
+            전체 ({data?.total ?? 0})
+          </ColorChip>
         </button>
         {filterOptions.map((cat) => {
           const n = data?.byCategory[cat]?.length ?? 0;
+          const tone = csToolCategoryTone(cat);
           return (
             <button
               key={cat}
               type="button"
               onClick={() => setFilter(cat)}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                filter === cat
-                  ? "border-sky-600 bg-sky-600 text-white"
-                  : "border-border bg-background text-muted-foreground hover:border-sky-300 hover:text-foreground"
-              )}
+              className="cursor-pointer rounded-[0.75rem] border-0 bg-transparent p-0"
             >
-              {cat} ({n})
+              <ColorChip tone={tone} selected={filter === cat}>
+                {cat} ({n})
+              </ColorChip>
             </button>
           );
         })}
@@ -166,38 +163,38 @@ export function CsToolsPageClient() {
 
       {visibleCategories.map((cat) => {
         const tools = data?.byCategory[cat] ?? [];
+        const tone = csToolCategoryTone(cat);
         return (
           <section key={cat}>
-            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
-              <Link2 className="size-4 text-muted-foreground" />
-              {cat}
-              <span className="text-xs font-normal text-muted-foreground">({tools.length})</span>
+            <h2 className="cs-section-title mb-4 flex items-center gap-2">
+              <ColorChip tone={tone} icon={<Link2 />}>
+                {cat}
+              </ColorChip>
+              <span className="text-muted-foreground text-sm font-medium">({tools.length})</span>
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {tools.map((tool) => (
                 <button
                   key={tool.id}
                   type="button"
                   onClick={() => openTool(tool)}
                   className={cn(
-                    "group flex flex-col items-start gap-1.5 rounded-lg border bg-card p-4 text-left",
-                    "transition-colors hover:border-sky-300 hover:bg-sky-50/60"
+                    "group flex flex-col items-start gap-2 rounded-xl border bg-card p-5 text-left",
+                    "transition-colors",
+                    chipAccentBorderClass(tone),
+                    chipCardHoverClass(tone)
                   )}
                 >
                   <div className="flex w-full items-start justify-between gap-2">
-                    <span className="font-medium text-gray-900 group-hover:text-sky-900">
-                      {tool.name}
-                    </span>
+                    <span className="text-base font-semibold text-foreground">{tool.name}</span>
                     {!tool.url.startsWith("/") && (
                       <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-60 group-hover:opacity-100" />
                     )}
                   </div>
                   {tool.description && (
-                    <p className="line-clamp-2 text-xs text-muted-foreground">{tool.description}</p>
+                    <p className="line-clamp-2 text-sm text-muted-foreground">{tool.description}</p>
                   )}
-                  <span className="mt-auto pt-1 text-[11px] text-muted-foreground">
-                    클릭 {tool.clickCount}회
-                  </span>
+                  <span className="text-muted-foreground mt-auto pt-1 text-xs">클릭 {tool.clickCount}회</span>
                 </button>
               ))}
             </div>

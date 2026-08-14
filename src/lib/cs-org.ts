@@ -1,12 +1,19 @@
 import { toKstYmd } from "@/lib/date-kst";
 
-export type CsBirthdayPerson = { id: string; name: string; monthDay: string };
+export type CsBirthdayPerson = { id: string; name: string; monthDay: string; isToday: boolean };
 
 export function csBirthMonthDay(birthDate: Date): { month: number; day: number; label: string } {
   const ymd = toKstYmd(birthDate);
   const month = Number(ymd.slice(5, 7));
   const day = Number(ymd.slice(8, 10));
   return { month, day, label: `${month}/${day}` };
+}
+
+export function isCsBirthdayToday(birthDate: Date | null | undefined, asOf = new Date()): boolean {
+  if (!birthDate) return false;
+  const md = csBirthMonthDay(birthDate);
+  const ymd = toKstYmd(asOf);
+  return md.month === Number(ymd.slice(5, 7)) && md.day === Number(ymd.slice(8, 10));
 }
 
 export function pickCsBirthdaysThisMonth(
@@ -23,10 +30,18 @@ export function pickCsBirthdaysThisMonth(
     }
     const md = csBirthMonthDay(u.birthDate);
     if (md.month === thisMonth) {
-      birthdays.push({ id: u.id, name: u.name, monthDay: md.label });
+      birthdays.push({
+        id: u.id,
+        name: u.name,
+        monthDay: md.label,
+        isToday: isCsBirthdayToday(u.birthDate, asOf),
+      });
     }
   }
-  birthdays.sort((a, b) => a.monthDay.localeCompare(b.monthDay, "ko") || a.name.localeCompare(b.name, "ko"));
+  birthdays.sort((a, b) => {
+    if (a.isToday !== b.isToday) return a.isToday ? -1 : 1;
+    return a.monthDay.localeCompare(b.monthDay, "ko") || a.name.localeCompare(b.name, "ko");
+  });
   return { birthdays, missingCount };
 }
 

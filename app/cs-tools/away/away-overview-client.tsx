@@ -5,6 +5,7 @@ import { jsonFetcher } from "@/lib/api-swr";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ColorChip, NameWithBirthday } from "@/components/ui/color-chip";
 
 type Totals = {
   count: number;
@@ -20,11 +21,13 @@ type Api = {
     department: string | null;
     startedAt: string;
     elapsedMs: number;
+    birthdayToday: boolean;
   }[];
   totals: {
     userId: string;
     name: string;
     department: string | null;
+    birthdayToday: boolean;
     today: Totals;
     week: Totals;
     month: Totals;
@@ -55,7 +58,7 @@ export function AwayOverviewClient() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeadline
           title="CS 이석 현황"
@@ -73,17 +76,25 @@ export function AwayOverviewClient() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">현재 부재중 ({data.current.length})</CardTitle>
+              <CardTitle className="cs-section-title">현재 부재중</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 flex items-end gap-3">
+                <p className="cs-stat tabular-nums">{data.current.length}</p>
+                <ColorChip tone="yellow">명</ColorChip>
+              </div>
               {data.current.length === 0 ? (
                 <p className="text-muted-foreground text-sm">부재중인 사람이 없습니다.</p>
               ) : (
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-3 text-sm">
                   {data.current.map((row) => (
                     <li key={row.id} className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{row.name}</span>
-                      <span className="text-muted-foreground">{fmtDur(row.elapsedMs)} 경과</span>
+                      <span className="font-semibold">
+                        <NameWithBirthday name={row.name} birthdayToday={row.birthdayToday} />
+                      </span>
+                      <ColorChip tone="yellow" size="sm">
+                        {fmtDur(row.elapsedMs)} 경과
+                      </ColorChip>
                     </li>
                   ))}
                 </ul>
@@ -91,29 +102,31 @@ export function AwayOverviewClient() {
             </CardContent>
           </Card>
 
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-xl border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-3 py-2 text-left">이름</th>
-                  <th className="px-3 py-2 text-left">부서</th>
-                  <th className="px-3 py-2 text-left">오늘</th>
-                  <th className="px-3 py-2 text-left">이번 주</th>
-                  <th className="px-3 py-2 text-left">이번 달</th>
+                  <th className="px-4 py-3 text-left">이름</th>
+                  <th className="px-4 py-3 text-left">부서</th>
+                  <th className="px-4 py-3 text-left">오늘</th>
+                  <th className="px-4 py-3 text-left">이번 주</th>
+                  <th className="px-4 py-3 text-left">이번 달</th>
                 </tr>
               </thead>
               <tbody>
                 {data.totals.map((row) => (
                   <tr key={row.userId} className="border-t">
-                    <td className="px-3 py-2 font-medium">{row.name}</td>
-                    <td className="px-3 py-2">{row.department ?? "—"}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3 font-semibold">
+                      <NameWithBirthday name={row.name} birthdayToday={row.birthdayToday} />
+                    </td>
+                    <td className="px-4 py-3">{row.department ?? "—"}</td>
+                    <td className="px-4 py-3">
                       <TotalsCell t={row.today} />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3">
                       <TotalsCell t={row.week} />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3">
                       <TotalsCell t={row.month} />
                     </td>
                   </tr>

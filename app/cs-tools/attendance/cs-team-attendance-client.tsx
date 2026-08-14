@@ -6,9 +6,10 @@ import useSWR from "swr";
 import { jsonFetcher } from "@/lib/api-swr";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { ColorChip } from "@/components/ui/color-chip";
 import { addDaysKstYmd, formatKstHm, todayYmdKst } from "@/lib/date-kst";
 import { formatDurationMinutes } from "@/lib/attendance-away-access";
+import { attendanceStatusChipTone } from "@/lib/color-chip";
 
 type Status = "AWAY" | "OUT" | "IN" | "ABSENT";
 
@@ -31,11 +32,11 @@ type Api = {
   members: MemberRow[];
 };
 
-function statusBadge(status: Status) {
-  if (status === "AWAY") return { label: "부재중", className: "border-sky-300 bg-sky-50 text-sky-800" };
-  if (status === "OUT") return { label: "퇴근", className: "border-rose-300 bg-rose-50 text-rose-800" };
-  if (status === "IN") return { label: "근무중", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
-  return { label: "미출근", className: "border-muted-foreground/30 bg-muted text-muted-foreground" };
+function statusChip(status: Status) {
+  if (status === "AWAY") return { label: "부재중", tone: attendanceStatusChipTone(status) };
+  if (status === "OUT") return { label: "퇴근", tone: attendanceStatusChipTone(status) };
+  if (status === "IN") return { label: "근무중", tone: attendanceStatusChipTone(status) };
+  return { label: "미출근", tone: attendanceStatusChipTone(status) };
 }
 
 export function CsTeamAttendanceClient() {
@@ -53,7 +54,7 @@ export function CsTeamAttendanceClient() {
   const absentCount = members.filter((m) => m.status === "ABSENT").length;
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeadline
           title="CS팀 출퇴근"
@@ -89,9 +90,20 @@ export function CsTeamAttendanceClient() {
         </div>
       </div>
 
-      <p className="text-muted-foreground text-sm">
-        근무중 {inCount} · 퇴근 {outCount} · 미출근 {absentCount}
-      </p>
+      <div className="flex flex-wrap items-end gap-6">
+        <div className="flex items-end gap-2">
+          <p className="cs-stat tabular-nums">{inCount}</p>
+          <ColorChip tone="green">근무중</ColorChip>
+        </div>
+        <div className="flex items-end gap-2">
+          <p className="cs-stat tabular-nums">{outCount}</p>
+          <ColorChip tone="blue">퇴근</ColorChip>
+        </div>
+        <div className="flex items-end gap-2">
+          <p className="cs-stat tabular-nums">{absentCount}</p>
+          <ColorChip tone="red">미출근</ColorChip>
+        </div>
+      </div>
 
       {error && <p className="text-destructive text-sm">불러오지 못했습니다.</p>}
       {isLoading && !data && <p className="text-muted-foreground text-sm">불러오는 중…</p>}
@@ -111,7 +123,7 @@ export function CsTeamAttendanceClient() {
             </thead>
             <tbody>
               {members.map((row) => {
-                const badge = statusBadge(row.status);
+                const chip = statusChip(row.status);
                 return (
                   <tr key={row.userId} className="border-t">
                     <td className="px-3 py-3">
@@ -121,9 +133,7 @@ export function CsTeamAttendanceClient() {
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      <Badge variant="outline" className={badge.className}>
-                        {badge.label}
-                      </Badge>
+                      <ColorChip tone={chip.tone}>{chip.label}</ColorChip>
                     </td>
                     <td className="px-3 py-3 text-lg font-semibold tabular-nums text-emerald-700">
                       {row.checkIn ? formatKstHm(row.checkIn) : "—"}

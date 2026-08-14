@@ -13,7 +13,7 @@ export default async function CsAwayOverviewPage() {
   });
   if (!me || !canViewAwayOverview(me)) redirect("/cs-tools");
   return (
-    <div className="w-full min-h-screen px-4 py-4 lg:px-6 lg:py-6 xl:px-8">
+    <div data-cs-screen className="w-full min-h-screen px-4 py-4 lg:px-6 lg:py-6 xl:px-8">
       <AwayOverviewClient />
     </div>
   );

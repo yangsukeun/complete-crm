@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Loader2, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { CsScreen } from "@/components/cs-screen";
 import { toast } from "sonner";
 
 type LoungePost = {
@@ -55,7 +56,7 @@ function PostCard({
   onDelete: (id: string) => void;
 }) {
   return (
-    <article className="rounded-xl border bg-card p-4">
+    <article className="rounded-xl border bg-card p-5">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
@@ -117,7 +118,7 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <h2 className="cs-section-title">{title}</h2>
       {showAll && (
         <Link href={href} className="text-sm font-semibold text-primary hover:underline">
           전체보기
@@ -226,7 +227,7 @@ export function CsLoungeClient() {
   const loungeList = tab === "home" ? lounge.slice(0, PREVIEW) : lounge;
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
+    <CsScreen>
       <section className="rounded-2xl border border-primary/15 bg-primary/5 px-6 py-8 md:px-8 md:py-10">
         <p className="text-3xl font-extrabold tracking-tight break-keep text-foreground md:text-4xl">
           좋은 하루! 오늘 하루도 화이팅입니다! 💪
@@ -242,16 +243,16 @@ export function CsLoungeClient() {
           불러오는 중…
         </div>
       ) : (
-        <div className={tab === "home" ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
+        <div className={tab === "home" ? "grid gap-8 lg:grid-cols-2" : "grid gap-8"}>
           {showNotice && (
-            <section id="notice" className="flex flex-col gap-3">
+            <section id="notice" className="flex flex-col gap-4">
               <SectionHeader
                 title="최근 공지사항"
                 href="/cs-lounge?tab=notice"
                 showAll={tab === "home"}
               />
               {data?.canPostNotice && tab !== "home" && (
-                <div className="rounded-xl border bg-card p-3">
+                <div className="rounded-xl border bg-card p-5">
                   <Textarea
                     value={noticeText}
                     onChange={(e) => setNoticeText(e.target.value)}
@@ -289,13 +290,13 @@ export function CsLoungeClient() {
           )}
 
           {showLounge && (
-            <section id="lounge" className="flex flex-col gap-3">
+            <section id="lounge" className="flex flex-col gap-4">
               <SectionHeader
                 title="실시간 익명 라운지"
                 href="/cs-lounge?tab=lounge"
                 showAll={tab === "home"}
               />
-              <div className="rounded-xl border bg-card p-3">
+              <div className="rounded-xl border bg-card p-5">
                 <p className="mb-1 text-sm font-semibold text-foreground">속마음 털어놓기</p>
                 <p className="text-muted-foreground mb-2 text-xs font-medium">{GUIDE}</p>
                 <Textarea
@@ -334,6 +335,6 @@ export function CsLoungeClient() {
           )}
         </div>
       )}
-    </div>
+    </CsScreen>
   );
 }

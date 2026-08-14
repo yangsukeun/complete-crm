@@ -3,6 +3,8 @@ import { getAppSession } from "@/auth";
 import { PageHeadline } from "@/components/page-headline";
 import { CsToolsPageClient } from "./cs-tools-page-client";
 import { DashboardAttendance } from "@/components/dashboard-attendance";
+import { CsScreen } from "@/components/cs-screen";
+import { ColorChip } from "@/components/ui/color-chip";
 import Link from "next/link";
 import { Building2, CalendarPlus, Cake, Megaphone } from "lucide-react";
 import prisma from "@/lib/prisma";
@@ -59,7 +61,7 @@ export default async function CsToolsPage() {
   const showMissing = isExecutiveOrAdmin(me?.role ?? session.user.role);
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
+    <CsScreen>
       <PageHeadline
         title="CS 링크 허브"
         description="CS 업무에 쓰는 외부 도구·링크를 한곳에서 엽니다."
@@ -83,12 +85,12 @@ export default async function CsToolsPage() {
         }
       />
       {loungeOk && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/leave"
-            className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
-            <span className="flex items-center gap-2 font-medium">
+            <span className="flex items-center gap-2 text-base font-semibold">
               <CalendarPlus className="size-4 text-muted-foreground" />
               휴가 신청
             </span>
@@ -96,9 +98,9 @@ export default async function CsToolsPage() {
           </Link>
           <Link
             href="/cs-clients"
-            className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
-            <span className="flex items-center gap-2 font-medium">
+            <span className="flex items-center gap-2 text-base font-semibold">
               <Building2 className="size-4 text-muted-foreground" />
               업체·담당
             </span>
@@ -106,9 +108,9 @@ export default async function CsToolsPage() {
           </Link>
           <Link
             href="/cs-lounge"
-            className="flex flex-col gap-2 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50 sm:col-span-2"
+            className="flex flex-col gap-2 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50 sm:col-span-2"
           >
-            <span className="flex items-center gap-2 font-medium">
+            <span className="flex items-center gap-2 text-base font-semibold">
               <Megaphone className="size-4 text-muted-foreground" />
               CS 라운지
             </span>
@@ -126,35 +128,38 @@ export default async function CsToolsPage() {
               </ul>
             )}
           </Link>
-          <div className="rounded-lg border bg-card p-4 sm:col-span-2">
-            <p className="mb-2 flex items-center gap-2 font-medium">
-              <Cake className="size-4 text-muted-foreground" />
-              이번 달 생일
+          <div className="chip-accent-border chip-accent-border--pink rounded-xl border bg-card p-5 sm:col-span-2">
+            <p className="cs-section-title mb-3 flex items-center gap-2">
+              <ColorChip tone="pink" icon={<Cake />}>
+                이번 달 생일
+              </ColorChip>
             </p>
             {birthdays.length === 0 ? (
               <p className="text-muted-foreground text-sm">이번 달 생일인 CS 직원이 없습니다.</p>
             ) : (
-              <ul className="flex flex-wrap gap-2 text-sm">
+              <ul className="flex flex-wrap gap-2">
                 {birthdays.map((b) => (
-                  <li key={b.id} className="rounded-full border px-3 py-1">
-                    {b.name} {b.monthDay}
+                  <li key={b.id}>
+                    <ColorChip tone="pink" emphasis={b.isToday} icon={b.isToday ? "🎂" : undefined}>
+                      {b.name} {b.monthDay}
+                    </ColorChip>
                   </li>
                 ))}
               </ul>
             )}
             {showMissing && missingCount > 0 && (
-              <p className="text-muted-foreground mt-2 text-xs">생년월일 미입력 {missingCount}명</p>
+              <p className="text-muted-foreground mt-3 text-xs">생년월일 미입력 {missingCount}명</p>
             )}
           </div>
         </div>
       )}
       {!loungeOk && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Link
             href="/leave"
-            className="flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+            className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
-            <span className="flex items-center gap-2 font-medium">
+            <span className="flex items-center gap-2 text-base font-semibold">
               <CalendarPlus className="size-4 text-muted-foreground" />
               휴가 신청
             </span>
@@ -163,6 +168,6 @@ export default async function CsToolsPage() {
         </div>
       )}
       <CsToolsPageClient />
-    </div>
+    </CsScreen>
   );
 }

@@ -22,7 +22,20 @@ describe("pickCsBirthdaysThisMonth", () => {
       asOf
     );
     expect(missingCount).toBe(1);
-    expect(birthdays).toEqual([{ id: "1", name: "A", monthDay: "8/20" }]);
+    expect(birthdays).toEqual([{ id: "1", name: "A", monthDay: "8/20", isToday: false }]);
     expect(birthdays[0]?.monthDay).not.toMatch(/1990/);
+  });
+
+  it("marks today's birthday first", () => {
+    const asOf = new Date("2026-08-14T00:00:00+09:00");
+    const { birthdays } = pickCsBirthdaysThisMonth(
+      [
+        { id: "1", name: "Later", birthDate: new Date("1990-08-20T00:00:00+09:00") },
+        { id: "2", name: "Today", birthDate: new Date("1991-08-14T00:00:00+09:00") },
+      ],
+      asOf
+    );
+    expect(birthdays[0]).toMatchObject({ name: "Today", isToday: true, monthDay: "8/14" });
+    expect(birthdays[1]?.isToday).toBe(false);
   });
 });
