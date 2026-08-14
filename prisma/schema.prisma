@@ -66,6 +66,7 @@ enum AttendanceRecordSource {
 enum AwayType {
   BATHROOM
   SMOKING
+  AWAY
 }
 
 enum LeaveType {
@@ -540,7 +541,7 @@ model AttendanceRecord {
   @@index([source, date])
 }
 
-/// CS 이석(화장실·흡연). endedAt null = 현재 부재중
+/// CS 이석(부재중). endedAt null = 현재 부재중. BATHROOM/SMOKING은 레거시 값.
 model AwayLog {
   id        String    @id @default(cuid())
   userId    String

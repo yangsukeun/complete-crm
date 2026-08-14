@@ -8,11 +8,7 @@ import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { addDaysKstYmd, formatKstHm, todayYmdKst } from "@/lib/date-kst";
-import {
-  awayTypeLabel,
-  formatDurationMinutes,
-  type AwayTypeName,
-} from "@/lib/attendance-away-access";
+import { formatDurationMinutes } from "@/lib/attendance-away-access";
 
 type Status = "AWAY" | "OUT" | "IN" | "ABSENT";
 
@@ -26,7 +22,7 @@ type MemberRow = {
   awayMs: number;
   workedMs: number | null;
   status: Status;
-  awayOpenType: AwayTypeName | null;
+  awayOpenType: string | null;
 };
 
 type Api = {
@@ -36,7 +32,7 @@ type Api = {
 };
 
 function statusBadge(status: Status) {
-  if (status === "AWAY") return { label: "자리 비움", className: "border-sky-300 bg-sky-50 text-sky-800" };
+  if (status === "AWAY") return { label: "부재중", className: "border-sky-300 bg-sky-50 text-sky-800" };
   if (status === "OUT") return { label: "퇴근", className: "border-rose-300 bg-rose-50 text-rose-800" };
   if (status === "IN") return { label: "근무중", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
   return { label: "미출근", className: "border-muted-foreground/30 bg-muted text-muted-foreground" };
@@ -126,9 +122,7 @@ export function CsTeamAttendanceClient() {
                     </td>
                     <td className="px-3 py-3">
                       <Badge variant="outline" className={badge.className}>
-                        {row.status === "AWAY" && row.awayOpenType
-                          ? awayTypeLabel(row.awayOpenType)
-                          : badge.label}
+                        {badge.label}
                       </Badge>
                     </td>
                     <td className="px-3 py-3 text-lg font-semibold tabular-nums text-emerald-700">

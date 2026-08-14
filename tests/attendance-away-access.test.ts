@@ -96,6 +96,15 @@ describe("summarizeAwayLogs / formatAwayDuration", () => {
     expect(summary.open?.id).toBe("b");
   });
 
+  it("treats AWAY and legacy types as the same open session", () => {
+    const t0 = new Date("2026-08-14T01:00:00.000Z");
+    const summary = summarizeAwayLogs([
+      { id: "c", type: "AWAY", startedAt: t0, endedAt: null },
+    ]);
+    expect(summary.open?.id).toBe("c");
+    expect(summary.open?.type).toBe("AWAY");
+  });
+
   it("formats durations in Korean", () => {
     expect(formatAwayDuration(0)).toBe("0초");
     expect(formatAwayDuration(45_000)).toBe("45초");

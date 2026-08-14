@@ -8,14 +8,14 @@ export const AWAY_EXCEPTION_FEATURE = "attendance_away";
 
 export const AWAY_STATUS_EVENT = "away-status-changed";
 
-export type AwayTypeName = "BATHROOM" | "SMOKING";
+export type AwayTypeName = "AWAY" | "BATHROOM" | "SMOKING";
 
 export function isAwayType(v: unknown): v is AwayTypeName {
-  return v === "BATHROOM" || v === "SMOKING";
+  return v === "AWAY" || v === "BATHROOM" || v === "SMOKING";
 }
 
-export function awayTypeLabel(type: AwayTypeName): string {
-  return type === "SMOKING" ? "흡연" : "화장실";
+export function awayTypeLabel(_type?: AwayTypeName | string | null): string {
+  return "부재중";
 }
 
 export type AwayOpenState = {
@@ -40,9 +40,11 @@ export function summarizeAwayLogs(
   let open: AwayOpenState | null = null;
   for (const log of logs) {
     if (!log.endedAt) {
-      if (isAwayType(log.type)) {
-        open = { id: log.id, type: log.type, startedAt: log.startedAt.toISOString() };
-      }
+      open = {
+        id: log.id,
+        type: isAwayType(log.type) ? log.type : "AWAY",
+        startedAt: log.startedAt.toISOString(),
+      };
       continue;
     }
     const ms = Math.max(0, log.endedAt.getTime() - log.startedAt.getTime());

@@ -25,33 +25,18 @@ function durationMs(startedAt: Date, endedAt: Date | null, now: Date): number {
 type Totals = {
   count: number;
   durationMs: number;
-  bathroomCount: number;
-  smokingCount: number;
-  bathroomMs: number;
-  smokingMs: number;
 };
 
 function emptyTotals(): Totals {
   return {
     count: 0,
     durationMs: 0,
-    bathroomCount: 0,
-    smokingCount: 0,
-    bathroomMs: 0,
-    smokingMs: 0,
   };
 }
 
-function addLog(t: Totals, type: string, ms: number) {
+function addLog(t: Totals, ms: number) {
   t.count += 1;
   t.durationMs += ms;
-  if (type === "SMOKING") {
-    t.smokingCount += 1;
-    t.smokingMs += ms;
-  } else {
-    t.bathroomCount += 1;
-    t.bathroomMs += ms;
-  }
 }
 
 export async function GET() {
@@ -116,9 +101,9 @@ export async function GET() {
       const ms = durationMs(row.startedAt, row.endedAt, now);
       const startMs = row.startedAt.getTime();
       const agg = ensure(row.user.id, row.user.name, row.user.department);
-      addLog(agg.month, row.type, ms);
-      if (startMs >= weekStartMs) addLog(agg.week, row.type, ms);
-      if (startMs >= todayStart) addLog(agg.today, row.type, ms);
+      addLog(agg.month, ms);
+      if (startMs >= weekStartMs) addLog(agg.week, ms);
+      if (startMs >= todayStart) addLog(agg.today, ms);
     }
 
     return NextResponse.json({
@@ -128,7 +113,6 @@ export async function GET() {
         userId: r.user.id,
         name: r.user.name,
         department: r.user.department,
-        type: r.type,
         startedAt: r.startedAt.toISOString(),
         elapsedMs: now.getTime() - r.startedAt.getTime(),
       })),

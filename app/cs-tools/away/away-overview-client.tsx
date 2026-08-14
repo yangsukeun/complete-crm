@@ -4,17 +4,11 @@ import useSWR from "swr";
 import { jsonFetcher } from "@/lib/api-swr";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { awayTypeLabel, type AwayTypeName } from "@/lib/attendance-away-access";
 
 type Totals = {
   count: number;
   durationMs: number;
-  bathroomCount: number;
-  smokingCount: number;
-  bathroomMs: number;
-  smokingMs: number;
 };
 
 type Api = {
@@ -24,7 +18,6 @@ type Api = {
     userId: string;
     name: string;
     department: string | null;
-    type: AwayTypeName;
     startedAt: string;
     elapsedMs: number;
   }[];
@@ -49,14 +42,9 @@ function fmtDur(ms: number): string {
 function TotalsCell({ t }: { t: Totals }) {
   if (t.count === 0) return <span className="text-muted-foreground">—</span>;
   return (
-    <div className="leading-tight">
-      <div>
-        {t.count}회 · {fmtDur(t.durationMs)}
-      </div>
-      <div className="text-muted-foreground text-xs">
-        화장실 {t.bathroomCount} · 흡연 {t.smokingCount}
-      </div>
-    </div>
+    <span>
+      {t.count}회 · {fmtDur(t.durationMs)}
+    </span>
   );
 }
 
@@ -95,7 +83,6 @@ export function AwayOverviewClient() {
                   {data.current.map((row) => (
                     <li key={row.id} className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{row.name}</span>
-                      <Badge variant="outline">{awayTypeLabel(row.type)}</Badge>
                       <span className="text-muted-foreground">{fmtDur(row.elapsedMs)} 경과</span>
                     </li>
                   ))}

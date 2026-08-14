@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Bath, Cigarette, Clock, LogIn, LogOut, Timer } from "lucide-react";
+import { Clock, LogIn, LogOut, Timer, UserMinus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatKstHm } from "@/lib/date-kst";
@@ -13,10 +13,10 @@ import {
   AWAY_STATUS_EVENT,
   canUseAwayFeature,
   formatAwayDuration,
+  isAwayType,
   liveAwayBreakdown,
   notifyAwayStatusChanged,
   type AwayDaySummary,
-  type AwayTypeName,
 } from "@/lib/attendance-away-access";
 
 type TodayAttendance = {
@@ -29,7 +29,7 @@ type TodayAttendance = {
 type AwayStatusPayload = {
   open?: boolean;
   id?: string;
-  type?: AwayTypeName;
+  type?: string;
   startedAt?: string;
   todayEndedMs?: number;
   bathroomEndedMs?: number;
@@ -93,8 +93,12 @@ export function DashboardAttendance({
         bathroomEndedMs: data.bathroomEndedMs ?? 0,
         smokingEndedMs: data.smokingEndedMs ?? 0,
         open:
-          data.open && data.id && data.type && data.startedAt
-            ? { id: data.id, type: data.type, startedAt: data.startedAt }
+          data.open && data.id && data.startedAt
+            ? {
+                id: data.id,
+                type: isAwayType(data.type) ? data.type : "AWAY",
+                startedAt: data.startedAt,
+              }
             : null,
       });
     };
@@ -176,13 +180,13 @@ export function DashboardAttendance({
     }
   };
 
-  const handleAway = async (type: AwayTypeName) => {
+  const handleAway = async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/attendance/away/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "이석 시작 실패");
@@ -237,34 +241,19 @@ export function DashboardAttendance({
         퇴근
       </Button>
       {showAway && (
-        <>
-          <Button
-            type="button"
-            variant={emphasized ? "ghost" : "outline"}
-            onClick={() => void handleAway("BATHROOM")}
-            disabled={loading || !awayEnabled}
-            className={cn(
-              btnBase,
-              emphasized && "bg-sky-600 text-white hover:bg-sky-700 hover:text-white",
-            )}
-          >
-            <Bath className="mr-2 size-4" />
-            화장실
-          </Button>
-          <Button
-            type="button"
-            variant={emphasized ? "ghost" : "outline"}
-            onClick={() => void handleAway("SMOKING")}
-            disabled={loading || !awayEnabled}
-            className={cn(
-              btnBase,
-              emphasized && "bg-amber-500 text-white hover:bg-amber-600 hover:text-white",
-            )}
-          >
-            <Cigarette className="mr-2 size-4" />
-            흡연
-          </Button>
-        </>
+        <Button
+          type="button"
+          variant={emphasized ? "ghost" : "outline"}
+          onClick={() => void handleAway()}
+          disabled={loading || !awayEnabled}
+          className={cn(
+            btnBase,
+            emphasized && "bg-sky-600 text-white hover:bg-sky-700 hover:text-white",
+          )}
+        >
+          <UserMinus className="mr-2 size-4" />
+          부재중
+        </Button>
       )}
       {showManagerLinks && (
         <>
@@ -320,16 +309,6 @@ export function DashboardAttendance({
           value={showAway ? formatAwayDuration(awayLive.totalMs) : "—"}
           accent="text-sky-700"
           done={awayLive.totalMs > 0}
-          hint={
-            showAway && (awayLive.bathroomMs > 0 || awayLive.smokingMs > 0)
-              ? [
-                  awayLive.bathroomMs > 0 ? `화장실 ${formatAwayDuration(awayLive.bathroomMs)}` : null,
-                  awayLive.smokingMs > 0 ? `흡연 ${formatAwayDuration(awayLive.smokingMs)}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : undefined
-          }
         />
         <TimeStat
           label="퇴근"

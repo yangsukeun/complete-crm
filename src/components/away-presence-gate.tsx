@@ -6,17 +6,14 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   AWAY_STATUS_EVENT,
-  awayTypeLabel,
   formatAwayDuration,
   notifyAwayStatusChanged,
-  type AwayTypeName,
 } from "@/lib/attendance-away-access";
 import { toast } from "sonner";
 
 type AwayOpen = {
   open: true;
   id: string;
-  type: AwayTypeName;
   startedAt: string;
 };
 
@@ -37,12 +34,11 @@ export function AwayPresenceGate({ children }: { children: React.ReactNode }) {
     }
     try {
       const res = await fetch("/api/attendance/away/status");
-      const data = (await res.json()) as { open?: boolean; type?: AwayTypeName; startedAt?: string; id?: string };
-      if (res.ok && data.open && data.startedAt && data.type && data.id) {
+      const data = (await res.json()) as { open?: boolean; startedAt?: string; id?: string };
+      if (res.ok && data.open && data.startedAt && data.id) {
         setAway({
           open: true,
           id: data.id,
-          type: data.type,
           startedAt: data.startedAt,
         });
       } else {
@@ -93,8 +89,7 @@ export function AwayPresenceGate({ children }: { children: React.ReactNode }) {
     const elapsed = formatAwayDuration(now - new Date(away.startedAt).getTime());
     return (
       <div className="bg-background flex min-h-screen flex-col items-center justify-center gap-8 p-6">
-        <p className="text-muted-foreground text-sm tracking-wide">부재중</p>
-        <h1 className="text-4xl font-semibold">{awayTypeLabel(away.type)}</h1>
+        <h1 className="text-4xl font-semibold">부재중</h1>
         <p className="font-mono text-3xl tabular-nums">{elapsed}</p>
         <Button size="lg" onClick={() => void handleReturn()} disabled={ending}>
           {ending ? "처리 중…" : "복귀"}

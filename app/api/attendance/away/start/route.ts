@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireAwayActor } from "@/lib/attendance-admin";
-import { isAwayType } from "@/lib/attendance-away-access";
 import { startOfDayKst } from "@/lib/date-kst";
 
 export const runtime = "nodejs";
@@ -12,10 +11,7 @@ export async function POST(req: Request) {
     const auth = await requireAwayActor();
     if (!auth.ok) return auth.response;
 
-    const body = (await req.json().catch(() => ({}))) as { type?: unknown };
-    if (!isAwayType(body.type)) {
-      return NextResponse.json({ error: "type은 BATHROOM 또는 SMOKING 이어야 합니다." }, { status: 400 });
-    }
+    await req.json().catch(() => null);
 
     const now = new Date();
     const dateStart = startOfDayKst(now);
@@ -41,7 +37,7 @@ export async function POST(req: Request) {
     const row = await prisma.awayLog.create({
       data: {
         userId: auth.user.id,
-        type: body.type,
+        type: "AWAY",
         startedAt: now,
       },
       select: { id: true, type: true, startedAt: true, endedAt: true },
