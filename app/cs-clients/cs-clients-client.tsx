@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
@@ -20,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { ColorChip } from "@/components/ui/color-chip";
 
 type Assignment = { id: string; userId: string; name: string; roleLabel: string };
 type ClientRow = {
@@ -207,7 +206,7 @@ export function CsClientsClient() {
   };
 
   return (
-    <div className="flex flex-col gap-4 p-6 md:p-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <PageHeadline title="CS 업체" description="담당·계약 기간을 한 화면에서 관리합니다." />
         {canManage && (
@@ -306,7 +305,11 @@ export function CsClientsClient() {
                         disabled={!canManage}
                         onSave={async (endDate) => {
                           const prev = clients;
-                          setClients((cur) => cur.map((c) => (c.id === row.id ? { ...c, endDate } : c)));
+                          setClients((cur) =>
+                            cur.map((c) =>
+                              c.id === row.id ? { ...c, endDate, isActive: !endDate.trim() } : c
+                            )
+                          );
                           await patch(row.id, { endDate }, prev);
                         }}
                       />
@@ -334,10 +337,7 @@ export function CsClientsClient() {
                       <button
                         type="button"
                         disabled={!canManage}
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-xs",
-                          row.isActive ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"
-                        )}
+                        className="disabled:opacity-60"
                         onClick={() => {
                           if (!canManage) return;
                           const prev = clients;
@@ -347,7 +347,9 @@ export function CsClientsClient() {
                           void patch(row.id, { isActive: !row.isActive }, prev);
                         }}
                       >
-                        {row.isActive ? "활성" : "비활성"}
+                        <ColorChip tone={row.isActive ? "green" : "gray"} size="sm">
+                          {row.isActive ? "활성" : "비활성"}
+                        </ColorChip>
                       </button>
                     </td>
                     {canManage && (
@@ -394,10 +396,10 @@ function AssigneeCell({
         <span className="text-muted-foreground text-xs">—</span>
       ) : (
         row.assignments.map((a) => (
-          <Badge key={a.userId} variant="secondary" className="gap-1 font-normal">
+          <ColorChip key={a.userId} tone="blue" size="sm">
             {a.name}
-            {a.roleLabel ? <span className="text-[10px] opacity-80">{a.roleLabel}</span> : null}
-          </Badge>
+            {a.roleLabel ? ` · ${a.roleLabel}` : ""}
+          </ColorChip>
         ))
       )}
     </div>

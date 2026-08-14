@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canManageCsClients, canViewCsClients } from "@/lib/cs-client-access";
-import { serializeCsClient, csClientInclude } from "@/lib/cs-client-serialize";
+import { serializeCsClient, csClientInclude, csClientActiveFromPatch } from "@/lib/cs-client-serialize";
 
 async function loadMe(userId: string) {
   return prisma.user.findUnique({
@@ -49,7 +49,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (typeof body.startDate === "string") data.startDate = body.startDate.trim() || null;
     if (typeof body.endDate === "string") data.endDate = body.endDate.trim() || null;
     if (typeof body.note === "string") data.note = body.note.trim() || null;
-    if (typeof body.isActive === "boolean") data.isActive = body.isActive;
+    const derivedActive = csClientActiveFromPatch({
+      endDate: typeof body.endDate === "string" ? body.endDate.trim() || null : undefined,
+      isActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+    });
+    if (typeof derivedActive === "boolean") data.isActive = derivedActive;
 
     const updated = await prisma.csClient.update({
       where: { id },

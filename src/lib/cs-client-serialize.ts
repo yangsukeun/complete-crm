@@ -1,3 +1,13 @@
+/** endDate가 비어 있으면 활성. 토글을 같이 보내면 토글이 우선. */
+export function csClientActiveFromPatch(opts: {
+  endDate?: string | null;
+  isActive?: boolean;
+}): boolean | undefined {
+  if (typeof opts.isActive === "boolean") return opts.isActive;
+  if (opts.endDate !== undefined) return !opts.endDate;
+  return undefined;
+}
+
 export function serializeCsClient(row: {
   id: string;
   name: string;

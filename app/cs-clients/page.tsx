@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { canViewCsClients } from "@/lib/cs-client-access";
 import { homePathForUser } from "@/lib/org-access";
 import { CsClientsClient } from "./cs-clients-client";
+import { CsScreen } from "@/components/cs-screen";
 
 export default async function CsClientsPage() {
   const session = await getAppSession();
@@ -15,5 +16,9 @@ export default async function CsClientsPage() {
   if (!me || !canViewCsClients(me)) {
     redirect(homePathForUser({ role: me?.role ?? session.user.role, department: me?.department ?? session.user.department }));
   }
-  return <CsClientsClient />;
+  return (
+    <CsScreen>
+      <CsClientsClient />
+    </CsScreen>
+  );
 }
