@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "lucide-react";
 import { leaveDisplayDays } from "@/lib/leave-request-serialize";
+import { toKstYmd } from "@/lib/date-kst";
 
 const OFFICE_START_HOUR = 9;
 const OFFICE_START_MINUTE = 0;
@@ -90,7 +91,9 @@ function formatDate(iso: string): string {
 }
 
 function formatDateOnly(iso: string): string {
-  return new Date(iso).toLocaleDateString("ko-KR");
+  const ymd = toKstYmd(iso);
+  if (!ymd) return "—";
+  return new Date(`${ymd}T12:00:00+09:00`).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 function isLate(startTime: string | null): boolean {
@@ -708,7 +711,7 @@ export default function HrPage() {
                                 <tr key={r.id} className="border-b border-slate-700/50">
                                   <td className="px-4 py-3 text-slate-200">
                                     {formatDateOnly(r.startDate)}
-                                    {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10)
+                                    {toKstYmd(r.startDate) !== toKstYmd(r.endDate)
                                       ? ` ~ ${formatDateOnly(r.endDate)}`
                                       : ""}
                                   </td>

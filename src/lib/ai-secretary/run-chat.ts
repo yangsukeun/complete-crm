@@ -21,6 +21,7 @@ import { buildSecretaryDataContext } from "@/lib/ai-secretary/build-context";
 import { getProductKnowledge } from "@/lib/ai-secretary/product-knowledge";
 import { getSecretaryRolePrompt, isExecutiveLike } from "@/lib/ai-secretary/prompts";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { toKstYmd } from "@/lib/date-kst";
 import { createActivityLog } from "@/lib/activity-log";
 import { notifyScheduleInviteesAfterCreate } from "@/lib/schedules/notify-schedule-invitees";
 import { filterScheduleInviteeIds } from "@/lib/schedule-team-access";
@@ -402,14 +403,8 @@ async function executeTool(
         },
       });
 
-      const startStr =
-        leave.startDate instanceof Date
-          ? leave.startDate.toISOString().slice(0, 10)
-          : String(leave.startDate).slice(0, 10);
-      const endStr =
-        leave.endDate instanceof Date
-          ? leave.endDate.toISOString().slice(0, 10)
-          : String(leave.endDate).slice(0, 10);
+      const startStr = toKstYmd(leave.startDate);
+      const endStr = toKstYmd(leave.endDate);
 
       return `✅ 휴가 신청이 등록되었습니다.\n- 유형: ${type}\n- 기간: ${startStr} ~ ${endStr}`;
     }

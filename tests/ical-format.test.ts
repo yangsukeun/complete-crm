@@ -30,4 +30,19 @@ describe("ical-format", () => {
     expect(ical).toContain("SUMMARY:[팀] 회의");
     expect(formatIcalDateKst(start)).toMatch(/^20260810$/);
   });
+
+  it("sends Naver all-day leave as same-day TZID datetime, not exclusive DATE", () => {
+    const start = new Date("2026-08-18T00:00:00.000Z");
+    const end = new Date("2026-08-18T00:00:00.000Z");
+    const ical = buildIcalStringForNaver({
+      uid: "crm-leave-1@cpcrm",
+      summary: "[휴가] 연차",
+      start,
+      end,
+      isAllDay: true,
+    });
+    expect(ical).toContain("DTSTART;TZID=Asia/Seoul:20260818T000000");
+    expect(ical).toContain("DTEND;TZID=Asia/Seoul:20260818T235959");
+    expect(ical).not.toContain("VALUE=DATE:20260819");
+  });
 });

@@ -27,10 +27,9 @@ import {
 } from "@/components/ui/dialog";
 import { DashboardAttendance } from "@/components/dashboard-attendance";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 import { CalendarPlus, ChevronDown, ChevronUp, LogIn } from "lucide-react";
 import { cn, formatUserName } from "@/lib/utils";
+import { formatKstYmdDot, toKstYmd } from "@/lib/date-kst";
 import { PageHeadline } from "@/components/page-headline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { leaveDisplayDays } from "@/lib/leave-request-serialize";
@@ -318,9 +317,10 @@ export function LeavePageClient({
   const typeLabel = (t: string) => LEAVE_TYPES.find((x) => x.value === t)?.label ?? t;
 
   const formatLeaveRange = (r: LeaveRequest) => {
-    const start = format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko });
-    if (r.startDate.slice(0, 10) === r.endDate.slice(0, 10)) return start;
-    return `${start} ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`;
+    const start = formatKstYmdDot(r.startDate);
+    const end = formatKstYmdDot(r.endDate);
+    if (start === end) return start;
+    return `${start} ~ ${end}`;
   };
 
   const myUid = session?.user?.id ?? "";
@@ -343,14 +343,10 @@ export function LeavePageClient({
       list = list.filter((r) => r.type === peerTypeQ);
     }
     if (peerFrom) {
-      const from = new Date(peerFrom);
-      from.setHours(0, 0, 0, 0);
-      list = list.filter((r) => new Date(r.endDate) >= from);
+      list = list.filter((r) => toKstYmd(r.endDate) >= peerFrom);
     }
     if (peerTo) {
-      const to = new Date(peerTo);
-      to.setHours(23, 59, 59, 999);
-      list = list.filter((r) => new Date(r.startDate) <= to);
+      list = list.filter((r) => toKstYmd(r.startDate) <= peerTo);
     }
     return list;
   }, [requests, myUid, peerNameQ, peerTypeQ, peerFrom, peerTo]);
@@ -808,9 +804,9 @@ export function LeavePageClient({
                           </td>
                           <td className="py-2 pr-2">{typeLabel(r.type)}</td>
                           <td className="py-2 pr-2">
-                            {format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko })}
-                            {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10) &&
-                              ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
+                            {formatKstYmdDot(r.startDate)}
+                            {toKstYmd(r.startDate) !== toKstYmd(r.endDate) &&
+                              ` ~ ${formatKstYmdDot(r.endDate)}`}
                           </td>
                           <td className="py-2 pr-2">
                             {leaveDisplayDays(r.type, new Date(r.startDate), new Date(r.endDate))}일
@@ -849,9 +845,9 @@ export function LeavePageClient({
                             </td>
                             <td className="py-2 pr-2">{typeLabel(r.type)}</td>
                             <td className="py-2 pr-2">
-                              {format(new Date(r.startDate), "yyyy.MM.dd", { locale: ko })}
-                              {r.startDate.slice(0, 10) !== r.endDate.slice(0, 10) &&
-                                ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
+                              {formatKstYmdDot(r.startDate)}
+                              {toKstYmd(r.startDate) !== toKstYmd(r.endDate) &&
+                                ` ~ ${formatKstYmdDot(r.endDate)}`}
                             </td>
                             <td className="py-2 pr-2">
                               <LeaveStatusMark status={r.status} csChain={requestCsChain(r)} />

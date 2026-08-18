@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { toKstYmd } from "@/lib/date-kst";
 
 type AccrualRow = {
   id: string;
@@ -183,7 +184,7 @@ function PoolTable({ accruals }: { accruals: AccrualRow[] }) {
                 >
                   {fmt1(remaining)}일
                 </TableCell>
-                <TableCell className="tabular-nums text-sm">{a.expiresAt.slice(0, 10)}</TableCell>
+                <TableCell className="tabular-nums text-sm">{toKstYmd(a.expiresAt)}</TableCell>
                 <TableCell>
                   {a.isExpired ? (
                     <span className="text-destructive text-sm">만료</span>
@@ -222,8 +223,8 @@ function RequestsTable({ requests }: { requests: RequestRow[] }) {
         </TableHeader>
         <TableBody>
           {requests.map((r) => {
-            const start = r.startDate.slice(0, 10);
-            const end = r.endDate.slice(0, 10);
+            const start = toKstYmd(r.startDate);
+            const end = toKstYmd(r.endDate);
             const allocText =
               r.allocations.length > 0
                 ? r.allocations
@@ -232,7 +233,7 @@ function RequestsTable({ requests }: { requests: RequestRow[] }) {
                 : "—";
             return (
               <TableRow key={r.id}>
-                <TableCell className="tabular-nums text-sm">{r.createdAt.slice(0, 10)}</TableCell>
+                <TableCell className="tabular-nums text-sm">{toKstYmd(r.createdAt)}</TableCell>
                 <TableCell className="tabular-nums text-sm">
                   {start}
                   {start !== end ? ` ~ ${end}` : ""}
@@ -402,7 +403,7 @@ export function LeaveDetailClient({ userId }: { userId: string }) {
             {user.position ? ` · ${user.position}` : ""}
           </div>
           <div>
-            입사 {user.joinDate.slice(0, 10)} · 근속 {tenureText(tenureYears, tenureExtraMonths)}
+            입사 {toKstYmd(user.joinDate)} · 근속 {tenureText(tenureYears, tenureExtraMonths)}
           </div>
           <div>역할: {roleLabel(user.role)}</div>
         </CardContent>

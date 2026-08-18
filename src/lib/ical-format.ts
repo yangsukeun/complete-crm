@@ -103,5 +103,28 @@ export function buildVcalendar(vevents: string[]): string {
 }
 
 export function buildIcalStringForNaver(event: IcalEventInput): string {
-  return buildVcalendar([buildVevent(event)]);
+  if (!event.isAllDay) {
+    return buildVcalendar([buildVevent(event)]);
+  }
+  // 네이버 createSchedule 은 VALUE=DATE + exclusive DTEND 를 이틀로 해석하는 경우가 있어
+  // 포함 마지막 날의 TZID datetime(00:00~23:59:59)으로 보낸다.
+  const startYmd = formatIcalDateKst(event.start);
+  const endInclusive = event.end.getTime() >= event.start.getTime() ? event.end : event.start;
+  const endYmd = formatIcalDateKst(endInclusive);
+  const stamp = formatIcalUtcStamp();
+  const lines = [
+    "BEGIN:VEVENT",
+    `UID:${event.uid}`,
+    `DTSTART;TZID=Asia/Seoul:${startYmd}T000000`,
+    `DTEND;TZID=Asia/Seoul:${endYmd}T235959`,
+    `SUMMARY:${escapeIcalText(event.summary)}`,
+  ];
+  if (event.description?.trim()) {
+    lines.push(`DESCRIPTION:${escapeIcalText(event.description.trim())}`);
+  }
+  if (event.location?.trim()) {
+    lines.push(`LOCATION:${escapeIcalText(event.location.trim())}`);
+  }
+  lines.push(`CREATED:${stamp}`, `LAST-MODIFIED:${stamp}`, `DTSTAMP:${stamp}`, "END:VEVENT");
+  return buildVcalendar([lines.join("\n")]);
 }

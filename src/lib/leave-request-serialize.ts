@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { eachKstYmdInclusive } from "@/lib/date-kst";
 import { isCsTeamDepartment } from "@/lib/cs-team-permissions";
 import { normalizeDepartment } from "@/lib/leave-department-access";
 import { CS_DEPARTMENT_ALIASES, isCsGroup } from "@/lib/cs-tools-access";
@@ -113,6 +114,6 @@ export function serializeLeaveRequestForViewer(
 export function leaveDisplayDays(type: string, start: Date, end: Date): number {
   if (type === "HALF_AM" || type === "HALF_PM") return 0.5;
   if (type === "QUARTER_AM" || type === "QUARTER_PM") return 0.25;
-  const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  return diff;
+  const n = eachKstYmdInclusive(start, end).length;
+  return n > 0 ? n : 1;
 }

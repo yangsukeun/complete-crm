@@ -106,10 +106,24 @@
 }
 
 .schedule-gcal-viewport .rbc-month-view .rbc-header,
-.schedule-gcal-viewport .rbc-month-view .rbc-row-bg > * {
+.schedule-gcal-viewport .rbc-month-view .rbc-row-bg > *,
+.schedule-gcal-viewport .rbc-month-view .rbc-date-cell {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+}
+
+/* 날짜 숫자 행도 배경·요일 헤더와 같은 7열.
+   RBC 기본 flex는 공휴일 라벨·「오늘」 배지가 칸 폭을 밀어 휴가 칩과 일자가 어긋난다. */
+.schedule-gcal-viewport .rbc-month-view .rbc-row-content > .rbc-row:first-child {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  width: 100%;
+}
+
+.schedule-gcal-viewport .rbc-month-view .rbc-date-cell {
+  flex: none;
+  width: auto;
 }
 
 .schedule-gcal-viewport .rbc-month-view .rbc-row-segment {

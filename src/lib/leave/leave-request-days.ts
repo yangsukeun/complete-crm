@@ -1,3 +1,5 @@
+import { eachKstYmdInclusive } from "@/lib/date-kst";
+
 /** 승인·재차감 시 휴가 일수 계산 (LeaveRequest.days 필드 없음) */
 export const LEAVE_TYPE_DAYS: Record<string, number> = {
   ANNUAL: 1,
@@ -14,7 +16,7 @@ export function isSickLeaveType(type: string): boolean {
 export function leaveRequestDays(type: string, startDate: Date, endDate: Date): number {
   if (isSickLeaveType(type)) return 0;
   if (type === "ANNUAL") {
-    return Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return eachKstYmdInclusive(startDate, endDate).length;
   }
   return LEAVE_TYPE_DAYS[type] ?? 0;
 }

@@ -73,6 +73,15 @@ export function formatKstYmdLongKo(ymd: string): string {
 }
 
 /**
+ * ISO/Date → KST `yyyy.MM.dd`.
+ * `toISOString().slice(0, 10)` 는 UTC 날짜라 KST 자정(UTC 전날 15:00)에서 하루 밀린다.
+ */
+export function formatKstYmdDot(value: string | Date): string {
+  const ymd = toKstYmd(value);
+  return ymd ? ymd.replace(/-/g, ".") : "";
+}
+
+/**
  * KST 달력 기준 시작일~종료일(포함)의 `YYYY-MM-DD` 목록.
  * DB에 UTC 자정 등으로 저장된 `LeaveRequest.startDate/endDate`와 월간 캘린더 셀 키를 맞출 때 사용.
  */
