@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { createNotificationWithOptions } from "@/lib/notifications";
 import {
-  teamLeadNotifyWhereForApplicantDepartment,
   fetchDepartmentsWithTeamLead,
   needsExecutiveDirectLeaveApproval,
   applicantSkipsTeamLeadLeaveStep,
+  leaveNewRequestNotifyWhere,
 } from "@/lib/leave-department-access";
 import {
   leaveRequestListWhere,
@@ -199,29 +200,27 @@ export async function POST(req: Request) {
     const executiveDirect =
       skipTeamLeadStep ||
       needsExecutiveDirectLeaveApproval(leave.user?.department, departmentsWithTeamLead);
-    const teamLeadFilter = skipTeamLeadStep
-      ? null
-      : teamLeadNotifyWhereForApplicantDepartment(leave.user?.department);
+    const notifyWhere = leaveNewRequestNotifyWhere({
+      applicantDepartment: leave.user?.department,
+      applicantRole: leave.user?.role,
+      skipTeamLeadStep,
+    });
     const managers = await prisma.user.findMany({
-      where: {
-        OR: [
-          { role: { in: ["EXECUTIVE", "ADMIN"] } },
-          ...(teamLeadFilter ? [teamLeadFilter] : []),
-        ],
-        id: { not: applicantId },
-      },
+      where: { AND: [notifyWhere as Prisma.UserWhereInput, { id: { not: applicantId } }] },
       select: { id: true, role: true },
     });
 
     for (const r of managers) {
-      const isFirstApproverRole = r.role === "TEAM_LEAD" || r.role === "CENTER_CHIEF";
-      const message = isFirstApproverRole
-        ? `${applicantName}님이 휴가를 신청했습니다. 아래 목록에서 1차 승인해 주세요.`
-        : skipTeamLeadStep
-          ? `${applicantName} 팀장님이 휴가를 신청했습니다. 연차/근태(/leave)에서 최종 승인해 주세요.`
-          : executiveDirect
-            ? `${applicantName}님이 휴가를 신청했습니다. 해당 부서에 팀장이 없어 연차/근태(/leave)에서 바로 최종 승인해 주세요.`
-            : `${applicantName}님이 휴가를 신청했습니다. 팀장 1차 승인 후 최종 승인할 수 있습니다. 연차/근태(/leave)에서 확인하세요.`;
+      const message =
+        r.role === "TEAM_LEAD"
+          ? `${applicantName}님이 휴가를 신청했습니다. 아래 목록에서 1차 승인해 주세요.`
+          : r.role === "CENTER_CHIEF"
+            ? `${applicantName}님이 휴가를 신청했습니다. 연차/근태에서 최종 승인해 주세요.`
+            : skipTeamLeadStep
+              ? `${applicantName}님이 휴가를 신청했습니다. 연차/근태(/leave)에서 최종 승인해 주세요.`
+              : executiveDirect
+                ? `${applicantName}님이 휴가를 신청했습니다. 해당 부서에 팀장이 없어 연차/근태(/leave)에서 바로 최종 승인해 주세요.`
+                : `${applicantName}님이 휴가를 신청했습니다. 팀장 1차 승인 후 최종 승인할 수 있습니다. 연차/근태(/leave)에서 확인하세요.`;
       await createNotificationWithOptions({
         userId: r.id,
         type: "LEAVE_REQUEST",

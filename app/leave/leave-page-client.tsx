@@ -34,6 +34,7 @@ import { cn, formatUserName } from "@/lib/utils";
 import { PageHeadline } from "@/components/page-headline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { leaveDisplayDays } from "@/lib/leave-request-serialize";
+import { csLeaveFinalIsCenterChief } from "@/lib/leave-department-access";
 import { leaveStatusChipTone } from "@/lib/color-chip";
 import { useAutoReadOnEnter } from "@/hooks/use-auto-read-on-enter";
 import { mutate } from "swr";
@@ -43,9 +44,11 @@ function leaveNeedsDateRange(t: string): boolean {
   return t === "ANNUAL" || t === "SICK_PAID" || t === "SICK_UNPAID";
 }
 
-function statusHint(s: string): string {
+function statusHint(s: string, csChain?: boolean): string {
   if (s === "PENDING") return "팀장 1차 승인 대기";
-  if (s === "TEAM_LEAD_APPROVED") return "대표·관리자 최종 승인 대기";
+  if (s === "TEAM_LEAD_APPROVED") {
+    return csChain ? "센터장 최종 승인 대기" : "대표·관리자 최종 승인 대기";
+  }
   if (s === "APPROVED") return "승인 완료";
   if (s === "CANCEL_REQUESTED") return "취소 승인 대기";
   if (s === "CANCELLED") return "취소됨";
@@ -83,6 +86,10 @@ type LeaveRequest = {
   };
 };
 
+function requestCsChain(r: LeaveRequest): boolean {
+  return csLeaveFinalIsCenterChief(r.user?.department, r.user?.role);
+}
+
 type Balance = {
   year: number;
   total: number;
@@ -100,29 +107,31 @@ type TodayAttendance = {
   date: string;
 } | null;
 
-function leaveStatusLabel(s: string) {
+function leaveStatusLabel(s: string, csChain?: boolean) {
   if (s === "PENDING") return "1차 대기";
-  if (s === "TEAM_LEAD_APPROVED") return "2차 대기";
+  if (s === "TEAM_LEAD_APPROVED") return csChain ? "센터장 대기" : "2차 대기";
   if (s === "APPROVED") return "승인";
   if (s === "CANCEL_REQUESTED") return "취소 요청";
   if (s === "CANCELLED") return "취소 완료";
   return "반려";
 }
 
-function LeaveStatusMark({ status }: { status: string }) {
-  return <ColorChip tone={leaveStatusChipTone(status)}>{leaveStatusLabel(status)}</ColorChip>;
+function LeaveStatusMark({ status, csChain }: { status: string; csChain?: boolean }) {
+  return <ColorChip tone={leaveStatusChipTone(status)}>{leaveStatusLabel(status, csChain)}</ColorChip>;
 }
 
 export function LeavePageClient({
   isTeamLead,
+  isCsCenterChief = false,
   isExecutive,
   csScreen = false,
 }: {
   isTeamLead: boolean;
+  isCsCenterChief?: boolean;
   isExecutive: boolean;
   csScreen?: boolean;
 }) {
-  const canApprove = isTeamLead || isExecutive;
+  const canApprove = isTeamLead || isCsCenterChief || isExecutive;
   const { data: session } = useSession();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [viewerDepartment, setViewerDepartment] = useState<string | null>(null);
@@ -281,7 +290,7 @@ export function LeavePageClient({
           : status === "TEAM_LEAD_APPROVED"
             ? "1차 승인했습니다."
             : status === "APPROVED"
-              ? "2차 승인했습니다."
+              ? "최종 승인했습니다."
               : status === "CANCEL_REQUESTED"
                 ? "취소를 요청했습니다."
                 : "취소 처리했습니다."
@@ -362,29 +371,48 @@ export function LeavePageClient({
 
     return requests.filter((r) => {
       const isOwn = Boolean(myUid) && (r.userId === myUid || r.user?.id === myUid);
-      const applicantIsTeamLead = String(r.user?.role ?? "").toUpperCase() === "TEAM_LEAD";
-      if (isTeamLead && isOwn && !isExecutive) return false;
+      const applicantRole = String(r.user?.role ?? "").toUpperCase();
+      const applicantIsTeamLead = applicantRole === "TEAM_LEAD";
+      const applicantSkipsFirst = applicantIsTeamLead || applicantRole === "CENTER_CHIEF";
+      const csChain = csLeaveFinalIsCenterChief(r.user?.department, r.user?.role);
+      if ((isTeamLead || isCsCenterChief) && isOwn && !isExecutive) return false;
       if (isTeamLead && r.status === "PENDING") {
-        if (applicantIsTeamLead) return false;
+        if (applicantSkipsFirst) return false;
         return sameDept(r.user?.department);
       }
-      if (isExecutive && r.status === "TEAM_LEAD_APPROVED") return true;
+      if (isCsCenterChief && csChain) {
+        if (r.status === "TEAM_LEAD_APPROVED") return true;
+        if (r.status === "PENDING" && (applicantIsTeamLead || !deptHasTeamLead(r.user?.department))) {
+          return true;
+        }
+      }
+      if (isExecutive && r.status === "TEAM_LEAD_APPROVED" && !csChain) return true;
       if (
         isExecutive &&
         r.status === "PENDING" &&
-        (applicantIsTeamLead || !deptHasTeamLead(r.user?.department))
+        !csChain &&
+        (applicantSkipsFirst || !deptHasTeamLead(r.user?.department))
       ) {
         return true;
       }
       if (r.status === "CANCEL_REQUESTED") {
-        if (isTeamLead && r.cancelFromStatus === "PENDING") return sameDept(r.user?.department);
+        if (isTeamLead && r.cancelFromStatus === "PENDING" && !applicantSkipsFirst) {
+          return sameDept(r.user?.department);
+        }
+        if (isCsCenterChief && csChain) {
+          if (r.cancelFromStatus === "TEAM_LEAD_APPROVED" || r.cancelFromStatus === "APPROVED") return true;
+          if (r.cancelFromStatus === "PENDING" && (applicantIsTeamLead || !deptHasTeamLead(r.user?.department))) {
+            return true;
+          }
+        }
         if (
           isExecutive &&
+          !csChain &&
           (r.cancelFromStatus === "PENDING" ||
             r.cancelFromStatus === "TEAM_LEAD_APPROVED" ||
             r.cancelFromStatus === "APPROVED")
         ) {
-          if (r.cancelFromStatus === "PENDING" && deptHasTeamLead(r.user?.department)) {
+          if (r.cancelFromStatus === "PENDING" && deptHasTeamLead(r.user?.department) && !applicantSkipsFirst) {
             return false;
           }
           return true;
@@ -392,7 +420,7 @@ export function LeavePageClient({
       }
       return false;
     });
-  }, [requests, canApprove, isTeamLead, isExecutive, viewerDepartment, deptHasTeamLead, myUid]);
+  }, [requests, canApprove, isTeamLead, isCsCenterChief, isExecutive, viewerDepartment, deptHasTeamLead, myUid]);
 
   if (loading) {
     return (
@@ -412,7 +440,7 @@ export function LeavePageClient({
           />
           {canApprove && (
             <p className="text-muted-foreground max-w-xl text-xs leading-relaxed">
-              승인: 팀장 1차 → 대표·관리자 최종. 팀장 없는 부서는 대표가 바로 승인.{" "}
+              승인: 팀장 1차 → 대표·관리자 최종. CS팀은 팀장 1차 → 센터장 최종. 팀장 없는 부서는 대표가 바로 승인.{" "}
               <Link href="/notifications" className="underline underline-offset-4 hover:no-underline">
                 알림
               </Link>
@@ -642,9 +670,9 @@ export function LeavePageClient({
                             </p>
                           </div>
                           <div className="text-right">
-                            <LeaveStatusMark status={r.status} />
+                            <LeaveStatusMark status={r.status} csChain={requestCsChain(r)} />
                             <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
-                              {statusHint(r.status)}
+                              {statusHint(r.status, requestCsChain(r))}
                             </p>
                           </div>
                         </div>
@@ -687,8 +715,8 @@ export function LeavePageClient({
                             </td>
                             <td className="py-2 pr-2">
                               <div className="flex flex-col gap-0.5">
-                                <LeaveStatusMark status={r.status} />
-                                <span className="text-muted-foreground text-[11px]">{statusHint(r.status)}</span>
+                                <LeaveStatusMark status={r.status} csChain={requestCsChain(r)} />
+                                <span className="text-muted-foreground text-[11px]">{statusHint(r.status, requestCsChain(r))}</span>
                               </div>
                             </td>
                             <td className="text-muted-foreground max-w-[200px] truncate py-2" title={r.reason ?? ""}>
@@ -826,7 +854,7 @@ export function LeavePageClient({
                                 ` ~ ${format(new Date(r.endDate), "yyyy.MM.dd", { locale: ko })}`}
                             </td>
                             <td className="py-2 pr-2">
-                              <LeaveStatusMark status={r.status} />
+                              <LeaveStatusMark status={r.status} csChain={requestCsChain(r)} />
                             </td>
                             <td className="max-w-[160px] truncate py-2 text-muted-foreground text-xs" title={r.reason ?? ""}>
                               {r.reason ?? "—"}
@@ -852,7 +880,37 @@ export function LeavePageClient({
                                   </Button>
                                 </div>
                               )}
-                              {r.status === "PENDING" && isExecutive && (String(r.user?.role ?? "").toUpperCase() === "TEAM_LEAD" || !deptHasTeamLead(r.user?.department)) && (
+                              {((r.status === "PENDING" &&
+                                isCsCenterChief &&
+                                requestCsChain(r) &&
+                                (String(r.user?.role ?? "").toUpperCase() === "TEAM_LEAD" ||
+                                  !deptHasTeamLead(r.user?.department))) ||
+                                (r.status === "TEAM_LEAD_APPROVED" && isCsCenterChief && requestCsChain(r))) && (
+                                <div className="flex flex-wrap gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "APPROVED")}
+                                  >
+                                    최종 승인
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processingId === r.id}
+                                    onClick={() => handleStatus(r.id, "REJECTED")}
+                                  >
+                                    반려
+                                  </Button>
+                                </div>
+                              )}
+                              {r.status === "PENDING" &&
+                                isExecutive &&
+                                !requestCsChain(r) &&
+                                (String(r.user?.role ?? "").toUpperCase() === "TEAM_LEAD" ||
+                                  String(r.user?.role ?? "").toUpperCase() === "CENTER_CHIEF" ||
+                                  !deptHasTeamLead(r.user?.department)) && (
                                 <div className="flex flex-wrap gap-1">
                                   <Button
                                     size="sm"
@@ -872,7 +930,7 @@ export function LeavePageClient({
                                   </Button>
                                 </div>
                               )}
-                              {r.status === "TEAM_LEAD_APPROVED" && isExecutive && (
+                              {r.status === "TEAM_LEAD_APPROVED" && isExecutive && !requestCsChain(r) && (
                                 <div className="flex flex-wrap gap-1">
                                   <Button
                                     size="sm"

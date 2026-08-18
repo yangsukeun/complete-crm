@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
@@ -10,9 +11,13 @@ import { createNotificationWithOptions } from "@/lib/notifications";
 import { isSickLeaveType, leaveRequestDays } from "@/lib/leave/leave-request-days";
 import {
   applicantSkipsTeamLeadLeaveStep,
+  canCsCenterChiefFinalApproveLeave,
   canExecutiveFinalApproveLeave,
+  canFinalizeLeaveCancel,
   canFirstApproveLeave,
+  csLeaveFinalIsCenterChief,
   fetchDepartmentsWithTeamLead,
+  leaveAfterFirstApprovalNotifyWhere,
   teamLeadNotifyWhereForApplicantDepartment,
 } from "@/lib/leave-department-access";
 import { syncLeaveToNaverCalendar } from "@/lib/naver-calendar-sync";
@@ -23,15 +28,6 @@ function isExecutive(role: string | undefined) {
 
 function canOwnerRequestCancel(current: string) {
   return current === "PENDING" || current === "TEAM_LEAD_APPROVED" || current === "APPROVED";
-}
-
-function canManagerFinalizeCancel(cancelFromStatus: string | null | undefined, role: string | undefined) {
-  if (!cancelFromStatus) return false;
-  const r = String(role ?? "").toUpperCase();
-  const isFirst = r === "TEAM_LEAD" || r === "CENTER_CHIEF";
-  if (cancelFromStatus === "PENDING") return isFirst || isExecutive(role);
-  if (cancelFromStatus === "TEAM_LEAD_APPROVED" || cancelFromStatus === "APPROVED") return isExecutive(role);
-  return false;
 }
 
 async function applyExecutiveLeaveApproval(
@@ -141,17 +137,30 @@ export async function PATCH(
         });
 
         const applicant = updated.user?.name ?? "직원";
-        const teamLeadFilter = teamLeadNotifyWhereForApplicantDepartment(leave.user?.department);
-        const managers = await prisma.user.findMany({
-          where: {
-            OR: [
-              { role: { in: ["EXECUTIVE", "ADMIN"] } },
-              ...(teamLeadFilter ? [teamLeadFilter] : []),
-            ],
-            id: { not: leave.userId },
-          },
-          select: { id: true, role: true },
+        const pendingFirst = teamLeadNotifyWhereForApplicantDepartment(leave.user?.department);
+        const finalWhere = leaveAfterFirstApprovalNotifyWhere({
+          applicantDepartment: leave.user?.department,
+          applicantRole: leave.user?.role,
         });
+        const cancelNotifyWhere =
+          leave.status === "PENDING" && !applicantSkipsTeamLeadLeaveStep(leave.user?.role)
+            ? csLeaveFinalIsCenterChief(leave.user?.department, leave.user?.role)
+              ? pendingFirst
+              : {
+                  OR: [
+                    { role: { in: ["EXECUTIVE", "ADMIN"] } },
+                    ...(pendingFirst ? [pendingFirst] : []),
+                  ],
+                }
+            : finalWhere;
+        const managers = cancelNotifyWhere
+          ? await prisma.user.findMany({
+              where: {
+                AND: [cancelNotifyWhere as Prisma.UserWhereInput, { id: { not: leave.userId } }],
+              },
+              select: { id: true, role: true },
+            })
+          : [];
         for (const m of managers) {
           const msg =
             leave.status === "PENDING"
@@ -179,13 +188,30 @@ export async function PATCH(
       select: { department: true, role: true },
     });
     const viewerRole = String(viewer?.role ?? role ?? "").toUpperCase();
+    const departmentsWithTeamLead = await fetchDepartmentsWithTeamLead(prisma);
+    const cancelAuth = {
+      cancelFromStatus: leave.cancelFromStatus,
+      viewerRole,
+      viewerDepartment: viewer?.department,
+      applicantDepartment: leave.user?.department,
+      applicantRole: leave.user?.role,
+      departmentsWithTeamLead,
+    };
     const firstApprover = canFirstApproveLeave({
       viewerRole,
       viewerDepartment: viewer?.department,
       applicantDepartment: leave.user?.department,
     });
+    const csChiefFinal = canCsCenterChiefFinalApproveLeave({
+      viewerRole,
+      viewerDepartment: viewer?.department,
+      applicantDepartment: leave.user?.department,
+      applicantRole: leave.user?.role,
+      status: leave.status,
+      departmentsWithTeamLead,
+    });
 
-    // 1차 승인자(팀장, CS팀 센터장): PENDING → TEAM_LEAD_APPROVED | REJECTED — 동일 부서만
+    // 1차 승인자(같은 부서 팀장): PENDING → TEAM_LEAD_APPROVED | REJECTED
     if (firstApprover) {
 
       // 취소 요청 처리: cancelFromStatus 기준으로 가능 여부 결정
@@ -193,7 +219,7 @@ export async function PATCH(
         if (requestedStatus !== "CANCELLED") {
           return NextResponse.json({ error: "취소 요청 건은 취소 처리(CANCELLED)만 가능합니다." }, { status: 400 });
         }
-        if (!canManagerFinalizeCancel(leave.cancelFromStatus, viewerRole)) {
+        if (!canFinalizeLeaveCancel(cancelAuth)) {
           return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
         }
         const updated = await prisma.leaveRequest.update({
@@ -206,7 +232,11 @@ export async function PATCH(
 
       if (applicantSkipsTeamLeadLeaveStep(leave.user?.role)) {
         return NextResponse.json(
-          { error: "팀장 본인 휴가는 대표·관리자가 최종 승인합니다." },
+          {
+            error: csLeaveFinalIsCenterChief(leave.user?.department, leave.user?.role)
+              ? "팀장 본인 휴가는 센터장이 최종 승인합니다."
+              : "팀장 본인 휴가는 대표·관리자가 최종 승인합니다.",
+          },
           { status: 400 }
         );
       }
@@ -225,11 +255,14 @@ export async function PATCH(
 
       if (requestedStatus === "TEAM_LEAD_APPROVED") {
         const name = updated.user?.name ?? "직원";
-        const execs = await prisma.user.findMany({
-          where: { role: { in: ["EXECUTIVE", "ADMIN"] } },
+        const finals = await prisma.user.findMany({
+          where: leaveAfterFirstApprovalNotifyWhere({
+            applicantDepartment: leave.user?.department,
+            applicantRole: leave.user?.role,
+          }) as Prisma.UserWhereInput,
           select: { id: true },
         });
-        for (const u of execs) {
+        for (const u of finals) {
           await createNotificationWithOptions({
             userId: u.id,
             type: "LEAVE_REQUEST",
@@ -243,10 +276,45 @@ export async function PATCH(
       return NextResponse.json(updated);
     }
 
+    async function finalizeCancelIfRequested() {
+      if (!leave || leave.status !== "CANCEL_REQUESTED") return null;
+      if (requestedStatus !== "CANCELLED") {
+        return NextResponse.json({ error: "취소 요청 건은 취소 처리(CANCELLED)만 가능합니다." }, { status: 400 });
+      }
+      if (!canFinalizeLeaveCancel(cancelAuth)) {
+        return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
+      }
+      if (leave.cancelFromStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
+        await prisma.$transaction(async (tx) => {
+          await reverseApprovedLeaveConsumption(tx, id);
+        });
+      }
+      const updated = await prisma.leaveRequest.update({
+        where: { id },
+        data: { status: "CANCELLED" },
+        include: { user: { select: { name: true, position: true } } },
+      });
+      return NextResponse.json(updated);
+    }
+
+    // CS 센터장: 사원·팀장 휴가 최종 (TEAM_LEAD_APPROVED → APPROVED). 대표는 관여하지 않음.
+    if (csChiefFinal || (viewerRole === "CENTER_CHIEF" && leave.status === "CANCEL_REQUESTED" && canFinalizeLeaveCancel(cancelAuth))) {
+      const cancelRes = await finalizeCancelIfRequested();
+      if (cancelRes) return cancelRes;
+
+      if (!csChiefFinal) {
+        return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+      }
+      if (requestedStatus !== "APPROVED" && requestedStatus !== "REJECTED") {
+        return NextResponse.json({ error: "status는 APPROVED 또는 REJECTED 여야 합니다." }, { status: 400 });
+      }
+      return applyExecutiveLeaveApproval(leave, requestedStatus as "APPROVED" | "REJECTED");
+    }
+
     // 대표/임원: 2차 승인/반려 (TEAM_LEAD_APPROVED → APPROVED | REJECTED)
-    // 팀장 없는 부서·팀장 본인 신청: PENDING → APPROVED | REJECTED (바로 최종 승인)
+    // 팀장 없는 부서·팀장/센터장 본인 신청: PENDING → APPROVED | REJECTED (바로 최종 승인)
+    // CS 사원·팀장은 센터장 최종이므로 여기서 제외
     if (isExecutive(role)) {
-      const departmentsWithTeamLead = await fetchDepartmentsWithTeamLead(prisma);
       const canFinalApprove = canExecutiveFinalApproveLeave({
         status: leave.status,
         applicantDepartment: leave.user?.department,
@@ -254,30 +322,16 @@ export async function PATCH(
         departmentsWithTeamLead,
       });
 
-      // 취소 요청 처리 (CANCEL_REQUESTED → CANCELLED). APPROVED 취소면 연차 사용 복구
-      if (leave.status === "CANCEL_REQUESTED") {
-        if (requestedStatus !== "CANCELLED") {
-          return NextResponse.json({ error: "취소 요청 건은 취소 처리(CANCELLED)만 가능합니다." }, { status: 400 });
-        }
-        if (!canManagerFinalizeCancel(leave.cancelFromStatus, role)) {
-          return NextResponse.json({ error: "취소 처리 권한이 없습니다." }, { status: 403 });
-        }
-
-        if (leave.cancelFromStatus === "APPROVED" && !isSickLeaveType(leave.type)) {
-          await prisma.$transaction(async (tx) => {
-            await reverseApprovedLeaveConsumption(tx, id);
-          });
-        }
-
-        const updated = await prisma.leaveRequest.update({
-          where: { id },
-          data: { status: "CANCELLED" },
-          include: { user: { select: { name: true, position: true } } },
-        });
-        return NextResponse.json(updated);
-      }
+      const cancelRes = await finalizeCancelIfRequested();
+      if (cancelRes) return cancelRes;
 
       if (!canFinalApprove) {
+        if (csLeaveFinalIsCenterChief(leave.user?.department, leave.user?.role)) {
+          return NextResponse.json(
+            { error: "CS팀 휴가는 팀장 1차 후 센터장이 최종 승인합니다." },
+            { status: 400 }
+          );
+        }
         if (leave.status === "PENDING") {
           return NextResponse.json(
             { error: "해당 부서 팀장 1차 승인 후 최종 승인할 수 있습니다." },

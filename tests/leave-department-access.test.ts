@@ -2,16 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   canTeamLeadManageLeaveApplicant,
   canFirstApproveLeave,
+  canCsCenterChiefFinalApproveLeave,
+  canExecutiveFinalApproveLeave,
+  csLeaveFinalIsCenterChief,
   teamLeadNotifyWhereForApplicantDepartment,
-} from "@/lib/leave-department-access";
-import { leaveRequestListWhere } from "@/lib/leave-request-serialize";
-
-import {
+  leaveNewRequestNotifyWhere,
+  leaveAfterFirstApprovalNotifyWhere,
   departmentHasTeamLead,
   needsExecutiveDirectLeaveApproval,
   applicantSkipsTeamLeadLeaveStep,
-  canExecutiveFinalApproveLeave,
 } from "@/lib/leave-department-access";
+import { leaveRequestListWhere } from "@/lib/leave-request-serialize";
 
 describe("leave-department-access", () => {
   it("allows team lead only for same department", () => {
@@ -30,26 +31,39 @@ describe("leave-department-access", () => {
     expect(teamLeadNotifyWhereForApplicantDepartment("  ")).toBeNull();
   });
 
-  it("notifies CS team lead and center chief together", () => {
+  it("notifies CS first line as team lead only", () => {
     expect(teamLeadNotifyWhereForApplicantDepartment("CS팀")).toEqual({
+      role: "TEAM_LEAD",
       department: "CS팀",
-      role: { in: ["TEAM_LEAD", "CENTER_CHIEF"] },
     });
+    expect(
+      leaveNewRequestNotifyWhere({
+        applicantDepartment: "CS팀",
+        applicantRole: "USER",
+        skipTeamLeadStep: false,
+      })
+    ).toEqual({ role: "TEAM_LEAD", department: "CS팀" });
+    expect(
+      leaveNewRequestNotifyWhere({
+        applicantDepartment: "CS팀",
+        applicantRole: "TEAM_LEAD",
+        skipTeamLeadStep: true,
+      })
+    ).toEqual({ role: "CENTER_CHIEF", department: "CS팀" });
+    expect(
+      leaveAfterFirstApprovalNotifyWhere({
+        applicantDepartment: "CS팀",
+        applicantRole: "USER",
+      })
+    ).toEqual({ role: "CENTER_CHIEF", department: "CS팀" });
   });
 
-  it("lets CS center chief first-approve same department only", () => {
+  it("lets only same-department team lead first-approve", () => {
     expect(
       canFirstApproveLeave({
         viewerRole: "CENTER_CHIEF",
         viewerDepartment: "CS팀",
         applicantDepartment: "CS팀",
-      })
-    ).toBe(true);
-    expect(
-      canFirstApproveLeave({
-        viewerRole: "CENTER_CHIEF",
-        viewerDepartment: "마케팅",
-        applicantDepartment: "마케팅",
       })
     ).toBe(false);
     expect(
@@ -79,6 +93,7 @@ describe("leave-department-access", () => {
 
   it("sends team-lead applications straight to executive", () => {
     expect(applicantSkipsTeamLeadLeaveStep("TEAM_LEAD")).toBe(true);
+    expect(applicantSkipsTeamLeadLeaveStep("CENTER_CHIEF")).toBe(true);
     expect(applicantSkipsTeamLeadLeaveStep("USER")).toBe(false);
     const withLead = new Set(["마케팅"]);
     expect(
@@ -105,6 +120,70 @@ describe("leave-department-access", () => {
         departmentsWithTeamLead: withLead,
       })
     ).toBe(true);
+  });
+
+  it("stops CS staff leave at center chief, not executive", () => {
+    const withLead = new Set(["CS팀", "마케팅"]);
+    expect(csLeaveFinalIsCenterChief("CS팀", "USER")).toBe(true);
+    expect(csLeaveFinalIsCenterChief("CS팀", "TEAM_LEAD")).toBe(true);
+    expect(csLeaveFinalIsCenterChief("CS팀", "CENTER_CHIEF")).toBe(false);
+    expect(csLeaveFinalIsCenterChief("마케팅", "USER")).toBe(false);
+
+    expect(
+      canExecutiveFinalApproveLeave({
+        status: "TEAM_LEAD_APPROVED",
+        applicantDepartment: "CS팀",
+        applicantRole: "USER",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(false);
+    expect(
+      canExecutiveFinalApproveLeave({
+        status: "TEAM_LEAD_APPROVED",
+        applicantDepartment: "CS팀",
+        applicantRole: "TEAM_LEAD",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(false);
+    expect(
+      canExecutiveFinalApproveLeave({
+        status: "TEAM_LEAD_APPROVED",
+        applicantDepartment: "CS팀",
+        applicantRole: "CENTER_CHIEF",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(true);
+
+    expect(
+      canCsCenterChiefFinalApproveLeave({
+        viewerRole: "CENTER_CHIEF",
+        viewerDepartment: "CS팀",
+        applicantDepartment: "CS팀",
+        applicantRole: "USER",
+        status: "TEAM_LEAD_APPROVED",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(true);
+    expect(
+      canCsCenterChiefFinalApproveLeave({
+        viewerRole: "CENTER_CHIEF",
+        viewerDepartment: "CS팀",
+        applicantDepartment: "CS팀",
+        applicantRole: "TEAM_LEAD",
+        status: "TEAM_LEAD_APPROVED",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(true);
+    expect(
+      canCsCenterChiefFinalApproveLeave({
+        viewerRole: "CENTER_CHIEF",
+        viewerDepartment: "CS팀",
+        applicantDepartment: "마케팅",
+        applicantRole: "USER",
+        status: "TEAM_LEAD_APPROVED",
+        departmentsWithTeamLead: withLead,
+      })
+    ).toBe(false);
   });
 });
 
