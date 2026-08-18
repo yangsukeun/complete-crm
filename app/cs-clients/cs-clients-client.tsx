@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeadline } from "@/components/page-headline";
@@ -53,10 +53,10 @@ function InlineCell({
     return (
       <button
         type="button"
-        className="block w-full truncate rounded px-1 py-0.5 text-left text-sm hover:bg-muted/60"
+        className="flex h-9 w-full items-center truncate rounded-md border border-transparent px-2 text-left text-sm hover:border-border hover:bg-muted/60"
         onClick={() => setEditing(true)}
       >
-        {value || <span className="text-muted-foreground">—</span>}
+        {value || <span className="text-muted-foreground">클릭해서 입력</span>}
       </button>
     );
   }
@@ -91,6 +91,9 @@ export function CsClientsClient() {
   const [filter, setFilter] = useState<"active" | "all">("active");
   const [assigneeId, setAssigneeId] = useState<string>("__ALL__");
   const [q, setQ] = useState("");
+  const [draft, setDraft] = useState({ name: "", startDate: "", endDate: "", note: "" });
+  const [savingDraft, setSavingDraft] = useState(false);
+  const draftNameRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,17 +148,34 @@ export function CsClientsClient() {
   }, [clients, filter, assigneeId, q]);
 
   const addRow = async () => {
+    const name = draft.name.trim();
+    if (!name) {
+      draftNameRef.current?.focus();
+      toast.error("업체명을 입력하세요.");
+      return;
+    }
+    setSavingDraft(true);
     try {
       const res = await fetch("/api/cs-clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "새 업체" }),
+        body: JSON.stringify({
+          name,
+          startDate: draft.startDate.trim(),
+          endDate: draft.endDate.trim(),
+          note: draft.note.trim(),
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as ClientRow & { error?: string };
       if (!res.ok) throw new Error(body.error || "추가에 실패했습니다.");
       setClients((cur) => [body, ...cur]);
+      setDraft({ name: "", startDate: "", endDate: "", note: "" });
+      toast.success("업체를 추가했습니다.");
+      requestAnimationFrame(() => draftNameRef.current?.focus());
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "추가에 실패했습니다.");
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -217,9 +237,9 @@ export function CsClientsClient() {
           }
         />
         {canManage && (
-          <Button type="button" size="sm" onClick={() => void addRow()}>
-            <Plus className="size-4" />
-            행 추가
+          <Button type="button" size="sm" disabled={savingDraft} onClick={() => void addRow()}>
+            {savingDraft ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+            업체 추가 하기
           </Button>
         )}
       </div>
@@ -271,14 +291,69 @@ export function CsClientsClient() {
                 <th className="px-3 py-2 font-medium">비고</th>
                 <th className="px-3 py-2 font-medium">담당자</th>
                 <th className="px-3 py-2 font-medium">활성</th>
-                {canManage && <th className="w-10 px-2 py-2" />}
+                {canManage && <th className="w-24 px-2 py-2" />}
               </tr>
             </thead>
             <tbody>
+              {canManage && (
+                <tr className="border-t bg-primary/5">
+                  <td className="px-2 py-2">
+                    <Input
+                      ref={draftNameRef}
+                      value={draft.name}
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                      placeholder="업체명"
+                      className="h-9 bg-background"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void addRow();
+                      }}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <Input
+                      type="date"
+                      value={draft.startDate}
+                      onChange={(e) => setDraft((d) => ({ ...d, startDate: e.target.value }))}
+                      className="h-9 bg-background"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <Input
+                      type="date"
+                      value={draft.endDate}
+                      onChange={(e) => setDraft((d) => ({ ...d, endDate: e.target.value }))}
+                      className="h-9 bg-background"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <Input
+                      value={draft.note}
+                      onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+                      placeholder="비고"
+                      className="h-9 bg-background"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void addRow();
+                      }}
+                    />
+                  </td>
+                  <td className="text-muted-foreground px-3 py-2 text-xs">추가 후 배정</td>
+                  <td className="text-muted-foreground px-3 py-2 text-xs">자동</td>
+                  <td className="px-2 py-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={savingDraft}
+                      onClick={() => void addRow()}
+                    >
+                      등록
+                    </Button>
+                  </td>
+                </tr>
+              )}
               {visible.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-muted-foreground px-3 py-8 text-center">
-                  {canManage ? "업체가 없습니다." : "맡은 업체가 없습니다."}
+                  {canManage ? "아래 목록이 비어 있습니다. 위에서 업체를 추가하세요." : "맡은 업체가 없습니다."}
                   </td>
                 </tr>
               ) : (
