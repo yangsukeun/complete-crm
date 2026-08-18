@@ -6,7 +6,7 @@ import { DashboardAttendance } from "@/components/dashboard-attendance";
 import { CsScreen } from "@/components/cs-screen";
 import { ColorChip } from "@/components/ui/color-chip";
 import Link from "next/link";
-import { Building2, CalendarPlus, Cake, Megaphone } from "lucide-react";
+import { Building2, CalendarPlus, Cake, Megaphone, Users } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { startOfDayKst } from "@/lib/date-kst";
 import { canUseAwayFeature, canViewAwayOverview, summarizeAwayLogs } from "@/lib/attendance-away-access";
@@ -110,6 +110,16 @@ export default async function CsToolsPage() {
               {csClientNavLabel(manageClients)}
             </span>
             <span className="text-muted-foreground text-sm">{csClientNavDescription(manageClients)}</span>
+          </Link>
+          <Link
+            href="/cs-org"
+            className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
+          >
+            <span className="flex items-center gap-2 text-base font-semibold">
+              <Users className="size-4 text-muted-foreground" />
+              조직도
+            </span>
+            <span className="text-muted-foreground text-sm">CS팀 직책 기준으로 배치됩니다.</span>
           </Link>
           <Link
             href="/cs-lounge"

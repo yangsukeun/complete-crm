@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import NextImage from "next/image";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { Suspense, useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -38,8 +38,6 @@ import {
   Server,
   Package,
   Upload,
-  Timer,
-  Clock,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -52,7 +50,9 @@ import { canManageEmployeesSync } from "@/lib/employee-admin-access";
 import { canViewAwayOverview } from "@/lib/attendance-away-access";
 import { canViewEmployeeLeaveSummary } from "@/lib/leave-overview-access";
 import { canSeeCsToolsDashboardCard } from "@/lib/cs-tools-access";
-import { canManageCsClients, csClientNavLabel } from "@/lib/cs-client-access";
+import { canManageCsClients } from "@/lib/cs-client-access";
+import { CsSectionNav } from "@/components/cs-section-nav";
+import { csSectionNavItems, isCsSectionPath } from "@/lib/cs-section-nav";
 import {
   BOARD_LAST_SEEN_EVENT,
   BOARD_NEW_POST_EVENT,
@@ -81,73 +81,6 @@ type NavLink = {
   awayOverviewOnly?: boolean;
   csAccessOnly?: boolean;
 };
-
-const CS_LOUNGE_TOP_LINKS: NavLink[] = [
-  { href: "/cs-lounge?tab=notice", label: "공지사항", icon: Megaphone, csAccessOnly: true },
-  { href: "/cs-lounge?tab=lounge", label: "익명 라운지", icon: MessageCircle, csAccessOnly: true },
-];
-
-function csLoungeTabOf(href: string): string | null {
-  if (!href.startsWith("/cs-lounge")) return null;
-  const q = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
-  return new URLSearchParams(q).get("tab");
-}
-
-function CsLoungeTopNav({
-  className,
-  size = "desktop",
-}: {
-  className?: string;
-  size?: "desktop" | "mobile";
-}) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentTab = pathname === "/cs-lounge" ? (searchParams.get("tab") ?? "") : "";
-
-  return (
-    <>
-      {CS_LOUNGE_TOP_LINKS.map(({ href, label, icon: Icon }) => {
-        const tab = csLoungeTabOf(href);
-        const isActive = pathname === "/cs-lounge" && currentTab === tab;
-        if (size === "mobile") {
-          return (
-            <Link
-              key={href}
-              href={href}
-              prefetch={false}
-              className={cn(
-                "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
-                isActive ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-              )}
-            >
-              <Icon className="size-4" />
-              {label}
-            </Link>
-          );
-        }
-        return (
-          <Button
-            key={href}
-            variant="ghost"
-            asChild
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-              isActive
-                ? "bg-gray-100 text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
-              className
-            )}
-          >
-            <Link href={href} prefetch={false} className="flex items-center gap-1.5">
-              <Icon className="size-4" />
-              <span>{label}</span>
-            </Link>
-          </Button>
-        );
-      })}
-    </>
-  );
-}
 
 // [메인]: 대시보드·CS·3PL (자주 쓰는 단일 진입)
 const mainGroupLinks: NavLink[] = [
@@ -192,10 +125,6 @@ const hrGroupLinks: {
 }[] = [
   { href: "/schedule", label: "스케줄", icon: Calendar, featureKey: "schedule" },
   { href: "/leave", label: "연차/근태", icon: CalendarClock, featureKey: "leave", companyOnly: true },
-  { href: "/cs-clients", label: "CS 업체", icon: Building2, csAccessOnly: true },
-  { href: "/cs-org", label: "CS 조직도", icon: Users, csAccessOnly: true },
-  { href: "/cs-tools/attendance", label: "CS 근태", icon: Clock, companyOnly: true, awayOverviewOnly: true },
-  { href: "/cs-tools/away", label: "이석 현황", icon: Timer, companyOnly: true, awayOverviewOnly: true },
 ];
 
 // [재무/영업 관리]: 에메랄드/그린 계열
@@ -499,6 +428,12 @@ export function AppNav() {
     role: session?.user?.role,
     department: session?.user?.department,
   });
+  const csNavItems = csSectionNavItems({
+    canManageClients,
+    canViewAwayOverview: canSeeAwayOverview,
+  });
+  const onCsSection = isCsSectionPath(pathname);
+  const showCsSectionNav = canSeeCsTools && onCsSection;
   const hrLinks = hrGroupLinks.filter(
     (l: any) =>
       (!l.featureKey || can(l.featureKey)) &&
@@ -506,8 +441,6 @@ export function AppNav() {
       (!l.awayOverviewOnly || canSeeAwayOverview) &&
       (!l.csAccessOnly || canSeeCsTools) &&
       navHrefAllowedForOrg(l.href, orgUnit)
-  ).map((l) =>
-    l.href === "/cs-clients" ? { ...l, label: csClientNavLabel(canManageClients) } : l
   );
   const financeLinks = financeGroupLinks.filter(
     (l: any) => (!l.featureKey || can(l.featureKey)) && navHrefAllowedForOrg(l.href, orgUnit)
@@ -738,14 +671,14 @@ export function AppNav() {
             </DropdownMenu>
           )}
 
-          {/* CS 링크 — 단독 유지 */}
+          {/* CS 링크 — 진입만. 공지·라운지·업체는 CS 구역 상단 메뉴 */}
           {mainLinks.some((l) => l.href === "/cs-tools") && (
             <Button
               variant="ghost"
               asChild
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                pathname === "/cs-tools" || pathname.startsWith("/cs-tools/")
+                onCsSection
                   ? "bg-gray-100 text-gray-900"
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               )}
@@ -755,11 +688,6 @@ export function AppNav() {
                 <span>CS 링크</span>
               </Link>
             </Button>
-          )}
-          {canSeeCsTools && (
-            <Suspense fallback={null}>
-              <CsLoungeTopNav />
-            </Suspense>
           )}
 
           {/* 3PL 물류 — 단독 (도약패키지 연동 예정) */}
@@ -1095,11 +1023,20 @@ export function AppNav() {
         </div>
       </div>
 
+      {showCsSectionNav && (
+        <Suspense fallback={null}>
+          <CsSectionNav items={csNavItems} />
+        </Suspense>
+      )}
+
       {/* Mobile Navigation (shown below header on small screens) */}
       <div className="flex overflow-x-auto border-t border-gray-100 bg-white px-4 py-2 md:hidden">
         <div className="flex gap-1">
           {mainLinks.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname === href || pathname.startsWith(href + "/");
+            const isActive =
+              href === "/cs-tools"
+                ? onCsSection
+                : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
@@ -1115,11 +1052,6 @@ export function AppNav() {
               </Link>
             );
           })}
-          {canSeeCsTools && (
-            <Suspense fallback={null}>
-              <CsLoungeTopNav size="mobile" />
-            </Suspense>
-          )}
           {[
             ...workLinks,
             ...resourceLinks,
