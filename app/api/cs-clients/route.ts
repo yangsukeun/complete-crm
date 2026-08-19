@@ -3,6 +3,8 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canManageCsClients, canViewCsClients, csClientListWhere } from "@/lib/cs-client-access";
 import { serializeCsClient, csClientInclude } from "@/lib/cs-client-serialize";
+import { isCsClientPhase } from "@/lib/cs-org-month";
+import { todayYmdKst } from "@/lib/date-kst";
 
 async function loadMe(userId: string) {
   return prisma.user.findUnique({
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
       startDate?: unknown;
       endDate?: unknown;
       note?: unknown;
+      phase?: unknown;
     };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
@@ -72,6 +75,14 @@ export async function POST(req: Request) {
     const startDate = typeof body.startDate === "string" ? body.startDate.trim() : "";
     const endDate = typeof body.endDate === "string" ? body.endDate.trim() : "";
     const note = typeof body.note === "string" ? body.note.trim() : "";
+    const today = todayYmdKst();
+    const phase = isCsClientPhase(body.phase)
+      ? body.phase
+      : endDate
+        ? "OUTGOING"
+        : startDate && startDate > today
+          ? "INCOMING"
+          : "ACTIVE";
 
     const created = await prisma.csClient.create({
       data: {
@@ -79,7 +90,8 @@ export async function POST(req: Request) {
         startDate: startDate || null,
         endDate: endDate || null,
         note: note || null,
-        isActive: !endDate,
+        phase,
+        isActive: phase === "ACTIVE" && !endDate,
         updatedBy: me.id,
       },
       include: csClientInclude,

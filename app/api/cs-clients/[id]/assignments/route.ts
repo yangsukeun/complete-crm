@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { canManageCsClients } from "@/lib/cs-client-access";
 import { serializeCsClient, csClientInclude } from "@/lib/cs-client-serialize";
 import { isCsDepartment } from "@/lib/cs-tools-access";
+import { syncCsClientAssignmentPeriods } from "@/lib/cs-client-periods";
+import { todayYmdKst } from "@/lib/date-kst";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -60,6 +62,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           data: next.map((n) => ({ clientId: id, userId: n.userId, roleLabel: n.roleLabel })),
         });
       }
+      await syncCsClientAssignmentPeriods(tx, { clientId: id, next, today: todayYmdKst() });
       await tx.csClient.update({
         where: { id },
         data: { updatedBy: me.id },

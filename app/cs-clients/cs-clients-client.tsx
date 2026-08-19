@@ -29,6 +29,7 @@ type ClientRow = {
   endDate: string;
   note: string;
   isActive: boolean;
+  phase: "ACTIVE" | "INCOMING" | "OUTGOING";
   assignments: Assignment[];
 };
 type Staff = { id: string; name: string; position: string | null };
@@ -88,7 +89,7 @@ export function CsClientsClient() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"active" | "all">("active");
+  const [filter, setFilter] = useState<"active" | "incoming" | "outgoing" | "all">("active");
   const [assigneeId, setAssigneeId] = useState<string>("__ALL__");
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState({ name: "", startDate: "", endDate: "", note: "" });
@@ -139,7 +140,9 @@ export function CsClientsClient() {
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
     return clients.filter((c) => {
-      if (filter === "active" && !c.isActive) return false;
+      if (filter === "active" && !(c.isActive && (c.phase ?? "ACTIVE") === "ACTIVE")) return false;
+      if (filter === "incoming" && c.phase !== "INCOMING") return false;
+      if (filter === "outgoing" && c.phase !== "OUTGOING") return false;
       if (assigneeId !== "__ALL__" && !c.assignments.some((a) => a.userId === assigneeId)) return false;
       if (!query) return true;
       const hay = `${c.name} ${c.note} ${c.startDate} ${c.endDate} ${c.assignments.map((a) => a.name).join(" ")}`.toLowerCase();
@@ -245,12 +248,14 @@ export function CsClientsClient() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={filter} onValueChange={(v) => setFilter(v as "active" | "all")}>
-          <SelectTrigger className="w-28" size="sm">
+        <Select value={filter} onValueChange={(v) => setFilter(v as "active" | "incoming" | "outgoing" | "all")}>
+          <SelectTrigger className="w-32" size="sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="active">활성</SelectItem>
+            <SelectItem value="active">현재 담당</SelectItem>
+            <SelectItem value="incoming">들어올 업체</SelectItem>
+            <SelectItem value="outgoing">나갈 업체</SelectItem>
             <SelectItem value="all">전체</SelectItem>
           </SelectContent>
         </Select>
@@ -289,6 +294,7 @@ export function CsClientsClient() {
                 <th className="px-3 py-2 font-medium">시작일</th>
                 <th className="px-3 py-2 font-medium">종료일</th>
                 <th className="px-3 py-2 font-medium">비고</th>
+                <th className="px-3 py-2 font-medium">상태</th>
                 <th className="px-3 py-2 font-medium">담당자</th>
                 <th className="px-3 py-2 font-medium">활성</th>
                 {canManage && <th className="w-24 px-2 py-2" />}
@@ -336,6 +342,7 @@ export function CsClientsClient() {
                       }}
                     />
                   </td>
+                  <td className="text-muted-foreground px-3 py-2 text-xs">현재</td>
                   <td className="text-muted-foreground px-3 py-2 text-xs">추가 후 배정</td>
                   <td className="text-muted-foreground px-3 py-2 text-xs">자동</td>
                   <td className="px-2 py-2">
@@ -352,7 +359,7 @@ export function CsClientsClient() {
               )}
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-muted-foreground px-3 py-8 text-center">
+                  <td colSpan={8} className="text-muted-foreground px-3 py-8 text-center">
                   {canManage ? "아래 목록이 비어 있습니다. 위에서 업체를 추가하세요." : "맡은 업체가 없습니다."}
                   </td>
                 </tr>
@@ -406,6 +413,37 @@ export function CsClientsClient() {
                           await patch(row.id, { note }, prev);
                         }}
                       />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {canManage ? (
+                        <Select
+                          value={row.phase ?? "ACTIVE"}
+                          onValueChange={(phase) => {
+                            const prev = clients;
+                            setClients((cur) =>
+                              cur.map((c) => (c.id === row.id ? { ...c, phase: phase as ClientRow["phase"] } : c))
+                            );
+                            void patch(row.id, { phase }, prev);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-[7.5rem]" size="sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ACTIVE">현재</SelectItem>
+                            <SelectItem value="INCOMING">들어올 업체</SelectItem>
+                            <SelectItem value="OUTGOING">나갈 업체</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs">
+                          {(row.phase ?? "ACTIVE") === "INCOMING"
+                            ? "들어올 업체"
+                            : (row.phase ?? "ACTIVE") === "OUTGOING"
+                              ? "나갈 업체"
+                              : "현재"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-1.5">
                       <AssigneeCell

@@ -7,6 +7,7 @@ import {
   csOrgWouldCycle,
   pickCsBirthdaysThisMonth,
 } from "@/lib/cs-org";
+import { clipPeriodToMonth, parseYearMonth, shiftYearMonth } from "@/lib/cs-org-month";
 
 describe("csOrgBand", () => {
   it("orders 부팀장 before 팀장 substring", () => {
@@ -111,5 +112,32 @@ describe("pickCsBirthdaysThisMonth", () => {
     );
     expect(birthdays[0]).toMatchObject({ name: "Today", isToday: true, monthDay: "8/14" });
     expect(birthdays[1]?.isToday).toBe(false);
+  });
+});
+
+describe("clipPeriodToMonth", () => {
+  it("clips an open assignment to days-until-today in the current month", () => {
+    const span = clipPeriodToMonth({
+      startedOn: "2026-08-03",
+      endedOn: null,
+      ym: "2026-08",
+      today: "2026-08-19",
+    });
+    expect(span).toMatchObject({ from: "2026-08-03", until: "2026-08-19", ongoing: true, days: 17 });
+  });
+
+  it("keeps a finished brand through its end day", () => {
+    const span = clipPeriodToMonth({
+      startedOn: "2026-07-28",
+      endedOn: "2026-08-10",
+      ym: "2026-08",
+      today: "2026-08-19",
+    });
+    expect(span).toMatchObject({ from: "2026-08-01", until: "2026-08-10", ongoing: false, days: 10 });
+  });
+
+  it("shifts year-month", () => {
+    expect(parseYearMonth("2026-08")).toBe("2026-08");
+    expect(shiftYearMonth("2026-01", -1)).toBe("2025-12");
   });
 });

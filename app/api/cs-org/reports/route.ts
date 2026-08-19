@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { canAccessCsLounge } from "@/lib/cs-lounge-access";
-import { canManageCsClients } from "@/lib/cs-client-access";
+import { canViewCsOrg, canManageCsClients } from "@/lib/cs-client-access";
 import {
   allowedCsOrgManagers,
   csOrgRank,
@@ -26,7 +25,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const me = await loadMe(session.user.id);
-    if (!me || !canAccessCsLounge(me)) {
+    if (!me || !canViewCsOrg(me)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

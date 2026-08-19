@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { canManageCsClients, canViewCsClients, csClientListWhere } from "@/lib/cs-client-access";
 import { serializeCsClient, csClientInclude, csClientActiveFromPatch } from "@/lib/cs-client-serialize";
+import { isCsClientPhase } from "@/lib/cs-org-month";
 
 async function loadMe(userId: string) {
   return prisma.user.findUnique({
@@ -38,6 +39,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       endDate?: string | null;
       note?: string | null;
       isActive?: boolean;
+      phase?: string;
       updatedBy: string;
     } = { updatedBy: me.id };
 
@@ -49,6 +51,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (typeof body.startDate === "string") data.startDate = body.startDate.trim() || null;
     if (typeof body.endDate === "string") data.endDate = body.endDate.trim() || null;
     if (typeof body.note === "string") data.note = body.note.trim() || null;
+    if (isCsClientPhase(body.phase)) data.phase = body.phase;
     const derivedActive = csClientActiveFromPatch({
       endDate: typeof body.endDate === "string" ? body.endDate.trim() || null : undefined,
       isActive: typeof body.isActive === "boolean" ? body.isActive : undefined,

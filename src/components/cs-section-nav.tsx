@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   Building2,
+  CalendarDays,
   Clock,
   Link2,
   Megaphone,
@@ -26,6 +27,7 @@ const ICONS: Record<CsSectionNavId, LucideIcon> = {
   lounge: MessageCircle,
   clients: Building2,
   org: Users,
+  "org-month": CalendarDays,
   "org-settings": Warehouse,
   attendance: Clock,
   away: Timer,

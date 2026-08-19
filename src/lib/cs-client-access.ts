@@ -14,6 +14,14 @@ export function canManageCsClients(opts: {
   return canPostCsNotice(opts);
 }
 
+/** 조직도·월별 담당 — 팀장·센터장·관리자만. 팀원은 불가 */
+export function canViewCsOrg(opts: {
+  role: string | null | undefined;
+  department: string | null | undefined;
+}): boolean {
+  return canManageCsClients(opts);
+}
+
 export function csClientNavLabel(canManage: boolean): string {
   return canManage ? "업체 관리" : "내 담당 업체";
 }

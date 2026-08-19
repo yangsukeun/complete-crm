@@ -17,7 +17,7 @@ export async function loadCsOrgPeople() {
       birthDate: true,
       csOrgMember: { select: { reportsToId: true } },
       csClientAssignments: {
-        where: { client: { deletedAt: null, isActive: true } },
+        where: { client: { deletedAt: null, isActive: true, phase: "ACTIVE" } },
         select: { client: { select: { name: true } } },
         orderBy: { client: { name: "asc" } },
       },

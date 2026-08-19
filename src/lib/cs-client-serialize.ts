@@ -15,6 +15,7 @@ export function serializeCsClient(row: {
   endDate: string | null;
   note: string | null;
   isActive: boolean;
+  phase?: string;
   updatedAt: Date;
   assignments: {
     id: string;
@@ -30,6 +31,7 @@ export function serializeCsClient(row: {
     endDate: row.endDate ?? "",
     note: row.note ?? "",
     isActive: row.isActive,
+    phase: row.phase === "INCOMING" || row.phase === "OUTGOING" ? row.phase : "ACTIVE",
     updatedAt: row.updatedAt.toISOString(),
     assignments: row.assignments.map((a) => ({
       id: a.id,

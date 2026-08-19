@@ -268,6 +268,7 @@ model User {
   csLoungeVotes            CsLoungeVote[]
   csClientsUpdated         CsClient[]        @relation("CsClientUpdatedBy")
   csClientAssignments      CsClientAssignment[]
+  csClientAssignmentPeriods CsClientAssignmentPeriod[]
   csOrgMember              CsOrgReport?          @relation("CsOrgMember")
   csOrgReports             CsOrgReport[]         @relation("CsOrgManager")
   taskComments     TaskComment[]
@@ -1455,15 +1456,19 @@ model CsClient {
   endDate   String?
   note      String?
   isActive  Boolean  @default(true)
+  /// ACTIVE=현재 담당, INCOMING=들어올 업체, OUTGOING=나갈 업체
+  phase     String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   updatedBy String?
   updater   User?    @relation("CsClientUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   deletedAt DateTime?
   assignments CsClientAssignment[]
+  assignmentPeriods CsClientAssignmentPeriod[]
 
   @@index([isActive, name])
   @@index([deletedAt])
+  @@index([phase])
 }
 
 model CsClientAssignment {
@@ -1476,6 +1481,39 @@ model CsClientAssignment {
 
   @@unique([clientId, userId])
   @@index([userId])
+}
+
+/// 담당 기간 — 월별 「어떤 브랜드를 며칠까지」 조회용
+model CsClientAssignmentPeriod {
+  id         String    @id @default(cuid())
+  clientId   String
+  client     CsClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedOn  String
+  endedOn    String?
+  roleLabel  String
+
+  @@index([userId, startedOn])
+  @@index([clientId, endedOn])
+}
+
+/// CS 조직도 공유 메모
+model CsOrgMemo {
+  id        String   @id
+  content   String   @default("")
+  updatedAt DateTime @default(now()) @updatedAt
+  updatedBy String?
+}
+
+/// 입사 예정 직원 (아직 사원 계정이 없을 때)
+model CsOrgHire {
+  id        String   @id @default(cuid())
+  name      String
+  joinDate  String?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// CS 조직도: 사원·부팀장이 누구 밑에 있는지 (설정 창고에서 지정)

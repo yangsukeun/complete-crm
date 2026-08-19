@@ -13,7 +13,7 @@ export default async function CsOrgSettingsPage() {
     select: { role: true, department: true },
   });
   if (!me || !canManageCsClients(me)) {
-    redirect("/cs-org");
+    redirect("/cs-tools");
   }
 
   return (

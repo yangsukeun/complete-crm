@@ -111,6 +111,7 @@ export default async function CsToolsPage() {
             </span>
             <span className="text-muted-foreground text-sm">{csClientNavDescription(manageClients)}</span>
           </Link>
+          {manageClients ? (
           <Link
             href="/cs-org"
             className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
@@ -119,8 +120,9 @@ export default async function CsToolsPage() {
               <Users className="size-4 text-muted-foreground" />
               조직도
             </span>
-              <span className="text-muted-foreground text-sm">센터장 아래 팀장·부팀장 피라미드와 담당 업체를 봅니다.</span>
+            <span className="text-muted-foreground text-sm">센터장 아래 팀장·부팀장 피라미드와 담당 업체를 봅니다. 팀장 이상만 볼 수 있습니다.</span>
           </Link>
+          ) : null}
           <Link
             href="/cs-lounge"
             className="flex flex-col gap-2 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50 sm:col-span-2"

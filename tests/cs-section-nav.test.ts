@@ -19,7 +19,7 @@ describe("cs section nav", () => {
 
   it("shows manager client label and away links only for overview roles", () => {
     const staff = csSectionNavItems({ canManageClients: false, canViewAwayOverview: false });
-    expect(staff.map((i) => i.id)).toEqual(["hub", "notice", "lounge", "clients", "org"]);
+    expect(staff.map((i) => i.id)).toEqual(["hub", "notice", "lounge", "clients"]);
     expect(staff.find((i) => i.id === "clients")?.label).toBe("내 담당 업체");
 
     const lead = csSectionNavItems({ canManageClients: true, canViewAwayOverview: true });
@@ -30,6 +30,7 @@ describe("cs section nav", () => {
       "lounge",
       "clients",
       "org",
+      "org-month",
       "org-settings",
       "attendance",
       "away",
@@ -46,6 +47,7 @@ describe("cs section nav", () => {
     expect(csSectionNavItemActive({ id: "org", pathname: "/cs-org" })).toBe(true);
     expect(csSectionNavItemActive({ id: "org", pathname: "/cs-org/settings" })).toBe(false);
     expect(csSectionNavItemActive({ id: "org-settings", pathname: "/cs-org/settings" })).toBe(true);
+    expect(csSectionNavItemActive({ id: "org-month", pathname: "/cs-org/month" })).toBe(true);
     expect(csSectionNavItemActive({ id: "away", pathname: "/cs-tools/away" })).toBe(true);
   });
 });
