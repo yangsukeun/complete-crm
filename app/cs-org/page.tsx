@@ -7,7 +7,6 @@ import { canViewCsOrg } from "@/lib/cs-client-access";
 import { homePathForUser } from "@/lib/org-access";
 import { buildCsOrgForest } from "@/lib/cs-org";
 import { loadCsOrgPeople } from "@/lib/cs-org-data";
-import { PageHeadline } from "@/components/page-headline";
 import { CsScreen } from "@/components/cs-screen";
 import { Button } from "@/components/ui/button";
 import { CsOrgPyramid } from "./cs-org-tree";
@@ -56,22 +55,19 @@ export default async function CsOrgPage() {
   }));
 
   return (
-    <CsScreen>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeadline
-          title="CS 조직도"
-          description="센터장 아래 팀장·사원이 붙고, 지금 담당 중인 업체가 카드에 보입니다."
-        />
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
+    <CsScreen className="gap-4 p-4 md:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-extrabold tracking-tight">CS 조직도</h1>
+        <div className="flex flex-wrap gap-1.5">
+          <Button asChild size="sm" variant="outline">
             <Link href="/cs-org/month">
-              <CalendarDays className="size-4" />
+              <CalendarDays className="size-3.5" />
               월별 담당
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild size="sm" variant="outline">
             <Link href="/cs-org/settings">
-              <Warehouse className="size-4" />
+              <Warehouse className="size-3.5" />
               설정 창고
             </Link>
           </Button>

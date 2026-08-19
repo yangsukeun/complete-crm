@@ -8,6 +8,7 @@ import {
   pickCsBirthdaysThisMonth,
 } from "@/lib/cs-org";
 import { clipPeriodToMonth, parseYearMonth, shiftYearMonth } from "@/lib/cs-org-month";
+import { parseCsOrgMemoSlots, stringifyCsOrgMemoSlots } from "@/lib/cs-org-memo";
 
 describe("csOrgBand", () => {
   it("orders 부팀장 before 팀장 substring", () => {
@@ -141,5 +142,20 @@ describe("clipPeriodToMonth", () => {
   it("shifts year-month", () => {
     expect(parseYearMonth("2026-08")).toBe("2026-08");
     expect(shiftYearMonth("2026-01", -1)).toBe("2025-12");
+  });
+});
+
+describe("parseCsOrgMemoSlots", () => {
+  it("keeps existing plain text in the first slot", () => {
+    expect(parseCsOrgMemoSlots("페이로코 예정")).toEqual({
+      a: "페이로코 예정",
+      b: "",
+      c: "",
+    });
+  });
+
+  it("round-trips three slots as JSON", () => {
+    const slots = { a: "입사", b: "들어올", c: "나갈" };
+    expect(parseCsOrgMemoSlots(stringifyCsOrgMemoSlots(slots))).toEqual(slots);
   });
 });
