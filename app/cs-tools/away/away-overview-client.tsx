@@ -1,19 +1,39 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/api-swr";
+import { formatKstHm, formatKstMdEeeHm, toKstYmd } from "@/lib/date-kst";
 import { PageHeadline } from "@/components/page-headline";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ColorChip, NameWithBirthday } from "@/components/ui/color-chip";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 type Totals = {
   count: number;
   durationMs: number;
 };
 
+type Session = {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number;
+  ymd: string;
+};
+
 type Api = {
   now: string;
+  today: string;
+  weekStart: string;
+  weekDays: string[];
   current: {
     id: string;
     userId: string;
@@ -31,8 +51,12 @@ type Api = {
     today: Totals;
     week: Totals;
     month: Totals;
+    byYmd: Record<string, Totals>;
+    sessions: Session[];
   }[];
 };
+
+const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
 
 function fmtDur(ms: number): string {
   const m = Math.floor(ms / 60000);
@@ -42,27 +66,82 @@ function fmtDur(ms: number): string {
   return `${min}분`;
 }
 
-function TotalsCell({ t }: { t: Totals }) {
-  if (t.count === 0) return <span className="text-muted-foreground">—</span>;
+function formatSessionRange(s: Session): string {
+  const start = formatKstMdEeeHm(s.startedAt);
+  if (!s.endedAt) return `${start} ~ 진행 중`;
+  if (toKstYmd(s.startedAt) === toKstYmd(s.endedAt)) {
+    return `${start} ~ ${formatKstHm(s.endedAt)}`;
+  }
+  return `${start} ~ ${formatKstMdEeeHm(s.endedAt)}`;
+}
+
+function TotalsCell({
+  t,
+  onOpen,
+}: {
+  t: Totals | undefined;
+  onOpen?: () => void;
+}) {
+  if (!t || t.count === 0) return <span className="text-muted-foreground">—</span>;
+  if (!onOpen) {
+    return (
+      <span>
+        {t.count}회 · {fmtDur(t.durationMs)}
+      </span>
+    );
+  }
   return (
-    <span>
-      {t.count}회 · {fmtDur(t.durationMs)}
-    </span>
+    <button
+      type="button"
+      className="rounded-md px-1 py-0.5 text-left hover:bg-muted/70"
+      onClick={onOpen}
+    >
+      <span className="font-semibold text-primary underline decoration-primary/40 underline-offset-2">
+        {t.count}회
+      </span>
+      <span className="text-muted-foreground"> · {fmtDur(t.durationMs)}</span>
+    </button>
   );
 }
+
+type DetailState = {
+  name: string;
+  title: string;
+  sessions: Session[];
+};
 
 export function AwayOverviewClient() {
   const { data, error, isLoading, mutate } = useSWR<Api>("/api/attendance/away/overview", jsonFetcher, {
     refreshInterval: 20_000,
     revalidateOnFocus: true,
   });
+  const [detail, setDetail] = useState<DetailState | null>(null);
+
+  const weekDays = data?.weekDays ?? [];
+  const today = data?.today ?? "";
+
+  const openSessions = (name: string, title: string, sessions: Session[]) => {
+    if (sessions.length === 0) return;
+    setDetail({ name, title, sessions });
+  };
+
+  const weekdayHeaders = useMemo(
+    () =>
+      weekDays.map((ymd, i) => ({
+        ymd,
+        label: WEEKDAY_LABELS[i] ?? ymd,
+        day: Number(ymd.slice(8, 10)),
+        isToday: ymd === today,
+      })),
+    [weekDays, today]
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeadline
           title="CS 이석 현황"
-          description="현재 부재중 인원과 오늘·이번 주·이번 달 누적입니다. 20초마다 새로고침합니다."
+          description="이번 주 요일별 횟수와 시간을 보고, 회를 누르면 비운 시각을 확인할 수 있습니다. 20초마다 새로고침합니다."
         />
         <Button type="button" variant="outline" size="sm" onClick={() => void mutate()}>
           새로고침
@@ -95,6 +174,9 @@ export function AwayOverviewClient() {
                       <ColorChip tone="yellow" size="sm">
                         {fmtDur(row.elapsedMs)} 경과
                       </ColorChip>
+                      <span className="text-muted-foreground text-xs">
+                        {formatKstMdEeeHm(row.startedAt)}부터
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -103,31 +185,69 @@ export function AwayOverviewClient() {
           </Card>
 
           <div className="overflow-x-auto rounded-xl border">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left">이름</th>
-                  <th className="px-4 py-3 text-left">부서</th>
-                  <th className="px-4 py-3 text-left">오늘</th>
-                  <th className="px-4 py-3 text-left">이번 주</th>
-                  <th className="px-4 py-3 text-left">이번 달</th>
+                  <th className="px-3 py-3 text-left">이름</th>
+                  {weekdayHeaders.map((d) => (
+                    <th
+                      key={d.ymd}
+                      className={cn(
+                        "px-2 py-3 text-center font-medium",
+                        d.isToday && "bg-primary/10 text-primary"
+                      )}
+                    >
+                      <div>{d.label}</div>
+                      <div className="text-muted-foreground text-[11px] font-normal">{d.day}일</div>
+                    </th>
+                  ))}
+                  <th className="px-3 py-3 text-left">이번 주</th>
+                  <th className="px-3 py-3 text-left">이번 달</th>
                 </tr>
               </thead>
               <tbody>
                 {data.totals.map((row) => (
                   <tr key={row.userId} className="border-t">
-                    <td className="px-4 py-3 font-semibold">
+                    <td className="px-3 py-3 font-semibold">
                       <NameWithBirthday name={row.name} birthdayToday={row.birthdayToday} />
+                      {row.department ? (
+                        <div className="text-muted-foreground text-xs font-normal">{row.department}</div>
+                      ) : null}
                     </td>
-                    <td className="px-4 py-3">{row.department ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <TotalsCell t={row.today} />
+                    {weekDays.map((ymd) => (
+                      <td
+                        key={ymd}
+                        className={cn("px-2 py-3 text-center", ymd === today && "bg-primary/5")}
+                      >
+                        <TotalsCell
+                          t={row.byYmd?.[ymd]}
+                          onOpen={() =>
+                            openSessions(
+                              row.name,
+                              `${WEEKDAY_LABELS[weekDays.indexOf(ymd)] ?? ""}요일`,
+                              row.sessions.filter((s) => s.ymd === ymd)
+                            )
+                          }
+                        />
+                      </td>
+                    ))}
+                    <td className="px-3 py-3">
+                      <TotalsCell
+                        t={row.week}
+                        onOpen={() =>
+                          openSessions(
+                            row.name,
+                            "이번 주",
+                            row.sessions.filter((s) => weekDays.includes(s.ymd))
+                          )
+                        }
+                      />
                     </td>
-                    <td className="px-4 py-3">
-                      <TotalsCell t={row.week} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <TotalsCell t={row.month} />
+                    <td className="px-3 py-3">
+                      <TotalsCell
+                        t={row.month}
+                        onOpen={() => openSessions(row.name, "이번 달", row.sessions)}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -136,6 +256,26 @@ export function AwayOverviewClient() {
           </div>
         </>
       )}
+
+      <Dialog open={detail != null} onOpenChange={(open) => !open && setDetail(null)}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {detail?.name} · {detail?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {detail && (
+            <ul className="space-y-2 text-sm">
+              {detail.sessions.map((s) => (
+                <li key={s.id} className="rounded-md border px-3 py-2">
+                  <div className="font-medium">{formatSessionRange(s)}</div>
+                  <div className="text-muted-foreground text-xs">{fmtDur(s.durationMs)}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

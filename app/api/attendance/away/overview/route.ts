@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAwayOverview } from "@/lib/attendance-admin";
-import { addDaysKstYmd, kstDateBoundsUtc, kstYmdToUtcDayStart, todayYmdKst } from "@/lib/date-kst";
-import { getKstWeekday } from "@/lib/date-kst";
+import {
+  addDaysKstYmd,
+  getKstWeekday,
+  kstDateBoundsUtc,
+  kstYmdToUtcDayStart,
+  toKstYmd,
+  todayYmdKst,
+} from "@/lib/date-kst";
 import { isCsBirthdayToday } from "@/lib/cs-org";
 import { isCsSchedulerMember } from "@/lib/schedule-team-access";
 
@@ -26,6 +32,14 @@ function durationMs(startedAt: Date, endedAt: Date | null, now: Date): number {
 type Totals = {
   count: number;
   durationMs: number;
+};
+
+type Session = {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number;
+  ymd: string;
 };
 
 function emptyTotals(): Totals {
@@ -68,7 +82,8 @@ export async function GET() {
 
     const todayStart = kstDateBoundsUtc(today).start.getTime();
     const weekStartMs = kstYmdToUtcDayStart(weekStart).getTime();
-    const monthStartMs = from.getTime();
+
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDaysKstYmd(weekStart, i));
 
     const byUser = new Map<
       string,
@@ -80,6 +95,8 @@ export async function GET() {
         today: Totals;
         week: Totals;
         month: Totals;
+        byYmd: Record<string, Totals>;
+        sessions: Session[];
       }
     >();
 
@@ -94,6 +111,8 @@ export async function GET() {
           today: emptyTotals(),
           week: emptyTotals(),
           month: emptyTotals(),
+          byYmd: Object.fromEntries(weekDays.map((d) => [d, emptyTotals()])),
+          sessions: [],
         };
         byUser.set(userId, row);
       }
@@ -103,19 +122,39 @@ export async function GET() {
     for (const row of csMonth) {
       const ms = durationMs(row.startedAt, row.endedAt, now);
       const startMs = row.startedAt.getTime();
+      const ymd = toKstYmd(row.startedAt);
       const agg = ensure(
         row.user.id,
         row.user.name,
         row.user.department,
         isCsBirthdayToday(row.user.birthDate, now)
       );
+      agg.sessions.push({
+        id: row.id,
+        startedAt: row.startedAt.toISOString(),
+        endedAt: row.endedAt ? row.endedAt.toISOString() : null,
+        durationMs: ms,
+        ymd,
+      });
       addLog(agg.month, ms);
       if (startMs >= weekStartMs) addLog(agg.week, ms);
       if (startMs >= todayStart) addLog(agg.today, ms);
+      if (!agg.byYmd[ymd]) agg.byYmd[ymd] = emptyTotals();
+      addLog(agg.byYmd[ymd], ms);
     }
+
+    const totals = [...byUser.values()]
+      .map((row) => ({
+        ...row,
+        sessions: row.sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
     return NextResponse.json({
       now: now.toISOString(),
+      today,
+      weekStart,
+      weekDays,
       current: csOpen.map((r) => ({
         id: r.id,
         userId: r.user.id,
@@ -125,7 +164,7 @@ export async function GET() {
         elapsedMs: now.getTime() - r.startedAt.getTime(),
         birthdayToday: isCsBirthdayToday(r.user.birthDate, now),
       })),
-      totals: [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name, "ko")),
+      totals,
     });
   } catch (e) {
     console.error("away overview:", e);
