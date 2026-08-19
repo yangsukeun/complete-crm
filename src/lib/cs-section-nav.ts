@@ -90,6 +90,11 @@ export function csSectionNavItemActive(opts: {
     case "away":
       return p === "/cs-tools/away" || p.startsWith("/cs-tools/away/");
     case "idle":
-      return p === "/cs-tools/idle" || p.startsWith("/cs-tools/idle/");
+      return (
+        p === "/cs-tools/idle" ||
+        p.startsWith("/cs-tools/idle/") ||
+        p === "/cs-tools/idle-settings" ||
+        p.startsWith("/cs-tools/idle-settings/")
+      );
   }
 }

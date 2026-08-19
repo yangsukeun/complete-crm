@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/api-swr";
 import type { IdleLiveStatus } from "@/lib/attendance-idle";
@@ -156,9 +157,14 @@ export function IdleOverviewClient() {
           title="자동 이석 현황"
           description="PC 입력이 없어 자동 감지된 이석입니다. 이번 주 요일별 횟수와 시간을 보고, 회를 누르면 감지 시각을 확인할 수 있습니다. 20초마다 새로고침합니다."
         />
-        <Button type="button" variant="outline" size="sm" onClick={() => void mutate()}>
-          새로고침
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/cs-tools/idle-settings">근무시간 설정</Link>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => void mutate()}>
+            새로고침
+          </Button>
+        </div>
       </div>
 
       {error && <p className="text-destructive text-sm">불러오지 못했습니다.</p>}

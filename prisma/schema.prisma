@@ -1576,3 +1576,13 @@ model DeviceStatus {
   @@map("device_status")
 }
 
+model IdleWorkHourException {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  reason     String?  // 예: "커피에반하다 야간 담당"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("idle_work_hour_exceptions")
+}
+
