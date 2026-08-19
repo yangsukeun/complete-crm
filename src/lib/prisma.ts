@@ -18,3 +18,4 @@ if (process.env.NODE_ENV !== "production" && typeof globalThis !== "undefined" &
 }
 
 export default prisma;
+export { prisma };
