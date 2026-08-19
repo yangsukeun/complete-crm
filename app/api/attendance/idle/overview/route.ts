@@ -26,12 +26,13 @@ export async function GET() {
     const from = kstYmdToUtcDayStart(monthStart);
     const weekDays = Array.from({ length: 7 }, (_, i) => addDaysKstYmd(weekStart, i));
 
-    const [devices, monthRows] = await Promise.all([
+    const [devices, monthRows, exceptionRows] = await Promise.all([
       prisma.deviceStatus.findMany(),
       prisma.idleSession.findMany({
         where: { idleStart: { gte: from } },
         orderBy: { idleStart: "desc" },
       }),
+      prisma.idleWorkHourException.findMany({ select: { employeeId: true } }),
     ]);
 
     const employeeIds = [
@@ -65,6 +66,15 @@ export async function GET() {
       })
     );
 
+    const exceptionUserIds = new Set(exceptionRows.map((r) => r.employeeId));
+    const allDayEmployeeIds = new Set(
+      employeeIds.filter((id) => {
+        if (exceptionUserIds.has(id)) return true;
+        const u = matchIdleEmployee(id, users);
+        return Boolean(u && exceptionUserIds.has(u.id));
+      })
+    );
+
     return NextResponse.json({
       now: now.toISOString(),
       today,
@@ -78,6 +88,7 @@ export async function GET() {
         weekStart,
         weekDays,
         people,
+        allDayEmployeeIds,
       }),
       liveStatus: buildIdleLiveStatus(devices, now).map((row) => ({
         ...row,

@@ -1,8 +1,8 @@
 import {
   addDaysKstYmd,
+  eachKstYmdInclusive,
   getKstWeekday,
   kstDateBoundsUtc,
-  kstYmdToUtcDayStart,
   toKstYmd,
 } from "@/lib/date-kst";
 
@@ -171,14 +171,67 @@ function addLog(t: IdleTotals, ms: number) {
   t.durationMs += ms;
 }
 
-function sessionDurationMs(row: {
-  idleStart: Date;
-  idleEnd: Date;
-  durationSeconds: number;
-}): number {
-  const fromSec = Math.max(0, Math.trunc(Number(row.durationSeconds) || 0)) * 1000;
-  if (fromSec > 0) return fromSec;
-  return Math.max(0, row.idleEnd.getTime() - row.idleStart.getTime());
+function overlapMs(aStart: number, aEnd: number, bStart: number, bEnd: number): number {
+  return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+}
+
+/** 기본 근무시간(KST): 09:00~12:00, 13:00~18:00. 끝 시각은 포함하지 않는다. */
+export const IDLE_WORK_WINDOWS_KST = [
+  { start: "09:00", end: "12:00" },
+  { start: "13:00", end: "18:00" },
+] as const;
+
+export type IdleClipResult = {
+  totalMs: number;
+  byYmd: Record<string, number>;
+};
+
+/**
+ * 이석 구간을 근무시간에 맞춰 자른다. allDay면 점심·야간도 그대로 둔다.
+ * idle_sessions 원본은 바꾸지 않고, 화면 집계용 밀리초만 계산한다.
+ */
+export function clipIdleToWorkHours(
+  idleStart: Date,
+  idleEnd: Date,
+  opts?: { allDay?: boolean }
+): IdleClipResult {
+  const start = idleStart.getTime();
+  const end = idleEnd.getTime();
+  if (!(end > start)) return { totalMs: 0, byYmd: {} };
+
+  const ymds = eachKstYmdInclusive(idleStart, idleEnd);
+  const byYmd: Record<string, number> = {};
+  let totalMs = 0;
+  for (const ymd of ymds) {
+    const windows = opts?.allDay
+      ? [kstDateBoundsUtc(ymd)]
+      : IDLE_WORK_WINDOWS_KST.map((w) => ({
+          start: new Date(`${ymd}T${w.start}:00+09:00`),
+          end: new Date(`${ymd}T${w.end}:00+09:00`),
+        }));
+    let dayMs = 0;
+    for (const w of windows) {
+      dayMs += overlapMs(start, end, w.start.getTime(), w.end.getTime());
+    }
+    if (dayMs > 0) {
+      byYmd[ymd] = dayMs;
+      totalMs += dayMs;
+    }
+  }
+  return { totalMs, byYmd };
+}
+
+function ymdInWeek(ymd: string, weekStart: string): boolean {
+  const weekEnd = addDaysKstYmd(weekStart, 7);
+  return ymd >= weekStart && ymd < weekEnd;
+}
+
+function sumByYmd(byYmd: Record<string, number>, pred: (ymd: string) => boolean): number {
+  let total = 0;
+  for (const [ymd, ms] of Object.entries(byYmd)) {
+    if (pred(ymd)) total += ms;
+  }
+  return total;
 }
 
 /** 셀프 자리비움 overview와 같은 직원·요일·주·월 집계. */
@@ -195,10 +248,9 @@ export function groupIdleWeekMonth(opts: {
   weekStart: string;
   weekDays: string[];
   people?: Map<string, IdlePersonMeta>;
+  /** 24시간 근무로 지정된 세션 employeeId (근무시간 필터 생략) */
+  allDayEmployeeIds?: ReadonlySet<string>;
 }): IdleOverviewPerson[] {
-  const todayStart = kstDateBoundsUtc(opts.today).start.getTime();
-  const weekStartMs = kstYmdToUtcDayStart(opts.weekStart).getTime();
-
   const byUser = new Map<string, IdleOverviewPerson>();
   const ensure = (employeeId: string) => {
     let row = byUser.get(employeeId);
@@ -221,22 +273,28 @@ export function groupIdleWeekMonth(opts: {
   };
 
   for (const row of opts.sessions) {
-    const ms = sessionDurationMs(row);
-    const startMs = row.idleStart.getTime();
+    const allDay = opts.allDayEmployeeIds?.has(row.employeeId) ?? false;
+    const clip = clipIdleToWorkHours(row.idleStart, row.idleEnd, { allDay });
+    if (clip.totalMs <= 0) continue;
+
     const ymd = toKstYmd(row.idleStart);
     const agg = ensure(row.employeeId);
     agg.sessions.push({
       id: row.id,
       startedAt: row.idleStart.toISOString(),
       endedAt: row.idleEnd.toISOString(),
-      durationMs: ms,
+      durationMs: clip.totalMs,
       ymd,
     });
-    addLog(agg.month, ms);
-    if (startMs >= weekStartMs) addLog(agg.week, ms);
-    if (startMs >= todayStart) addLog(agg.today, ms);
-    if (!agg.byYmd[ymd]) agg.byYmd[ymd] = emptyTotals();
-    addLog(agg.byYmd[ymd], ms);
+    addLog(agg.month, clip.totalMs);
+    const weekMs = sumByYmd(clip.byYmd, (d) => ymdInWeek(d, opts.weekStart));
+    if (weekMs > 0) addLog(agg.week, weekMs);
+    const todayMs = clip.byYmd[opts.today] ?? 0;
+    if (todayMs > 0) addLog(agg.today, todayMs);
+    for (const [day, ms] of Object.entries(clip.byYmd)) {
+      if (!agg.byYmd[day]) agg.byYmd[day] = emptyTotals();
+      addLog(agg.byYmd[day], ms);
+    }
   }
 
   return [...byUser.values()]

@@ -4,6 +4,7 @@ import {
   buildIdleCurrent,
   buildIdleLiveStatus,
   classifyIdlePresence,
+  clipIdleToWorkHours,
   groupIdleDailySummary,
   groupIdleWeekMonth,
   matchIdleEmployee,
@@ -188,6 +189,121 @@ describe("mondayYmdKst / groupIdleWeekMonth", () => {
     expect(row.byYmd["2026-08-18"]).toEqual({ count: 1, durationMs: 300_000 });
     expect(row.byYmd["2026-08-19"]).toEqual({ count: 1, durationMs: 60_000 });
     expect(row.sessions[0]?.id).toBe("today");
+  });
+});
+
+describe("clipIdleToWorkHours / work-hour filtered totals", () => {
+  const today = "2026-08-19";
+  const weekStart = mondayYmdKst(today);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDaysKstYmd(weekStart, i));
+
+  function totalsFor(
+    sessions: Array<{
+      id: string;
+      employeeId: string;
+      idleStart: Date;
+      idleEnd: Date;
+      durationSeconds: number;
+    }>,
+    allDayEmployeeIds?: ReadonlySet<string>
+  ) {
+    return groupIdleWeekMonth({
+      today,
+      weekStart,
+      weekDays,
+      now: new Date("2026-08-19T05:00:00.000Z"),
+      sessions,
+      allDayEmployeeIds,
+    });
+  }
+
+  it("excludes idle time outside work hours", () => {
+    const clip = clipIdleToWorkHours(
+      new Date("2026-08-19T20:00:00+09:00"),
+      new Date("2026-08-19T20:10:00+09:00")
+    );
+    expect(clip.totalMs).toBe(0);
+    const totals = totalsFor([
+      {
+        id: "night",
+        employeeId: "a",
+        idleStart: new Date("2026-08-19T20:00:00+09:00"),
+        idleEnd: new Date("2026-08-19T20:10:00+09:00"),
+        durationSeconds: 600,
+      },
+    ]);
+    expect(totals).toHaveLength(0);
+  });
+
+  it("excludes lunch-hour idle", () => {
+    const clip = clipIdleToWorkHours(
+      new Date("2026-08-19T12:10:00+09:00"),
+      new Date("2026-08-19T12:40:00+09:00")
+    );
+    expect(clip.totalMs).toBe(0);
+    const totals = totalsFor([
+      {
+        id: "lunch",
+        employeeId: "a",
+        idleStart: new Date("2026-08-19T12:10:00+09:00"),
+        idleEnd: new Date("2026-08-19T12:40:00+09:00"),
+        durationSeconds: 1800,
+      },
+    ]);
+    expect(totals).toHaveLength(0);
+  });
+
+  it("clips a session that crosses a work-hour boundary", () => {
+    const clip = clipIdleToWorkHours(
+      new Date("2026-08-19T11:50:00+09:00"),
+      new Date("2026-08-19T12:20:00+09:00")
+    );
+    expect(clip.totalMs).toBe(10 * 60 * 1000);
+    expect(clip.byYmd["2026-08-19"]).toBe(10 * 60 * 1000);
+
+    const acrossLunch = clipIdleToWorkHours(
+      new Date("2026-08-19T11:50:00+09:00"),
+      new Date("2026-08-19T13:10:00+09:00")
+    );
+    expect(acrossLunch.totalMs).toBe(20 * 60 * 1000);
+
+    const totals = totalsFor([
+      {
+        id: "edge",
+        employeeId: "a",
+        idleStart: new Date("2026-08-19T11:50:00+09:00"),
+        idleEnd: new Date("2026-08-19T12:20:00+09:00"),
+        durationSeconds: 1800,
+      },
+    ]);
+    expect(totals).toHaveLength(1);
+    expect(totals[0]?.today).toEqual({ count: 1, durationMs: 10 * 60 * 1000 });
+    expect(totals[0]?.sessions).toHaveLength(1);
+    expect(totals[0]?.sessions[0]?.durationMs).toBe(10 * 60 * 1000);
+  });
+
+  it("sums the full day for 24-hour exception employees", () => {
+    const night = {
+      id: "night",
+      employeeId: "a",
+      idleStart: new Date("2026-08-19T20:00:00+09:00"),
+      idleEnd: new Date("2026-08-19T20:10:00+09:00"),
+      durationSeconds: 600,
+    };
+    const lunch = {
+      id: "lunch",
+      employeeId: "a",
+      idleStart: new Date("2026-08-19T12:10:00+09:00"),
+      idleEnd: new Date("2026-08-19T12:40:00+09:00"),
+      durationSeconds: 1800,
+    };
+    const filtered = totalsFor([night, lunch]);
+    expect(filtered).toHaveLength(0);
+
+    const allDay = totalsFor([night, lunch], new Set(["a"]));
+    expect(allDay).toHaveLength(1);
+    expect(allDay[0]?.today).toEqual({ count: 2, durationMs: 40 * 60 * 1000 });
+    expect(allDay[0]?.sessions).toHaveLength(2);
   });
 });
 
