@@ -8,12 +8,15 @@ import {
 
 export const IDLE_LIVE_WINDOW_MS = 180_000;
 
-export type IdleLiveStatus = "online" | "idle" | "offline";
+export type IdleLiveStatus = "online" | "idle" | "offline" | "stopped";
+
+export type IdleClientStatus = "running" | "stopped";
 
 export type IdleDeviceRow = {
   employeeId: string;
   lastSeen: Date;
   isIdle: boolean;
+  status?: string | null;
   updatedAt?: Date;
 };
 
@@ -65,12 +68,18 @@ export function monthStartYmd(ymd: string): string {
   return `${ymd.slice(0, 7)}-01`;
 }
 
+export function normalizeIdleClientStatus(value: unknown): IdleClientStatus {
+  return value === "stopped" ? "stopped" : "running";
+}
+
 export function classifyIdlePresence(
   lastHeartbeat: Date,
   isIdle: boolean,
   now: Date,
-  windowMs = IDLE_LIVE_WINDOW_MS
+  windowMs = IDLE_LIVE_WINDOW_MS,
+  clientStatus?: string | null
 ): IdleLiveStatus {
+  if (normalizeIdleClientStatus(clientStatus) === "stopped") return "stopped";
   const age = now.getTime() - lastHeartbeat.getTime();
   if (age > windowMs) return "offline";
   return isIdle ? "idle" : "online";
@@ -96,7 +105,7 @@ export function buildIdleLiveStatus(
   return [...latest.values()]
     .map((row) => ({
       employeeId: row.employeeId,
-      status: classifyIdlePresence(heartbeatAt(row), row.isIdle, now, windowMs),
+      status: classifyIdlePresence(heartbeatAt(row), row.isIdle, now, windowMs, row.status),
       lastSeen: row.lastSeen.toISOString(),
     }))
     .sort((a, b) => a.employeeId.localeCompare(b.employeeId));
@@ -125,7 +134,7 @@ export function buildIdleCurrent(
     }
   }
   return [...latest.values()]
-    .filter((row) => classifyIdlePresence(heartbeatAt(row), row.isIdle, now, windowMs) === "idle")
+    .filter((row) => classifyIdlePresence(heartbeatAt(row), row.isIdle, now, windowMs, row.status) === "idle")
     .map((row) => {
       const meta = people?.get(row.employeeId);
       return {

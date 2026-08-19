@@ -1568,6 +1568,7 @@ model DeviceStatus {
   employeeId    String
   lastSeen      DateTime @default(now())
   isIdle        Boolean  @default(false)
+  status        String   @default("running")
   clientVersion String?
   updatedAt     DateTime @updatedAt
 

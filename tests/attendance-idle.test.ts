@@ -25,6 +25,11 @@ describe("classifyIdlePresence", () => {
     expect(classifyIdlePresence(new Date("2026-08-19T04:56:59.000Z"), false, now)).toBe("offline");
     expect(classifyIdlePresence(new Date("2026-08-19T04:56:59.000Z"), true, now)).toBe("offline");
   });
+
+  it("is stopped when the client reported stopped, even if recently seen", () => {
+    expect(classifyIdlePresence(now, true, now, 180_000, "stopped")).toBe("stopped");
+    expect(classifyIdlePresence(now, false, now, 180_000, "stopped")).toBe("stopped");
+  });
 });
 
 describe("buildIdleLiveStatus", () => {
@@ -41,6 +46,24 @@ describe("buildIdleLiveStatus", () => {
     expect(rows).toEqual([
       { employeeId: "a", status: "online", lastSeen: "2026-08-19T04:59:55.000Z" },
       { employeeId: "b", status: "offline", lastSeen: "2026-08-19T04:50:00.000Z" },
+    ]);
+  });
+
+  it("marks tray-stopped clients as stopped, not offline", () => {
+    const now = new Date("2026-08-19T05:00:00.000Z");
+    const rows = buildIdleLiveStatus(
+      [
+        {
+          employeeId: "a",
+          lastSeen: new Date("2026-08-19T04:59:55.000Z"),
+          isIdle: false,
+          status: "stopped",
+        },
+      ],
+      now
+    );
+    expect(rows).toEqual([
+      { employeeId: "a", status: "stopped", lastSeen: "2026-08-19T04:59:55.000Z" },
     ]);
   });
 });
@@ -69,6 +92,23 @@ describe("buildIdleCurrent", () => {
     expect(current[0]?.name).toBe("김자동");
     expect(current[0]?.elapsedMs).toBe(10 * 60 * 1000);
     expect(current[0]?.startedAt).toBe("2026-08-19T04:50:00.000Z");
+  });
+
+  it("does not list tray-stopped clients as currently idle", () => {
+    const now = new Date("2026-08-19T05:00:00.000Z");
+    const current = buildIdleCurrent(
+      [
+        {
+          employeeId: "a",
+          lastSeen: new Date("2026-08-19T04:50:00.000Z"),
+          updatedAt: new Date("2026-08-19T04:59:50.000Z"),
+          isIdle: true,
+          status: "stopped",
+        },
+      ],
+      now
+    );
+    expect(current).toHaveLength(0);
   });
 });
 

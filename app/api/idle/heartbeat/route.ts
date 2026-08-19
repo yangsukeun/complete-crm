@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 
 const CLIENT_TOKEN = process.env.IDLE_CLIENT_TOKEN;
 
+function parseClientStatus(value: unknown): "running" | "stopped" {
+  return typeof value === "string" && value.trim().toLowerCase() === "stopped"
+    ? "stopped"
+    : "running";
+}
+
 export async function POST(req: NextRequest) {
   const token = req.headers.get("x-client-token");
   if (!CLIENT_TOKEN || token !== CLIENT_TOKEN) {
@@ -16,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
 
-  const { employee_id, device_id, is_idle, client_version } = body ?? {};
+  const { employee_id, device_id, is_idle, client_version, status } = body ?? {};
   if (!employee_id || !device_id) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
@@ -24,8 +30,9 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const deviceId = String(device_id);
   const isIdle = Boolean(is_idle);
+  const clientStatus = parseClientStatus(status);
   const existing = await prisma.deviceStatus.findUnique({ where: { deviceId } });
-  const keepIdleStart = existing?.isIdle === true && isIdle;
+  const keepIdleStart = existing?.isIdle === true && isIdle && clientStatus === "running";
 
   await prisma.deviceStatus.upsert({
     where: { deviceId },
@@ -33,16 +40,18 @@ export async function POST(req: NextRequest) {
       deviceId,
       employeeId: String(employee_id),
       isIdle,
+      status: clientStatus,
       clientVersion: client_version ?? null,
       lastSeen: now,
     },
     update: {
       employeeId: String(employee_id),
       isIdle,
+      status: clientStatus,
       clientVersion: client_version ?? null,
       ...(keepIdleStart ? {} : { lastSeen: now }),
     },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, status: clientStatus });
 }

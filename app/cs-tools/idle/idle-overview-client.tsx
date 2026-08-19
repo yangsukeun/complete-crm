@@ -57,6 +57,7 @@ type Api = {
   }[];
   liveStatus: {
     employeeId: string;
+    name?: string;
     status: IdleLiveStatus;
     lastSeen: string;
   }[];
@@ -126,9 +127,11 @@ export function IdleOverviewClient() {
   const weekDays = data?.weekDays ?? [];
   const today = data?.today ?? "";
   const live = data?.liveStatus ?? [];
+  const stopped = live.filter((r) => r.status === "stopped");
   const onlineCount = live.filter((r) => r.status === "online").length;
   const idleCount = live.filter((r) => r.status === "idle").length;
   const offlineCount = live.filter((r) => r.status === "offline").length;
+  const stoppedCount = stopped.length;
 
   const openSessions = (name: string, title: string, sessions: Session[]) => {
     if (sessions.length === 0) return;
@@ -185,6 +188,10 @@ export function IdleOverviewClient() {
                   <p className="cs-stat tabular-nums">{offlineCount}</p>
                   <ColorChip tone="gray">오프라인</ColorChip>
                 </div>
+                <div className="flex items-end gap-2">
+                  <p className="cs-stat tabular-nums">{stoppedCount}</p>
+                  <ColorChip tone="purple">종료됨</ColorChip>
+                </div>
               </div>
               {data.current.length === 0 ? (
                 <p className="text-muted-foreground text-sm">이석 중인 사람이 없습니다.</p>
@@ -205,6 +212,21 @@ export function IdleOverviewClient() {
                   ))}
                 </ul>
               )}
+              {stopped.length > 0 ? (
+                <ul className="mt-4 space-y-2 text-sm">
+                  {stopped.map((row) => (
+                    <li key={row.employeeId} className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{row.name ?? row.employeeId}</span>
+                      <ColorChip tone="purple" size="sm">
+                        종료됨
+                      </ColorChip>
+                      <span className="text-muted-foreground text-xs">
+                        {formatKstMdEeeHm(row.lastSeen)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </CardContent>
           </Card>
 

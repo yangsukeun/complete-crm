@@ -79,7 +79,10 @@ export async function GET() {
         weekDays,
         people,
       }),
-      liveStatus: buildIdleLiveStatus(devices, now),
+      liveStatus: buildIdleLiveStatus(devices, now).map((row) => ({
+        ...row,
+        name: people.get(row.employeeId)?.name ?? row.employeeId,
+      })),
     });
   } catch (e) {
     console.error("idle overview:", e);
