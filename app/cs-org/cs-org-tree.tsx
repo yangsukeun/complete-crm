@@ -9,53 +9,74 @@ function rankTone(rank: ReturnType<typeof csOrgRank>) {
   return "border-border bg-card";
 }
 
-function OrgCard({ node }: { node: CsOrgNode }) {
+function OrgCard({ node, compact = false }: { node: CsOrgNode; compact?: boolean }) {
   const rank = csOrgRank(node.position);
   return (
-    <div className={cn("relative z-10 w-[6.75rem] rounded-md border px-1.5 py-1 shadow-sm", rankTone(rank))}>
-      <p className="text-[9px] font-semibold leading-none tracking-wide text-muted-foreground">
+    <div
+      className={cn(
+        "h-full rounded-lg border px-3 py-2.5 shadow-sm",
+        compact ? "min-h-[5.5rem]" : "w-full",
+        rankTone(rank)
+      )}
+    >
+      <p className="text-xs font-semibold tracking-wide text-muted-foreground">
         {node.position || csOrgRankLabel(rank)}
       </p>
-      <p className="mt-0.5 text-[11px] font-semibold leading-tight">
+      <p className="mt-0.5 text-sm font-semibold leading-snug">
         <NameWithBirthday name={node.name} birthdayToday={node.birthdayToday} />
       </p>
       {node.clients.length > 0 ? (
-        <p className="mt-1 line-clamp-4 text-[9px] leading-tight text-slate-700">
-          {node.clients.join(" · ")}
-        </p>
+        <ul className="mt-2 flex flex-wrap gap-1">
+          {node.clients.map((name) => (
+            <li
+              key={name}
+              className="rounded-md bg-white/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 ring-1 ring-slate-200"
+            >
+              {name}
+            </li>
+          ))}
+        </ul>
       ) : (
-        <p className="text-muted-foreground mt-1 text-[9px] leading-tight">업체 없음</p>
+        <p className="text-muted-foreground mt-2 text-xs">담당 업체 없음</p>
       )}
     </div>
   );
 }
 
-function OrgBranch({ node, isRoot = false }: { node: CsOrgNode; isRoot?: boolean }) {
-  const kids = node.children;
+const STAFF_GRID = "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3";
+
+function OrgChildren({ nodes }: { nodes: CsOrgNode[] }) {
+  if (nodes.length === 0) return null;
+  const nested = nodes.filter((n) => n.children.length > 0);
+  const leaves = nodes.filter((n) => n.children.length === 0);
   return (
-    <li className="relative flex flex-col items-center px-0.5">
-      {!isRoot ? <span className="h-3 w-px bg-slate-300" /> : null}
-      <OrgCard node={node} />
-      {kids.length > 0 ? (
-        <>
-          <span className="h-3 w-px bg-slate-300" />
-          <ul className="relative flex justify-center">
-            {kids.length > 1 ? (
-              <span
-                className="pointer-events-none absolute top-0 h-px bg-slate-300"
-                style={{
-                  left: `calc(50% / ${kids.length})`,
-                  right: `calc(50% / ${kids.length})`,
-                }}
-              />
-            ) : null}
-            {kids.map((child) => (
-              <OrgBranch key={child.id} node={child} />
-            ))}
-          </ul>
-        </>
+    <div className="space-y-3">
+      {nested.map((node) => (
+        <OrgBranch key={node.id} node={node} />
+      ))}
+      {leaves.length > 0 ? (
+        <ul className={STAFF_GRID}>
+          {leaves.map((node) => (
+            <li key={node.id}>
+              <OrgCard node={node} compact />
+            </li>
+          ))}
+        </ul>
       ) : null}
-    </li>
+    </div>
+  );
+}
+
+function OrgBranch({ node }: { node: CsOrgNode }) {
+  return (
+    <div className="space-y-2">
+      <OrgCard node={node} />
+      {node.children.length > 0 ? (
+        <div className="ml-1 space-y-3 border-l-2 border-slate-200 pl-3">
+          <OrgChildren nodes={node.children} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -71,22 +92,22 @@ export function CsOrgPyramid({
       {roots.length === 0 && unassigned.length === 0 ? (
         <p className="text-muted-foreground text-sm">표시할 구성원이 없습니다.</p>
       ) : roots.length > 0 ? (
-        <div className="overflow-x-auto">
-          <ul className="mx-auto flex w-max">
-            {roots.map((node) => (
-              <OrgBranch key={node.id} node={node} isRoot />
-            ))}
-          </ul>
+        <div className="space-y-4">
+          {roots.map((node) => (
+            <OrgBranch key={node.id} node={node} />
+          ))}
         </div>
       ) : null}
       {unassigned.length > 0 ? (
         <section>
           <h2 className="text-muted-foreground mb-2 text-xs font-semibold">사원</h2>
-          <div className="flex flex-wrap justify-center gap-1.5">
+          <ul className={STAFF_GRID}>
             {unassigned.map((node) => (
-              <OrgCard key={node.id} node={node} />
+              <li key={node.id}>
+                <OrgCard node={node} compact />
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       ) : null}
     </div>
