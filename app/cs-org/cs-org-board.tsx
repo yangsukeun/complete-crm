@@ -1,13 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Plus, StickyNote, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ColorChip } from "@/components/ui/color-chip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type OrgHire = { id: string; name: string; joinDate: string; note: string };
 export type OrgPhaseClient = {
@@ -19,21 +26,27 @@ export type OrgPhaseClient = {
   phase: "INCOMING" | "OUTGOING";
   assignees: string[];
 };
+export type OrgClientOption = { id: string; name: string; phase: string };
 
 export function CsOrgBoard({
   initialMemo,
   initialHires,
-  incoming,
-  outgoing,
+  incoming: initialIncoming,
+  outgoing: initialOutgoing,
+  catalog,
 }: {
   initialMemo: string;
   initialHires: OrgHire[];
   incoming: OrgPhaseClient[];
   outgoing: OrgPhaseClient[];
+  catalog: OrgClientOption[];
 }) {
+  const router = useRouter();
   const [memo, setMemo] = useState(initialMemo);
   const [savingMemo, setSavingMemo] = useState(false);
   const [hires, setHires] = useState(initialHires);
+  const [incoming, setIncoming] = useState(initialIncoming);
+  const [outgoing, setOutgoing] = useState(initialOutgoing);
   const [draft, setDraft] = useState({ name: "", joinDate: "", note: "" });
   const [adding, setAdding] = useState(false);
 
@@ -91,6 +104,16 @@ export function CsOrgBoard({
     }
   }
 
+  function applyClient(row: OrgPhaseClient) {
+    setIncoming((cur) =>
+      row.phase === "INCOMING" ? [row, ...cur.filter((c) => c.id !== row.id)] : cur.filter((c) => c.id !== row.id)
+    );
+    setOutgoing((cur) =>
+      row.phase === "OUTGOING" ? [row, ...cur.filter((c) => c.id !== row.id)] : cur.filter((c) => c.id !== row.id)
+    );
+    router.refresh();
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <section className="rounded-xl border border-sky-200 bg-sky-50/70 p-4">
@@ -144,8 +167,24 @@ export function CsOrgBoard({
         </div>
       </section>
 
-      <PhaseList title="들어올 업체" tone="yellow" rows={incoming} empty="예정 업체가 없습니다." />
-      <PhaseList title="나갈 업체" tone="pink" rows={outgoing} empty="종료 예정 업체가 없습니다." />
+      <PhaseList
+        title="들어올 업체"
+        tone="yellow"
+        phase="INCOMING"
+        rows={incoming}
+        catalog={catalog}
+        empty="예정 업체가 없습니다. 아래에서 바로 등록하세요."
+        onApplied={applyClient}
+      />
+      <PhaseList
+        title="나갈 업체"
+        tone="pink"
+        phase="OUTGOING"
+        rows={outgoing}
+        catalog={catalog}
+        empty="종료 예정 업체가 없습니다. 아래에서 바로 등록하세요."
+        onApplied={applyClient}
+      />
 
       <section className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 lg:col-span-3">
         <h2 className="cs-section-title mb-3 flex items-center gap-2">
@@ -169,17 +208,100 @@ export function CsOrgBoard({
   );
 }
 
+function toPhaseRow(body: {
+  id: string;
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  note?: string;
+  phase?: string;
+  assignments?: { name: string }[];
+}, phase: "INCOMING" | "OUTGOING"): OrgPhaseClient {
+  return {
+    id: body.id,
+    name: body.name,
+    startDate: body.startDate ?? "",
+    endDate: body.endDate ?? "",
+    note: body.note ?? "",
+    phase,
+    assignees: (body.assignments ?? []).map((a) => a.name),
+  };
+}
+
 function PhaseList({
   title,
   tone,
+  phase,
   rows,
+  catalog,
   empty,
+  onApplied,
 }: {
   title: string;
   tone: "yellow" | "pink";
+  phase: "INCOMING" | "OUTGOING";
   rows: OrgPhaseClient[];
+  catalog: OrgClientOption[];
   empty: string;
+  onApplied: (row: OrgPhaseClient) => void;
 }) {
+  const [draft, setDraft] = useState({ name: "", startDate: "", endDate: "", note: "" });
+  const [existingId, setExistingId] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const unused = useMemo(
+    () => catalog.filter((c) => c.phase !== phase && !rows.some((r) => r.id === c.id)),
+    [catalog, phase, rows]
+  );
+
+  async function addNew() {
+    const name = draft.name.trim();
+    if (!name) {
+      toast.error("업체명을 입력하세요.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/cs-clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draft, phase }),
+      });
+      const data = (await res.json().catch(() => ({}))) as ReturnType<typeof toPhaseRow> & { error?: string };
+      if (!res.ok) throw new Error(data.error || "등록하지 못했습니다.");
+      onApplied(toPhaseRow(data, phase));
+      setDraft({ name: "", startDate: "", endDate: "", note: "" });
+      toast.success(`${title}로 등록했습니다.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "등록하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markExisting() {
+    if (!existingId) {
+      toast.error("기존 업체를 고르세요.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/cs-clients/${encodeURIComponent(existingId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phase }),
+      });
+      const data = (await res.json().catch(() => ({}))) as ReturnType<typeof toPhaseRow> & { error?: string };
+      if (!res.ok) throw new Error(data.error || "지정하지 못했습니다.");
+      onApplied(toPhaseRow(data, phase));
+      setExistingId("");
+      toast.success(`${title}로 지정했습니다.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "지정하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="rounded-xl border bg-card p-4">
       <h2 className="cs-section-title mb-3">
@@ -193,9 +315,7 @@ function PhaseList({
         <ul className="space-y-2">
           {rows.map((c) => (
             <li key={c.id} className="rounded-lg border px-3 py-2 text-sm">
-              <Link href="/cs-clients" className="font-medium hover:underline">
-                {c.name}
-              </Link>
+              <p className="font-medium">{c.name}</p>
               <p className="text-muted-foreground mt-0.5 text-xs">
                 {c.startDate || c.endDate ? `${c.startDate || "—"} ~ ${c.endDate || "—"}` : "기간 미정"}
                 {c.assignees.length > 0 ? ` · ${c.assignees.join(", ")}` : ""}
@@ -205,6 +325,59 @@ function PhaseList({
           ))}
         </ul>
       )}
+      <div className="mt-3 grid gap-2 border-t pt-3">
+        <p className="text-xs font-semibold">새 업체 등록</p>
+        <Input
+          value={draft.name}
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          placeholder="업체명"
+          className="h-9"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="date"
+            value={draft.startDate}
+            onChange={(e) => setDraft((d) => ({ ...d, startDate: e.target.value }))}
+            className="h-9"
+          />
+          <Input
+            type="date"
+            value={draft.endDate}
+            onChange={(e) => setDraft((d) => ({ ...d, endDate: e.target.value }))}
+            className="h-9"
+          />
+        </div>
+        <Input
+          value={draft.note}
+          onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+          placeholder="메모"
+          className="h-9"
+        />
+        <Button type="button" size="sm" disabled={saving} onClick={() => void addNew()}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          {title}로 등록
+        </Button>
+        {unused.length > 0 ? (
+          <>
+            <p className="mt-1 text-xs font-semibold">기존 업체 지정</p>
+            <Select value={existingId} onValueChange={setExistingId}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="업체 고르기" />
+              </SelectTrigger>
+              <SelectContent>
+                {unused.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void markExisting()}>
+              {title}로 지정
+            </Button>
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }

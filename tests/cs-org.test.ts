@@ -53,20 +53,22 @@ describe("buildCsOrgForest", () => {
     expect(roots[0]?.clients).toEqual(["본사"]);
   });
 
-  it("keeps staff without a manager in 미소속", () => {
-    const { unassigned } = buildCsOrgForest(people, new Map());
-    expect(unassigned.map((n) => n.id).sort()).toEqual(["d", "e"]);
+  it("puts staff under the unique 팀장 when no warehouse setting exists", () => {
+    const { roots, unassigned } = buildCsOrgForest(people, new Map());
+    expect(unassigned).toEqual([]);
+    expect(roots[0]?.children[0]?.children.map((n) => n.id).sort()).toEqual(["c", "d", "e"]);
   });
 
-  it("ignores staff reporting to staff and treats them as 미소속", () => {
-    const { unassigned } = buildCsOrgForest(
+  it("ignores staff reporting to staff and falls back to unique 팀장", () => {
+    const { roots, unassigned } = buildCsOrgForest(
       people,
       new Map([
         ["d", "e"],
         ["e", "d"],
       ])
     );
-    expect(unassigned.map((n) => n.id).sort()).toEqual(["d", "e"]);
+    expect(unassigned).toEqual([]);
+    expect(roots[0]?.children[0]?.children.map((n) => n.id).sort()).toEqual(["c", "d", "e"]);
   });
 
   it("detects a parent-chain cycle", () => {

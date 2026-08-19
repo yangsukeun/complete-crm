@@ -33,7 +33,7 @@ export default async function CsOrgPage() {
     }),
     prisma.csOrgHire.findMany({ orderBy: [{ joinDate: "asc" }, { name: "asc" }] }),
     prisma.csClient.findMany({
-      where: { deletedAt: null, phase: { in: ["INCOMING", "OUTGOING"] } },
+      where: { deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -49,13 +49,18 @@ export default async function CsOrgPage() {
   const { roots, unassigned } = buildCsOrgForest(people, explicit);
   const incoming = phaseClients.filter((c) => c.phase === "INCOMING").map(mapPhaseClient);
   const outgoing = phaseClients.filter((c) => c.phase === "OUTGOING").map(mapPhaseClient);
+  const catalog = phaseClients.map((c) => ({
+    id: c.id,
+    name: c.name,
+    phase: c.phase === "INCOMING" || c.phase === "OUTGOING" ? c.phase : "ACTIVE",
+  }));
 
   return (
     <CsScreen>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeadline
           title="CS 조직도"
-          description="센터장이 맨 위이고, 지금 담당 중인 업체가 카드에 붙습니다. 팀장 이상만 볼 수 있습니다."
+          description="센터장 아래 팀장·사원이 붙고, 지금 담당 중인 업체가 카드에 보입니다."
         />
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
@@ -83,6 +88,7 @@ export default async function CsOrgPage() {
         }))}
         incoming={incoming}
         outgoing={outgoing}
+        catalog={catalog}
       />
     </CsScreen>
   );

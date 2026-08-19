@@ -129,6 +129,10 @@ export function defaultCsReportsTo(
     if (chiefs.length === 1) return chiefs[0]!.id;
     return null;
   }
+  if (leads.length === 1) return leads[0]!.id;
+  const deputies = people.filter((p) => csOrgRank(p.position) === "deputy" && p.id !== person.id);
+  if (deputies.length === 1) return deputies[0]!.id;
+  if (chiefs.length === 1) return chiefs[0]!.id;
   return null;
 }
 
@@ -140,7 +144,7 @@ export function resolveCsReportsTo(
   const allowed = new Set(allowedCsOrgManagers(person, people).map((p) => p.id));
   if (explicit.has(person.id)) {
     const id = explicit.get(person.id);
-    return id && allowed.has(id) ? id : null;
+    if (id && allowed.has(id)) return id;
   }
   const fallback = defaultCsReportsTo(person, people);
   return fallback && allowed.has(fallback) ? fallback : null;

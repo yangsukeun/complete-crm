@@ -46,7 +46,7 @@ function OrgBranch({ node, isRoot = false }: { node: CsOrgNode; isRoot?: boolean
       {kids.length > 0 ? (
         <>
           <span className="h-6 w-px bg-slate-300" />
-          <ul className="relative flex flex-wrap justify-center">
+          <ul className="relative flex justify-center">
             {kids.length > 1 ? (
               <span
                 className="pointer-events-none absolute top-0 h-px bg-slate-300"
@@ -74,21 +74,23 @@ export function CsOrgPyramid({
   unassigned: CsOrgNode[];
 }) {
   return (
-    <div className="space-y-10 overflow-x-auto pb-4">
-      {roots.length === 0 ? (
+    <div className="space-y-10 pb-4">
+      {roots.length === 0 && unassigned.length === 0 ? (
         <p className="text-muted-foreground text-sm">표시할 구성원이 없습니다.</p>
-      ) : (
-        <ul className="flex min-w-max justify-center">
-          {roots.map((node) => (
-            <OrgBranch key={node.id} node={node} isRoot />
-          ))}
-        </ul>
-      )}
+      ) : roots.length > 0 ? (
+        <div className="overflow-x-auto pb-4">
+          <ul className="mx-auto flex w-max">
+            {roots.map((node) => (
+              <OrgBranch key={node.id} node={node} isRoot />
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {unassigned.length > 0 ? (
         <section>
-          <h2 className="cs-section-title mb-4">미소속 사원</h2>
+          <h2 className="cs-section-title mb-4">사원</h2>
           <p className="text-muted-foreground mb-3 text-sm">
-            설정 창고에서 팀장 또는 부팀장 밑으로 지정하면 피라미드에 붙습니다.
+            팀장·부팀장이 여러 명이면 설정 창고에서 누구 밑인지 지정하세요.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             {unassigned.map((node) => (
