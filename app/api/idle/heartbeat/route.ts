@@ -30,8 +30,16 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const deviceId = String(device_id);
   const isIdle = Boolean(is_idle);
-  const clientStatus = parseClientStatus(status);
+  let clientStatus = parseClientStatus(status);
   const existing = await prisma.deviceStatus.findUnique({ where: { deviceId } });
+  // 트레이 종료 직후 감지 루프가 running을 한 번 더 보내 stopped를 덮어쓰는 것을 막는다.
+  if (
+    clientStatus === "running" &&
+    existing?.status === "stopped" &&
+    now.getTime() - existing.updatedAt.getTime() < 5_000
+  ) {
+    clientStatus = "stopped";
+  }
   const keepIdleStart = existing?.isIdle === true && isIdle && clientStatus === "running";
 
   await prisma.deviceStatus.upsert({

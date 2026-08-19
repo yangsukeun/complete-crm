@@ -112,6 +112,38 @@ function TotalsCell({
   );
 }
 
+type LiveRow = {
+  employeeId: string;
+  name?: string;
+  status: IdleLiveStatus;
+  lastSeen: string;
+};
+
+function LivePeople({
+  title,
+  tone,
+  rows,
+}: {
+  title: string;
+  tone: "purple" | "green" | "gray";
+  rows: LiveRow[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <ul className="mt-4 space-y-2 text-sm">
+      {rows.map((row) => (
+        <li key={row.employeeId} className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{row.name ?? row.employeeId}</span>
+          <ColorChip tone={tone} size="sm">
+            {title}
+          </ColorChip>
+          <span className="text-muted-foreground text-xs">{formatKstMdEeeHm(row.lastSeen)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 type DetailState = {
   name: string;
   title: string;
@@ -218,21 +250,21 @@ export function IdleOverviewClient() {
                   ))}
                 </ul>
               )}
-              {stopped.length > 0 ? (
-                <ul className="mt-4 space-y-2 text-sm">
-                  {stopped.map((row) => (
-                    <li key={row.employeeId} className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{row.name ?? row.employeeId}</span>
-                      <ColorChip tone="purple" size="sm">
-                        종료됨
-                      </ColorChip>
-                      <span className="text-muted-foreground text-xs">
-                        {formatKstMdEeeHm(row.lastSeen)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <LivePeople
+                title="종료됨"
+                tone="purple"
+                rows={stopped}
+              />
+              <LivePeople
+                title="온라인"
+                tone="green"
+                rows={live.filter((r) => r.status === "online")}
+              />
+              <LivePeople
+                title="오프라인"
+                tone="gray"
+                rows={live.filter((r) => r.status === "offline")}
+              />
             </CardContent>
           </Card>
 
