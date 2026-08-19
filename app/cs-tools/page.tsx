@@ -119,7 +119,7 @@ export default async function CsToolsPage() {
               <Users className="size-4 text-muted-foreground" />
               조직도
             </span>
-            <span className="text-muted-foreground text-sm">CS팀 직책 기준으로 배치됩니다.</span>
+              <span className="text-muted-foreground text-sm">센터장 아래 팀장·부팀장 피라미드와 담당 업체를 봅니다.</span>
           </Link>
           <Link
             href="/cs-lounge"

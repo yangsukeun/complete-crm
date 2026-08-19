@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Timer,
   Users,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ const ICONS: Record<CsSectionNavId, LucideIcon> = {
   lounge: MessageCircle,
   clients: Building2,
   org: Users,
+  "org-settings": Warehouse,
   attendance: Clock,
   away: Timer,
 };

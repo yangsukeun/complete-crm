@@ -6,6 +6,7 @@ export type CsSectionNavId =
   | "lounge"
   | "clients"
   | "org"
+  | "org-settings"
   | "attendance"
   | "away";
 
@@ -45,6 +46,9 @@ export function csSectionNavItems(opts: {
     { id: "clients", href: "/cs-clients", label: csClientNavLabel(opts.canManageClients) },
     { id: "org", href: "/cs-org", label: "조직도" },
   ];
+  if (opts.canManageClients) {
+    items.push({ id: "org-settings", href: "/cs-org/settings", label: "설정 창고" });
+  }
   if (opts.canViewAwayOverview) {
     items.push(
       { id: "attendance", href: "/cs-tools/attendance", label: "CS 근태" },
@@ -70,7 +74,9 @@ export function csSectionNavItemActive(opts: {
     case "clients":
       return p === "/cs-clients" || p.startsWith("/cs-clients/");
     case "org":
-      return p === "/cs-org" || p.startsWith("/cs-org/");
+      return p === "/cs-org";
+    case "org-settings":
+      return p === "/cs-org/settings" || p.startsWith("/cs-org/settings/");
     case "attendance":
       return p === "/cs-tools/attendance" || p.startsWith("/cs-tools/attendance/");
     case "away":

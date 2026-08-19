@@ -268,6 +268,8 @@ model User {
   csLoungeVotes            CsLoungeVote[]
   csClientsUpdated         CsClient[]        @relation("CsClientUpdatedBy")
   csClientAssignments      CsClientAssignment[]
+  csOrgMember              CsOrgReport?          @relation("CsOrgMember")
+  csOrgReports             CsOrgReport[]         @relation("CsOrgManager")
   taskComments     TaskComment[]
   chatParticipants ChatParticipant[]
   chatMessages     ChatMessage[]
@@ -1476,6 +1478,17 @@ model CsClientAssignment {
   @@index([userId])
 }
 
+/// CS 조직도: 사원·부팀장이 누구 밑에 있는지 (설정 창고에서 지정)
+model CsOrgReport {
+  userId      String @id
+  user        User   @relation("CsOrgMember", fields: [userId], references: [id], onDelete: Cascade)
+  reportsToId String
+  reportsTo   User   @relation("CsOrgManager", fields: [reportsToId], references: [id], onDelete: Cascade)
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([reportsToId])
+}
+
 model CompanyInfo {
   id                   String   @id @default(cuid())
   name                 String   // 회사명
@@ -1498,5 +1511,29 @@ model CompanyInfo {
   attendanceThreshold                 Float    @default(0.8)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+model IdleSession {
+  id              String   @id @default(uuid())
+  employeeId      String
+  deviceId        String
+  idleStart       DateTime
+  idleEnd         DateTime
+  durationSeconds Int
+  createdAt       DateTime @default(now())
+
+  @@index([employeeId, idleStart])
+  @@map("idle_sessions")
+}
+
+model DeviceStatus {
+  deviceId      String   @id
+  employeeId    String
+  lastSeen      DateTime @default(now())
+  isIdle        Boolean  @default(false)
+  clientVersion String?
+  updatedAt     DateTime @updatedAt
+
+  @@index([employeeId])
+  @@map("device_status")
 }
 

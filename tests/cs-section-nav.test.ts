@@ -12,6 +12,7 @@ describe("cs section nav", () => {
     expect(isCsSectionPath("/cs-lounge?tab=lounge")).toBe(true);
     expect(isCsSectionPath("/cs-clients")).toBe(true);
     expect(isCsSectionPath("/cs-org")).toBe(true);
+    expect(isCsSectionPath("/cs-org/settings")).toBe(true);
     expect(isCsSectionPath("/dashboard")).toBe(false);
     expect(isCsSectionPath("/leave")).toBe(false);
   });
@@ -29,6 +30,7 @@ describe("cs section nav", () => {
       "lounge",
       "clients",
       "org",
+      "org-settings",
       "attendance",
       "away",
     ]);
@@ -41,6 +43,9 @@ describe("cs section nav", () => {
     expect(csSectionNavItemActive({ id: "lounge", pathname: "/cs-lounge", tab: "lounge" })).toBe(true);
     expect(csSectionNavItemActive({ id: "lounge", pathname: "/cs-lounge", tab: "notice" })).toBe(false);
     expect(csSectionNavItemActive({ id: "clients", pathname: "/cs-clients/abc" })).toBe(true);
+    expect(csSectionNavItemActive({ id: "org", pathname: "/cs-org" })).toBe(true);
+    expect(csSectionNavItemActive({ id: "org", pathname: "/cs-org/settings" })).toBe(false);
+    expect(csSectionNavItemActive({ id: "org-settings", pathname: "/cs-org/settings" })).toBe(true);
     expect(csSectionNavItemActive({ id: "away", pathname: "/cs-tools/away" })).toBe(true);
   });
 });
