@@ -87,6 +87,9 @@ export function CsTeamAttendanceClient() {
           <Button type="button" variant="ghost" size="sm" asChild>
             <Link href="/cs-tools/away">이석 현황</Link>
           </Button>
+          <Button type="button" variant="ghost" size="sm" asChild>
+            <Link href="/cs-tools/idle">자동 이석</Link>
+          </Button>
         </div>
       </div>
 

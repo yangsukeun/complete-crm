@@ -9,7 +9,8 @@ export type CsSectionNavId =
   | "org-month"
   | "org-settings"
   | "attendance"
-  | "away";
+  | "away"
+  | "idle";
 
 export type CsSectionNavItem = {
   id: CsSectionNavId;
@@ -57,6 +58,7 @@ export function csSectionNavItems(opts: {
     items.push(
       { id: "attendance", href: "/cs-tools/attendance", label: "CS 근태" },
       { id: "away", href: "/cs-tools/away", label: "이석 현황" },
+      { id: "idle", href: "/cs-tools/idle", label: "자동 이석" },
     );
   }
   return items;
@@ -87,5 +89,7 @@ export function csSectionNavItemActive(opts: {
       return p === "/cs-tools/attendance" || p.startsWith("/cs-tools/attendance/");
     case "away":
       return p === "/cs-tools/away" || p.startsWith("/cs-tools/away/");
+    case "idle":
+      return p === "/cs-tools/idle" || p.startsWith("/cs-tools/idle/");
   }
 }

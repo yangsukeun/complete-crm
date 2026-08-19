@@ -21,20 +21,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
 
+  const now = new Date();
+  const deviceId = String(device_id);
+  const isIdle = Boolean(is_idle);
+  const existing = await prisma.deviceStatus.findUnique({ where: { deviceId } });
+  const keepIdleStart = existing?.isIdle === true && isIdle;
+
   await prisma.deviceStatus.upsert({
-    where: { deviceId: String(device_id) },
+    where: { deviceId },
     create: {
-      deviceId: String(device_id),
+      deviceId,
       employeeId: String(employee_id),
-      isIdle: Boolean(is_idle),
+      isIdle,
       clientVersion: client_version ?? null,
-      lastSeen: new Date(),
+      lastSeen: now,
     },
     update: {
       employeeId: String(employee_id),
-      isIdle: Boolean(is_idle),
+      isIdle,
       clientVersion: client_version ?? null,
-      lastSeen: new Date(),
+      ...(keepIdleStart ? {} : { lastSeen: now }),
     },
   });
 

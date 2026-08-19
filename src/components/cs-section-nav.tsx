@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
+  Activity,
   Building2,
   CalendarDays,
   Clock,
@@ -31,6 +32,7 @@ const ICONS: Record<CsSectionNavId, LucideIcon> = {
   "org-settings": Warehouse,
   attendance: Clock,
   away: Timer,
+  idle: Activity,
 };
 
 export function CsSectionNav({ items }: { items: CsSectionNavItem[] }) {

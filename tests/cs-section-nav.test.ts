@@ -34,6 +34,7 @@ describe("cs section nav", () => {
       "org-settings",
       "attendance",
       "away",
+      "idle",
     ]);
   });
 
@@ -49,5 +50,7 @@ describe("cs section nav", () => {
     expect(csSectionNavItemActive({ id: "org-settings", pathname: "/cs-org/settings" })).toBe(true);
     expect(csSectionNavItemActive({ id: "org-month", pathname: "/cs-org/month" })).toBe(true);
     expect(csSectionNavItemActive({ id: "away", pathname: "/cs-tools/away" })).toBe(true);
+    expect(csSectionNavItemActive({ id: "idle", pathname: "/cs-tools/idle" })).toBe(true);
+    expect(csSectionNavItemActive({ id: "idle", pathname: "/cs-tools/away" })).toBe(false);
   });
 });

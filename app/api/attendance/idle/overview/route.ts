@@ -1,72 +1,85 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAwayOverview } from "@/lib/attendance-admin";
-import { kstDateBoundsUtc, todayYmdKst } from "@/lib/date-kst";
-import { buildIdleLiveStatus, groupIdleDailySummary } from "@/lib/attendance-idle";
+import { addDaysKstYmd, kstYmdToUtcDayStart, todayYmdKst } from "@/lib/date-kst";
+import { isCsBirthdayToday } from "@/lib/cs-org";
+import {
+  buildIdleCurrent,
+  buildIdleLiveStatus,
+  groupIdleWeekMonth,
+  matchIdleEmployee,
+  mondayYmdKst,
+  monthStartYmd,
+} from "@/lib/attendance-idle";
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const auth = await requireAwayOverview();
     if (!auth.ok) return auth.response;
 
-    const { searchParams } = new URL(req.url);
-    const raw = searchParams.get("date");
-    const dateYmd = raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : todayYmdKst();
-    let bounds: { start: Date; end: Date };
-    try {
-      bounds = kstDateBoundsUtc(dateYmd);
-    } catch {
-      return NextResponse.json({ error: "날짜가 올바르지 않습니다." }, { status: 400 });
-    }
-
     const now = new Date();
-    const [devices, sessions] = await Promise.all([
+    const today = todayYmdKst();
+    const weekStart = mondayYmdKst(today);
+    const monthStart = monthStartYmd(today);
+    const from = kstYmdToUtcDayStart(monthStart);
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDaysKstYmd(weekStart, i));
+
+    const [devices, monthRows] = await Promise.all([
       prisma.deviceStatus.findMany(),
       prisma.idleSession.findMany({
-        where: { idleStart: { gte: bounds.start, lt: bounds.end } },
+        where: { idleStart: { gte: from } },
         orderBy: { idleStart: "desc" },
       }),
     ]);
 
-    const liveStatus = buildIdleLiveStatus(devices, now);
-    const dailySummary = groupIdleDailySummary(sessions);
-
-    const employeeIds = [...new Set([...liveStatus.map((r) => r.employeeId), ...dailySummary.map((r) => r.employeeId)])];
+    const employeeIds = [
+      ...new Set([...devices.map((d) => d.employeeId), ...monthRows.map((s) => s.employeeId)]),
+    ];
     const users =
       employeeIds.length === 0
         ? []
         : await prisma.user.findMany({
-            where: { id: { in: employeeIds } },
-            select: { id: true, name: true, department: true },
+            where: {
+              OR: [
+                { id: { in: employeeIds } },
+                { name: { in: employeeIds } },
+                ...employeeIds.map((id) => ({ email: { startsWith: `${id}@` } })),
+              ],
+            },
+            select: { id: true, name: true, department: true, birthDate: true, email: true },
           });
-    const userById = new Map(users.map((u) => [u.id, u]));
+
+    const people = new Map(
+      employeeIds.map((id) => {
+        const u = matchIdleEmployee(id, users);
+        return [
+          id,
+          {
+            name: u?.name ?? id,
+            department: u?.department ?? null,
+            birthdayToday: u ? isCsBirthdayToday(u.birthDate, now) : false,
+          },
+        ] as const;
+      })
+    );
 
     return NextResponse.json({
       now: now.toISOString(),
-      date: dateYmd,
-      liveStatus: liveStatus.map((row) => {
-        const user = userById.get(row.employeeId);
-        return {
-          employeeId: row.employeeId,
-          name: user?.name ?? null,
-          department: user?.department ?? null,
-          status: row.status,
-          lastSeen: row.lastSeen,
-        };
+      today,
+      weekStart,
+      weekDays,
+      current: buildIdleCurrent(devices, now, people),
+      totals: groupIdleWeekMonth({
+        sessions: monthRows,
+        now,
+        today,
+        weekStart,
+        weekDays,
+        people,
       }),
-      dailySummary: dailySummary.map((row) => {
-        const user = userById.get(row.employeeId);
-        return {
-          employeeId: row.employeeId,
-          name: user?.name ?? null,
-          department: user?.department ?? null,
-          totalDurationSeconds: row.totalDurationSeconds,
-          sessionCount: row.sessionCount,
-          sessions: row.sessions,
-        };
-      }),
+      liveStatus: buildIdleLiveStatus(devices, now),
     });
   } catch (e) {
     console.error("idle overview:", e);
