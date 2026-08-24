@@ -222,6 +222,7 @@ export function DrivePageClient({
     "document" | "spreadsheet" | "presentation" | null
   >(null);
   const [isCreatingFile, setIsCreatingFile] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const autoSyncInFlight = useRef<string | null>(null);
@@ -766,6 +767,70 @@ export function DrivePageClient({
     }
   };
 
+  /** JIT 권한 부여 후 구글 Drive에서 열기 (탐색기 파일 전용) */
+  const openFileInGoogle = async (file: DriveFileRow) => {
+    if (file.isFolder || file.uploading || file.creating) return;
+    if (openingId) return;
+    setOpeningId(file.id);
+    try {
+      const res = await fetch(`/api/drive/file/${encodeURIComponent(file.id)}/open`, {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint =
+          typeof body?.accountHint === "string"
+            ? body.accountHint
+            : typeof body?.hintEmail === "string"
+              ? `CRM에 등록된 이메일(${body.hintEmail})로 구글 로그인 후 다시 열어주세요.`
+              : null;
+        throw new Error(
+          [body?.error || "파일을 열 수 없습니다.", hint].filter(Boolean).join(" ")
+        );
+      }
+      const link = typeof body.webViewLink === "string" ? body.webViewLink : null;
+      if (!link) throw new Error("열기 링크를 받지 못했습니다.");
+      window.open(link, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "파일 열기 실패");
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  /** 인앱 미리보기: JIT 부여 후 iframe(Drive preview) */
+  const openFilePreview = async (file: DriveFileRow) => {
+    if (file.isFolder || file.uploading || file.creating) return;
+    if (openingId) return;
+    setOpeningId(file.id);
+    try {
+      const res = await fetch(`/api/drive/file/${encodeURIComponent(file.id)}/open`, {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint =
+          typeof body?.accountHint === "string"
+            ? body.accountHint
+            : typeof body?.hintEmail === "string"
+              ? `CRM에 등록된 이메일(${body.hintEmail})로 구글 로그인 후 다시 열어주세요.`
+              : null;
+        throw new Error(
+          [body?.error || "미리보기를 열 수 없습니다.", hint].filter(Boolean).join(" ")
+        );
+      }
+      setPreviewFile({
+        ...file,
+        webViewLink:
+          typeof body.webViewLink === "string" ? body.webViewLink : file.webViewLink,
+      });
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "미리보기 실패");
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
   const canShowDeleteButton = (file: DriveFileRow) => {
     if (file.uploading || file.creating) return false;
     if (file.isFolder) {
@@ -1140,12 +1205,12 @@ export function DrivePageClient({
             onDoubleClick={() => {
               if (file.uploading || file.creating) return;
               if (file.isFolder) openFolder(file);
-              else setPreviewFile(file);
+              else void openFilePreview(file);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !file.uploading && !file.creating) {
                 if (file.isFolder) openFolder(file);
-                else setPreviewFile(file);
+                else void openFilePreview(file);
               }
             }}
             className={cn(
@@ -1234,21 +1299,27 @@ export function DrivePageClient({
                     variant="outline"
                     size="sm"
                     className="h-7 px-2 text-xs"
-                    onClick={() => setPreviewFile(file)}
+                    disabled={openingId === file.id}
+                    onClick={() => void openFilePreview(file)}
                   >
+                    {openingId === file.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : null}
                     미리보기
                   </Button>
-                  {file.webViewLink && (
-                    <a
-                      href={file.webViewLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex h-7 items-center rounded-md border border-sky-600 px-2 text-xs text-sky-700 hover:bg-sky-50"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      구글에서 열기
-                    </a>
-                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-sky-700"
+                    disabled={openingId === file.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void openFileInGoogle(file);
+                    }}
+                  >
+                    구글에서 열기
+                  </Button>
                   {canShowDeleteButton(file) && (
                     <Button
                       type="button"
@@ -1302,16 +1373,15 @@ export function DrivePageClient({
             <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
               <span className="truncate text-sm font-medium">{previewFile.name}</span>
               <div className="flex shrink-0 items-center gap-2">
-                {previewFile.webViewLink && (
-                  <a
-                    href={previewFile.webViewLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-8 items-center rounded-md bg-sky-600 px-3 text-xs font-medium text-white hover:bg-sky-700"
-                  >
-                    구글에서 열기
-                  </a>
-                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 gap-1 bg-sky-600 text-xs text-white hover:bg-sky-700"
+                  disabled={openingId === previewFile.id}
+                  onClick={() => void openFileInGoogle(previewFile)}
+                >
+                  구글에서 열기
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
