@@ -15,6 +15,10 @@ import {
   notifyCenterChiefsOnCsTeamLeadApproval,
   notifyExecutivesOnTeamLeadApproval,
 } from "@/lib/finance-payment-request-alerts";
+import {
+  getFinanceScope,
+  isPaymentRequestInFinanceScope,
+} from "@/lib/finance-scope";
 
 const createSchema = z.object({
   vendorId: z.string().min(1),
@@ -94,7 +98,24 @@ export async function GET() {
       select: { department: true },
     });
     const viewerDepartment = viewerRow?.department ?? null;
-    const listMeta = { departmentsWithTeamLead, viewerDepartment };
+    const financeScope = getFinanceScope({
+      userId: session.user.id,
+      role,
+      department: viewerDepartment,
+      transferExecutorIds,
+    });
+    const listMeta = {
+      departmentsWithTeamLead,
+      viewerDepartment,
+      financeScope: {
+        kind: financeScope.kind,
+        label: financeScope.label,
+      },
+    };
+
+    const filterByScope = <T extends { requesterId?: string | null; requester?: { department?: string | null } | null }>(
+      rows: T[]
+    ): T[] => rows.filter((r) => isPaymentRequestInFinanceScope(financeScope, r));
 
     // 대표/임원: 전체 조회 후 완료/미완료로 분리 (다른 직원 요청 포함, 새/옛 건 구분 없음)
     if (isExecutive(role)) {
@@ -184,7 +205,8 @@ export async function GET() {
           ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
           : null,
       }));
-      const pendingIds = requests
+      const scopedRequests = filterByScope(requests);
+      const pendingIds = scopedRequests
         .filter((r: any) => {
           if (r.status !== "PENDING") return false;
           if (
@@ -213,8 +235,8 @@ export async function GET() {
             session.user.id,
             ...pendingIds
           );
-const existingSet = new Set(existingRows.map((e: any) => e.requestId));
-      for (const requestId of pendingIds) {
+          const existingSet = new Set(existingRows.map((e: any) => e.requestId));
+          for (const requestId of pendingIds) {
             if (existingSet.has(requestId)) continue;
             try {
               await prisma.$executeRawUnsafe(
@@ -239,12 +261,12 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         finalUnread = Number(countRows[0]?.count ?? 0);
       } catch (_) {}
       return NextResponse.json(
-        { requests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
+        { requests: scopedRequests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
     }
 
-    // 센터장(CS팀 2차): 전체 목록 + CS팀 CENTER_CHIEF_APPROVED 알람 보정
+    // 센터장(CS팀 2차): 부서 스코프 목록 + CS팀 CENTER_CHIEF_APPROVED 알람 보정
     if (isCenterChief(role)) {
       type Row = {
         id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
@@ -287,7 +309,8 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
           ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
           : null,
       }));
-      const pendingIds = requests
+      const scopedRequests = filterByScope(requests);
+      const pendingIds = scopedRequests
         .filter(
           (r: any) =>
             r.status === "CENTER_CHIEF_APPROVED" && isCsTeamDepartment(r.requester?.department)
@@ -329,7 +352,7 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         finalUnread = Number(countRows[0]?.count ?? 0);
       } catch (_) {}
       return NextResponse.json(
-        { requests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
+        { requests: scopedRequests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
     }

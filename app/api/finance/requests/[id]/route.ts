@@ -21,6 +21,7 @@ import {
   notifyExecutivesOnTeamLeadApproval,
   notifyTransferExecutorsOnApproval,
 } from "@/lib/finance-payment-request-alerts";
+import { getFinanceScope, isPaymentRequestInFinanceScope } from "@/lib/finance-scope";
 
 // TODO(security): /finance/requests URL 직접 접근·API는 finance_view 미검사(메뉴만 숨김). 후속 가드 이슈.
 
@@ -34,6 +35,61 @@ const updateSchema = z.object({
     "REJECTED",
   ]),
 });
+
+async function resolveViewerFinanceScope(userId: string, roleHint?: string | null) {
+  const dbUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, department: true },
+  });
+  const role = (dbUser?.role ?? roleHint) as string | undefined;
+  const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
+  const scope = getFinanceScope({
+    userId,
+    role,
+    department: dbUser?.department ?? null,
+    transferExecutorIds,
+  });
+  return { scope, role, department: dbUser?.department ?? null, transferExecutorIds };
+}
+
+/** 상세 조회 — 스코프 밖이면 403 */
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id } = await params;
+
+    const row = await prisma.paymentRequest.findUnique({
+      where: { id },
+      include: {
+        requester: { select: { id: true, name: true, email: true, position: true, department: true } },
+        vendor: true,
+        quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
+      },
+    });
+    if (!row) {
+      return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    const { scope } = await resolveViewerFinanceScope(session.user.id, session.user.role);
+    if (!isPaymentRequestInFinanceScope(scope, row)) {
+      return NextResponse.json({ error: "조회 권한이 없습니다." }, { status: 403 });
+    }
+
+    return NextResponse.json({
+      ...row,
+      financeScope: { kind: scope.kind, label: scope.label },
+    });
+  } catch (e) {
+    console.error("[GET /api/finance/requests/:id]", e);
+    return NextResponse.json({ error: "결제 요청을 불러올 수 없습니다." }, { status: 500 });
+  }
+}
 
 export async function PATCH(
   req: Request,
@@ -73,6 +129,29 @@ export async function PATCH(
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    const {
+      scope,
+      role: scopedRole,
+      department: viewerDepartment,
+      transferExecutorIds,
+    } = await resolveViewerFinanceScope(session.user.id, session.user.role);
+
+    const requesterRowEarly = current.requesterId
+      ? await prisma.user.findUnique({
+          where: { id: current.requesterId },
+          select: { name: true, department: true },
+        })
+      : null;
+
+    if (
+      !isPaymentRequestInFinanceScope(scope, {
+        requesterId: current.requesterId,
+        requester: requesterRowEarly,
+      })
+    ) {
+      return NextResponse.json({ error: "조회 권한이 없습니다." }, { status: 403 });
+    }
+
     if (parsed.data.status === current.status) {
       const row = await prisma.paymentRequest.findUnique({
         where: { id },
@@ -99,24 +178,13 @@ export async function PATCH(
       });
     }
 
-    const dbUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, department: true },
-    });
-    const role = (dbUser?.role ?? session.user.role) as string | undefined;
+    const role = (scopedRole ?? session.user.role) as string | undefined;
     const isTeamLead = role === "TEAM_LEAD";
     const isCenterChief = role === "CENTER_CHIEF";
     const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
-
-    const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
     const isTransferExecutor = transferExecutorIds.includes(session.user.id);
 
-    const requesterRow = current.requesterId
-      ? await prisma.user.findUnique({
-          where: { id: current.requesterId },
-          select: { name: true, department: true },
-        })
-      : null;
+    const requesterRow = requesterRowEarly;
     const isCsRequest = isCsTeamDepartment(requesterRow?.department);
     const needsExecutiveFirstLine = paymentRequestNeedsExecutiveFirstLineApproval(
       current.requesterId,
@@ -146,7 +214,7 @@ export async function PATCH(
     ) {
       if (
         !canTeamLeadApprovePaymentRequest(
-          dbUser?.department,
+          viewerDepartment,
           requesterRow?.department,
           departmentsWithTeamLeadSet
         )

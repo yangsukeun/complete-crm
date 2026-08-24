@@ -273,6 +273,7 @@ export default function FinanceRequestsPage() {
   const [completedRequests, setCompletedRequests] = useState<PaymentRequest[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PaymentRequest[]>([]);
   const [isExecutiveTransferExecutor, setIsExecutiveTransferExecutor] = useState(false);
+  const [financeScope, setFinanceScope] = useState<{ kind: string; label: string } | null>(null);
   const [allowTransferComplete, setAllowTransferComplete] = useState(false); // 대표/관리자 중 이체 담당자일 때만 이체완료 버튼
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -352,6 +353,7 @@ export default function FinanceRequestsPage() {
     const applyListMeta = (data: {
       viewerDepartment?: string | null;
       departmentsWithTeamLead?: string[];
+      financeScope?: { kind?: string; label?: string } | null;
     }) => {
       setViewerDepartment(
         typeof data.viewerDepartment === "string" ? data.viewerDepartment : null
@@ -359,6 +361,9 @@ export default function FinanceRequestsPage() {
       setDepartmentsWithTeamLead(
         Array.isArray(data.departmentsWithTeamLead) ? data.departmentsWithTeamLead : []
       );
+      if (data.financeScope?.kind && data.financeScope?.label) {
+        setFinanceScope({ kind: data.financeScope.kind, label: data.financeScope.label });
+      }
     };
     try {
       const url = noCache ? `/api/finance/requests?_t=${Date.now()}` : "/api/finance/requests";
@@ -882,6 +887,16 @@ export default function FinanceRequestsPage() {
   const isTransferExecutor = transferExecutorIds.includes(myUserId);
   const canRequest = !isExecutive;
   const canComplete = isTransferExecutor;
+  const isSelfScope = financeScope?.kind === "SELF";
+  const scopeLabel =
+    financeScope?.label ??
+    (isExecutive || isTransferExecutor
+      ? "전체"
+      : isTeamLead || isCenterChief
+        ? viewerDepartment
+          ? `${viewerDepartment} 내역`
+          : "부서 내역"
+        : "내 신청 내역");
   const approvalCtx = {
     isTeamLead,
     isCenterChief,
@@ -953,16 +968,23 @@ export default function FinanceRequestsPage() {
             대시보드
           </Link>
         </Button>
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/finance/vendors">거래처 관리</Link>
-        </Button>
+        {!isSelfScope && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/finance/vendors">거래처 관리</Link>
+          </Button>
+        )}
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          조회 범위: {scopeLabel}
+        </span>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageHeadline
           title="결제 요청"
           description={
-            showTwoSections
+            isSelfScope
+              ? "내가 신청한 결제 요청만 조회합니다."
+              : showTwoSections
               ? "결제 요청(이체 대기) 건과 이체 완료된 건을 모두 조회합니다. 이체 담당자로 지정된 경우 직접 이체 완료 처리할 수 있습니다."
               : isTeamLead
                 ? "같은 부서(팀) 직원 요청만 팀장 1차 승인 후 대표 2차 승인합니다. 팀장이 없는 부서는 대표가 바로 승인합니다."
@@ -989,7 +1011,7 @@ export default function FinanceRequestsPage() {
         </div>
       </div>
 
-      {(isTeamLead || showTwoSections) && pendingTotal > 0 && (
+      {!isSelfScope && (isTeamLead || showTwoSections) && pendingTotal > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30">
           <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
             <Wallet className="size-5" />
