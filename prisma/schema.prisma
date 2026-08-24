@@ -312,6 +312,8 @@ model User {
   driveFilesTrashedByMe  DriveFile[]             @relation("DriveFileTrashedBy")
   driveFilesUpdatedByMe  DriveFile[]             @relation("DriveFileUpdatedBy")
   driveActivityLogs      DriveActivityLog[]      @relation("DriveActivityActor")
+  driveTeamShares        DriveTeamShare[]        @relation("DriveTeamShareUser")
+  driveTeamSharesCreated DriveTeamShare[]        @relation("DriveTeamShareCreator")
   csToolClickLogs        CsToolClickLog[]
   @@index([currentProjectId])
 }
@@ -1216,6 +1218,41 @@ model DriveActivityLog {
   @@index([driveFileId, createdAt])
   @@index([actorId, createdAt])
   @@index([createdAt])
+}
+
+enum DriveTeamShareTargetType {
+  DEPARTMENT
+  USER
+}
+
+enum DriveTeamShareRole {
+  READER
+  WRITER
+}
+
+/// 탐색기 폴더 ↔ CRM 부서/사용자 Google Drive 공유 규칙
+model DriveTeamShare {
+  id              String                   @id @default(cuid())
+  googleFolderId  String
+  folderName      String
+  targetType      DriveTeamShareTargetType
+  department      String?
+  userId          String?
+  user            User?                    @relation("DriveTeamShareUser", fields: [userId], references: [id], onDelete: Cascade)
+  role            DriveTeamShareRole       @default(READER)
+  createdBy       String
+  creator         User                     @relation("DriveTeamShareCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt       DateTime                 @default(now())
+  lastSyncedAt    DateTime?
+  lastSyncSummary String?
+  /// [{ "email": "...", "reason": "..." }]
+  lastSyncErrors  Json?
+  needsResync     Boolean                  @default(false)
+
+  @@index([googleFolderId])
+  @@index([department])
+  @@index([userId])
+  @@index([needsResync])
 }
 
 model ProjectDriveFile {

@@ -6,16 +6,15 @@ import {
   assertCanAccessDriveFileId,
   loadDriveAccessActor,
 } from "@/lib/drive/folder-access";
-import { ensureDriveUserReaderPermission } from "@/lib/drive/ensure-user-reader";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
 /**
  * POST /api/drive/file/[id]/open
- * 부서 폴더 접근 가드 통과 후, 서비스계정으로 해당 사용자에 reader JIT 부여 → webViewLink 반환.
+ * CRM 부서 폴더 가드만 확인 후 webViewLink 반환.
+ * (파일별 JIT permissions.create 는 중단 — 폴더 단위 DriveTeamShare 동기화로 대체)
  */
 export async function POST(_req: Request, ctx: RouteCtx) {
   try {
@@ -38,15 +37,8 @@ export async function POST(_req: Request, ctx: RouteCtx) {
 
     const dbUser = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { id: true, email: true, role: true },
+      select: { email: true },
     });
-    if (!dbUser?.email?.trim()) {
-      return NextResponse.json(
-        { error: "계정에 이메일이 없어 Drive 권한을 부여할 수 없습니다." },
-        { status: 400 }
-      );
-    }
-    const userEmail = dbUser.email.trim();
 
     const row = await prisma.driveFile.findUnique({
       where: { id: fileId },
@@ -92,38 +84,20 @@ export async function POST(_req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
-    let alreadyHad = false;
-    try {
-      const result = await ensureDriveUserReaderPermission(row.driveFileId, userEmail);
-      alreadyHad = result.alreadyHad;
-    } catch (e) {
-      console.error("[drive/file open] permissions.create", e);
-      const msg = e instanceof Error ? e.message : String(e);
-      return NextResponse.json(
-        {
-          error:
-            msg.length < 300
-              ? msg
-              : "Drive 권한 부여에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-          hintEmail: userEmail,
-        },
-        { status: 502 }
-      );
-    }
-
     const webViewLink =
       row.webViewLink ||
       `https://drive.google.com/file/d/${row.driveFileId}/view`;
 
+    const userEmail = dbUser?.email?.trim() ?? "";
     return NextResponse.json({
       ok: true,
       webViewLink,
       driveFileId: row.driveFileId,
       name: row.name,
-      alreadyHad,
-      /** 브라우저가 다른 Google 계정으로 로그인된 경우 안내 */
-      accountHint: `CRM에 등록된 이메일(${userEmail})로 구글 로그인 후 다시 열어주세요.`,
-      userEmail,
+      accountHint: userEmail
+        ? `CRM에 등록된 이메일(${userEmail})로 구글 로그인 후 다시 열어주세요.`
+        : undefined,
+      userEmail: userEmail || undefined,
     });
   } catch (e) {
     console.error("[drive/file open]", e);

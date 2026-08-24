@@ -110,6 +110,11 @@ export async function PATCH(
       }
     }
 
+    const before = await prisma.user.findUnique({
+      where: { id },
+      select: { department: true, accountDisabled: true },
+    });
+
     const user = await prisma.user.update({
       where: { id },
       data,
@@ -129,6 +134,24 @@ export async function PATCH(
         permissions: true,
       },
     });
+
+    try {
+      const { markTeamSharesNeedsResync } = await import("@/lib/drive/team-share-sync");
+      const deptChanged =
+        parsed.data.department !== undefined &&
+        String(before?.department ?? "") !== String(user.department ?? "");
+      if (deptChanged) {
+        await markTeamSharesNeedsResync({
+          department: before?.department,
+          userId: id,
+        });
+        await markTeamSharesNeedsResync({ department: user.department });
+      } else {
+        await markTeamSharesNeedsResync({ userId: id });
+      }
+    } catch (e) {
+      console.warn("[users PATCH] drive team-share needsResync mark failed", e);
+    }
 
     /** 연차 간이 발생액 계산 시 1회만 회사 규칙 조회(PATCH 에 manual·carryOver 둘 다 있을 때 중복 호출 방지) */
     let leaveCalcMemo: Promise<{ year: number; entitlement: number }> | null = null;
