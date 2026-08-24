@@ -19,6 +19,13 @@ type Bd = {
   expired: number;
 };
 
+const DEPT_ALL = "__ALL__";
+const DEPT_NONE = "__NONE__";
+
+function isUnsetDepartment(department: string | null | undefined): boolean {
+  return normalizeDepartment(department).length === 0;
+}
+
 /**
  * 대표·관리자: 전부. CS 팀장·센터장: CS 소속만.
  */
@@ -46,33 +53,60 @@ export async function GET(req: Request) {
     const asOf = new Date();
     const asOfYmd = toKstYmd(asOf);
     const url = new URL(req.url);
-    const deptQ = (url.searchParams.get("department") ?? "").trim();
+    const deptQ = (url.searchParams.get("department") ?? "").trim() || DEPT_ALL;
 
-    const users = await prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        department: true,
-        position: true,
-        role: true,
-        joinDate: true,
-        accountDisabled: true,
-      },
-    });
+    // CS 팀장·센터장: CS팀만. 타부서·전체·미지정 요청은 403
+    if (scope === "cs") {
+      const allowed =
+        deptQ === DEPT_ALL ||
+        deptQ === "CS팀" ||
+        isCsLeaveOverviewDepartment(deptQ);
+      if (!allowed) {
+        return NextResponse.json(
+          { error: "CS팀 연차 현황만 조회할 수 있습니다." },
+          { status: 403 }
+        );
+      }
+    }
 
-    const departments = [
+    const [users, deptMaster] = await Promise.all([
+      prisma.user.findMany({
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          department: true,
+          position: true,
+          role: true,
+          joinDate: true,
+          accountDisabled: true,
+        },
+      }),
+      prisma.department.findMany({
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: { name: true },
+      }),
+    ]);
+
+    // 드롭다운: Department 마스터 + 직원에만 있는 부서명(마스터 누락 대비)
+    const masterNames = deptMaster.map((d) => normalizeDepartment(d.name)).filter(Boolean);
+    const fromUsers = [
       ...new Set(
         users
           .map((u) => normalizeDepartment(u.department))
           .filter((d) => d.length > 0)
       ),
-    ].sort((a, b) => a.localeCompare(b, "ko"));
+    ];
+    const departments = [...new Set([...masterNames, ...fromUsers])].sort((a, b) =>
+      a.localeCompare(b, "ko")
+    );
 
     const filtered = users.filter((u) => {
       if (scope === "cs") return isCsLeaveOverviewDepartment(u.department);
-      if (!deptQ || deptQ === "__ALL__") return true;
+
+      if (deptQ === DEPT_ALL) return true;
+      if (deptQ === DEPT_NONE) return isUnsetDepartment(u.department);
       return normalizeDepartment(u.department) === normalizeDepartment(deptQ);
     });
 
@@ -147,9 +181,15 @@ export async function GET(req: Request) {
       year,
       scope,
       departments,
-      defaultDepartment: scope === "cs" ? "CS팀" : "CS팀",
+      selectedDepartment: scope === "cs" ? "CS팀" : deptQ,
+      defaultDepartment: scope === "cs" ? "CS팀" : DEPT_ALL,
       lockedDepartment: scope === "cs" ? "CS팀" : null,
-      stats: { totalGranted, totalUsed, usageRate },
+      stats: {
+        totalGranted,
+        totalUsed,
+        usageRate,
+        employeeCount: rows.length,
+      },
       rows,
     });
   } catch (e) {

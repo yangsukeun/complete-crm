@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/api-swr";
 import { PageHeadline } from "@/components/page-headline";
@@ -47,30 +47,61 @@ type Api = {
   year: number;
   scope: "all" | "cs";
   departments: string[];
+  selectedDepartment?: string;
+  defaultDepartment?: string;
   lockedDepartment: string | null;
-  stats: { totalGranted: number; totalUsed: number; usageRate: number };
+  stats: {
+    totalGranted: number;
+    totalUsed: number;
+    usageRate: number;
+    employeeCount?: number;
+  };
   rows: Row[];
 };
+
+const DEPT_ALL = "__ALL__";
+const DEPT_NONE = "__NONE__";
 
 function fmt1(n: number): string {
   return n.toFixed(n % 1 === 0 ? 0 : 1);
 }
 
 export function EmployeeLeaveSummaryClient() {
-  const [dept, setDept] = useState("CS팀");
-  const qs = dept === "__ALL__" ? "department=__ALL__" : `department=${encodeURIComponent(dept)}`;
+  const [dept, setDept] = useState(DEPT_ALL);
+  const [initialized, setInitialized] = useState(false);
+
+  const qs =
+    dept === DEPT_ALL
+      ? `department=${DEPT_ALL}`
+      : `department=${encodeURIComponent(dept)}`;
   const { data, error, isLoading, mutate } = useSWR<Api>(
     `/api/admin/employee-leave-summary?${qs}`,
     jsonFetcher,
     { revalidateOnFocus: true, dedupingInterval: 30_000 }
   );
 
+  // CS 스코프면 서버 lockedDepartment로 고정
+  useEffect(() => {
+    if (!data || initialized) return;
+    if (data.lockedDepartment) {
+      setDept(data.lockedDepartment);
+    } else if (data.defaultDepartment) {
+      setDept(data.defaultDepartment);
+    }
+    setInitialized(true);
+  }, [data, initialized]);
+
   const locked = data?.lockedDepartment ?? null;
   const filterValue = locked ?? dept;
 
   const stats = useMemo(() => {
-    if (!data) return { totalGranted: 0, totalUsed: 0, usageRate: 0 };
-    return data.stats;
+    if (!data) return { totalGranted: 0, totalUsed: 0, usageRate: 0, employeeCount: 0 };
+    return {
+      totalGranted: data.stats.totalGranted,
+      totalUsed: data.stats.totalUsed,
+      usageRate: data.stats.usageRate,
+      employeeCount: data.stats.employeeCount ?? data.rows.length,
+    };
   }, [data]);
 
   return (
@@ -126,7 +157,8 @@ export function EmployeeLeaveSummaryClient() {
 
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-muted-foreground text-sm">
-              기준 연도: <strong className="text-foreground">{data.year}</strong>년 · 직원 {data.rows.length}명
+              기준 연도: <strong className="text-foreground">{data.year}</strong>년 · 직원{" "}
+              <strong className="text-foreground">{stats.employeeCount}</strong>명
             </p>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-sm">부서</span>
@@ -135,19 +167,17 @@ export function EmployeeLeaveSummaryClient() {
                 onValueChange={(v) => setDept(v)}
                 disabled={Boolean(locked)}
               >
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {!locked && <SelectItem value="__ALL__">전체</SelectItem>}
-                  {(locked ? [locked] : data.departments.includes("CS팀")
-                    ? ["CS팀", ...data.departments.filter((d) => d !== "CS팀")]
-                    : data.departments
-                  ).map((d) => (
+                  {!locked && <SelectItem value={DEPT_ALL}>전체</SelectItem>}
+                  {(locked ? [locked] : data.departments).map((d) => (
                     <SelectItem key={d} value={d}>
                       {d}
                     </SelectItem>
                   ))}
+                  {!locked && <SelectItem value={DEPT_NONE}>부서 미지정</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -167,57 +197,65 @@ export function EmployeeLeaveSummaryClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rows.map((r) => {
-                  const carry = r.carryOver?.entitled ?? 0;
-                  return (
-                    <TableRow
-                      key={r.userId}
-                      className={r.shortage ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/50"}
-                    >
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-medium">{r.name}</span>
-                          {r.accountDisabled && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              비활성
-                            </Badge>
-                          )}
-                          {r.shortage && (
-                            <Badge
-                              variant="destructive"
-                              className="text-[10px]"
-                              title="승인된 휴가가 발생분으로 차감되지 않았습니다."
-                            >
-                              차감 정합 필요
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{r.position || "—"}</TableCell>
-                      <TableCell className="tabular-nums text-sm">
-                        {r.periodStart && r.periodEnd ? `${r.periodStart} ~ ${r.periodEnd}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {fmt1(r.totalGranted)}
-                        {carry > 0.0001 ? (
-                          <span className="text-muted-foreground"> (이월 {fmt1(carry)})</span>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{fmt1(r.totalUsed)}</TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">
-                        {fmt1(r.remaining)}일
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Link
-                          href={`/admin/employee-leave-summary/${r.userId}`}
-                          className="text-primary text-sm hover:underline"
-                        >
-                          상세보기 →
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {data.rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-muted-foreground text-center">
+                      해당 부서에 직원이 없습니다.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  data.rows.map((r) => {
+                    const carry = r.carryOver?.entitled ?? 0;
+                    return (
+                      <TableRow
+                        key={r.userId}
+                        className={r.shortage ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-muted/50"}
+                      >
+                        <TableCell>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-medium">{r.name}</span>
+                            {r.accountDisabled && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                비활성
+                              </Badge>
+                            )}
+                            {r.shortage && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[10px]"
+                                title="승인된 휴가가 발생분으로 차감되지 않았습니다."
+                              >
+                                차감 정합 필요
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{r.position || "—"}</TableCell>
+                        <TableCell className="tabular-nums text-sm">
+                          {r.periodStart && r.periodEnd ? `${r.periodStart} ~ ${r.periodEnd}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {fmt1(r.totalGranted)}
+                          {carry > 0.0001 ? (
+                            <span className="text-muted-foreground"> (이월 {fmt1(carry)})</span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{fmt1(r.totalUsed)}</TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {fmt1(r.remaining)}일
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Link
+                            href={`/admin/employee-leave-summary/${r.userId}`}
+                            className="text-primary text-sm hover:underline"
+                          >
+                            상세보기 →
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
