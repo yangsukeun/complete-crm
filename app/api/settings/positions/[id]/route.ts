@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { normalizeFeaturePermissionKeys } from "@/lib/permissions";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -37,7 +38,7 @@ export async function PATCH(
     const permissions =
       parsed.data.permissions == null || parsed.data.permissions.length === 0
         ? null
-        : JSON.stringify(parsed.data.permissions);
+        : JSON.stringify(normalizeFeaturePermissionKeys(parsed.data.permissions));
     const updated = await prisma.position.update({
       where: { id },
       data: { permissions },

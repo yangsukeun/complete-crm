@@ -17,6 +17,7 @@ import {
 import { updateEmployeePassword } from "@/lib/employee-password";
 import { serializeAdditionalDepartments } from "@/lib/user-departments";
 import { normalizeDepartment } from "@/lib/leave-department-access";
+import { normalizeFeaturePermissionKeys } from "@/lib/permissions";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -157,7 +158,7 @@ export async function PATCH(
       data.permissions =
         parsed.data.permissions == null || parsed.data.permissions.length === 0
           ? null
-          : JSON.stringify(parsed.data.permissions);
+          : JSON.stringify(normalizeFeaturePermissionKeys(parsed.data.permissions));
     }
 
     if (parsed.data.password) {

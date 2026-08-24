@@ -30,11 +30,11 @@ export async function resolveEffectivePermissionsJson(userId: string): Promise<s
     posParsed = parsePermissions(posRow?.permissions ?? null);
   }
 
-  // 경영관리 매니저: 직원 관리를 대표와 같이 쓸 수 있게 admin_employees 항상 포함
+  // 경영관리 매니저: 직원 관리를 대표와 같이 쓸 수 있게 employee_manage 항상 포함
   if (isManagementManagerPosition(user.position)) {
     const r = String(user.role ?? "USER").toUpperCase() as RoleName;
     const base = userParsed ?? posParsed ?? getDefaultPermissionsForRole(r);
-    const list = base.includes("admin_employees") ? base : [...base, "admin_employees"];
+    const list = base.includes("employee_manage") ? base : [...base, "employee_manage"];
     return JSON.stringify(list);
   }
 

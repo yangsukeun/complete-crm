@@ -27,9 +27,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   board: "게시판",
   attendance_import: "기록기 근태 임포트",
   attendance_away: "CS 이석(부재중) 예외",
-  admin_employees: "직원 관리",
-  /** 위임: 계정 생성·수정·엑셀·비번 (role/관리자 계정·기능권한 편집 불가) */
-  employee_manage: "직원 관리 (employee_manage)",
+  /** 직원 관리 화면·계정 생성/수정/엑셀/비번 (위임 시 role·관리자·기능권한 편집 불가) */
+  employee_manage: "직원 관리",
   admin_logs: "Daily Report 조회",
   admin_departments: "부서·직책",
   admin_projects: "브랜드/프로젝트",
@@ -94,10 +93,26 @@ export function parsePermissions(json: string | null | undefined): string[] | nu
   try {
     const arr = JSON.parse(json) as unknown;
     if (!Array.isArray(arr)) return null;
-    return arr.filter((x): x is string => typeof x === "string");
+    const keys = arr.filter((x): x is string => typeof x === "string");
+    return normalizeFeaturePermissionKeys(keys);
   } catch {
     return null;
   }
+}
+
+/**
+ * 구 키 admin_employees → employee_manage 로 정규화 (권한 공백 방지)
+ */
+export function normalizeFeaturePermissionKeys(keys: readonly string[]): string[] {
+  const set = new Set<string>();
+  for (const k of keys) {
+    if (k === "admin_employees") {
+      set.add("employee_manage");
+      continue;
+    }
+    set.add(k);
+  }
+  return [...set];
 }
 
 /**
@@ -118,10 +133,11 @@ export function hasPermission(
   permissionsJson: string | null | undefined,
   feature: string
 ): boolean {
+  const want = feature === "admin_employees" ? "employee_manage" : feature;
   const custom = parsePermissions(permissionsJson);
-  if (custom !== null) return custom.includes(feature);
+  if (custom !== null) return custom.includes(want);
   const defaults = DEFAULT_BY_ROLE[role as RoleName] ?? DEFAULT_BY_ROLE.USER;
-  return defaults.includes(feature);
+  return defaults.includes(want);
 }
 
 /**

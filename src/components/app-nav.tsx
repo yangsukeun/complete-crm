@@ -146,7 +146,7 @@ const ADMIN_MENU_DEFS: {
   csLeaveOverview?: boolean;
 }[] = [
   { href: "/admin", label: "관리 홈", icon: Settings, executiveOnly: true },
-  { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "admin_employees" },
+  { href: "/admin/employees", label: "직원 관리", icon: Users, feature: "employee_manage" },
   { href: "/admin/employee-leave-summary", label: "직원 연차 현황", icon: CalendarClock, csLeaveOverview: true },
   { href: "/admin/attendance-import", label: "근태 기록 가져오기", icon: Upload, feature: "attendance_import" },
   { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, feature: "attendance_import" },
@@ -462,7 +462,7 @@ export function AppNav() {
     if (d.executiveOnly) return isExecutive;
     if (d.feature) {
       if (orgUnit === "LOGISTICS" && d.href === "/admin/company") return true;
-      if (d.feature === "admin_employees" && (canManageEmployees || can("employee_manage"))) return true;
+      if (d.feature === "employee_manage" && canManageEmployees) return true;
       return isExecutive || can(d.feature);
     }
     return isExecutive;

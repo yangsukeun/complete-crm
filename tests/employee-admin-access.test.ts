@@ -57,11 +57,16 @@ describe("employee-admin-access", () => {
     expect(canMutatePrivilegedEmployeeAccount("USER")).toBe(false);
   });
 
-  it("keeps finance_view in FEATURE_LABELS", async () => {
-    const { FEATURE_LABELS, FEATURE_KEYS } = await import("@/lib/permissions");
-    expect(FEATURE_LABELS.finance_view).toBe("자금 조회");
-    expect(FEATURE_KEYS).toContain("finance_view");
+  it("keeps employee_manage as sole staff-management feature key", async () => {
+    const { FEATURE_LABELS, FEATURE_KEYS, normalizeFeaturePermissionKeys } = await import(
+      "@/lib/permissions"
+    );
     expect(FEATURE_KEYS).toContain("employee_manage");
-    expect(FEATURE_LABELS.employee_manage).toContain("employee_manage");
+    expect(FEATURE_KEYS).not.toContain("admin_employees");
+    expect(FEATURE_LABELS.employee_manage).toBe("직원 관리");
+    expect(normalizeFeaturePermissionKeys(["admin_employees", "dashboard"])).toEqual([
+      "employee_manage",
+      "dashboard",
+    ]);
   });
 });
