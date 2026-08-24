@@ -6,6 +6,10 @@ import { hash } from "bcryptjs";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 import { fillEmptyString, shouldFillJoinDate } from "@/lib/employee-import-fill";
 import { ensureAccrualsUpTo } from "@/lib/leave/ensure-accruals";
+import {
+  isEmployeeManageDelegate,
+  isPrivilegedStaffRole,
+} from "@/lib/employee-admin-access";
 
 type Row = Record<string, unknown>;
 
@@ -33,6 +37,7 @@ export async function POST(req: Request) {
     if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    const delegated = isEmployeeManageDelegate(manager.kind);
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -101,6 +106,7 @@ export async function POST(req: Request) {
           id: true,
           name: true,
           email: true,
+          role: true,
           phone: true,
           workPhone: true,
           workEmail: true,
@@ -114,6 +120,14 @@ export async function POST(req: Request) {
       });
 
       if (existing) {
+        if (delegated && isPrivilegedStaffRole(existing.role)) {
+          errors.push({
+            row: rowNum,
+            email,
+            message: "대표/관리자 계정은 수정할 수 없습니다.",
+          });
+          continue;
+        }
         const data: {
           phone?: string;
           workPhone?: string;
@@ -165,7 +179,19 @@ export async function POST(req: Request) {
       }
 
       const roleRaw = toStr(row["역할"] ?? row["role"] ?? row["Role"]).toUpperCase();
-      const role = roleRaw === "TEAM_LEAD" ? "TEAM_LEAD" : "USER";
+      // employee_manage 위임: USER 고정. 그 외는 USER/TEAM_LEAD만 엑셀에서 허용
+      let role: "USER" | "TEAM_LEAD" = roleRaw === "TEAM_LEAD" ? "TEAM_LEAD" : "USER";
+      if (delegated) {
+        if (roleRaw && roleRaw !== "USER") {
+          errors.push({
+            row: rowNum,
+            email,
+            message: "직원 관리 위임 권한으로는 USER만 생성할 수 있습니다.",
+          });
+          continue;
+        }
+        role = "USER";
+      }
       const joinDate = joinDateParsed ?? new Date();
 
       try {

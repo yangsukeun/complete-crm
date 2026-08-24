@@ -16,7 +16,7 @@ export default async function NewEmployeePage() {
         title="직원 계정 생성"
         description="아이디(이메일), 비밀번호와 내정보와 동일한 입력항목을 입력한 뒤 저장하세요."
       />
-      <NewEmployeeForm />
+      <NewEmployeeForm managerKind={manager.kind} />
     </div>
   );
 }

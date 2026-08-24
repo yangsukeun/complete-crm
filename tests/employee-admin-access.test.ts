@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   canManageEmployeesSync,
   canMutatePrivilegedEmployeeAccount,
+  isEmployeeManageDelegate,
   isManagementManagerPosition,
+  resolveEmployeeManagerKind,
 } from "@/lib/employee-admin-access";
 
 describe("employee-admin-access", () => {
@@ -20,9 +22,46 @@ describe("employee-admin-access", () => {
     expect(canManageEmployeesSync({ role: "TEAM_LEAD", position: "팀장" })).toBe(false);
   });
 
+  it("grants access via employee_manage permission", () => {
+    const perms = JSON.stringify(["dashboard", "employee_manage", "profile"]);
+    expect(
+      canManageEmployeesSync({
+        role: "USER",
+        position: "AD",
+        permissionsJson: perms,
+      })
+    ).toBe(true);
+    expect(
+      resolveEmployeeManagerKind({
+        role: "USER",
+        position: "AD",
+        permissionsJson: perms,
+      })
+    ).toBe("employee_manage");
+    expect(isEmployeeManageDelegate("employee_manage")).toBe(true);
+  });
+
+  it("does not grant employee_manage when permission absent", () => {
+    expect(
+      resolveEmployeeManagerKind({
+        role: "USER",
+        position: null,
+        permissionsJson: JSON.stringify(["dashboard", "finance_view"]),
+      })
+    ).toBe("none");
+  });
+
   it("restricts privileged-account mutation to executive/admin roles", () => {
     expect(canMutatePrivilegedEmployeeAccount("EXECUTIVE")).toBe(true);
     expect(canMutatePrivilegedEmployeeAccount("ADMIN")).toBe(true);
     expect(canMutatePrivilegedEmployeeAccount("USER")).toBe(false);
+  });
+
+  it("keeps finance_view in FEATURE_LABELS", async () => {
+    const { FEATURE_LABELS, FEATURE_KEYS } = await import("@/lib/permissions");
+    expect(FEATURE_LABELS.finance_view).toBe("자금 조회");
+    expect(FEATURE_KEYS).toContain("finance_view");
+    expect(FEATURE_KEYS).toContain("employee_manage");
+    expect(FEATURE_LABELS.employee_manage).toContain("employee_manage");
   });
 });

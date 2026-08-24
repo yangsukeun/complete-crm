@@ -34,7 +34,7 @@ import { toast } from "sonner";
 import { Pencil, Shield, ChevronDown, KeyRound } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
-import { canManageEmployeesSync, isPrivilegedStaffRole } from "@/lib/employee-admin-access";
+import { canManageEmployeesSync, isPrivilegedStaffRole, type EmployeeManagerKind } from "@/lib/employee-admin-access";
 
 /** 직원 목록/편집용 타입. currentProject.brand는 객체 { name: string } 또는 null만 사용 */
 export type Employee = {
@@ -82,14 +82,23 @@ function roleDisplayLabel(role: string): string {
 
 export function AdminEmployeesClient({
   employees: initial,
+  managerKind = "privileged",
 }: {
   employees: Employee[];
+  managerKind?: EmployeeManagerKind;
 }) {
   const { data: session } = useSession();
   const myId = (session?.user as any)?.id as string | undefined;
   const myRole = String((session?.user as any)?.role ?? "").toUpperCase();
   const myPosition = (session?.user as { position?: string | null } | undefined)?.position ?? null;
-  const canAlwaysEditLeave = canManageEmployeesSync({ role: myRole, position: myPosition });
+  const myPermissions = (session?.user as { permissions?: string | null } | undefined)?.permissions ?? null;
+  const canAlwaysEditLeave = canManageEmployeesSync({
+    role: myRole,
+    position: myPosition,
+    permissionsJson: myPermissions,
+  });
+  const isDelegated = managerKind === "employee_manage";
+  const canEditPermissions = managerKind === "privileged";
 
   const [employees, setEmployees] = useState(initial);
   const [deptFilter, setDeptFilter] = useState<string>("__ALL__");
@@ -151,6 +160,10 @@ export function AdminEmployeesClient({
   }, []);
 
   const openEdit = (e: any) => {
+    if (isDelegated && isPrivilegedStaffRole(e?.role)) {
+      toast.error("대표/관리자 계정은 수정할 수 없습니다.");
+      return;
+    }
     setEditing(e);
     setName(e?.name ?? "");
     setDepartment(e?.department ?? "");
@@ -283,10 +296,12 @@ export function AdminEmployeesClient({
           joinDate && !Number.isNaN(new Date(joinDate).getTime())
             ? new Date(joinDate).toISOString().slice(0, 10)
             : undefined,
-        permissions: useCustomPermissions ? selectedPermissions : null,
       };
+      if (canEditPermissions) {
+        body.permissions = useCustomPermissions ? selectedPermissions : null;
+      }
       if (pw) body.password = pw;
-      if (myRole === "ADMIN" && editing.id !== myId) {
+      if (myRole === "ADMIN" && editing.id !== myId && !isDelegated) {
         (body as { role?: AppRole }).role = role;
       }
       const manualNum = manualDeduction.trim() === "" ? undefined : parseFloat(manualDeduction);
@@ -490,6 +505,7 @@ export function AdminEmployeesClient({
                         size="icon"
                         onClick={() => openEdit(emp)}
                         aria-label="수정"
+                        disabled={isDelegated && isPrivilegedStaffRole(emp.role)}
                       >
                         <Pencil className="size-4" />
                       </Button>
@@ -751,6 +767,7 @@ export function AdminEmployeesClient({
                   className="w-32"
                 />
               </div>
+              {canEditPermissions && (
               <div className="space-y-2 border-t pt-4">
                 <div className="flex items-center justify-between">
                   <Label>사용 가능 기능</Label>
@@ -769,8 +786,8 @@ export function AdminEmployeesClient({
                 </div>
                 {useCustomPermissions && (
                   <div className="max-h-48 overflow-y-auto rounded border bg-muted/30 p-3 space-y-2">
-{features.map((f: any) => (
-                        <label key={f.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                    {features.map((f: any) => (
+                      <label key={f.key} className="flex items-center gap-2 text-sm cursor-pointer">
                         <input
                           type="checkbox"
                           checked={selectedPermissions.includes(f.key)}
@@ -791,6 +808,7 @@ export function AdminEmployeesClient({
                   </p>
                 )}
               </div>
+              )}
             </div>
           )}
           <DialogFooter>

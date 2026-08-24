@@ -12,12 +12,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 
-export function NewEmployeeForm() {
+export function NewEmployeeForm({
+  managerKind = "privileged",
+}: {
+  managerKind?: "privileged" | "management_manager" | "employee_manage" | "none";
+}) {
   const router = useRouter();
   const { data: session } = useSession();
   const myRole = String((session?.user as any)?.role ?? "").toUpperCase();
-  const canCreateAdmin = myRole === "ADMIN" || myRole === "EXECUTIVE";
-  const canCreateExecutive = myRole === "EXECUTIVE";
+  const isDelegated = managerKind === "employee_manage";
+  const canCreateAdmin = !isDelegated && (myRole === "ADMIN" || myRole === "EXECUTIVE");
+  const canCreateExecutive = !isDelegated && myRole === "EXECUTIVE";
 
   const [saving, setSaving] = useState(false);
   const [email, setEmail] = useState("");
@@ -69,7 +74,7 @@ export function NewEmployeeForm() {
           email: email.trim(),
           password,
           name: name.trim(),
-          role,
+          ...(isDelegated ? {} : { role }),
           phone: phone.trim() || undefined,
           workPhone: workPhone.trim() || undefined,
           workEmail: workEmail.trim() || undefined,
@@ -142,25 +147,33 @@ export function NewEmployeeForm() {
           </div>
           <div className="space-y-2">
             <Label>역할 (직책에 따른 기능)</Label>
-            <Select value={role} onValueChange={(v: any) => setRole(v as any)}>
-              <SelectTrigger className="h-10 border bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="USER">직원 — 기본 권한(일정·프로젝트·연차 신청·자금 요청)</SelectItem>
-                <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
-                <SelectItem value="CENTER_CHIEF">센터장 — CS팀 자금이체 2차 결재</SelectItem>
-                {canCreateAdmin && (
-                  <SelectItem value="ADMIN">관리자 — 관리 메뉴 접근 및 설정/직원 관리</SelectItem>
-                )}
-                {canCreateExecutive && (
-                  <SelectItem value="EXECUTIVE">대표/임원 — 최고 권한(관리자 생성/삭제 포함)</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-            <p className="text-muted-foreground text-xs">
-              직책에 따라 부여되는 기능이 달라집니다. 팀장은 휴가 1차 승인·자금이체 알람/확인 권한이 있습니다.
-            </p>
+            {isDelegated ? (
+              <p className="text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                직원 관리 위임 권한으로는 일반 직원(USER)만 생성할 수 있습니다.
+              </p>
+            ) : (
+              <>
+                <Select value={role} onValueChange={(v: any) => setRole(v as any)}>
+                  <SelectTrigger className="h-10 border bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USER">직원 — 기본 권한(일정·프로젝트·연차 신청·자금 요청)</SelectItem>
+                    <SelectItem value="TEAM_LEAD">팀장 — 직원 기능 + 휴가 1차 승인, 자금이체 결재(확인)</SelectItem>
+                    <SelectItem value="CENTER_CHIEF">센터장 — CS팀 자금이체 2차 결재</SelectItem>
+                    {canCreateAdmin && (
+                      <SelectItem value="ADMIN">관리자 — 관리 메뉴 접근 및 설정/직원 관리</SelectItem>
+                    )}
+                    {canCreateExecutive && (
+                      <SelectItem value="EXECUTIVE">대표/임원 — 최고 권한(관리자 생성/삭제 포함)</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  직책에 따라 부여되는 기능이 달라집니다. 팀장은 휴가 1차 승인·자금이체 알람/확인 권한이 있습니다.
+                </p>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

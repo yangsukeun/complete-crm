@@ -85,6 +85,7 @@ export default async function AdminEmployeesPage() {
       </div>
       <AdminEmployeesClient
         employees={employees as Employee[]}
+        managerKind={manager.kind}
       />
     </div>
   );

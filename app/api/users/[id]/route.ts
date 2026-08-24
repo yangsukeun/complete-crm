@@ -9,7 +9,11 @@ import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
 import { ensureAccrualsUpTo } from "@/lib/leave/ensure-accruals";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
-import { canMutatePrivilegedEmployeeAccount } from "@/lib/employee-admin-access";
+import {
+  canMutatePrivilegedEmployeeAccount,
+  isEmployeeManageDelegate,
+  isPrivilegedStaffRole,
+} from "@/lib/employee-admin-access";
 import { updateEmployeePassword } from "@/lib/employee-password";
 import { z } from "zod";
 
@@ -54,6 +58,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const sessionRole = String(manager.role ?? "").toUpperCase();
+    const delegated = isEmployeeManageDelegate(manager.kind);
 
     const { id } = await params;
     const body = await req.json();
@@ -63,6 +68,42 @@ export async function PATCH(
         return NextResponse.json({ error: "본인의 역할은 변경할 수 없습니다." }, { status: 400 });
       }
     }
+
+    // employee_manage: body에 role 포함 시 403 (권한 상승 차단)
+    if (delegated && body && typeof body === "object" && "role" in body && (body as { role?: unknown }).role !== undefined) {
+      return NextResponse.json(
+        { error: "직원 관리 위임 권한으로는 역할을 변경할 수 없습니다." },
+        { status: 403 }
+      );
+    }
+    // employee_manage: 기능 권한(permissions) 편집 불가
+    if (
+      delegated &&
+      body &&
+      typeof body === "object" &&
+      "permissions" in body &&
+      (body as { permissions?: unknown }).permissions !== undefined
+    ) {
+      return NextResponse.json(
+        { error: "기능 권한 편집은 대표/관리자만 가능합니다." },
+        { status: 403 }
+      );
+    }
+
+    const targetBefore = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true },
+    });
+    if (!targetBefore) {
+      return NextResponse.json({ error: "해당 직원을 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (delegated && isPrivilegedStaffRole(targetBefore.role)) {
+      return NextResponse.json(
+        { error: "대표/관리자 계정은 수정할 수 없습니다." },
+        { status: 403 }
+      );
+    }
+
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

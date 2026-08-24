@@ -384,6 +384,7 @@ export function AppNav() {
   const canManageEmployees = canManageEmployeesSync({
     role: session?.user?.role,
     position: session?.user?.position,
+    permissionsJson: (session?.user as { permissions?: string | null } | undefined)?.permissions ?? null,
   });
 
   const userForPermission = session?.user as { role?: string; permissions?: string | null } | undefined;
@@ -461,7 +462,7 @@ export function AppNav() {
     if (d.executiveOnly) return isExecutive;
     if (d.feature) {
       if (orgUnit === "LOGISTICS" && d.href === "/admin/company") return true;
-      if (d.feature === "admin_employees" && canManageEmployees) return true;
+      if (d.feature === "admin_employees" && (canManageEmployees || can("employee_manage"))) return true;
       return isExecutive || can(d.feature);
     }
     return isExecutive;

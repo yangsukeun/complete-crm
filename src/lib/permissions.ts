@@ -28,6 +28,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   attendance_import: "기록기 근태 임포트",
   attendance_away: "CS 이석(부재중) 예외",
   admin_employees: "직원 관리",
+  /** 위임: 계정 생성·수정·엑셀·비번 (role/관리자 계정·기능권한 편집 불가) */
+  employee_manage: "직원 관리 (employee_manage)",
   admin_logs: "Daily Report 조회",
   admin_departments: "부서·직책",
   admin_projects: "브랜드/프로젝트",
