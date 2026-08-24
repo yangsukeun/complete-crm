@@ -3,6 +3,7 @@ import {
   getFinanceScope,
   isPaymentRequestInFinanceScope,
 } from "@/lib/finance-scope";
+import { getUserDepartments } from "@/lib/user-departments";
 
 describe("getFinanceScope", () => {
   it("ADMIN/EXECUTIVE → ALL", () => {
@@ -43,7 +44,7 @@ describe("getFinanceScope", () => {
     expect(leadAlso.kind).toBe("ALL");
   });
 
-  it("TEAM_LEAD / CENTER_CHIEF → DEPARTMENT", () => {
+  it("TEAM_LEAD / CENTER_CHIEF → DEPARTMENT (주부서+겸직)", () => {
     const lead = getFinanceScope({
       userId: "tl",
       role: "TEAM_LEAD",
@@ -53,25 +54,103 @@ describe("getFinanceScope", () => {
     expect(lead.kind).toBe("DEPARTMENT");
     expect(lead.label).toBe("마케팅 내역");
 
-    const chief = getFinanceScope({
-      userId: "cc",
-      role: "CENTER_CHIEF",
-      department: "CS팀",
+    const leadDual = getFinanceScope({
+      userId: "tl",
+      role: "TEAM_LEAD",
+      userDepartments: getUserDepartments({
+        department: "마케팅",
+        additionalDepartments: ["CS팀"],
+      }),
       transferExecutorIds: [],
     });
-    expect(chief.kind).toBe("DEPARTMENT");
-    expect(chief.label).toBe("CS팀 내역");
+    expect(leadDual.kind).toBe("DEPARTMENT");
+    expect(leadDual.departments).toEqual(["마케팅", "CS팀"]);
+    expect(leadDual.label).toBe("마케팅 + CS팀 내역");
+    expect(
+      isPaymentRequestInFinanceScope(leadDual, {
+        requesterId: "x",
+        requester: { department: "CS팀" },
+      })
+    ).toBe(true);
   });
 
-  it("그 외 → SELF", () => {
-    const self = getFinanceScope({
+  it("비팀장 겸직+finance_view → SELF_AND_DEPARTMENTS", () => {
+    const scope = getFinanceScope({
       userId: "gopro",
       role: "USER",
-      department: "마케팅",
+      userDepartments: getUserDepartments({
+        department: "경영지원",
+        additionalDepartments: ["마케팅"],
+      }),
       transferExecutorIds: [],
+      hasFinanceView: true,
     });
-    expect(self.kind).toBe("SELF");
-    expect(self.label).toBe("내 신청 내역");
+    expect(scope.kind).toBe("SELF_AND_DEPARTMENTS");
+    expect(scope.label).toBe("마케팅 + 내 신청 내역");
+    expect(scope.departments).toEqual(["마케팅"]);
+    expect(
+      isPaymentRequestInFinanceScope(scope, {
+        requesterId: "other",
+        requester: { department: "마케팅" },
+      })
+    ).toBe(true);
+    expect(
+      isPaymentRequestInFinanceScope(scope, {
+        requesterId: "gopro",
+        requester: { department: "경영지원" },
+      })
+    ).toBe(true);
+    expect(
+      isPaymentRequestInFinanceScope(scope, {
+        requesterId: "other",
+        requester: { department: "CS팀" },
+      })
+    ).toBe(false);
+    expect(
+      isPaymentRequestInFinanceScope(scope, {
+        requesterId: "other",
+        requester: { department: "경영지원" },
+      })
+    ).toBe(false);
+  });
+
+  it("겸직 없거나 finance_view 없으면 SELF (회귀)", () => {
+    expect(
+      getFinanceScope({
+        userId: "gopro",
+        role: "USER",
+        department: "마케팅",
+        transferExecutorIds: [],
+        hasFinanceView: true,
+      }).kind
+    ).toBe("SELF");
+    expect(
+      getFinanceScope({
+        userId: "gopro",
+        role: "USER",
+        userDepartments: getUserDepartments({
+          department: "경영지원",
+          additionalDepartments: ["마케팅"],
+        }),
+        transferExecutorIds: [],
+        hasFinanceView: false,
+      }).kind
+    ).toBe("SELF");
+  });
+
+  it("겸직 해제 → SELF", () => {
+    const cleared = getFinanceScope({
+      userId: "gopro",
+      role: "USER",
+      userDepartments: getUserDepartments({
+        department: "경영지원",
+        additionalDepartments: [],
+      }),
+      transferExecutorIds: [],
+      hasFinanceView: true,
+    });
+    expect(cleared.kind).toBe("SELF");
+    expect(cleared.label).toBe("내 신청 내역");
   });
 });
 

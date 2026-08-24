@@ -218,6 +218,8 @@ model User {
   name          String
   role          Role      @default(USER)
   department    String?
+  /// 겸직 부서 목록 (JSON 문자열 배열). 주부서(department)와 별도.
+  additionalDepartments String?
   position      String?   // 직책
   currentProjectId String?
   currentProject   Project? @relation("UserCurrentProject", fields: [currentProjectId], references: [id], onDelete: SetNull)

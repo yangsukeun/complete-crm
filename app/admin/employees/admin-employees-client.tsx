@@ -35,6 +35,7 @@ import { Pencil, Shield, ChevronDown, KeyRound } from "lucide-react";
 import { formatUserName } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 import { canManageEmployeesSync, isPrivilegedStaffRole, type EmployeeManagerKind } from "@/lib/employee-admin-access";
+import { parseAdditionalDepartments } from "@/lib/user-departments";
 
 /** 직원 목록/편집용 타입. currentProject.brand는 객체 { name: string } 또는 null만 사용 */
 export type Employee = {
@@ -43,6 +44,7 @@ export type Employee = {
   email: string;
   role: string;
   department?: string;
+  additionalDepartments?: string | string[] | null;
   position?: string;
   bankAccount?: string;
   address?: string;
@@ -108,6 +110,7 @@ export function AdminEmployeesClient({
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
+  const [additionalDepartments, setAdditionalDepartments] = useState<string[]>([]);
   const [position, setPosition] = useState("");
   const [bankAccount, setBankAccount] = useState("");
   const [address, setAddress] = useState("");
@@ -167,6 +170,7 @@ export function AdminEmployeesClient({
     setEditing(e);
     setName(e?.name ?? "");
     setDepartment(e?.department ?? "");
+    setAdditionalDepartments(parseAdditionalDepartments(e?.additionalDepartments ?? null));
     setPosition(e?.position ?? "");
     setBankAccount(e?.bankAccount ?? "");
     setAddress(e?.address ?? "");
@@ -287,6 +291,7 @@ export function AdminEmployeesClient({
       const body: Record<string, unknown> = {
         name: name.trim(),
         department: department.trim() || null,
+        additionalDepartments: additionalDepartments.filter((d) => d && d !== department.trim()),
         position: position.trim() || null,
         bankAccount: bankAccount.trim() || null,
         address: address.trim() || null,
@@ -333,6 +338,7 @@ export function AdminEmployeesClient({
                 name: (updated as any).name ?? p.name,
                 role: (updated as any).role ?? p.role,
                 department: (updated as any).department ?? "",
+                additionalDepartments: (updated as any).additionalDepartments ?? null,
                 position: (updated as any).position ?? "",
                 bankAccount: (updated as any).bankAccount ?? "",
                 address: (updated as any).address ?? "",
@@ -658,6 +664,36 @@ export function AdminEmployeesClient({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>겸직 부서</Label>
+                <div className="max-h-36 overflow-y-auto rounded border bg-muted/30 p-3 space-y-2">
+                  {departments
+                    .filter((d: any) => d.name !== department)
+                    .map((d: any) => (
+                      <label key={d.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={additionalDepartments.includes(d.name)}
+                          onChange={(e: any) => {
+                            if (e.target.checked) {
+                              setAdditionalDepartments((prev) => [...prev, d.name]);
+                            } else {
+                              setAdditionalDepartments((prev) => prev.filter((x) => x !== d.name));
+                            }
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        {d.name}
+                      </label>
+                    ))}
+                  {departments.filter((d: any) => d.name !== department).length === 0 && (
+                    <p className="text-muted-foreground text-xs">선택 가능한 부서가 없습니다.</p>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  겸직 부서가 있으면 자금 조회(finance_view) 시 해당 부서 건을 함께 볼 수 있습니다. 결재 권한은 생기지 않습니다.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>직책</Label>

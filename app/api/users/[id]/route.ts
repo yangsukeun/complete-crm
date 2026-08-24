@@ -15,6 +15,8 @@ import {
   isPrivilegedStaffRole,
 } from "@/lib/employee-admin-access";
 import { updateEmployeePassword } from "@/lib/employee-password";
+import { serializeAdditionalDepartments } from "@/lib/user-departments";
+import { normalizeDepartment } from "@/lib/leave-department-access";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -22,6 +24,8 @@ const updateSchema = z.object({
   role: z.enum(["USER", "TEAM_LEAD", "CENTER_CHIEF", "EXECUTIVE", "ADMIN"]).optional(),
   department: z.string().nullable().optional(),
   position: z.string().nullable().optional(),
+  /** 겸직 부서 이름 배열. null/[] = 겸직 없음 */
+  additionalDepartments: z.array(z.string()).nullable().optional(),
   bankAccount: z.string().nullable().optional(),
   address: z.string().nullable().optional(),
   workPhone: z.string().nullable().optional(),
@@ -124,6 +128,22 @@ export async function PATCH(
     if (parsed.data.role != null) data.role = parsed.data.role;
     if (parsed.data.department !== undefined) data.department = parsed.data.department;
     if (parsed.data.position !== undefined) data.position = parsed.data.position;
+    if (parsed.data.additionalDepartments !== undefined) {
+      const primary = normalizeDepartment(
+        parsed.data.department !== undefined
+          ? parsed.data.department
+          : (
+              await prisma.user.findUnique({
+                where: { id },
+                select: { department: true },
+              })
+            )?.department
+      );
+      const extras = (parsed.data.additionalDepartments ?? []).filter(
+        (d) => normalizeDepartment(d) && normalizeDepartment(d) !== primary
+      );
+      data.additionalDepartments = serializeAdditionalDepartments(extras);
+    }
     if (parsed.data.bankAccount !== undefined) data.bankAccount = parsed.data.bankAccount?.trim() || null;
     if (parsed.data.address !== undefined) data.address = parsed.data.address?.trim() || null;
     if (parsed.data.workPhone !== undefined) data.workPhone = parsed.data.workPhone?.trim() || null;
@@ -164,6 +184,7 @@ export async function PATCH(
         name: true,
         email: true,
         department: true,
+        additionalDepartments: true,
         position: true,
         bankAccount: true,
         address: true,

@@ -16,9 +16,13 @@ import {
   notifyExecutivesOnTeamLeadApproval,
 } from "@/lib/finance-payment-request-alerts";
 import {
+  financeScopePrismaWhere,
   getFinanceScope,
   isPaymentRequestInFinanceScope,
 } from "@/lib/finance-scope";
+import { getUserDepartments } from "@/lib/user-departments";
+import { userHasPermission } from "@/lib/permissions";
+import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
 const createSchema = z.object({
   vendorId: z.string().min(1),
@@ -95,14 +99,25 @@ export async function GET() {
     const departmentsWithTeamLead = [...departmentsWithTeamLeadSet];
     const viewerRow = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { department: true },
+      select: { department: true, additionalDepartments: true },
     });
-    const viewerDepartment = viewerRow?.department ?? null;
+    const userDepartments = getUserDepartments({
+      department: viewerRow?.department ?? null,
+      additionalDepartments: viewerRow?.additionalDepartments ?? null,
+    });
+    const viewerDepartment = userDepartments.primary;
+    const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(() => null);
+    const hasFinanceView = userHasPermission(
+      { role: role ?? "USER", permissions: permsJson },
+      "finance_view"
+    );
     const financeScope = getFinanceScope({
       userId: session.user.id,
       role,
       department: viewerDepartment,
+      userDepartments,
       transferExecutorIds,
+      hasFinanceView,
     });
     const listMeta = {
       departmentsWithTeamLead,
@@ -440,6 +455,45 @@ const existingSet = new Set(existingRows.map((e: any) => e.requestId));
         { requests, paymentAlertUnreadCount: unreadCount, transferExecutorIds, ...listMeta },
         { headers: { "Cache-Control": "no-store, max-age=0" } }
       );
+    }
+
+    // 비팀장 겸직+finance_view: 겸직 부서 건 ∪ 본인 건
+    if (financeScope.kind === "SELF_AND_DEPARTMENTS") {
+      const requests = await prisma.paymentRequest.findMany({
+        where: financeScopePrismaWhere(financeScope) as any,
+        include: {
+          requester: {
+            select: { id: true, name: true, email: true, position: true, department: true },
+          },
+          vendor: true,
+          quotation: {
+            select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true },
+          },
+        },
+        orderBy: { requestedAt: "desc" },
+      });
+      const scoped = filterByScope(requests);
+      const mapped = scoped.map((r: any) => ({
+        ...r,
+        attachments: normalizePaymentRequestAttachments({
+          attachment: r.attachment ?? null,
+          attachments: r.attachments,
+        }),
+      }));
+      let paymentAlertUnreadCount = 0;
+      try {
+        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
+          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
+          session.user.id
+        );
+        paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
+      } catch (_) {}
+      return NextResponse.json({
+        requests: mapped,
+        paymentAlertUnreadCount,
+        transferExecutorIds,
+        ...listMeta,
+      });
     }
 
     // 일반 직원(요청자): 본인 요청만 + 이체완료 알람 수

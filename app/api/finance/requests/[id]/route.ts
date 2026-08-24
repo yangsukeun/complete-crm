@@ -22,6 +22,9 @@ import {
   notifyTransferExecutorsOnApproval,
 } from "@/lib/finance-payment-request-alerts";
 import { getFinanceScope, isPaymentRequestInFinanceScope } from "@/lib/finance-scope";
+import { getUserDepartments } from "@/lib/user-departments";
+import { userHasPermission } from "@/lib/permissions";
+import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
 // TODO(security): /finance/requests URL 직접 접근·API는 finance_view 미검사(메뉴만 숨김). 후속 가드 이슈.
 
@@ -39,17 +42,33 @@ const updateSchema = z.object({
 async function resolveViewerFinanceScope(userId: string, roleHint?: string | null) {
   const dbUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, department: true },
+    select: { role: true, department: true, additionalDepartments: true },
   });
   const role = (dbUser?.role ?? roleHint) as string | undefined;
   const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
+  const userDepartments = getUserDepartments({
+    department: dbUser?.department ?? null,
+    additionalDepartments: dbUser?.additionalDepartments ?? null,
+  });
+  const permsJson = await resolveEffectivePermissionsJson(userId).catch(() => null);
+  const hasFinanceView = userHasPermission(
+    { role: role ?? "USER", permissions: permsJson },
+    "finance_view"
+  );
   const scope = getFinanceScope({
     userId,
     role,
-    department: dbUser?.department ?? null,
+    department: userDepartments.primary,
+    userDepartments,
     transferExecutorIds,
+    hasFinanceView,
   });
-  return { scope, role, department: dbUser?.department ?? null, transferExecutorIds };
+  return {
+    scope,
+    role,
+    department: userDepartments.primary,
+    transferExecutorIds,
+  };
 }
 
 /** 상세 조회 — 스코프 밖이면 403 */

@@ -888,6 +888,8 @@ export default function FinanceRequestsPage() {
   const canRequest = !isExecutive;
   const canComplete = isTransferExecutor;
   const isSelfScope = financeScope?.kind === "SELF";
+  const isRequesterStyleScope =
+    financeScope?.kind === "SELF" || financeScope?.kind === "SELF_AND_DEPARTMENTS";
   const scopeLabel =
     financeScope?.label ??
     (isExecutive || isTransferExecutor
@@ -968,7 +970,7 @@ export default function FinanceRequestsPage() {
             대시보드
           </Link>
         </Button>
-        {!isSelfScope && (
+        {!isRequesterStyleScope && (
           <Button variant="ghost" size="sm" asChild>
             <Link href="/finance/vendors">거래처 관리</Link>
           </Button>
@@ -982,8 +984,10 @@ export default function FinanceRequestsPage() {
         <PageHeadline
           title="결제 요청"
           description={
-            isSelfScope
-              ? "내가 신청한 결제 요청만 조회합니다."
+            isRequesterStyleScope
+              ? financeScope?.kind === "SELF_AND_DEPARTMENTS"
+                ? "겸직 부서 결제 요청과 내가 신청한 건을 조회합니다. 결재는 할 수 없습니다."
+                : "내가 신청한 결제 요청만 조회합니다."
               : showTwoSections
               ? "결제 요청(이체 대기) 건과 이체 완료된 건을 모두 조회합니다. 이체 담당자로 지정된 경우 직접 이체 완료 처리할 수 있습니다."
               : isTeamLead
@@ -1011,7 +1015,7 @@ export default function FinanceRequestsPage() {
         </div>
       </div>
 
-      {!isSelfScope && (isTeamLead || showTwoSections) && pendingTotal > 0 && (
+      {!isRequesterStyleScope && (isTeamLead || showTwoSections) && pendingTotal > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30">
           <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
             <Wallet className="size-5" />
