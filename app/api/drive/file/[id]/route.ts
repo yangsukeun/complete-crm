@@ -7,29 +7,13 @@ import {
   assertCanAccessDriveFileId,
   loadDriveAccessActor,
 } from "@/lib/drive/folder-access";
-import { canManageExplorerFolderTrash } from "@/lib/drive/folder-trash-policy";
+import {
+  canManageExplorerFolderTrash,
+  canTrashExplorerFile,
+} from "@/lib/drive/folder-trash-policy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-/** 파일 삭제(기존): ADMIN/EXECUTIVE/TEAM_LEAD — 폴더 규칙과 분리 */
-function canTrashExplorerFiles(role: string | undefined): boolean {
-  const r = String(role ?? "").toUpperCase();
-  return r === "ADMIN" || r === "EXECUTIVE" || r === "TEAM_LEAD";
-}
-
-async function deleteDriveFileTree(id: string): Promise<void> {
-  const children = await prisma.driveFile.findMany({
-    where: { parentId: id },
-    select: { id: true },
-  });
-  for (const child of children) {
-    await deleteDriveFileTree(child.id);
-  }
-  await prisma.driveFile.delete({ where: { id } }).catch(() => {
-    /* already gone */
-  });
-}
 
 /** 폴더 포함 자손 id 수집 (본인 포함) */
 async function collectDescendantIds(rootId: string): Promise<string[]> {
@@ -53,7 +37,7 @@ type RouteCtx = { params: Promise<{ id: string }> };
 
 /**
  * DELETE /api/drive/file/[id]
- * - 파일: 기존 권한(TEAM_LEAD 포함) + Drive 휴지통 + DB row 삭제
+ * - 파일: TEAM_LEAD+ 또는 createdBy===본인 + Drive 휴지통 + DB soft-trash
  * - 폴더: ADMIN/EXECUTIVE 또는 생성자만 + Drive 휴지통 + DB soft-trash
  */
 export async function DELETE(_req: Request, ctx: RouteCtx) {
@@ -118,9 +102,18 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
         );
       }
     } else {
-      if (!canTrashExplorerFiles(session.user.role)) {
+      if (
+        !canTrashExplorerFile({
+          role: session.user.role,
+          actorId: session.user.id,
+          createdBy: row.createdBy,
+        })
+      ) {
         return NextResponse.json(
-          { error: "파일 삭제 권한이 없습니다. (ADMIN/EXECUTIVE/TEAM_LEAD)" },
+          {
+            error:
+              "파일 삭제 권한이 없습니다. (본인 업로드 파일 또는 ADMIN/EXECUTIVE/TEAM_LEAD)",
+          },
           { status: 403 }
         );
       }
@@ -149,28 +142,26 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
       supportsAllDrives: true,
     });
 
-    if (row.isFolder) {
-      const now = new Date();
-      const ids = await collectDescendantIds(row.id);
-      await prisma.driveFile.updateMany({
-        where: { id: { in: ids } },
-        data: {
-          trashed: true,
-          trashedAt: now,
-          trashedBy: session.user.id,
-        },
-      });
-      await prisma.driveActivityLog.create({
-        data: {
-          driveFileId: row.id,
-          action: "DELETE",
-          actorId: session.user.id,
-          detail: `폴더 「${row.name}」 휴지통 이동 (${ids.length}건)`,
-        },
-      });
-    } else {
-      await deleteDriveFileTree(row.id);
-    }
+    const now = new Date();
+    const ids = row.isFolder ? await collectDescendantIds(row.id) : [row.id];
+    await prisma.driveFile.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        trashed: true,
+        trashedAt: now,
+        trashedBy: session.user.id,
+      },
+    });
+    await prisma.driveActivityLog.create({
+      data: {
+        driveFileId: row.id,
+        action: "DELETE",
+        actorId: session.user.id,
+        detail: row.isFolder
+          ? `폴더 「${row.name}」 휴지통 이동 (${ids.length}건)`
+          : `파일 「${row.name}」 휴지통 이동`,
+      },
+    });
 
     console.log("[drive/file DELETE]", {
       actorId: session.user.id,
@@ -180,10 +171,10 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
       isFolder: row.isFolder,
       createdBy: row.createdBy,
       action: "trash",
-      soft: row.isFolder,
+      soft: true,
     });
 
-    return NextResponse.json({ ok: true, trashed: true, id: row.id, soft: row.isFolder });
+    return NextResponse.json({ ok: true, trashed: true, id: row.id, soft: true });
   } catch (e) {
     console.error("[drive/file DELETE]", e);
     const msg = e instanceof Error ? e.message : String(e);

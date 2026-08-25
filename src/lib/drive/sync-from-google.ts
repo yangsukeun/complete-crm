@@ -146,12 +146,13 @@ async function syncFolder(
     }
   }
 
-  /** 같은 루트·같은 부모 아래에서만 고아 정리 — 다른 드라이브(업로드 폴더) 레코드는 건드리지 않음 */
+  /** 같은 루트·같은 부모 아래에서만 고아 정리 — soft-trash·다른 드라이브는 건드리지 않음 */
   const orphans = await prisma.driveFile.findMany({
     where: {
       rootId,
       driveFolderId: googleFolderId,
       source: "google_drive",
+      trashed: false,
       ...(driveIds.length > 0 ? { NOT: { driveFileId: { in: driveIds } } } : {}),
     },
     select: { id: true },

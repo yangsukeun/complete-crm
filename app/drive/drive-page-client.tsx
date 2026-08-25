@@ -33,7 +33,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FolderPickerModal, type FolderPickerSelection } from "@/components/drive/folder-picker-modal";
 import { postExplorerFolder } from "@/lib/drive/explorer-folder-api";
-import { canManageExplorerFolderTrash } from "@/lib/drive/folder-trash-policy";
+import {
+  canManageExplorerFolderTrash,
+  canTrashExplorerFile,
+} from "@/lib/drive/folder-trash-policy";
+import {
+  filesFromDataTransfer,
+  filesFromFileList,
+  folderPathsFromEntries,
+  parentFolderPath,
+  uploadExplorerFileResumable,
+  type PathFile,
+} from "@/lib/drive/explorer-resumable-upload";
+import { assertExplorerUploadSize } from "@/lib/drive/explorer-upload-limits";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -49,9 +61,18 @@ type DriveFileRow = {
   parentId: string | null;
   createdBy?: string | null;
   uploading?: boolean;
+  /** 0–100 업로드 진행률 */
+  uploadPercent?: number | null;
   /** 낙관적 새 폴더 생성 중 */
   creating?: boolean;
   _count?: { children: number };
+};
+
+type FolderUploadFailure = {
+  relativePath: string;
+  file: File;
+  parentDriveId: string;
+  error: string;
 };
 
 type ListPayload = {
@@ -189,12 +210,14 @@ export function DrivePageClient({
   isDriveAdmin = false,
 }: {
   showExplorerSetupBanner?: boolean;
+  /** @deprecated 파일 삭제는 createdBy·역할로 항목별 판단 */
   canDeleteFiles?: boolean;
   explorerConfigured?: boolean;
   viewerUserId?: string;
   viewerRole?: string;
   isDriveAdmin?: boolean;
 }) {
+  void canDeleteFiles;
   const router = useRouter();
   const searchParams = useSearchParams();
   const folderParam = searchParams.get("folder")?.trim() || null;
@@ -210,6 +233,10 @@ export function DrivePageClient({
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadBanner, setUploadBanner] = useState<string | null>(null);
+  const [folderUploadFailures, setFolderUploadFailures] = useState<FolderUploadFailure[]>(
+    []
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -224,6 +251,7 @@ export function DrivePageClient({
   const [isCreatingFile, setIsCreatingFile] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const autoSyncInFlight = useRef<string | null>(null);
   /** /drive 페이지 세션에서 첫 자동 동기화(마운트)만 스로틀 무시 */
@@ -510,6 +538,64 @@ export function DrivePageClient({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [navReady, currentId, currentDriveFolderId, search, runFolderSync]);
 
+  const commitUploadedFile = async (tempId: string, f: DriveFileRow) => {
+    setOptimisticRows((prev) =>
+      prev.map((r) =>
+        r.id === tempId
+          ? {
+              ...f,
+              uploading: false,
+              uploadPercent: null,
+              driveModifiedAt: f.driveModifiedAt ?? new Date().toISOString(),
+            }
+          : r
+      )
+    );
+    await mutate(
+      listUrl,
+      (cur: ListPayload | undefined) => {
+        if (!cur) return cur;
+        const without = cur.files.filter((x) => x.id !== f.id);
+        return { ...cur, files: [f, ...without] };
+      },
+      { revalidate: false }
+    );
+    setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+  };
+
+  const uploadSingleResumable = async (
+    file: File,
+    parentDriveId: string,
+    parentDbId: string | null,
+    tempId: string
+  ) => {
+    const sizeCheck = assertExplorerUploadSize(file.size);
+    if (!sizeCheck.ok) {
+      setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+      showToast(sizeCheck.error);
+      return { ok: false as const, error: sizeCheck.error };
+    }
+    try {
+      const uploaded = await uploadExplorerFileResumable(file, parentDriveId, {
+        onProgress: (p) => {
+          setOptimisticRows((prev) =>
+            prev.map((r) =>
+              r.id === tempId ? { ...r, uploadPercent: p.percent } : r
+            )
+          );
+        },
+      });
+      await commitUploadedFile(tempId, uploaded as DriveFileRow);
+      return { ok: true as const };
+    } catch (e) {
+      setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+      const msg = e instanceof Error ? e.message : `${file.name} 업로드 실패`;
+      showToast(msg);
+      return { ok: false as const, error: msg };
+    }
+  };
+
+  /** 평탄 파일 목록 업로드 (동시 3) */
   const uploadFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
     if (list.length === 0) return;
@@ -520,6 +606,7 @@ export function DrivePageClient({
 
     const folderId = currentDriveFolderId;
     const parentDbId = currentId;
+    setFolderUploadFailures([]);
     const temps = list.map((file, i) => ({
       id: `uploading-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
       name: file.name,
@@ -531,64 +618,195 @@ export function DrivePageClient({
       driveModifiedAt: null,
       parentId: parentDbId,
       uploading: true,
+      uploadPercent: 0,
     }));
 
     setOptimisticRows((prev) => [...temps, ...prev]);
     setIsUploading(true);
+    setUploadBanner(`업로드 중… 0/${list.length}`);
 
     const indexed = list.map((file, i) => ({ file, temp: temps[i]! }));
-
+    let done = 0;
     await mapPool(indexed, 3, async ({ file, temp }) => {
-      try {
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("targetFolderId", folderId);
-        const tClient = Date.now();
-        const res = await fetch("/api/drive/upload", { method: "POST", body: fd });
-        const body = await res.json().catch(() => ({}));
-        const clientMs = Date.now() - tClient;
-        if (!res.ok) {
-          setOptimisticRows((prev) => prev.filter((r) => r.id !== temp.id));
-          showToast(body?.error || `${file.name} 업로드 실패`);
-          return;
-        }
-        const timing = body?.timing as
-          | { receiveMs?: number; driveMs?: number; upsertMs?: number; totalMs?: number }
-          | undefined;
-        if (timing) {
-          console.log("[drive/upload client] timing", { name: file.name, clientMs, ...timing });
-        }
-        const f = body.file as DriveFileRow;
-        setOptimisticRows((prev) =>
-          prev.map((r) =>
-            r.id === temp.id
-              ? {
-                  ...f,
-                  uploading: false,
-                  driveModifiedAt: f.driveModifiedAt ?? new Date().toISOString(),
-                }
-              : r
-          )
-        );
-        await mutate(
-          listUrl,
-          (cur: ListPayload | undefined) => {
-            if (!cur) return cur;
-            const without = cur.files.filter((x) => x.id !== f.id);
-            return { ...cur, files: [f, ...without] };
-          },
-          { revalidate: false }
-        );
-        setOptimisticRows((prev) => prev.filter((r) => r.id !== temp.id));
-      } catch (e) {
-        setOptimisticRows((prev) => prev.filter((r) => r.id !== temp.id));
-        showToast(e instanceof Error ? e.message : `${file.name} 업로드 실패`);
-      }
+      await uploadSingleResumable(file, folderId, parentDbId, temp.id);
+      done += 1;
+      setUploadBanner(`업로드 중… ${done}/${list.length}`);
     });
 
     setIsUploading(false);
+    setUploadBanner(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     void refreshList();
+  };
+
+  /**
+   * 폴더 트리 업로드: 폴더 API로 경로 재현 → 파일 순차 resumable 업로드
+   */
+  const uploadFolderTree = async (entries: PathFile[]) => {
+    if (entries.length === 0) return;
+    if (!canUploadHere || !currentDriveFolderId) {
+      showToast("폴더에 들어가서 업로드하세요.");
+      return;
+    }
+
+    const rootDriveId = currentDriveFolderId;
+    setFolderUploadFailures([]);
+    setIsUploading(true);
+
+    const folderPaths = folderPathsFromEntries(entries);
+    /** relative folder path → Google drive folder id */
+    const driveIdByPath = new Map<string, string>();
+
+    setUploadBanner(`폴더 구조 생성 중… (0/${folderPaths.length})`);
+    for (let i = 0; i < folderPaths.length; i++) {
+      const path = folderPaths[i]!;
+      const parts = path.split("/");
+      const name = parts[parts.length - 1]!;
+      const parentPath = parts.length > 1 ? parts.slice(0, -1).join("/") : null;
+      const parentDrive =
+        parentPath != null ? driveIdByPath.get(parentPath) : rootDriveId;
+      if (!parentDrive) {
+        showToast(`상위 폴더를 찾지 못했습니다: ${path}`);
+        setIsUploading(false);
+        setUploadBanner(null);
+        return;
+      }
+      const created = await postExplorerFolder(name, parentDrive);
+      if (!created.ok) {
+        showToast(`폴더 「${path}」 생성 실패: ${created.error}`);
+        setIsUploading(false);
+        setUploadBanner(null);
+        return;
+      }
+      driveIdByPath.set(path, created.file.driveFileId);
+      setUploadBanner(`폴더 구조 생성 중… (${i + 1}/${folderPaths.length})`);
+    }
+
+    const failures: FolderUploadFailure[] = [];
+    const total = entries.length;
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]!;
+      const parentPath = parentFolderPath(entry.relativePath);
+      const parentDriveId =
+        parentPath != null ? driveIdByPath.get(parentPath) ?? rootDriveId : rootDriveId;
+
+      const sizeCheck = assertExplorerUploadSize(entry.file.size);
+      if (!sizeCheck.ok) {
+        failures.push({
+          relativePath: entry.relativePath,
+          file: entry.file,
+          parentDriveId,
+          error: sizeCheck.error,
+        });
+        setUploadBanner(`파일 업로드 ${i + 1}/${total} (실패 ${failures.length})`);
+        continue;
+      }
+
+      const tempId = `uploading-folder-${Date.now()}-${i}`;
+      if (parentDriveId === rootDriveId) {
+        setOptimisticRows((prev) => [
+          {
+            id: tempId,
+            name: entry.file.name,
+            mimeType: entry.file.type || null,
+            size: String(entry.file.size),
+            isFolder: false,
+            driveFileId: null,
+            webViewLink: null,
+            driveModifiedAt: null,
+            parentId: currentId,
+            uploading: true,
+            uploadPercent: 0,
+          },
+          ...prev,
+        ]);
+      }
+
+      setUploadBanner(`파일 업로드 ${i + 1}/${total} — ${entry.relativePath}`);
+      try {
+        const uploaded = await uploadExplorerFileResumable(entry.file, parentDriveId, {
+          onProgress: (p) => {
+            if (parentDriveId !== rootDriveId) return;
+            setOptimisticRows((prev) =>
+              prev.map((r) =>
+                r.id === tempId ? { ...r, uploadPercent: p.percent } : r
+              )
+            );
+          },
+        });
+        if (parentDriveId === rootDriveId) {
+          await commitUploadedFile(tempId, uploaded as DriveFileRow);
+        } else {
+          setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+        }
+      } catch (e) {
+        setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+        failures.push({
+          relativePath: entry.relativePath,
+          file: entry.file,
+          parentDriveId,
+          error: e instanceof Error ? e.message : "업로드 실패",
+        });
+      }
+    }
+
+    setFolderUploadFailures(failures);
+    setIsUploading(false);
+    setUploadBanner(
+      failures.length > 0
+        ? `폴더 업로드 완료 — 실패 ${failures.length}/${total}`
+        : `폴더 업로드 완료 — ${total}개 파일`
+    );
+    if (folderInputRef.current) folderInputRef.current.value = "";
+    void refreshList();
+    if (failures.length === 0) {
+      window.setTimeout(() => setUploadBanner(null), 4000);
+    }
+  };
+
+  const retryFolderFailures = async () => {
+    if (folderUploadFailures.length === 0 || isUploading) return;
+    const queue = [...folderUploadFailures];
+    setFolderUploadFailures([]);
+    setIsUploading(true);
+    const still: FolderUploadFailure[] = [];
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i]!;
+      setUploadBanner(`실패 재시도 ${i + 1}/${queue.length} — ${item.relativePath}`);
+      try {
+        await uploadExplorerFileResumable(item.file, item.parentDriveId);
+      } catch (e) {
+        still.push({
+          ...item,
+          error: e instanceof Error ? e.message : "업로드 실패",
+        });
+      }
+    }
+    setFolderUploadFailures(still);
+    setIsUploading(false);
+    setUploadBanner(
+      still.length > 0
+        ? `재시도 후에도 실패 ${still.length}건`
+        : "실패 항목 재업로드 완료"
+    );
+    void refreshList();
+    if (still.length === 0) {
+      window.setTimeout(() => setUploadBanner(null), 4000);
+    }
+  };
+
+  const handleDropUpload = async (dt: DataTransfer) => {
+    if (!canUploadHere) {
+      showToast("폴더에 들어가서 업로드하세요.");
+      return;
+    }
+    const { entries, hadDirectory } = await filesFromDataTransfer(dt);
+    if (entries.length === 0) return;
+    if (hadDirectory || entries.some((e) => e.relativePath.includes("/"))) {
+      await uploadFolderTree(entries);
+    } else {
+      await uploadFiles(entries.map((e) => e.file));
+    }
   };
 
   const openNewFolderInput = () => {
@@ -739,7 +957,13 @@ export function DrivePageClient({
       ) {
         return;
       }
-    } else if (!canDeleteFiles) {
+    } else if (
+      !canTrashExplorerFile({
+        role: viewerRole,
+        actorId: viewerUserId,
+        createdBy: file.createdBy,
+      })
+    ) {
       return;
     }
     const ok = window.confirm(
@@ -840,7 +1064,11 @@ export function DrivePageClient({
         createdBy: file.createdBy,
       });
     }
-    return canDeleteFiles;
+    return canTrashExplorerFile({
+      role: viewerRole,
+      actorId: viewerUserId,
+      createdBy: file.createdBy,
+    });
   };
 
   const openFolder = (folder: DriveFileRow) => {
@@ -965,30 +1193,69 @@ export function DrivePageClient({
               if (e.target.files?.length) void uploadFiles(e.target.files);
             }}
           />
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            className="gap-1.5"
-            disabled={!canUploadHere || isUploading}
-            title={
-              !explorerConfigured
-                ? "직원용 공유 드라이브가 연결되지 않았습니다"
-                : !currentDriveFolderId
-                  ? "폴더에 들어가서 업로드하세요"
-                  : search.trim()
-                    ? "검색 중에는 업로드할 수 없습니다"
-                    : "현재 폴더에 파일 업로드"
-            }
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {isUploading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Plus className="size-4" />
-            )}
-            {isUploading ? "업로드 중…" : "+ 파일 업로드"}
-          </Button>
+          <input
+            ref={(el) => {
+              folderInputRef.current = el;
+              if (el) {
+                el.setAttribute("webkitdirectory", "");
+                el.setAttribute("directory", "");
+              }
+            }}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                void uploadFolderTree(filesFromFileList(e.target.files));
+              }
+            }}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="gap-1.5"
+                disabled={!canUploadHere || isUploading}
+                title={
+                  !explorerConfigured
+                    ? "직원용 공유 드라이브가 연결되지 않았습니다"
+                    : !currentDriveFolderId
+                      ? "폴더에 들어가서 업로드하세요"
+                      : search.trim()
+                        ? "검색 중에는 업로드할 수 없습니다"
+                        : "현재 폴더에 파일·폴더 업로드"
+                }
+              >
+                {isUploading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Plus className="size-4" />
+                )}
+                {isUploading ? "업로드 중…" : "+ 업로드"}
+                <ChevronDown className="size-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                className="gap-2"
+                disabled={!canUploadHere || isUploading}
+                onSelect={() => fileInputRef.current?.click()}
+              >
+                <Plus className="size-4" />
+                파일 업로드
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2"
+                disabled={!canUploadHere || isUploading}
+                onSelect={() => folderInputRef.current?.click()}
+              >
+                <FolderPlus className="size-4" />
+                폴더 업로드
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1111,6 +1378,43 @@ export function DrivePageClient({
         </div>
       </div>
 
+      {uploadBanner && (
+        <div
+          className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950"
+          role="status"
+        >
+          {uploadBanner}
+        </div>
+      )}
+
+      {folderUploadFailures.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium">업로드 실패 {folderUploadFailures.length}건</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={isUploading}
+              onClick={() => void retryFolderFailures()}
+            >
+              실패 항목 재시도
+            </Button>
+          </div>
+          <ul className="mt-2 max-h-28 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs">
+            {folderUploadFailures.slice(0, 20).map((f) => (
+              <li key={f.relativePath}>
+                {f.relativePath}: {f.error}
+              </li>
+            ))}
+            {folderUploadFailures.length > 20 && (
+              <li>…외 {folderUploadFailures.length - 20}건</li>
+            )}
+          </ul>
+        </div>
+      )}
+
       {syncMessage && (
         <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
           {syncMessage}
@@ -1164,12 +1468,12 @@ export function DrivePageClient({
             showToast("폴더에 들어가서 업로드하세요.");
             return;
           }
-          if (e.dataTransfer.files?.length) void uploadFiles(e.dataTransfer.files);
+          void handleDropUpload(e.dataTransfer);
         }}
       >
         {dragOver && canUploadHere && (
           <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800">
-            여기에 파일을 놓으면 현재 폴더에 업로드됩니다
+            여기에 파일·폴더를 놓으면 현재 폴더에 업로드됩니다
           </div>
         )}
 
@@ -1235,7 +1539,11 @@ export function DrivePageClient({
                 {file.creating
                   ? `${file.name} (생성 중…)`
                   : file.uploading
-                    ? `${file.name} (업로드 중…)`
+                    ? `${file.name} (업로드 중${
+                        typeof file.uploadPercent === "number"
+                          ? ` ${file.uploadPercent}%`
+                          : "…"
+                      })`
                     : file.name}
               </span>
               {file.isFolder && !file.creating && (file._count?.children ?? 0) > 0 && (
@@ -1258,7 +1566,11 @@ export function DrivePageClient({
               {file.creating ? (
                 <span className="text-xs text-muted-foreground">생성 중</span>
               ) : file.uploading ? (
-                <span className="text-xs text-muted-foreground">업로드 중</span>
+                <span className="text-xs text-muted-foreground">
+                  {typeof file.uploadPercent === "number"
+                    ? `${file.uploadPercent}%`
+                    : "업로드 중"}
+                </span>
               ) : file.isFolder ? (
                 <>
                   <Button

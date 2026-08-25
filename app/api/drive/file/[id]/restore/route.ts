@@ -7,7 +7,10 @@ import {
   assertCanAccessDriveFileId,
   loadDriveAccessActor,
 } from "@/lib/drive/folder-access";
-import { canManageExplorerFolderTrash } from "@/lib/drive/folder-trash-policy";
+import {
+  canManageExplorerFolderTrash,
+  isDriveAdminRole,
+} from "@/lib/drive/folder-trash-policy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -80,13 +83,17 @@ export async function POST(_req: Request, ctx: RouteCtx) {
       );
     }
 
-    if (
-      !canManageExplorerFolderTrash({
-        role: session.user.role,
-        actorId: session.user.id,
-        createdBy: row.createdBy,
-      })
-    ) {
+    // 폴더: 생성자 또는 관리자. 파일: 관리자(휴지통 UI) 또는 생성자.
+    const canRestore = row.isFolder
+      ? canManageExplorerFolderTrash({
+          role: session.user.role,
+          actorId: session.user.id,
+          createdBy: row.createdBy,
+        })
+      : isDriveAdminRole(session.user.role) ||
+        (Boolean(row.createdBy) && row.createdBy === session.user.id);
+
+    if (!canRestore) {
       return NextResponse.json(
         { error: "복원 권한이 없습니다. (생성자 또는 대표/관리자)" },
         { status: 403 }
