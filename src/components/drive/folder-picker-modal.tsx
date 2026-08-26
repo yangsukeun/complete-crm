@@ -47,6 +47,8 @@ type Props = {
   onConfirm: (selection: FolderPickerSelection) => void;
   title?: string;
   description?: string;
+  /** 확인 버튼 문구 (기본: 여기에 저장) */
+  confirmLabel?: string;
 };
 
 async function fetchFolders(parentDbId: string | null): Promise<FolderRow[]> {
@@ -95,6 +97,7 @@ export function FolderPickerModal({
   onConfirm,
   title = "저장 위치 선택",
   description = "문서를 만들 폴더를 선택한 뒤 「여기에 저장」을 누르세요.",
+  confirmLabel = "여기에 저장",
 }: Props) {
   const [crumbs, setCrumbs] = useState<Crumb[]>([
     { id: null, name: "전체 파일", driveFileId: null },
@@ -358,14 +361,16 @@ export function FolderPickerModal({
 
         <DialogFooter className="gap-2 border-t px-5 py-3 sm:justify-between">
           <p className="text-muted-foreground self-center text-xs">
-            {canSaveHere ? `선택: ${leaf.name}` : "저장하려면 하위 폴더로 들어가세요"}
+            {canSaveHere
+              ? `선택: ${leaf.name}`
+              : "위치를 고르려면 하위 폴더로 들어가세요"}
           </p>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               취소
             </Button>
             <Button type="button" disabled={!canSaveHere || loading} onClick={handleConfirm}>
-              여기에 저장
+              {confirmLabel}
             </Button>
           </div>
         </DialogFooter>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate, useSWRConfig } from "swr";
 import {
@@ -22,6 +22,7 @@ import {
   FileText,
   FileVideo,
   Folder,
+  FolderInput,
   FolderPlus,
   HardDrive,
   Loader2,
@@ -32,6 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -100,6 +102,26 @@ type DriveFileRow = {
 
 type DriveViewMode = "list" | "grid";
 const DRIVE_VIEW_MODE_KEY = "drive-explorer-view-mode";
+/** 탐색기 내부 이동용 DnD MIME */
+const DRIVE_MOVE_MIME = "application/x-crm-drive-ids";
+
+function parseDriveMoveIds(dt: DataTransfer): string[] | null {
+  const raw = dt.getData(DRIVE_MOVE_MIME);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return [
+      ...new Set(parsed.filter((x): x is string => typeof x === "string" && x.length > 0)),
+    ];
+  } catch {
+    return null;
+  }
+}
+
+function dataTransferHasDriveMove(dt: DataTransfer): boolean {
+  return Array.from(dt.types).includes(DRIVE_MOVE_MIME);
+}
 
 type FolderUploadFailure = {
   relativePath: string;
@@ -358,11 +380,15 @@ export function DrivePageClient({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [viewMode, setViewMode] = useState<DriveViewMode>("list");
   const [dragOver, setDragOver] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
   const [optimisticRows, setOptimisticRows] = useState<DriveFileRow[]>([]);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerPurpose, setPickerPurpose] = useState<"create" | "move">("create");
   const [pendingCreateType, setPendingCreateType] = useState<
     "document" | "spreadsheet" | "presentation" | null
   >(null);
@@ -404,10 +430,23 @@ export function DrivePageClient({
     });
   }, [data?.files, optimisticRows]);
 
+  const selectableFiles = useMemo(
+    () => displayFiles.filter((f) => !f.uploading && !f.creating),
+    [displayFiles]
+  );
+  const selectedCount = selectedIds.size;
+  const allSelectableSelected =
+    selectableFiles.length > 0 && selectableFiles.every((f) => selectedIds.has(f.id));
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
   }, []);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setDropTargetId(null);
+  }, [currentId, search]);
 
   useEffect(() => {
     try {
@@ -1110,11 +1149,166 @@ export function DrivePageClient({
     if (!currentDriveFolderId) {
       showToast("폴더에 들어간 뒤 작성하거나, 피커에서 저장 위치를 고르세요.");
     }
+    setPickerPurpose("create");
     setPendingCreateType(type);
     setPickerOpen(true);
   };
 
+  const moveIdsToFolder = async (ids: string[], targetFolderId: string) => {
+    const unique = [...new Set(ids)].filter((id) => id && id !== targetFolderId);
+    if (unique.length === 0) {
+      showToast("이동할 항목이 없습니다.");
+      return;
+    }
+    if (batchBusy) return;
+    setBatchBusy(true);
+    try {
+      const res = await fetch("/api/drive/files/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: unique, targetFolderId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "이동 실패");
+      const moved: string[] = Array.isArray(body.moved) ? body.moved : [];
+      const errors: { name?: string; error?: string }[] = Array.isArray(body.errors)
+        ? body.errors
+        : [];
+      if (moved.length > 0) {
+        await mutate(
+          listUrl,
+          (cur: ListPayload | undefined) => {
+            if (!cur) return cur;
+            const remove = new Set(moved);
+            return { ...cur, files: cur.files.filter((f) => !remove.has(f.id)) };
+          },
+          { revalidate: false }
+        );
+        setOptimisticRows((prev) => prev.filter((r) => !moved.includes(r.id)));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of moved) next.delete(id);
+          return next;
+        });
+        if (previewFile && moved.includes(previewFile.id)) setPreviewFile(null);
+      }
+      if (errors.length > 0) {
+        showToast(
+          moved.length > 0
+            ? `${moved.length}개 이동 · ${errors.length}건 실패`
+            : errors[0]?.error || "이동 실패"
+        );
+      } else if (moved.length > 0) {
+        showToast(`${moved.length}개 항목을 이동했습니다.`);
+      } else {
+        showToast("이미 해당 폴더에 있는 항목입니다.");
+      }
+      void refreshList();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "이동 실패");
+    } finally {
+      setBatchBusy(false);
+      setDropTargetId(null);
+    }
+  };
+
+  const openMovePicker = () => {
+    if (selectedCount === 0) {
+      showToast("이동할 항목을 선택하세요.");
+      return;
+    }
+    setPendingCreateType(null);
+    setPickerPurpose("move");
+    setPickerOpen(true);
+  };
+
+  const handleBatchTrash = async () => {
+    if (selectedCount === 0) return;
+    if (batchBusy) return;
+    const ok = window.confirm(
+      `선택한 ${selectedCount}개 항목을 휴지통으로 이동합니다. (폴더는 하위 포함)`
+    );
+    if (!ok) return;
+    setBatchBusy(true);
+    try {
+      const res = await fetch("/api/drive/files/trash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "삭제 실패");
+      const trashed: string[] = Array.isArray(body.trashed) ? body.trashed : [];
+      const errors: { error?: string }[] = Array.isArray(body.errors) ? body.errors : [];
+      if (trashed.length > 0) {
+        const remove = new Set(trashed);
+        await mutate(
+          listUrl,
+          (cur: ListPayload | undefined) => {
+            if (!cur) return cur;
+            return { ...cur, files: cur.files.filter((f) => !remove.has(f.id)) };
+          },
+          { revalidate: false }
+        );
+        setOptimisticRows((prev) => prev.filter((r) => !remove.has(r.id)));
+        if (previewFile && remove.has(previewFile.id)) setPreviewFile(null);
+        markDeleteSyncSuppress(syncThrottleKey(currentId, currentDriveFolderId));
+      }
+      setSelectedIds(new Set());
+      if (errors.length > 0) {
+        showToast(
+          trashed.length > 0
+            ? `${trashed.length}개 삭제 · ${errors.length}건 실패`
+            : errors[0]?.error || "삭제 실패"
+        );
+      } else {
+        showToast(`${trashed.length}개 항목을 휴지통으로 옮겼습니다.`);
+      }
+      void refreshList();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "삭제 실패");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const toggleSelect = (id: string, checked?: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const on = checked ?? !next.has(id);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (!checked) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(selectableFiles.map((f) => f.id)));
+  };
+
+  const beginRowDrag = (e: DragEvent, file: DriveFileRow) => {
+    if (file.uploading || file.creating || renamingId === file.id) {
+      e.preventDefault();
+      return;
+    }
+    const ids =
+      selectedIds.has(file.id) && selectedIds.size > 0
+        ? [...selectedIds]
+        : [file.id];
+    e.dataTransfer.setData(DRIVE_MOVE_MIME, JSON.stringify(ids));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
   const handlePickerConfirm = async (selection: FolderPickerSelection) => {
+    if (pickerPurpose === "move") {
+      setPickerOpen(false);
+      await moveIdsToFolder([...selectedIds], selection.dbId);
+      return;
+    }
     const type = pendingCreateType;
     setPendingCreateType(null);
     if (!type) return;
@@ -1848,23 +2042,36 @@ export function DrivePageClient({
       <div
         className={cn(
           "overflow-hidden rounded-lg border bg-white transition-colors",
-          dragOver && canUploadHere ? "border-sky-400 ring-2 ring-sky-200" : "border-gray-200"
+          dragOver && canUploadHere ? "border-sky-400 ring-2 ring-sky-200" : "border-gray-200",
+          dropTargetId ? "ring-1 ring-amber-200" : null
         )}
         onDragEnter={(e) => {
           e.preventDefault();
+          if (dataTransferHasDriveMove(e.dataTransfer)) return;
           if (canUploadHere) setDragOver(true);
         }}
         onDragOver={(e) => {
           e.preventDefault();
+          if (dataTransferHasDriveMove(e.dataTransfer)) {
+            e.dataTransfer.dropEffect = "move";
+            return;
+          }
           if (canUploadHere) setDragOver(true);
         }}
         onDragLeave={(e) => {
           e.preventDefault();
-          if (e.currentTarget === e.target) setDragOver(false);
+          if (e.currentTarget === e.target) {
+            setDragOver(false);
+            setDropTargetId(null);
+          }
         }}
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
+          setDropTargetId(null);
+          if (dataTransferHasDriveMove(e.dataTransfer) || parseDriveMoveIds(e.dataTransfer)) {
+            return;
+          }
           if (!canUploadHere) {
             showToast("폴더에 들어가서 업로드하세요.");
             return;
@@ -1875,6 +2082,48 @@ export function DrivePageClient({
         {dragOver && canUploadHere && (
           <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800">
             여기에 파일·폴더를 놓으면 현재 폴더에 업로드됩니다
+          </div>
+        )}
+
+        {selectedCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm">
+            <span className="font-medium text-amber-950">{selectedCount}개 선택</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              disabled={batchBusy}
+              onClick={openMovePicker}
+            >
+              <FolderInput className="size-3.5" />
+              이동
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs text-rose-700 hover:bg-rose-50"
+              disabled={batchBusy}
+              onClick={() => void handleBatchTrash()}
+            >
+              {batchBusy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              삭제
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={batchBusy}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              선택 해제
+            </Button>
           </div>
         )}
 
@@ -1893,7 +2142,15 @@ export function DrivePageClient({
 
         {viewMode === "list" && (
           <>
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_minmax(220px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[36px_minmax(0,2fr)_120px_100px_minmax(240px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+          <span className="flex items-center justify-center">
+            <Checkbox
+              checked={allSelectableSelected ? true : selectedCount > 0 ? "indeterminate" : false}
+              onCheckedChange={(v) => toggleSelectAll(v === true)}
+              aria-label="전체 선택"
+              disabled={selectableFiles.length === 0 || batchBusy}
+            />
+          </span>
           <span>이름</span>
           <span>수정일</span>
           <span>크기</span>
@@ -1901,11 +2158,45 @@ export function DrivePageClient({
         </div>
 
         {navReady &&
-          displayFiles.map((file) => (
+          displayFiles.map((file) => {
+          const isSelected = selectedIds.has(file.id);
+          const canSelect = !file.uploading && !file.creating;
+          const isDropTarget = dropTargetId === file.id && file.isFolder;
+          return (
           <div
             key={file.id}
             role="row"
             tabIndex={0}
+            draggable={canSelect && renamingId !== file.id}
+            onDragStart={(e) => beginRowDrag(e, file)}
+            onDragEnd={() => setDropTargetId(null)}
+            onDragOver={(e) => {
+              if (!file.isFolder || file.uploading || file.creating) return;
+              if (!dataTransferHasDriveMove(e.dataTransfer)) return;
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = "move";
+              setDropTargetId(file.id);
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget === e.target) {
+                setDropTargetId((cur) => (cur === file.id ? null : cur));
+              }
+            }}
+            onDrop={(e) => {
+              if (!file.isFolder) return;
+              if (!dataTransferHasDriveMove(e.dataTransfer)) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const ids = parseDriveMoveIds(e.dataTransfer);
+              setDropTargetId(null);
+              if (!ids || ids.length === 0) return;
+              if (ids.includes(file.id)) {
+                showToast("폴더를 자기 자신으로 이동할 수 없습니다.");
+                return;
+              }
+              void moveIdsToFolder(ids, file.id);
+            }}
             onMouseEnter={() => {
               if (file.isFolder && !file.uploading && !file.creating) prefetchFolder(file.id);
             }}
@@ -1922,12 +2213,26 @@ export function DrivePageClient({
               }
             }}
             className={cn(
-              "grid grid-cols-[minmax(0,2fr)_120px_100px_minmax(220px,1.2fr)] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
+              "grid grid-cols-[36px_minmax(0,2fr)_120px_100px_minmax(240px,1.2fr)] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
               file.uploading || file.creating
                 ? "bg-gray-50 text-muted-foreground"
-                : "hover:bg-gray-50"
+                : "hover:bg-gray-50",
+              isSelected && "bg-sky-50/80",
+              isDropTarget && "bg-amber-50 ring-2 ring-inset ring-amber-300"
             )}
           >
+            <div
+              className="flex items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+            >
+              <Checkbox
+                checked={isSelected}
+                disabled={!canSelect || batchBusy}
+                onCheckedChange={(v) => toggleSelect(file.id, v === true)}
+                aria-label={`${file.name} 선택`}
+              />
+            </div>
             <div className="flex min-w-0 items-center gap-2">
               {file.uploading || file.creating ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-gray-400" />
@@ -2055,10 +2360,13 @@ export function DrivePageClient({
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant={file.pinned ? "secondary" : "outline"}
                     size="sm"
-                    className="h-7 gap-1 px-2 text-xs"
-                    title={file.pinned ? "고정 해제" : "상단 고정"}
+                    className={cn(
+                      "h-7 gap-1 px-2 text-xs",
+                      file.pinned && "border-amber-300 bg-amber-50 text-amber-900"
+                    )}
+                    title={file.pinned ? "상단 고정 해제" : "목록 상단에 고정"}
                     onClick={(e) => {
                       e.stopPropagation();
                       void togglePin(file);
@@ -2069,7 +2377,7 @@ export function DrivePageClient({
                     ) : (
                       <Pin className="size-3.5" />
                     )}
-                    {file.pinned ? "고정 해제" : "고정"}
+                    {file.pinned ? "고정 해제" : "상단 고정"}
                   </Button>
                   {canShowRenameButton(file) && (
                     <Button
@@ -2143,10 +2451,13 @@ export function DrivePageClient({
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant={file.pinned ? "secondary" : "outline"}
                     size="sm"
-                    className="h-7 gap-1 px-2 text-xs"
-                    title={file.pinned ? "고정 해제" : "상단 고정"}
+                    className={cn(
+                      "h-7 gap-1 px-2 text-xs",
+                      file.pinned && "border-amber-300 bg-amber-50 text-amber-900"
+                    )}
+                    title={file.pinned ? "상단 고정 해제" : "목록 상단에 고정"}
                     onClick={(e) => {
                       e.stopPropagation();
                       void togglePin(file);
@@ -2157,7 +2468,7 @@ export function DrivePageClient({
                     ) : (
                       <Pin className="size-3.5" />
                     )}
-                    {file.pinned ? "고정 해제" : "고정"}
+                    {file.pinned ? "고정 해제" : "상단 고정"}
                   </Button>
                   {canShowRenameButton(file) && (
                     <Button
@@ -2204,7 +2515,8 @@ export function DrivePageClient({
               )}
             </div>
           </div>
-        ))}
+          );
+          })}
           </>
         )}
 
@@ -2212,6 +2524,8 @@ export function DrivePageClient({
           <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {displayFiles.map((file) => {
               const busy = Boolean(file.uploading || file.creating);
+              const isSelected = selectedIds.has(file.id);
+              const isDropTarget = dropTargetId === file.id && file.isFolder;
               const hasThumb = mayHaveDriveThumbnail(
                 file.mimeType,
                 file.isFolder,
@@ -2220,11 +2534,57 @@ export function DrivePageClient({
               return (
                 <li
                   key={file.id}
+                  draggable={!busy && renamingId !== file.id}
+                  onDragStart={(e) => beginRowDrag(e, file)}
+                  onDragEnd={() => setDropTargetId(null)}
+                  onDragOver={(e) => {
+                    if (!file.isFolder || busy) return;
+                    if (!dataTransferHasDriveMove(e.dataTransfer)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "move";
+                    setDropTargetId(file.id);
+                  }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget === e.target) {
+                      setDropTargetId((cur) => (cur === file.id ? null : cur));
+                    }
+                  }}
+                  onDrop={(e) => {
+                    if (!file.isFolder) return;
+                    if (!dataTransferHasDriveMove(e.dataTransfer)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const ids = parseDriveMoveIds(e.dataTransfer);
+                    setDropTargetId(null);
+                    if (!ids || ids.length === 0) return;
+                    if (ids.includes(file.id)) {
+                      showToast("폴더를 자기 자신으로 이동할 수 없습니다.");
+                      return;
+                    }
+                    void moveIdsToFolder(ids, file.id);
+                  }}
                   className={cn(
                     "group relative flex flex-col overflow-hidden rounded-lg border bg-white",
-                    busy ? "opacity-70" : "hover:border-sky-300 hover:shadow-sm"
+                    busy ? "opacity-70" : "hover:border-sky-300 hover:shadow-sm",
+                    isSelected && "border-sky-400 ring-2 ring-sky-200",
+                    isDropTarget && "border-amber-400 bg-amber-50 ring-2 ring-amber-300"
                   )}
                 >
+                  {!busy && (
+                    <div
+                      className="absolute left-1.5 top-1.5 z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        disabled={batchBusy}
+                        onCheckedChange={(v) => toggleSelect(file.id, v === true)}
+                        aria-label={`${file.name} 선택`}
+                        className="border-white bg-white/90 shadow"
+                      />
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="relative aspect-square w-full overflow-hidden bg-gray-50"
@@ -2254,7 +2614,7 @@ export function DrivePageClient({
                       />
                     )}
                     {file.pinned && !busy && (
-                      <span className="absolute left-1.5 top-1.5 rounded bg-amber-500/90 p-0.5 text-white shadow">
+                      <span className="absolute right-1.5 top-1.5 rounded bg-amber-500/90 p-0.5 text-white shadow">
                         <Pin className="size-3.5" aria-label="고정됨" />
                       </span>
                     )}
@@ -2431,7 +2791,10 @@ export function DrivePageClient({
         open={pickerOpen}
         onOpenChange={(next) => {
           setPickerOpen(next);
-          if (!next) setPendingCreateType(null);
+          if (!next) {
+            setPendingCreateType(null);
+            setPickerPurpose("create");
+          }
         }}
         initialDriveFolderId={currentDriveFolderId}
         initialDbId={currentId}
@@ -2439,12 +2802,20 @@ export function DrivePageClient({
           void handlePickerConfirm(selection);
         }}
         title={
-          pendingCreateType === "spreadsheet"
-            ? "스프레드시트 저장 위치"
-            : pendingCreateType === "presentation"
-              ? "슬라이드 저장 위치"
-              : "문서 저장 위치"
+          pickerPurpose === "move"
+            ? "이동할 위치"
+            : pendingCreateType === "spreadsheet"
+              ? "스프레드시트 저장 위치"
+              : pendingCreateType === "presentation"
+                ? "슬라이드 저장 위치"
+                : "문서 저장 위치"
         }
+        description={
+          pickerPurpose === "move"
+            ? `선택한 ${selectedCount}개 항목을 옮길 폴더를 고른 뒤 「여기로 이동」을 누르세요.`
+            : undefined
+        }
+        confirmLabel={pickerPurpose === "move" ? "여기로 이동" : "여기에 저장"}
       />
 
       <Dialog
