@@ -130,12 +130,12 @@ export async function GET() {
     }
     await ensureLegacyCarryAccrual(session.user.id);
     const pool = await calculateLeavePool(session.user.id, new Date());
-    const carryOver = balance?.annualCarryOver ?? 0;
+    const carryOver = pool.periodGranted.validCarry;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const annualTotal = pool.displayGranted;
+    const annualTotal = pool.periodGranted.periodGranted;
     const leaveRemaining = pool.available;
-    const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
+    const totalAvailable = pool.displayGranted;
     const joinDateStr =
       user.joinDate instanceof Date
         ? user.joinDate.toISOString().slice(0, 10)
@@ -147,6 +147,7 @@ export async function GET() {
       leaveRemaining,
       annualTotal,
       annualCarryOver: carryOver,
+      balanceAnnualCarryOver: balance?.annualCarryOver ?? 0,
       totalAvailable,
       annualUsed,
       manualDeduction,
@@ -560,12 +561,12 @@ export async function PATCH(req: Request) {
         // ignore
       }
     }
-    const carryOver = (balance as { annualCarryOver?: number } | null)?.annualCarryOver ?? 0;
+    const carryOver = pool.periodGranted.validCarry;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = (balance as { manualDeduction?: number } | null)?.manualDeduction ?? 0;
-    const annualTotal = pool.displayGranted;
+    const annualTotal = pool.periodGranted.periodGranted;
     const leaveRemaining = pool.available;
-    const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
+    const totalAvailable = pool.displayGranted;
 
     const joinDateStr =
       user.joinDate instanceof Date
@@ -577,6 +578,7 @@ export async function PATCH(req: Request) {
       leaveRemaining,
       annualTotal,
       annualCarryOver: carryOver,
+      balanceAnnualCarryOver: (balance as { annualCarryOver?: number } | null)?.annualCarryOver ?? 0,
       totalAvailable,
       annualUsed,
       manualDeduction,

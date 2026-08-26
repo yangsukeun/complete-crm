@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { toKstYmd } from "@/lib/date-kst";
 import { ensureBalanceCarryAccrual } from "@/lib/leave/ensure-carry-accrual";
 import { fifoAllocate, type FifoAllocation, type AccrualRow } from "@/lib/leave/fifo";
+import { usableAccrualFromYmd } from "@/lib/leave/leave-period";
 import { LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 import { leaveRequestDays, isSickLeaveType } from "@/lib/leave/leave-request-days";
 
@@ -39,6 +40,7 @@ async function loadAccrualRows(userId: string): Promise<AccrualRow[]> {
       expiresAt: r.expiresAt,
       isExpired: r.isExpired,
       compensationOwed: r.compensationOwed,
+      accrualDateYmd: r.accrualDateYmd,
     }));
 }
 
@@ -49,7 +51,8 @@ async function applyFifo(
   asOf: Date,
   dryRun: boolean,
   log: ReapplyLogLine[],
-  label: string
+  label: string,
+  usableFromYmd?: string
 ): Promise<FifoAllocation[] | null> {
   if (days <= 1e-9) return [];
   const rows = await tx.leaveAccrual.findMany({
@@ -78,9 +81,10 @@ async function applyFifo(
       expiresAt: r.expiresAt,
       isExpired: r.isExpired,
       compensationOwed: r.compensationOwed,
+      accrualDateYmd: r.accrualDateYmd,
     }));
 
-  const alloc = fifoAllocate(accruals, days, asOf);
+  const alloc = fifoAllocate(accruals, days, asOf, { usableFromYmd });
   if (!alloc) {
     log.push(`⚠ ${label}: FIFO 부족 ${days}일`);
     return null;
@@ -134,9 +138,12 @@ export async function reapplyLeaveConsumptionForUser(
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { name: true, email: true },
+    select: { name: true, email: true, joinDate: true },
   });
   log.push(`=== ${user?.name ?? userId} (${user?.email ?? ""}) ===`);
+
+  const joinYmd = user?.joinDate ? toKstYmd(user.joinDate) : "";
+  const usableFromYmd = joinYmd ? usableAccrualFromYmd(joinYmd, asOfYmd) : undefined;
 
   if (!dryRun) {
     await prisma.leaveAccrual.updateMany({
@@ -168,7 +175,7 @@ export async function reapplyLeaveConsumptionForUser(
   const run = async (tx: Prisma.TransactionClient) => {
     if (priorTotal > 1e-6) {
       log.push(`이전 사용분(CRM 전) ${priorTotal}일 (FIFO 기준일 ${asOfYmd})`);
-      await applyFifo(tx, userId, priorTotal, asOf, dryRun, log, "PRIOR");
+      await applyFifo(tx, userId, priorTotal, asOf, dryRun, log, "PRIOR", usableFromYmd);
     }
 
     const requests = await tx.leaveRequest.findMany({
@@ -198,7 +205,16 @@ export async function reapplyLeaveConsumptionForUser(
         );
       } else {
         log.push(`승인 ${r.startDate.toISOString().slice(0, 10)} ${days}일 (FIFO)`);
-        const alloc = await applyFifo(tx, userId, days, r.startDate, dryRun, log, `LeaveRequest:${r.id.slice(0, 8)}`);
+        const alloc = await applyFifo(
+          tx,
+          userId,
+          days,
+          r.startDate,
+          dryRun,
+          log,
+          `LeaveRequest:${r.id.slice(0, 8)}`,
+          usableFromYmd
+        );
         if (!dryRun && alloc && alloc.length > 0) {
           await tx.leaveRequest.update({
             where: { id: r.id },

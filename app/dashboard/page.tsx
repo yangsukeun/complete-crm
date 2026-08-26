@@ -288,17 +288,17 @@ export default async function DashboardPage() {
     } = dashPrefetch;
 
     const adminPool = await calculateLeavePool(session.user.id, new Date());
-    const annualTotal = adminPool.displayGranted;
+    const annualTotal = adminPool.periodGranted.periodGranted;
 
     const completedTasks = tasksCreatedByMe.filter((t: any) => t.isCompleted);
     const progressPercent =
       tasksCreatedByMe.length > 0
         ? Math.round((completedTasks.length / tasksCreatedByMe.length) * 100)
         : 0;
-    const carryOver = adminLeaveBalance?.annualCarryOver ?? 0;
+    const carryOver = adminPool.periodGranted.validCarry;
     const used = adminLeaveBalance?.annualUsed ?? 0;
     const manual = adminLeaveBalance?.manualDeduction ?? 0;
-    const totalLeave = adminPool.available + used + manual;
+    const totalLeave = adminPool.displayGranted;
     const remaining = adminPool.available;
     const incompleteCount = tasksCreatedByMe.filter((t: any) => !t.isCompleted).length;
 
@@ -496,12 +496,12 @@ export default async function DashboardPage() {
   } = dashPrefetchUser;
 
   const userPool = await calculateLeavePool(session.user.id, new Date());
-  const annualTotal = userPool.displayGranted;
+  const annualTotal = userPool.periodGranted.periodGranted;
 
-  const carryOver = leaveBalance?.annualCarryOver ?? 0;
+  const carryOver = userPool.periodGranted.validCarry;
   const used = leaveBalance?.annualUsed ?? 0;
   const manual = leaveBalance?.manualDeduction ?? 0;
-  const totalLeave = userPool.available + used + manual;
+  const totalLeave = userPool.displayGranted;
   const remaining = userPool.available;
 
   const isDueSoonOrOverdue = (due: Date) => {

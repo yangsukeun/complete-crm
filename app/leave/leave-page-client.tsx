@@ -487,12 +487,13 @@ export function LeavePageClient({
             {balanceDetailOpen ? (
               <CardContent className="border-t pt-3 pb-4">
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  입사일 기준 근로기준법 자동계산 · 전체 휴가(부여+이월) − 사용 − 실제 사용 차감 = 잔여
+                  입사일(기념일) 기준 · 올해 부여 + 직전 기간 이월만 반영 · 잔여 = 사용 가능 일수
                 </p>
                 <p className="text-muted-foreground mt-1 text-sm">
                   {typeof balance.annualTotal === "number" && (balance.carryOver ?? 0) > 0 ? (
                     <>
-                      부여 {balance.annualTotal}일 + 이월 {balance.carryOver!.toFixed(1)}일 = 총 {balance.total}일
+                      부여 {balance.annualTotal}일 + 이월(작년) {balance.carryOver!.toFixed(1)}일 = 총{" "}
+                      {(balance.annualTotal + (balance.carryOver ?? 0)).toFixed(1)}일
                       {" − "}사용 {balance.used.toFixed(1)}일
                       {(balance.manualDeduction ?? 0) > 0 && (
                         <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
@@ -502,7 +503,7 @@ export function LeavePageClient({
                     </>
                   ) : (
                     <>
-                      전체 휴가 {balance.total}일 − 사용 {balance.used.toFixed(1)}일
+                      부여 {balance.annualTotal ?? balance.total}일 − 사용 {balance.used.toFixed(1)}일
                       {(balance.manualDeduction ?? 0) > 0 && (
                         <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
                       )}

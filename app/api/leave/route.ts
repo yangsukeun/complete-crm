@@ -92,9 +92,10 @@ export async function GET() {
     }
     const used = balanceRow?.annualUsed ?? 0;
     const manualDeduction = balanceRow?.manualDeduction ?? 0;
-    const carryOver = balanceRow?.annualCarryOver ?? 0;
+    const carryOver = pool.periodGranted.validCarry;
+    const periodGranted = pool.periodGranted.periodGranted;
     const remaining = pool.available;
-    const total = remaining + used + manualDeduction;
+    const total = pool.displayGranted;
 
     const requests = (rawRequests as LeaveRequestWithUser[]).map((row) =>
       serializeLeaveRequestForViewer(row, uid, role)
@@ -111,7 +112,7 @@ export async function GET() {
       balance: {
         year,
         total,
-        annualTotal: pool.displayGranted,
+        annualTotal: periodGranted,
         carryOver,
         used,
         manualDeduction,

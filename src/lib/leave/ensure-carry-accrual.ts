@@ -1,10 +1,14 @@
 import prisma from "@/lib/prisma";
+import { toKstYmd } from "@/lib/date-kst";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 import { expiresAtFromAccrualYmd, startOfKstDayFromYmd } from "@/lib/leave/kst-date";
+import { previousLeavePeriodYmd } from "@/lib/leave/leave-period";
 import { LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 
 /**
- * LeaveBalance.annualCarryOver → 당해 CARRY_OVER LeaveAccrual (1900 레거시 행과 별도).
+ * LeaveBalance.annualCarryOver → CARRY_OVER LeaveAccrual.
+ * 발생일은 입사기념일 직전 적용기간 시작일(없으면 당해 1/1).
+ * 예전 달력연도(1/1) 행이 있으면 미소진 시 기념일 기준으로 옮긴다.
  */
 export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
   const year = getCurrentLeaveCalendarYearKst();
@@ -15,19 +19,48 @@ export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
   const carryDays = balance?.annualCarryOver ?? 0;
   if (carryDays <= 1e-6) return;
 
-  const accrualDateYmd = `${year}-01-01`;
-  if (accrualDateYmd === LEGACY_CARRY_ACCRUAL_YMD) return;
-
-  const existing = await prisma.leaveAccrual.findUnique({
-    where: {
-      userId_type_accrualDateYmd: {
-        userId,
-        type: "CARRY_OVER",
-        accrualDateYmd,
-      },
-    },
-    select: { id: true, days: true, consumedDays: true },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { joinDate: true },
   });
+  const joinYmd = user?.joinDate ? toKstYmd(user.joinDate) : "";
+  const asOfYmd = toKstYmd(new Date());
+  const prev = joinYmd ? previousLeavePeriodYmd(joinYmd, asOfYmd) : null;
+  const preferredYmd = prev?.start ?? `${year}-01-01`;
+  const calendarYmd = `${year}-01-01`;
+  if (preferredYmd === LEGACY_CARRY_ACCRUAL_YMD) return;
+
+  const note = prev
+    ? `직전 적용기간(${prev.start}~${prev.end}) 이월`
+    : `${year - 1}년 이월`;
+
+  const findCarry = (accrualDateYmd: string) =>
+    prisma.leaveAccrual.findUnique({
+      where: {
+        userId_type_accrualDateYmd: {
+          userId,
+          type: "CARRY_OVER",
+          accrualDateYmd,
+        },
+      },
+      select: { id: true, days: true, consumedDays: true, accrualDateYmd: true },
+    });
+
+  let existing = await findCarry(preferredYmd);
+
+  if (
+    !existing &&
+    preferredYmd !== calendarYmd
+  ) {
+    const cal = await findCarry(calendarYmd);
+    if (cal && cal.consumedDays <= 1e-6) {
+      await prisma.leaveAccrual.delete({ where: { id: cal.id } });
+      existing = null;
+    } else if (cal) {
+      // 이미 일부 사용됨 — 달력 1/1 행을 유지(중복 생성 금지)
+      existing = cal;
+    }
+  }
 
   if (!existing) {
     await prisma.leaveAccrual.create({
@@ -35,10 +68,10 @@ export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
         userId,
         type: "CARRY_OVER",
         days: carryDays,
-        accrualDateYmd,
-        accruedAt: startOfKstDayFromYmd(accrualDateYmd),
-        expiresAt: expiresAtFromAccrualYmd(accrualDateYmd),
-        note: `${year - 1}년 이월`,
+        accrualDateYmd: preferredYmd,
+        accruedAt: startOfKstDayFromYmd(preferredYmd),
+        expiresAt: expiresAtFromAccrualYmd(preferredYmd),
+        note,
       },
     });
     return;
@@ -47,7 +80,7 @@ export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
   if (existing.days < carryDays - 1e-6 && existing.consumedDays <= 1e-6) {
     await prisma.leaveAccrual.update({
       where: { id: existing.id },
-      data: { days: carryDays },
+      data: { days: carryDays, note },
     });
   }
 }

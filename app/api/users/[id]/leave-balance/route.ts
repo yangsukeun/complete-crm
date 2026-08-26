@@ -39,16 +39,18 @@ export async function GET(
       where: { userId_year: { userId: id, year } },
       select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
     });
-    const carryOver = balance?.annualCarryOver ?? 0;
+    const carryOver = pool.periodGranted.validCarry;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const annualTotal = pool.displayGranted;
+    const annualTotal = pool.periodGranted.periodGranted;
     const leaveRemaining = pool.available;
-    const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
+    const totalAvailable = pool.displayGranted;
 
     return NextResponse.json({
       annualTotal,
       annualCarryOver: carryOver,
+      /** 관리자 입력용 LeaveBalance.annualCarryOver (표시 이월과 별도) */
+      balanceAnnualCarryOver: balance?.annualCarryOver ?? 0,
       totalAvailable,
       annualUsed,
       manualDeduction,

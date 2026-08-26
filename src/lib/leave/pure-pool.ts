@@ -33,6 +33,16 @@ export type AccrualInput = {
   expiresAt: Date;
   isExpired: boolean;
   compensationOwed: boolean;
+  /** KST yyyy-MM-dd — 이월 하한 필터용 */
+  accrualDateYmd?: string;
+};
+
+export type BuildLeavePoolOptions = {
+  /**
+   * 이 일자(포함) 이전 발생분은 잔여에서 제외(정책상 만료 취급).
+   * 입사기념일 기준 「직전 기간부터만」 이월할 때 usableAccrualFromYmd 를 넘긴다.
+   */
+  usableFromYmd?: string;
 };
 
 const emptyBreakdown = (): LeavePoolBreakdown => ({
@@ -63,7 +73,11 @@ function bucketFor(type: LeaveAccrualType): keyof LeavePool["breakdown"] {
  * DB LeaveAccrual 행(또는 백필/테스트 입력)으로 잔여·소멸·수당대상 일수를 계산.
  * FIFO 소비는 각 행의 consumedDays에 이미 반영된 것으로 본다.
  */
-export function buildLeavePoolFromAccruals(accruals: AccrualInput[], asOf: Date): LeavePool {
+export function buildLeavePoolFromAccruals(
+  accruals: AccrualInput[],
+  asOf: Date,
+  options?: BuildLeavePoolOptions
+): LeavePool {
   const breakdown: LeavePool["breakdown"] = {
     monthlyUnderOneYear: emptyBreakdown(),
     annualAfterOneYear: emptyBreakdown(),
@@ -72,13 +86,19 @@ export function buildLeavePoolFromAccruals(accruals: AccrualInput[], asOf: Date)
   };
 
   let compensationOwedDays = 0;
+  const usableFrom = options?.usableFromYmd?.trim() || "";
 
   for (const row of accruals) {
     const key = bucketFor(row.type);
     const b = breakdown[key];
     const granted = row.days;
     const consumed = Math.min(row.consumedDays, granted);
-    const expiredByDate = row.isExpired || isExpiredByAsOf(row.expiresAt, asOf);
+    const staleByPolicy =
+      Boolean(usableFrom) &&
+      Boolean(row.accrualDateYmd) &&
+      row.accrualDateYmd! < usableFrom;
+    const expiredByDate =
+      row.isExpired || isExpiredByAsOf(row.expiresAt, asOf) || staleByPolicy;
     const unconsumed = Math.max(0, granted - consumed);
 
     b.entitled += granted;
@@ -86,7 +106,7 @@ export function buildLeavePoolFromAccruals(accruals: AccrualInput[], asOf: Date)
 
     if (expiredByDate) {
       b.expired += unconsumed;
-      if (row.compensationOwed && unconsumed > 0) {
+      if (row.compensationOwed && unconsumed > 0 && !staleByPolicy) {
         compensationOwedDays += unconsumed;
       }
     } else {
@@ -111,7 +131,11 @@ export function buildLeavePoolFromAccruals(accruals: AccrualInput[], asOf: Date)
     const consumed = Math.min(row.consumedDays, granted);
     const remaining = Math.max(0, granted - consumed);
     if (remaining <= 0.0001) continue;
-    if (row.isExpired || isExpiredByAsOf(row.expiresAt, asOf)) continue;
+    const staleByPolicy =
+      Boolean(usableFrom) &&
+      Boolean(row.accrualDateYmd) &&
+      row.accrualDateYmd! < usableFrom;
+    if (staleByPolicy || row.isExpired || isExpiredByAsOf(row.expiresAt, asOf)) continue;
     if (!nextExpirationDate || row.expiresAt.getTime() < nextExpirationDate.getTime()) {
       nextExpirationDate = row.expiresAt;
     }

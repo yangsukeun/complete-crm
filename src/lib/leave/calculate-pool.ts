@@ -4,7 +4,11 @@ import { ensureAccrualsUpTo } from "@/lib/leave/accrue";
 import { ensureApprovedLeavesConsumedUpTo } from "@/lib/leave/ensure-approved-consumption";
 import { ensureBalanceCarryAccrual } from "@/lib/leave/ensure-carry-accrual";
 import { ensureLegacyCarryAccrual, LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
-import { currentLeavePeriodYmd } from "@/lib/leave/leave-period";
+import {
+  currentLeavePeriodYmd,
+  previousLeavePeriodYmd,
+  usableAccrualFromYmd,
+} from "@/lib/leave/leave-period";
 import {
   computePeriodDisplayGranted,
   type PeriodGrantedBreakdown,
@@ -42,8 +46,8 @@ export type CalculatedLeavePool = LeavePool & {
   /** 총발생 ≈ 사용 + 만료 + 잔여 (근사) — lifetime entitled 기준 */
   poolMathConsistent: boolean;
   /**
-   * 화면·annualTotal용 발생(이월): 현재 적용기간 발생 + 유효 이월.
-   * 만료분 생애 누적 제외.
+   * 화면·annualTotal용 발생(이월): 현재 적용기간 + 직전 기간 미만료분만.
+   * 그 이전·만료분 제외.
    */
   displayGranted: number;
   periodGranted: PeriodGrantedBreakdown;
@@ -139,15 +143,17 @@ export async function calculateLeavePool(
     expiresAt: r.expiresAt,
     isExpired: r.isExpired,
     compensationOwed: r.compensationOwed,
+    accrualDateYmd: r.accrualDateYmd,
   }));
 
-  const pool = buildLeavePoolFromAccruals(inputs, asOf);
+  const asOfYmd = toKstYmd(asOf);
+  const usableFromYmd = joinYmd ? usableAccrualFromYmd(joinYmd, asOfYmd) : undefined;
+  const pool = buildLeavePoolFromAccruals(inputs, asOf, { usableFromYmd });
   const merged = joinYmd ? mergePoolWithNextAccrual(pool, joinYmd, asOf) : pool;
 
   const period =
-    joinYmd && asOf
-      ? currentLeavePeriodYmd(joinYmd, toKstYmd(asOf))
-      : { start: "", end: "" };
+    joinYmd && asOf ? currentLeavePeriodYmd(joinYmd, asOfYmd) : { start: "", end: "" };
+  const previousPeriod = joinYmd ? previousLeavePeriodYmd(joinYmd, asOfYmd) : null;
   const periodGranted = computePeriodDisplayGranted(
     poolRows.map((r) => ({
       type: r.type,
@@ -157,7 +163,8 @@ export async function calculateLeavePool(
       isExpired: r.isExpired,
     })),
     period,
-    asOf
+    asOf,
+    previousPeriod
   );
 
   const sumParts = merged.totalConsumed + merged.totalExpired + merged.available;

@@ -32,6 +32,7 @@ type Profile = {
   leaveRemaining?: number;
   annualTotal?: number;
   annualCarryOver?: number;
+  balanceAnnualCarryOver?: number;
   totalAvailable?: number;
   annualUsed?: number;
   manualDeduction?: number;
@@ -104,7 +105,7 @@ export function ProfilePageClient({
       setJoinDate(data.joinDate?.slice(0, 10) ?? "");
       setLeaveRemaining(String(data.leaveRemaining ?? 0));
       setManualDeduction(String(data.manualDeduction ?? 0));
-      setAnnualCarryOver(String(data.annualCarryOver ?? 0));
+      setAnnualCarryOver(String(data.balanceAnnualCarryOver ?? 0));
       setBadgePreset(data.badgePreset ?? "default");
     } catch (err) {
       clearTimeout(timeoutId);
@@ -185,7 +186,8 @@ export function ProfilePageClient({
       if (data.joinDate) setJoinDate(data.joinDate.slice(0, 10));
       if (data.leaveRemaining != null) setLeaveRemaining(String(data.leaveRemaining));
       if (data.manualDeduction != null) setManualDeduction(String(data.manualDeduction));
-      if (data.annualCarryOver != null) setAnnualCarryOver(String(data.annualCarryOver));
+      if (data.balanceAnnualCarryOver != null) setAnnualCarryOver(String(data.balanceAnnualCarryOver));
+      else if (data.annualCarryOver != null) setAnnualCarryOver(String(data.annualCarryOver));
       if (password) {
         setPassword("");
         setPasswordConfirm("");
@@ -496,7 +498,7 @@ export function ProfilePageClient({
             {isAdmin && (
               <div className="space-y-2 border-t pt-4">
                 <Label htmlFor="annualCarryOver" className="text-sm font-medium">
-                  이월 연차 (전년도 미사용분, 일)
+                  이월 연차 수동 입력 (입사기념일 직전 기간분, 일)
                 </Label>
                 <Input
                   id="annualCarryOver"

@@ -199,7 +199,13 @@ export function AdminEmployeesClient({
     if (e?.id) {
       fetch(`/api/users/${e.id}/leave-balance`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { manualDeduction?: number; leaveRemaining?: number; annualCarryOver?: number; totalAvailable?: number } | null) => {
+        .then((d: {
+          manualDeduction?: number;
+          leaveRemaining?: number;
+          annualCarryOver?: number;
+          balanceAnnualCarryOver?: number;
+          totalAvailable?: number;
+        } | null) => {
           if (d) {
             setLeaveBalance({
               manualDeduction: d.manualDeduction ?? 0,
@@ -207,7 +213,11 @@ export function AdminEmployeesClient({
               annualCarryOver: d.annualCarryOver ?? 0,
               totalAvailable: d.totalAvailable,
             });
-            setAnnualCarryOver(String(d.annualCarryOver ?? 0));
+            setAnnualCarryOver(
+              String(
+                d.balanceAnnualCarryOver ?? d.annualCarryOver ?? 0
+              )
+            );
             setManualDeduction(String(d.manualDeduction ?? 0));
           }
         })
@@ -792,7 +802,7 @@ export function AdminEmployeesClient({
                 )}
               </div>
               <div className="space-y-2 border-t pt-4">
-                <Label className="text-sm font-medium">이월 연차 (전년도 미사용분, 일)</Label>
+                <Label className="text-sm font-medium">이월 연차 수동 입력 (입사기념일 직전 기간분, 일)</Label>
                 <Input
                   type="number"
                   min={0}
