@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate, useSWRConfig } from "swr";
 import {
+  Pin,
+  PinOff,
   Pause,
   Play,
   Pencil,
@@ -82,6 +84,8 @@ type DriveFileRow = {
   driveModifiedAt: string | null;
   parentId: string | null;
   createdBy?: string | null;
+  /** 개인 상단고정 */
+  pinned?: boolean;
   uploading?: boolean;
   /** 0–100 업로드 진행률 */
   uploadPercent?: number | null;
@@ -388,10 +392,16 @@ export function DrivePageClient({
 
   const displayFiles = useMemo(() => {
     const base = data?.files ?? [];
-    if (optimisticRows.length === 0) return base;
     const ids = new Set(base.map((f) => f.id));
     const pending = optimisticRows.filter((r) => !ids.has(r.id));
-    return [...pending, ...base];
+    const merged = [...pending, ...base];
+    return [...merged].sort((a, b) => {
+      const ap = a.pinned ? 1 : 0;
+      const bp = b.pinned ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+      return a.name.localeCompare(b.name, "ko");
+    });
   }, [data?.files, optimisticRows]);
 
   const showToast = useCallback((msg: string) => {
@@ -1387,6 +1397,55 @@ export function DrivePageClient({
     }
   };
 
+  const togglePin = async (file: DriveFileRow) => {
+    if (file.uploading || file.creating) return;
+    const next = !file.pinned;
+    // 낙관적 반영
+    await mutate(
+      listUrl,
+      (cur: ListPayload | undefined) => {
+        if (!cur) return cur;
+        return {
+          ...cur,
+          files: cur.files.map((f) =>
+            f.id === file.id ? { ...f, pinned: next } : f
+          ),
+        };
+      },
+      { revalidate: false }
+    );
+    setOptimisticRows((prev) =>
+      prev.map((r) => (r.id === file.id ? { ...r, pinned: next } : r))
+    );
+    try {
+      const res = await fetch(`/api/drive/file/${encodeURIComponent(file.id)}/pin`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: next }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "고정 실패");
+    } catch (e) {
+      await mutate(
+        listUrl,
+        (cur: ListPayload | undefined) => {
+          if (!cur) return cur;
+          return {
+            ...cur,
+            files: cur.files.map((f) =>
+              f.id === file.id ? { ...f, pinned: !next } : f
+            ),
+          };
+        },
+        { revalidate: false }
+      );
+      setOptimisticRows((prev) =>
+        prev.map((r) => (r.id === file.id ? { ...r, pinned: !next } : r))
+      );
+      showToast(e instanceof Error ? e.message : "고정 실패");
+    }
+  };
+
   const openFolder = (folder: DriveFileRow) => {
     if (!folder.driveFileId) {
       showToast("이 폴더는 아직 Drive와 연결되지 않았습니다.");
@@ -1909,6 +1968,9 @@ export function DrivePageClient({
                     file.uploading || file.creating ? "text-gray-500" : "text-gray-900"
                   )}
                 >
+                  {file.pinned ? (
+                    <Pin className="mr-1 inline size-3.5 -translate-y-px text-amber-600" aria-hidden />
+                  ) : null}
                   {file.creating
                     ? `${file.name} (생성 중…)`
                     : file.uploading
@@ -1991,6 +2053,24 @@ export function DrivePageClient({
                   >
                     열기
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    title={file.pinned ? "고정 해제" : "상단 고정"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void togglePin(file);
+                    }}
+                  >
+                    {file.pinned ? (
+                      <PinOff className="size-3.5" />
+                    ) : (
+                      <Pin className="size-3.5" />
+                    )}
+                    {file.pinned ? "고정 해제" : "고정"}
+                  </Button>
                   {canShowRenameButton(file) && (
                     <Button
                       type="button"
@@ -2060,6 +2140,24 @@ export function DrivePageClient({
                     }}
                   >
                     구글에서 열기
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    title={file.pinned ? "고정 해제" : "상단 고정"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void togglePin(file);
+                    }}
+                  >
+                    {file.pinned ? (
+                      <PinOff className="size-3.5" />
+                    ) : (
+                      <Pin className="size-3.5" />
+                    )}
+                    {file.pinned ? "고정 해제" : "고정"}
                   </Button>
                   {canShowRenameButton(file) && (
                     <Button
@@ -2155,6 +2253,11 @@ export function DrivePageClient({
                         hasThumbHint={hasThumb}
                       />
                     )}
+                    {file.pinned && !busy && (
+                      <span className="absolute left-1.5 top-1.5 rounded bg-amber-500/90 p-0.5 text-white shadow">
+                        <Pin className="size-3.5" aria-label="고정됨" />
+                      </span>
+                    )}
                   </button>
                   <div className="flex items-start gap-1 border-t px-2 py-1.5">
                     {renamingId === file.id ? (
@@ -2219,6 +2322,9 @@ export function DrivePageClient({
                               </DropdownMenuItem>
                             </>
                           )}
+                          <DropdownMenuItem onSelect={() => void togglePin(file)}>
+                            {file.pinned ? "고정 해제" : "상단 고정"}
+                          </DropdownMenuItem>
                           {canShowRenameButton(file) && (
                             <DropdownMenuItem
                               onSelect={() => {

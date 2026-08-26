@@ -43,6 +43,34 @@ function explorerListWhere(extra: Prisma.DriveFileWhereInput = {}): Prisma.Drive
   };
 }
 
+async function withPinnedFlag<T extends { id: string }>(
+  userId: string,
+  rows: T[]
+): Promise<(T & { pinned: boolean })[]> {
+  if (rows.length === 0) return [];
+  const pins = await prisma.driveFilePin.findMany({
+    where: {
+      userId,
+      driveFileId: { in: rows.map((r) => r.id) },
+    },
+    select: { driveFileId: true },
+  });
+  const pinnedIds = new Set(pins.map((p) => p.driveFileId));
+  return rows.map((r) => ({ ...r, pinned: pinnedIds.has(r.id) }));
+}
+
+function sortExplorerRows<T extends { pinned?: boolean; isFolder: boolean; name: string }>(
+  rows: T[]
+): T[] {
+  return [...rows].sort((a, b) => {
+    const ap = a.pinned ? 1 : 0;
+    const bp = b.pinned ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+    return a.name.localeCompare(b.name, "ko");
+  });
+}
+
 export async function GET(req: NextRequest) {
   const t0 = Date.now();
   try {
@@ -76,6 +104,7 @@ export async function GET(req: NextRequest) {
         },
       });
       const visible = await filterAccessibleDriveFiles(actor, files);
+      const withPin = sortExplorerRows(await withPinnedFlag(session.user.id, visible));
       const queryMs = Date.now() - tQ;
       console.log("[drive/files] timing", {
         mode: "search",
@@ -85,7 +114,7 @@ export async function GET(req: NextRequest) {
         visible: visible.length,
       });
       return NextResponse.json({
-        files: visible.slice(0, 50).map(serializeDriveFile),
+        files: withPin.slice(0, 50).map(serializeDriveFile),
         search,
         explorerConfigured: isDriveExplorerFolderConfigured(),
         timing: { queryMs, totalMs: Date.now() - t0 },
@@ -108,6 +137,7 @@ export async function GET(req: NextRequest) {
       },
     });
     const visible = await filterAccessibleDriveFiles(actor, files);
+    const withPin = sortExplorerRows(await withPinnedFlag(session.user.id, visible));
     const queryMs = Date.now() - tQ;
     console.log("[drive/files] timing", {
       mode: "list",
@@ -121,7 +151,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({
-      files: visible.map(serializeDriveFile),
+      files: withPin.map(serializeDriveFile),
       parentId,
       explorerConfigured: isDriveExplorerFolderConfigured(),
       timing: { queryMs, totalMs: Date.now() - t0 },

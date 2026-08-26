@@ -313,6 +313,7 @@ model User {
   driveFiles             DriveFile[]             @relation("DriveFileCreatedBy")
   driveFilesTrashedByMe  DriveFile[]             @relation("DriveFileTrashedBy")
   driveFilesUpdatedByMe  DriveFile[]             @relation("DriveFileUpdatedBy")
+  driveFilePins          DriveFilePin[]
   driveActivityLogs      DriveActivityLog[]      @relation("DriveActivityActor")
   driveTeamShares        DriveTeamShare[]        @relation("DriveTeamShareUser")
   driveTeamSharesCreated DriveTeamShare[]        @relation("DriveTeamShareCreator")
@@ -1182,6 +1183,7 @@ model DriveFile {
   projectFiles ProjectDriveFile[]
   postFiles    PostDriveFile[]
   activityLogs DriveActivityLog[]
+  pins         DriveFilePin[]
 
   lastSyncedAt    DateTime?
   driveModifiedAt DateTime?
@@ -1198,6 +1200,20 @@ model DriveFile {
   @@index([rootId, parentId])
   @@index([trashed])
   @@index([trashed, rootId])
+}
+
+/// 탐색기 개인 상단고정 (사용자별)
+model DriveFilePin {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  driveFileId String
+  driveFile   DriveFile @relation(fields: [driveFileId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, driveFileId])
+  @@index([userId, createdAt])
+  @@index([driveFileId])
 }
 
 enum DriveActivityAction {
