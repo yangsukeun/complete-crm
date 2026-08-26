@@ -7,6 +7,9 @@ import {
   Pause,
   Play,
   Pencil,
+  LayoutGrid,
+  Rows3,
+  MoreHorizontal,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -75,6 +78,7 @@ type DriveFileRow = {
   isFolder: boolean;
   driveFileId: string | null;
   webViewLink: string | null;
+  thumbnailLink?: string | null;
   driveModifiedAt: string | null;
   parentId: string | null;
   createdBy?: string | null;
@@ -89,6 +93,9 @@ type DriveFileRow = {
   creating?: boolean;
   _count?: { children: number };
 };
+
+type DriveViewMode = "list" | "grid";
+const DRIVE_VIEW_MODE_KEY = "drive-explorer-view-mode";
 
 type FolderUploadFailure = {
   relativePath: string;
@@ -203,6 +210,80 @@ function FileTypeIcon({ mimeType, isFolder }: { mimeType: string | null; isFolde
   return <File className="size-4 shrink-0 text-gray-500" />;
 }
 
+function FileTypeIconLarge({
+  mimeType,
+  isFolder,
+}: {
+  mimeType: string | null;
+  isFolder: boolean;
+}) {
+  if (isFolder) return <Folder className="size-14 text-amber-500" />;
+  const m = mimeType ?? "";
+  if (m.includes("spreadsheet") || m.includes("excel")) {
+    return <FileSpreadsheet className="size-14 text-emerald-500" />;
+  }
+  if (m.includes("document") || m.includes("word") || m.includes("pdf") || m.includes("text")) {
+    return <FileText className="size-14 text-sky-500" />;
+  }
+  if (m.startsWith("image/")) return <FileImage className="size-14 text-violet-500" />;
+  if (m.startsWith("video/")) return <FileVideo className="size-14 text-rose-500" />;
+  return <File className="size-14 text-gray-400" />;
+}
+
+function mayHaveDriveThumbnail(
+  mimeType: string | null,
+  isFolder: boolean,
+  thumbnailLink?: string | null
+): boolean {
+  if (isFolder) return false;
+  if (thumbnailLink) return true;
+  const m = mimeType ?? "";
+  return (
+    m.startsWith("image/") ||
+    m.startsWith("video/") ||
+    m === "application/pdf" ||
+    m.includes("google-apps.document") ||
+    m.includes("google-apps.spreadsheet") ||
+    m.includes("google-apps.presentation") ||
+    m.includes("google-apps.drawing")
+  );
+}
+
+/** lazy 썸네일 — 실패 시 아이콘 폴백 */
+function DriveThumb({
+  fileId,
+  mimeType,
+  isFolder,
+  hasThumbHint,
+  className,
+}: {
+  fileId: string;
+  mimeType: string | null;
+  isFolder: boolean;
+  hasThumbHint: boolean;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (isFolder || !hasThumbHint || failed) {
+    return (
+      <div className={cn("flex items-center justify-center bg-gray-50", className)}>
+        <FileTypeIconLarge mimeType={mimeType} isFolder={isFolder} />
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/api/drive/thumbnail/${encodeURIComponent(fileId)}?w=256`}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className={cn("h-full w-full object-cover", className)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function formatSize(bytes: string | null) {
   if (!bytes) return "—";
   const n = Number(bytes);
@@ -271,6 +352,7 @@ export function DrivePageClient({
   const [renameDraft, setRenameDraft] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [viewMode, setViewMode] = useState<DriveViewMode>("list");
   const [dragOver, setDragOver] = useState(false);
   const [optimisticRows, setOptimisticRows] = useState<DriveFileRow[]>([]);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -316,6 +398,24 @@ export function DrivePageClient({
     setToast(msg);
     window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRIVE_VIEW_MODE_KEY);
+      if (raw === "list" || raw === "grid") setViewMode(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const changeViewMode = (mode: DriveViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(DRIVE_VIEW_MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const driveUrlFor = useCallback((driveFileId: string | null) => {
     if (!driveFileId) return "/drive";
@@ -1591,6 +1691,32 @@ export function DrivePageClient({
             {isSyncing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             {isSyncing ? "새로고침 중…" : "이 폴더 새로고침"}
           </Button>
+          <div className="flex items-center rounded-md border" role="group" aria-label="표시 방식">
+            <button
+              type="button"
+              title="목록 보기"
+              aria-pressed={viewMode === "list"}
+              onClick={() => changeViewMode("list")}
+              className={cn(
+                "text-muted-foreground hover:bg-muted/80 rounded-l-md p-1.5 transition-colors",
+                viewMode === "list" && "bg-muted text-foreground"
+              )}
+            >
+              <Rows3 className="size-4" />
+            </button>
+            <button
+              type="button"
+              title="그리드 보기"
+              aria-pressed={viewMode === "grid"}
+              onClick={() => changeViewMode("grid")}
+              className={cn(
+                "text-muted-foreground hover:bg-muted/80 rounded-r-md border-l p-1.5 transition-colors",
+                viewMode === "grid" && "bg-muted text-foreground"
+              )}
+            >
+              <LayoutGrid className="size-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1693,13 +1819,6 @@ export function DrivePageClient({
           </div>
         )}
 
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_minmax(220px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
-          <span>이름</span>
-          <span>수정일</span>
-          <span>크기</span>
-          <span>작업</span>
-        </div>
-
         {(!navReady || (isLoading && !data)) && (
           <div className="flex items-center justify-center gap-2 px-4 py-16 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
@@ -1712,6 +1831,15 @@ export function DrivePageClient({
             {error instanceof Error ? error.message : "목록을 불러오지 못했습니다."}
           </div>
         )}
+
+        {viewMode === "list" && (
+          <>
+        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_minmax(220px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+          <span>이름</span>
+          <span>수정일</span>
+          <span>크기</span>
+          <span>작업</span>
+        </div>
 
         {navReady &&
           displayFiles.map((file) => (
@@ -1979,6 +2107,157 @@ export function DrivePageClient({
             </div>
           </div>
         ))}
+          </>
+        )}
+
+        {viewMode === "grid" && navReady && !error && (
+          <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {displayFiles.map((file) => {
+              const busy = Boolean(file.uploading || file.creating);
+              const hasThumb = mayHaveDriveThumbnail(
+                file.mimeType,
+                file.isFolder,
+                file.thumbnailLink
+              );
+              return (
+                <li
+                  key={file.id}
+                  className={cn(
+                    "group relative flex flex-col overflow-hidden rounded-lg border bg-white",
+                    busy ? "opacity-70" : "hover:border-sky-300 hover:shadow-sm"
+                  )}
+                >
+                  <button
+                    type="button"
+                    className="relative aspect-square w-full overflow-hidden bg-gray-50"
+                    disabled={busy || renamingId === file.id}
+                    onClick={() => {
+                      if (busy || renamingId === file.id) return;
+                      if (file.isFolder) openFolder(file);
+                      else void openFilePreview(file);
+                    }}
+                    onDoubleClick={() => {
+                      if (busy || renamingId === file.id) return;
+                      if (file.isFolder) openFolder(file);
+                      else void openFilePreview(file);
+                    }}
+                    title={file.name}
+                  >
+                    {busy ? (
+                      <div className="flex h-full items-center justify-center">
+                        <Loader2 className="size-8 animate-spin text-gray-400" />
+                      </div>
+                    ) : (
+                      <DriveThumb
+                        fileId={file.id}
+                        mimeType={file.mimeType}
+                        isFolder={file.isFolder}
+                        hasThumbHint={hasThumb}
+                      />
+                    )}
+                  </button>
+                  <div className="flex items-start gap-1 border-t px-2 py-1.5">
+                    {renamingId === file.id ? (
+                      <Input
+                        ref={renameInputRef}
+                        type="text"
+                        value={renameDraft}
+                        disabled={renameSaving}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void submitRename();
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelRename();
+                          }
+                        }}
+                        className="h-7 flex-1 text-xs"
+                        aria-label="새 이름"
+                      />
+                    ) : (
+                      <p className="min-w-0 flex-1 truncate text-xs font-medium text-gray-900" title={file.name}>
+                        {file.name}
+                      </p>
+                    )}
+                    {!busy && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 shrink-0 p-0 opacity-70 group-hover:opacity-100"
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="더보기"
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          {file.isFolder ? (
+                            <DropdownMenuItem
+                              onSelect={() => openFolder(file)}
+                            >
+                              열기
+                            </DropdownMenuItem>
+                          ) : (
+                            <>
+                              <DropdownMenuItem
+                                onSelect={() => void openFilePreview(file)}
+                              >
+                                미리보기
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => void openFileInGoogle(file)}
+                              >
+                                구글에서 열기
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {canShowRenameButton(file) && (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                if (renamingId === file.id) void submitRename();
+                                else startRename(file);
+                              }}
+                            >
+                              {renamingId === file.id ? "저장" : "이름 변경"}
+                            </DropdownMenuItem>
+                          )}
+                          {canShowDeleteButton(file) && (
+                            <DropdownMenuItem
+                              className="text-rose-700"
+                              onSelect={() => void handleDelete(file)}
+                            >
+                              삭제
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                  {file.uploading && typeof file.uploadPercent === "number" && (
+                    <div className="border-t px-2 py-1 text-[10px] text-muted-foreground">
+                      {file.uploadPaused
+                        ? "일시정지"
+                        : `${file.uploadPercent}% · 남음 ${formatUploadBytes(
+                            Math.max(
+                              0,
+                              (file.uploadBytesTotal ?? 0) - (file.uploadBytesSent ?? 0)
+                            )
+                          )}`}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
         {!navReady || isLoading || error ? null : displayFiles.length === 0 ? (
           <div className="px-4 py-16 text-center text-sm text-muted-foreground">
