@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate, useSWRConfig } from "swr";
 import {
+  Pause,
+  Play,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -26,6 +28,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -38,14 +48,20 @@ import {
   canTrashExplorerFile,
 } from "@/lib/drive/folder-trash-policy";
 import {
+  ExplorerUploadSessionControl,
   filesFromDataTransfer,
   filesFromFileList,
   folderPathsFromEntries,
+  formatUploadBytes,
   parentFolderPath,
   uploadExplorerFileResumable,
   type PathFile,
 } from "@/lib/drive/explorer-resumable-upload";
-import { assertExplorerUploadSize } from "@/lib/drive/explorer-upload-limits";
+import {
+  assertExplorerUploadSize,
+  EXPLORER_UPLOAD_LARGE_CONFIRM_MESSAGE,
+  needsLargeUploadConfirm,
+} from "@/lib/drive/explorer-upload-limits";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -63,6 +79,10 @@ type DriveFileRow = {
   uploading?: boolean;
   /** 0–100 업로드 진행률 */
   uploadPercent?: number | null;
+  uploadBytesSent?: number | null;
+  uploadBytesTotal?: number | null;
+  uploadPaused?: boolean;
+  uploadStatusText?: string | null;
   /** 낙관적 새 폴더 생성 중 */
   creating?: boolean;
   _count?: { children: number };
@@ -237,6 +257,12 @@ export function DrivePageClient({
   const [folderUploadFailures, setFolderUploadFailures] = useState<FolderUploadFailure[]>(
     []
   );
+  const [largeConfirmOpen, setLargeConfirmOpen] = useState(false);
+  const [largeConfirmMessage, setLargeConfirmMessage] = useState(
+    EXPLORER_UPLOAD_LARGE_CONFIRM_MESSAGE
+  );
+  const largeConfirmResolver = useRef<((ok: boolean) => void) | null>(null);
+  const uploadControlsRef = useRef<Map<string, ExplorerUploadSessionControl>>(new Map());
   const [toast, setToast] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -538,19 +564,60 @@ export function DrivePageClient({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [navReady, currentId, currentDriveFolderId, search, runFolderSync]);
 
-  const commitUploadedFile = async (tempId: string, f: DriveFileRow) => {
-    setOptimisticRows((prev) =>
-      prev.map((r) =>
-        r.id === tempId
-          ? {
-              ...f,
-              uploading: false,
-              uploadPercent: null,
-              driveModifiedAt: f.driveModifiedAt ?? new Date().toISOString(),
-            }
-          : r
-      )
+  const askLargeUploadConfirm = useCallback((files: File[]) => {
+    const large = files.filter((f) => needsLargeUploadConfirm(f.size));
+    if (large.length === 0) return Promise.resolve(true);
+    const names = large
+      .slice(0, 3)
+      .map((f) => `${f.name} (${formatUploadBytes(f.size)})`)
+      .join(", ");
+    const extra =
+      large.length > 3 ? ` 외 ${large.length - 3}개` : large.length > 1 ? ` 등 ${large.length}개` : "";
+    setLargeConfirmMessage(
+      `${EXPLORER_UPLOAD_LARGE_CONFIRM_MESSAGE}\n\n${names}${extra}`
     );
+    setLargeConfirmOpen(true);
+    return new Promise<boolean>((resolve) => {
+      largeConfirmResolver.current = resolve;
+    });
+  }, []);
+
+  const resolveLargeConfirm = (ok: boolean) => {
+    setLargeConfirmOpen(false);
+    largeConfirmResolver.current?.(ok);
+    largeConfirmResolver.current = null;
+  };
+
+  const toggleUploadPause = (tempId: string) => {
+    const ctrl = uploadControlsRef.current.get(tempId);
+    if (!ctrl) return;
+    if (ctrl.isPaused) {
+      ctrl.resume();
+      setOptimisticRows((prev) =>
+        prev.map((r) =>
+          r.id === tempId
+            ? { ...r, uploadPaused: false, uploadStatusText: "재개 중…" }
+            : r
+        )
+      );
+    } else {
+      ctrl.pause();
+      setOptimisticRows((prev) =>
+        prev.map((r) =>
+          r.id === tempId
+            ? { ...r, uploadPaused: true, uploadStatusText: "일시정지됨" }
+            : r
+        )
+      );
+    }
+  };
+
+  const commitUploadedFile = async (tempId: string, f: DriveFileRow) => {
+    uploadControlsRef.current.delete(tempId);
+    setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+    const inCurrentFolder =
+      (f.parentId ?? null) === (currentId ?? null) || f.parentId === currentId;
+    if (!inCurrentFolder) return;
     await mutate(
       listUrl,
       (cur: ListPayload | undefined) => {
@@ -560,7 +627,6 @@ export function DrivePageClient({
       },
       { revalidate: false }
     );
-    setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
   };
 
   const uploadSingleResumable = async (
@@ -575,12 +641,30 @@ export function DrivePageClient({
       showToast(sizeCheck.error);
       return { ok: false as const, error: sizeCheck.error };
     }
+    const controls = new ExplorerUploadSessionControl();
+    uploadControlsRef.current.set(tempId, controls);
     try {
       const uploaded = await uploadExplorerFileResumable(file, parentDriveId, {
+        controls,
         onProgress: (p) => {
           setOptimisticRows((prev) =>
             prev.map((r) =>
-              r.id === tempId ? { ...r, uploadPercent: p.percent } : r
+              r.id === tempId
+                ? {
+                    ...r,
+                    uploadPercent: p.percent,
+                    uploadBytesSent: p.bytesSent,
+                    uploadBytesTotal: p.bytesTotal,
+                    uploadPaused: p.status === "paused",
+                    uploadStatusText:
+                      p.status === "paused"
+                        ? "일시정지됨"
+                        : p.status === "retrying"
+                          ? p.message ?? "재시도 중…"
+                          : p.message ??
+                            `${p.percent}% · 남음 ${formatUploadBytes(p.bytesRemaining)}`,
+                  }
+                : r
             )
           );
         },
@@ -588,7 +672,11 @@ export function DrivePageClient({
       await commitUploadedFile(tempId, uploaded as DriveFileRow);
       return { ok: true as const };
     } catch (e) {
+      uploadControlsRef.current.delete(tempId);
       setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return { ok: false as const, error: "취소됨" };
+      }
       const msg = e instanceof Error ? e.message : `${file.name} 업로드 실패`;
       showToast(msg);
       return { ok: false as const, error: msg };
@@ -601,6 +689,12 @@ export function DrivePageClient({
     if (list.length === 0) return;
     if (!canUploadHere || !currentDriveFolderId) {
       showToast("폴더에 들어가서 업로드하세요.");
+      return;
+    }
+
+    const confirmed = await askLargeUploadConfirm(list);
+    if (!confirmed) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -619,6 +713,10 @@ export function DrivePageClient({
       parentId: parentDbId,
       uploading: true,
       uploadPercent: 0,
+      uploadBytesSent: 0,
+      uploadBytesTotal: file.size,
+      uploadPaused: false,
+      uploadStatusText: "준비 중…",
     }));
 
     setOptimisticRows((prev) => [...temps, ...prev]);
@@ -627,7 +725,7 @@ export function DrivePageClient({
 
     const indexed = list.map((file, i) => ({ file, temp: temps[i]! }));
     let done = 0;
-    await mapPool(indexed, 3, async ({ file, temp }) => {
+    await mapPool(indexed, 2, async ({ file, temp }) => {
       await uploadSingleResumable(file, folderId, parentDbId, temp.id);
       done += 1;
       setUploadBanner(`업로드 중… ${done}/${list.length}`);
@@ -646,6 +744,12 @@ export function DrivePageClient({
     if (entries.length === 0) return;
     if (!canUploadHere || !currentDriveFolderId) {
       showToast("폴더에 들어가서 업로드하세요.");
+      return;
+    }
+
+    const confirmed = await askLargeUploadConfirm(entries.map((e) => e.file));
+    if (!confirmed) {
+      if (folderInputRef.current) folderInputRef.current.value = "";
       return;
     }
 
@@ -703,49 +807,40 @@ export function DrivePageClient({
       }
 
       const tempId = `uploading-folder-${Date.now()}-${i}`;
-      if (parentDriveId === rootDriveId) {
-        setOptimisticRows((prev) => [
-          {
-            id: tempId,
-            name: entry.file.name,
-            mimeType: entry.file.type || null,
-            size: String(entry.file.size),
-            isFolder: false,
-            driveFileId: null,
-            webViewLink: null,
-            driveModifiedAt: null,
-            parentId: currentId,
-            uploading: true,
-            uploadPercent: 0,
-          },
-          ...prev,
-        ]);
-      }
+      setOptimisticRows((prev) => [
+        {
+          id: tempId,
+          name: entry.file.name,
+          mimeType: entry.file.type || null,
+          size: String(entry.file.size),
+          isFolder: false,
+          driveFileId: null,
+          webViewLink: null,
+          driveModifiedAt: null,
+          parentId: parentDriveId === rootDriveId ? currentId : null,
+          uploading: true,
+          uploadPercent: 0,
+          uploadBytesSent: 0,
+          uploadBytesTotal: entry.file.size,
+          uploadPaused: false,
+          uploadStatusText: entry.relativePath,
+        },
+        ...prev,
+      ]);
 
       setUploadBanner(`파일 업로드 ${i + 1}/${total} — ${entry.relativePath}`);
-      try {
-        const uploaded = await uploadExplorerFileResumable(entry.file, parentDriveId, {
-          onProgress: (p) => {
-            if (parentDriveId !== rootDriveId) return;
-            setOptimisticRows((prev) =>
-              prev.map((r) =>
-                r.id === tempId ? { ...r, uploadPercent: p.percent } : r
-              )
-            );
-          },
-        });
-        if (parentDriveId === rootDriveId) {
-          await commitUploadedFile(tempId, uploaded as DriveFileRow);
-        } else {
-          setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
-        }
-      } catch (e) {
-        setOptimisticRows((prev) => prev.filter((r) => r.id !== tempId));
+      const result = await uploadSingleResumable(
+        entry.file,
+        parentDriveId,
+        parentDriveId === rootDriveId ? currentId : null,
+        tempId
+      );
+      if (!result.ok) {
         failures.push({
           relativePath: entry.relativePath,
           file: entry.file,
           parentDriveId,
-          error: e instanceof Error ? e.message : "업로드 실패",
+          error: result.error,
         });
       }
     }
@@ -1539,13 +1634,20 @@ export function DrivePageClient({
                 {file.creating
                   ? `${file.name} (생성 중…)`
                   : file.uploading
-                    ? `${file.name} (업로드 중${
-                        typeof file.uploadPercent === "number"
-                          ? ` ${file.uploadPercent}%`
-                          : "…"
-                      })`
+                    ? `${file.name}`
                     : file.name}
               </span>
+              {file.uploading && typeof file.uploadPercent === "number" && (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {file.uploadPercent}%
+                  {typeof file.uploadBytesTotal === "number" &&
+                  typeof file.uploadBytesSent === "number"
+                    ? ` · 남음 ${formatUploadBytes(
+                        Math.max(0, file.uploadBytesTotal - file.uploadBytesSent)
+                      )}`
+                    : null}
+                </span>
+              )}
               {file.isFolder && !file.creating && (file._count?.children ?? 0) > 0 && (
                 <span className="shrink-0 text-xs text-muted-foreground">
                   ({file._count?.children})
@@ -1566,11 +1668,38 @@ export function DrivePageClient({
               {file.creating ? (
                 <span className="text-xs text-muted-foreground">생성 중</span>
               ) : file.uploading ? (
-                <span className="text-xs text-muted-foreground">
-                  {typeof file.uploadPercent === "number"
-                    ? `${file.uploadPercent}%`
-                    : "업로드 중"}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="max-w-[140px] truncate text-xs text-muted-foreground" title={file.uploadStatusText ?? undefined}>
+                    {file.uploadPaused
+                      ? "일시정지"
+                      : file.uploadStatusText ||
+                        (typeof file.uploadPercent === "number"
+                          ? `${file.uploadPercent}%`
+                          : "업로드 중")}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleUploadPause(file.id);
+                    }}
+                  >
+                    {file.uploadPaused ? (
+                      <>
+                        <Play className="size-3.5" />
+                        재개
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="size-3.5" />
+                        일시정지
+                      </>
+                    )}
+                  </Button>
+                </div>
               ) : file.isFolder ? (
                 <>
                   <Button
@@ -1739,6 +1868,30 @@ export function DrivePageClient({
               : "문서 저장 위치"
         }
       />
+
+      <Dialog
+        open={largeConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) resolveLargeConfirm(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>대용량 업로드 확인</DialogTitle>
+            <DialogDescription className="whitespace-pre-line text-left">
+              {largeConfirmMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => resolveLargeConfirm(false)}>
+              취소
+            </Button>
+            <Button type="button" onClick={() => resolveLargeConfirm(true)}>
+              계속
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

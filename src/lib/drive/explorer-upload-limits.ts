@@ -1,20 +1,30 @@
-/** 탐색기 업로드 상한 (바이트). 조정 시 이 상수만 변경. */
-export const EXPLORER_UPLOAD_MAX_BYTES = 500 * 1024 * 1024; // 500MB
-
 /** Google resumable 청크: 256KiB 배수, Vercel body 한도(≈4.5MB) 미만 */
 export const EXPLORER_UPLOAD_CHUNK_BYTES = 256 * 1024 * 8; // 2MiB
 
-export const EXPLORER_UPLOAD_TOO_LARGE_MESSAGE =
-  "영상 원본 등 대용량은 NAS 문서함 이용을 권장합니다. (탐색기 업로드는 500MB까지)";
+/** 이 크기 초과 시 업로드 전 확인 모달 */
+export const EXPLORER_UPLOAD_CONFIRM_BYTES = 1024 * 1024 * 1024; // 1GB
 
+export const EXPLORER_UPLOAD_LARGE_CONFIRM_MESSAGE =
+  "대용량 파일입니다. 업로드 중 탭을 닫으면 중단됩니다. 계속할까요?";
+
+/** 크기 유효성만 검사 (상한 없음) */
 export function assertExplorerUploadSize(
   size: number
 ): { ok: true } | { ok: false; error: string } {
   if (!Number.isFinite(size) || size < 0) {
     return { ok: false, error: "파일 크기가 올바르지 않습니다." };
   }
-  if (size > EXPLORER_UPLOAD_MAX_BYTES) {
-    return { ok: false, error: EXPLORER_UPLOAD_TOO_LARGE_MESSAGE };
-  }
   return { ok: true };
+}
+
+export function needsLargeUploadConfirm(size: number): boolean {
+  return Number.isFinite(size) && size > EXPLORER_UPLOAD_CONFIRM_BYTES;
+}
+
+export function formatUploadBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

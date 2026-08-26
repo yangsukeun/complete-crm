@@ -9,6 +9,7 @@ import {
 import {
   assertExplorerUploadSize,
   EXPLORER_UPLOAD_CHUNK_BYTES,
+  EXPLORER_UPLOAD_CONFIRM_BYTES,
 } from "@/lib/drive/explorer-upload-limits";
 import { sanitizeUploadDisplayName, isUploadFileNameBlocked } from "@/lib/upload-policy";
 import { signExplorerUploadSession } from "@/lib/drive/upload-session-token";
@@ -143,7 +144,12 @@ export async function POST(req: Request) {
       name: displayName,
       mime: mimeType,
       size,
-      exp: Date.now() + 2 * 60 * 60 * 1000,
+      // 대용량은 이어올리기 여유를 위해 세션 수명 연장
+      exp:
+        Date.now() +
+        (size > EXPLORER_UPLOAD_CONFIRM_BYTES
+          ? 24 * 60 * 60 * 1000
+          : 6 * 60 * 60 * 1000),
     });
 
     // 동일 출처 청크 프록시 (브라우저→Google 직접 PUT은 SA 세션 CORS로 불가)

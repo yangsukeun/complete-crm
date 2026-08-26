@@ -47,15 +47,22 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Content-Range 헤더가 필요합니다." }, { status: 400 });
     }
 
-    const buf = Buffer.from(await req.arrayBuffer());
+    // 상태 조회: Content-Range: bytes */N + 빈 본문
+    const isStatusQuery = /^\s*bytes\s+\*\/\d+\s*$/i.test(contentRange);
+    const buf = isStatusQuery ? Buffer.alloc(0) : Buffer.from(await req.arrayBuffer());
+
+    const gHeaders: Record<string, string> = {
+      "Content-Length": String(buf.byteLength),
+      "Content-Range": contentRange,
+    };
+    if (!isStatusQuery) {
+      gHeaders["Content-Type"] = verified.payload.mime || "application/octet-stream";
+    }
+
     const gRes = await fetch(verified.payload.gUrl, {
       method: "PUT",
-      headers: {
-        "Content-Length": String(buf.byteLength),
-        "Content-Range": contentRange,
-        "Content-Type": verified.payload.mime || "application/octet-stream",
-      },
-      body: buf,
+      headers: gHeaders,
+      body: buf.byteLength > 0 ? buf : undefined,
     });
 
     const text = await gRes.text().catch(() => "");
