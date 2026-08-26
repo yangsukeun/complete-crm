@@ -16,6 +16,7 @@ import {
   ArrowRight,
   ArrowUp,
   ChevronDown,
+  Download,
   File,
   FileImage,
   FileSpreadsheet,
@@ -1272,6 +1273,99 @@ export function DrivePageClient({
     }
   };
 
+  const filenameFromDisposition = (header: string | null, fallback: string) => {
+    if (!header) return fallback;
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+    if (star?.[1]) {
+      try {
+        return decodeURIComponent(star[1].trim());
+      } catch {
+        /* ignore */
+      }
+    }
+    const plain = /filename="?([^";]+)"?/i.exec(header);
+    return plain?.[1]?.trim() || fallback;
+  };
+
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
+
+  const downloadFilesByIds = async (ids: string[]) => {
+    const unique = [...new Set(ids)].filter(Boolean);
+    if (unique.length === 0) {
+      showToast("다운로드할 파일을 선택하세요.");
+      return;
+    }
+    if (batchBusy) return;
+    setBatchBusy(true);
+    try {
+      const res = await fetch("/api/drive/files/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: unique }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "다운로드 실패");
+      }
+      const blob = await res.blob();
+      const name = filenameFromDisposition(
+        res.headers.get("Content-Disposition"),
+        unique.length > 1 ? "drive-download.zip" : "download"
+      );
+      triggerBlobDownload(blob, name);
+      const skippedFolders = Number(res.headers.get("X-Drive-Skipped-Folders") || 0);
+      const errCount = Number(res.headers.get("X-Drive-Download-Errors") || 0);
+      if (skippedFolders > 0 || errCount > 0) {
+        showToast(
+          [
+            "다운로드 완료",
+            skippedFolders > 0 ? `폴더 ${skippedFolders}개 제외` : null,
+            errCount > 0 ? `${errCount}건 실패` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        );
+      } else {
+        showToast(
+          unique.length > 1 ? `${unique.length}개 파일을 zip으로 받았습니다.` : "다운로드를 시작했습니다."
+        );
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "다운로드 실패");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleBatchDownload = () => {
+    const ids = displayFiles
+      .filter((f) => selectedIds.has(f.id) && !f.isFolder && !f.uploading && !f.creating)
+      .map((f) => f.id);
+    if (ids.length === 0) {
+      showToast("파일만 다운로드할 수 있습니다. (폴더 제외)");
+      return;
+    }
+    void downloadFilesByIds(ids);
+  };
+
+  const handleDownloadFile = (file: DriveFileRow) => {
+    if (file.isFolder || file.uploading || file.creating) {
+      showToast("파일만 다운로드할 수 있습니다.");
+      return;
+    }
+    void downloadFilesByIds([file.id]);
+  };
+
   const toggleSelect = (id: string, checked?: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -2094,6 +2188,21 @@ export function DrivePageClient({
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
               disabled={batchBusy}
+              onClick={handleBatchDownload}
+            >
+              {batchBusy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
+              다운로드
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              disabled={batchBusy}
               onClick={openMovePicker}
             >
               <FolderInput className="size-3.5" />
@@ -2451,6 +2560,20 @@ export function DrivePageClient({
                   </Button>
                   <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    disabled={batchBusy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownloadFile(file);
+                    }}
+                  >
+                    <Download className="size-3.5" />
+                    다운로드
+                  </Button>
+                  <Button
+                    type="button"
                     variant={file.pinned ? "secondary" : "outline"}
                     size="sm"
                     className={cn(
@@ -2680,6 +2803,11 @@ export function DrivePageClient({
                               >
                                 구글에서 열기
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => handleDownloadFile(file)}
+                              >
+                                다운로드
+                              </DropdownMenuItem>
                             </>
                           )}
                           <DropdownMenuItem onSelect={() => void togglePin(file)}>
@@ -2760,6 +2888,17 @@ export function DrivePageClient({
                   onClick={() => void openFileInGoogle(previewFile)}
                 >
                   구글에서 열기
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1"
+                  disabled={batchBusy}
+                  onClick={() => handleDownloadFile(previewFile)}
+                >
+                  <Download className="size-3.5" />
+                  다운로드
                 </Button>
                 <Button
                   type="button"
