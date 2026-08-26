@@ -111,7 +111,7 @@ export async function GET() {
       balance: {
         year,
         total,
-        annualTotal: pool.totalEntitled,
+        annualTotal: pool.displayGranted,
         carryOver,
         used,
         manualDeduction,
@@ -119,7 +119,8 @@ export async function GET() {
         available: pool.available,
         compensationOwedDays: pool.compensationOwedDays,
         breakdown: pool.breakdown,
-        totalEntitled: pool.totalEntitled,
+        totalEntitled: pool.displayGranted,
+        lifetimeEntitled: pool.totalEntitled,
         totalConsumed: pool.totalConsumed,
         totalExpired: pool.totalExpired,
         nextAccrualDate: pool.nextAccrualDate,

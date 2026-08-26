@@ -223,7 +223,7 @@ export async function PATCH(
         const yr = getCurrentLeaveCalendarYearKst();
         await ensureLegacyCarryAccrual(id);
         const pool = await calculateLeavePool(id, new Date());
-        const entitlement = pool.totalEntitled;
+        const entitlement = pool.displayGranted;
         return { year: yr, entitlement };
       })();
       return leaveCalcMemo;

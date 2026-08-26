@@ -288,7 +288,7 @@ export default async function DashboardPage() {
     } = dashPrefetch;
 
     const adminPool = await calculateLeavePool(session.user.id, new Date());
-    const annualTotal = adminPool.totalEntitled;
+    const annualTotal = adminPool.displayGranted;
 
     const completedTasks = tasksCreatedByMe.filter((t: any) => t.isCompleted);
     const progressPercent =
@@ -496,7 +496,7 @@ export default async function DashboardPage() {
   } = dashPrefetchUser;
 
   const userPool = await calculateLeavePool(session.user.id, new Date());
-  const annualTotal = userPool.totalEntitled;
+  const annualTotal = userPool.displayGranted;
 
   const carryOver = leaveBalance?.annualCarryOver ?? 0;
   const used = leaveBalance?.annualUsed ?? 0;

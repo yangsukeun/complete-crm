@@ -142,7 +142,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
       })),
       pool: {
         available: pool.available,
-        totalEntitled: pool.totalEntitled,
+        totalEntitled: pool.displayGranted,
+        lifetimeEntitled: pool.totalEntitled,
+        displayGranted: pool.displayGranted,
+        periodGranted: pool.periodGranted,
         totalConsumed: pool.totalConsumedDaysFromAccruals,
         totalExpired: pool.totalExpired,
         compensationOwedDays: pool.compensationOwedDays,

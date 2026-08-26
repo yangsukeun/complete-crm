@@ -133,7 +133,7 @@ export async function GET() {
     const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const annualTotal = pool.totalEntitled;
+    const annualTotal = pool.displayGranted;
     const leaveRemaining = pool.available;
     const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
     const joinDateStr =
@@ -476,7 +476,7 @@ export async function PATCH(req: Request) {
 
     const year = getCurrentLeaveCalendarYearKst();
     const poolBefore = await calculateLeavePool(session.user.id, new Date());
-    const entitlement = poolBefore.totalEntitled;
+    const entitlement = poolBefore.displayGranted;
 
     if (isAdmin && (parsed.data as any).leaveRemaining !== undefined) {
       try {
@@ -563,7 +563,7 @@ export async function PATCH(req: Request) {
     const carryOver = (balance as { annualCarryOver?: number } | null)?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = (balance as { manualDeduction?: number } | null)?.manualDeduction ?? 0;
-    const annualTotal = pool.totalEntitled;
+    const annualTotal = pool.displayGranted;
     const leaveRemaining = pool.available;
     const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
 

@@ -42,7 +42,7 @@ export async function GET(
     const carryOver = balance?.annualCarryOver ?? 0;
     const annualUsed = balance?.annualUsed ?? 0;
     const manualDeduction = balance?.manualDeduction ?? 0;
-    const annualTotal = pool.totalEntitled;
+    const annualTotal = pool.displayGranted;
     const leaveRemaining = pool.available;
     const totalAvailable = leaveRemaining + annualUsed + manualDeduction;
 

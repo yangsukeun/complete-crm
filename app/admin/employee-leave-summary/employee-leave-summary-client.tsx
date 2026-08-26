@@ -35,6 +35,8 @@ type Row = {
   tenureYears: number;
   tenureExtraMonths: number;
   totalGranted: number;
+  periodGranted?: number;
+  validCarryGranted?: number;
   totalUsed: number;
   remaining: number;
   carryOver: { entitled: number };
@@ -205,7 +207,7 @@ export function EmployeeLeaveSummaryClient() {
                   </TableRow>
                 ) : (
                   data.rows.map((r) => {
-                    const carry = r.carryOver?.entitled ?? 0;
+                    const carry = r.validCarryGranted ?? r.carryOver?.entitled ?? 0;
                     return (
                       <TableRow
                         key={r.userId}

@@ -4,6 +4,11 @@ import { ensureAccrualsUpTo } from "@/lib/leave/accrue";
 import { ensureApprovedLeavesConsumedUpTo } from "@/lib/leave/ensure-approved-consumption";
 import { ensureBalanceCarryAccrual } from "@/lib/leave/ensure-carry-accrual";
 import { ensureLegacyCarryAccrual, LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
+import { currentLeavePeriodYmd } from "@/lib/leave/leave-period";
+import {
+  computePeriodDisplayGranted,
+  type PeriodGrantedBreakdown,
+} from "@/lib/leave/period-granted";
 import {
   buildLeavePoolFromAccruals,
   mergePoolWithNextAccrual,
@@ -12,6 +17,7 @@ import {
 } from "@/lib/leave/pure-pool";
 
 export type { LeavePool, LeavePoolBreakdown } from "@/lib/leave/pure-pool";
+export type { PeriodGrantedBreakdown } from "@/lib/leave/period-granted";
 
 export type AccrualLineSnapshot = {
   accrualDateYmd: string;
@@ -33,8 +39,14 @@ export type CalculatedLeavePool = LeavePool & {
   priorCrmUsageDays: number;
   /** LeaveBalance.annualCarryOver 합 (참고·호버용, 레거시 CARRY 행과 별도) */
   annualCarryOverDaysReported: number;
-  /** 총발생 ≈ 사용 + 만료 + 잔여 (근사) */
+  /** 총발생 ≈ 사용 + 만료 + 잔여 (근사) — lifetime entitled 기준 */
   poolMathConsistent: boolean;
+  /**
+   * 화면·annualTotal용 발생(이월): 현재 적용기간 발생 + 유효 이월.
+   * 만료분 생애 누적 제외.
+   */
+  displayGranted: number;
+  periodGranted: PeriodGrantedBreakdown;
   accrualLines: AccrualLinesByBucket;
   /** 승인 휴가 중 풀 부족으로 차감하지 못한 건이 있는지 (조회 시 throw 대신 플래그) */
   leaveShortage: boolean;
@@ -132,6 +144,22 @@ export async function calculateLeavePool(
   const pool = buildLeavePoolFromAccruals(inputs, asOf);
   const merged = joinYmd ? mergePoolWithNextAccrual(pool, joinYmd, asOf) : pool;
 
+  const period =
+    joinYmd && asOf
+      ? currentLeavePeriodYmd(joinYmd, toKstYmd(asOf))
+      : { start: "", end: "" };
+  const periodGranted = computePeriodDisplayGranted(
+    poolRows.map((r) => ({
+      type: r.type,
+      days: r.days,
+      accrualDateYmd: r.accrualDateYmd,
+      expiresAt: r.expiresAt,
+      isExpired: r.isExpired,
+    })),
+    period,
+    asOf
+  );
+
   const sumParts = merged.totalConsumed + merged.totalExpired + merged.available;
   const poolMathConsistent = Math.abs(merged.totalEntitled - sumParts) < 1e-4;
   const accrualLines = groupAccrualLines(poolRows);
@@ -144,6 +172,8 @@ export async function calculateLeavePool(
     priorCrmUsageDays,
     annualCarryOverDaysReported,
     poolMathConsistent,
+    displayGranted: periodGranted.displayGranted,
+    periodGranted,
     accrualLines,
     leaveShortage,
     shortageLeaveRequestIds,
