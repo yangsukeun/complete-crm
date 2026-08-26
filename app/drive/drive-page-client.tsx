@@ -6,6 +6,7 @@ import useSWR, { mutate, useSWRConfig } from "swr";
 import {
   Pause,
   Play,
+  Pencil,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -45,6 +46,7 @@ import { FolderPickerModal, type FolderPickerSelection } from "@/components/driv
 import { postExplorerFolder } from "@/lib/drive/explorer-folder-api";
 import {
   canManageExplorerFolderTrash,
+  canRenameExplorerItem,
   canTrashExplorerFile,
 } from "@/lib/drive/folder-trash-policy";
 import {
@@ -265,6 +267,10 @@ export function DrivePageClient({
   const uploadControlsRef = useRef<Map<string, ExplorerUploadSessionControl>>(new Map());
   const [toast, setToast] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [optimisticRows, setOptimisticRows] = useState<DriveFileRow[]>([]);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -1166,6 +1172,121 @@ export function DrivePageClient({
     });
   };
 
+  const canShowRenameButton = (file: DriveFileRow) => {
+    if (file.uploading || file.creating) return false;
+    return canRenameExplorerItem({
+      role: viewerRole,
+      actorId: viewerUserId,
+      createdBy: file.createdBy,
+      isFolder: file.isFolder,
+    });
+  };
+
+  const startRename = (file: DriveFileRow) => {
+    if (!canShowRenameButton(file)) return;
+    setRenamingId(file.id);
+    setRenameDraft(file.name);
+    window.setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 0);
+  };
+
+  const cancelRename = () => {
+    if (renameSaving) return;
+    setRenamingId(null);
+    setRenameDraft("");
+  };
+
+  const submitRename = async () => {
+    if (!renamingId || renameSaving) return;
+    const target = displayFiles.find((f) => f.id === renamingId);
+    if (!target) {
+      cancelRename();
+      return;
+    }
+    const next = renameDraft.trim();
+    if (!next) {
+      showToast("이름을 입력하세요.");
+      return;
+    }
+    if (next === target.name) {
+      cancelRename();
+      return;
+    }
+
+    setRenameSaving(true);
+    const previousName = target.name;
+    // 낙관적 반영
+    setOptimisticRows((prev) => {
+      const without = prev.filter((r) => r.id !== target.id);
+      return [{ ...target, name: next }, ...without];
+    });
+    await mutate(
+      listUrl,
+      (cur: ListPayload | undefined) => {
+        if (!cur) return cur;
+        return {
+          ...cur,
+          files: cur.files.map((f) => (f.id === target.id ? { ...f, name: next } : f)),
+        };
+      },
+      { revalidate: false }
+    );
+
+    try {
+      const res = await fetch(`/api/drive/file/${encodeURIComponent(target.id)}/rename`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: next }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "이름 변경 실패");
+      const serverName =
+        typeof body?.file?.name === "string" ? body.file.name : next;
+      await mutate(
+        listUrl,
+        (cur: ListPayload | undefined) => {
+          if (!cur) return cur;
+          return {
+            ...cur,
+            files: cur.files.map((f) =>
+              f.id === target.id ? { ...f, name: serverName } : f
+            ),
+          };
+        },
+        { revalidate: false }
+      );
+      setOptimisticRows((prev) => prev.filter((r) => r.id !== target.id));
+      // 브레드크럼에 있으면 이름 갱신
+      setBreadcrumb((prev) =>
+        prev.map((c) => (c.id === target.id ? { ...c, name: serverName } : c))
+      );
+      setRenamingId(null);
+      setRenameDraft("");
+    } catch (e) {
+      // 원래 이름 복구
+      setOptimisticRows((prev) => prev.filter((r) => r.id !== target.id));
+      await mutate(
+        listUrl,
+        (cur: ListPayload | undefined) => {
+          if (!cur) return cur;
+          return {
+            ...cur,
+            files: cur.files.map((f) =>
+              f.id === target.id ? { ...f, name: previousName } : f
+            ),
+          };
+        },
+        { revalidate: false }
+      );
+      showToast(e instanceof Error ? e.message : "이름 변경 실패");
+      setRenameDraft(previousName);
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
   const openFolder = (folder: DriveFileRow) => {
     if (!folder.driveFileId) {
       showToast("이 폴더는 아직 Drive와 연결되지 않았습니다.");
@@ -1572,7 +1693,7 @@ export function DrivePageClient({
           </div>
         )}
 
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_200px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_minmax(220px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
           <span>이름</span>
           <span>수정일</span>
           <span>크기</span>
@@ -1602,18 +1723,19 @@ export function DrivePageClient({
               if (file.isFolder && !file.uploading && !file.creating) prefetchFolder(file.id);
             }}
             onDoubleClick={() => {
-              if (file.uploading || file.creating) return;
+              if (file.uploading || file.creating || renamingId === file.id) return;
               if (file.isFolder) openFolder(file);
               else void openFilePreview(file);
             }}
             onKeyDown={(e) => {
+              if (renamingId === file.id) return;
               if (e.key === "Enter" && !file.uploading && !file.creating) {
                 if (file.isFolder) openFolder(file);
                 else void openFilePreview(file);
               }
             }}
             className={cn(
-              "grid grid-cols-[minmax(0,2fr)_120px_100px_200px] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
+              "grid grid-cols-[minmax(0,2fr)_120px_100px_minmax(220px,1.2fr)] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
               file.uploading || file.creating
                 ? "bg-gray-50 text-muted-foreground"
                 : "hover:bg-gray-50"
@@ -1625,18 +1747,47 @@ export function DrivePageClient({
               ) : (
                 <FileTypeIcon mimeType={file.mimeType} isFolder={file.isFolder} />
               )}
-              <span
-                className={cn(
-                  "truncate font-medium",
-                  file.uploading || file.creating ? "text-gray-500" : "text-gray-900"
-                )}
-              >
-                {file.creating
-                  ? `${file.name} (생성 중…)`
-                  : file.uploading
-                    ? `${file.name}`
-                    : file.name}
-              </span>
+              {renamingId === file.id ? (
+                <Input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameDraft}
+                  disabled={renameSaving}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void submitRename();
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!renameSaving && !renameDraft.trim()) {
+                      cancelRename();
+                    }
+                  }}
+                  className="h-8 max-w-full flex-1"
+                  aria-label="새 이름"
+                />
+              ) : (
+                <span
+                  className={cn(
+                    "truncate font-medium",
+                    file.uploading || file.creating ? "text-gray-500" : "text-gray-900"
+                  )}
+                >
+                  {file.creating
+                    ? `${file.name} (생성 중…)`
+                    : file.uploading
+                      ? `${file.name}`
+                      : file.name}
+                </span>
+              )}
               {file.uploading && typeof file.uploadPercent === "number" && (
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {file.uploadPercent}%
@@ -1648,7 +1799,7 @@ export function DrivePageClient({
                     : null}
                 </span>
               )}
-              {file.isFolder && !file.creating && (file._count?.children ?? 0) > 0 && (
+              {file.isFolder && !file.creating && renamingId !== file.id && (file._count?.children ?? 0) > 0 && (
                 <span className="shrink-0 text-xs text-muted-foreground">
                   ({file._count?.children})
                 </span>
@@ -1712,6 +1863,27 @@ export function DrivePageClient({
                   >
                     열기
                   </Button>
+                  {canShowRenameButton(file) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      disabled={renameSaving && renamingId === file.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (renamingId === file.id) void submitRename();
+                        else startRename(file);
+                      }}
+                    >
+                      {renameSaving && renamingId === file.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Pencil className="size-3.5" />
+                      )}
+                      {renamingId === file.id ? "저장" : "이름 변경"}
+                    </Button>
+                  )}
                   {canShowDeleteButton(file) && (
                     <Button
                       type="button"
@@ -1761,6 +1933,27 @@ export function DrivePageClient({
                   >
                     구글에서 열기
                   </Button>
+                  {canShowRenameButton(file) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      disabled={renameSaving && renamingId === file.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (renamingId === file.id) void submitRename();
+                        else startRename(file);
+                      }}
+                    >
+                      {renameSaving && renamingId === file.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Pencil className="size-3.5" />
+                      )}
+                      {renamingId === file.id ? "저장" : "이름 변경"}
+                    </Button>
+                  )}
                   {canShowDeleteButton(file) && (
                     <Button
                       type="button"
