@@ -11,12 +11,8 @@ import {
   EXPLORER_UPLOAD_CHUNK_BYTES,
   EXPLORER_UPLOAD_CONFIRM_BYTES,
 } from "@/lib/drive/explorer-upload-limits";
-import { sanitizeUploadDisplayName, isUploadFileNameBlocked } from "@/lib/upload-policy";
+import { inferUploadMimeType, sanitizeUploadDisplayName, isUploadFileNameBlocked } from "@/lib/upload-policy";
 import { signExplorerUploadSession } from "@/lib/drive/upload-session-token";
-import {
-  DailyUploadQuotaError,
-  reserveDailyUploadBytes,
-} from "@/lib/upload-daily-quota";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -44,10 +40,8 @@ export async function POST(req: Request) {
     const rawName = typeof body?.name === "string" ? body.name : "";
     const parentFolderId =
       typeof body?.parentFolderId === "string" ? body.parentFolderId.trim() : "";
-    const mimeType =
-      typeof body?.mimeType === "string" && body.mimeType.trim()
-        ? body.mimeType.trim()
-        : "application/octet-stream";
+    const rawMime = typeof body?.mimeType === "string" ? body.mimeType : "";
+    const mimeType = inferUploadMimeType(rawName, rawMime);
     const size = typeof body?.size === "number" ? body.size : Number(body?.size);
 
     if (!parentFolderId) {
@@ -82,15 +76,6 @@ export async function POST(req: Request) {
     const access = await assertCanAccessDriveFileId(actor, folder.id);
     if (!access.ok) {
       return NextResponse.json({ error: access.error }, { status: access.status });
-    }
-
-    try {
-      await reserveDailyUploadBytes(userId, size);
-    } catch (quotaErr) {
-      if (quotaErr instanceof DailyUploadQuotaError) {
-        return NextResponse.json({ error: quotaErr.message }, { status: 429 });
-      }
-      console.error("[upload-session] daily quota reserve failed — continue", quotaErr);
     }
 
     const jwt = getOrCreateDriveJwtAuth();

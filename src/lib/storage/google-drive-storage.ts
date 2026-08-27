@@ -2,6 +2,7 @@ import { Readable } from "stream";
 import { google } from "googleapis";
 import type { StoreFileInput, StoreFileResult } from "./types";
 import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
+import { inferUploadMimeType } from "@/lib/upload-policy";
 
 export { parseGoogleDriveFileIdFromUrl };
 
@@ -184,13 +185,14 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
   const drive = google.drive({ version: "v3", auth });
 
   /** 공유 드라이브(Team Drive) 내 폴더가 부모일 때 필수 — 없으면 404/403으로 업로드 실패 */
+  const mimeType = inferUploadMimeType(input.originalName || input.filename, input.mime);
   const res = await drive.files.create({
     requestBody: {
       name: input.filename,
       parents: [folderId],
     },
     media: {
-      mimeType: input.mime || "application/octet-stream",
+      mimeType,
       body: Readable.from(input.buffer),
     },
     fields: "id",
@@ -210,8 +212,7 @@ export async function storeGoogleDrive(input: StoreFileInput): Promise<StoreFile
     /* ignore */
   }
 
-  const mime = (input.mime || "").toLowerCase();
-  const isImage = mime.startsWith("image/");
+  const isImage = mimeType.toLowerCase().startsWith("image/");
   /** 이미지는 thumbnail이 img src에 실제 바이너리를 돌려줌(uc?export=view는 HTML 뷰어로 엑박 가능) */
   const url = isImage
     ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w2000`

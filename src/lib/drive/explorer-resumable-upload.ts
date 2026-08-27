@@ -9,7 +9,7 @@ import {
   EXPLORER_UPLOAD_CHUNK_BYTES,
   formatUploadBytes,
 } from "@/lib/drive/explorer-upload-limits";
-import { isUploadFileNameBlocked } from "@/lib/upload-policy";
+import { inferUploadMimeType, isUploadFileNameBlocked } from "@/lib/upload-policy";
 
 export type ExplorerUploadedFile = {
   id: string;
@@ -221,7 +221,7 @@ export async function uploadExplorerFileResumable(
     body: JSON.stringify({
       name: file.name,
       parentFolderId,
-      mimeType: file.type || "application/octet-stream",
+      mimeType: inferUploadMimeType(file.name, file.type),
       size: file.size,
     }),
   });
@@ -262,7 +262,7 @@ export async function uploadExplorerFileResumable(
         headers: {
           "X-Upload-Session": sessionToken,
           "Content-Range": `bytes ${start}-${end - 1}/${total}`,
-          "Content-Type": file.type || "application/octet-stream",
+          "Content-Type": inferUploadMimeType(file.name, file.type),
         },
         body: blob,
         signal: ac.signal,
@@ -295,7 +295,7 @@ export async function uploadExplorerFileResumable(
       headers: {
         "X-Upload-Session": sessionToken,
         "Content-Range": "bytes */0",
-        "Content-Type": file.type || "application/octet-stream",
+        "Content-Type": inferUploadMimeType(file.name, file.type),
       },
       body: new Blob([]),
     });

@@ -1,10 +1,10 @@
 /**
- * 클라이언트 업로드 검증 — 서버 /api/upload 정책(차단 확장자·용량)과 동기화
+ * 클라이언트 업로드 검증 — 서버 /api/upload 정책(차단 확장자)과 동기화
  */
 
 import { validateUploadFile } from "@/lib/upload-policy";
 
-export { UPLOAD_MAX_BYTES, validateUploadFile } from "@/lib/upload-policy";
+export { validateUploadFile } from "@/lib/upload-policy";
 
 export const UPLOAD_TOAST_DURATION_MS = 5000;
 
@@ -15,8 +15,6 @@ export type PostUploadFileOptions = {
 
 export const UPLOAD_ERROR_MESSAGE = {
   blocked: "실행 파일은 보안상 업로드할 수 없습니다. 압축 파일(.zip)로 보내주세요.",
-  size: "파일 크기는 1GB 이하여야 합니다.",
-  dailyQuota: "일일 업로드 한도(5GB)를 초과했습니다. 내일 다시 시도해 주세요.",
   payloadTooLarge:
     "파일이 너무 큽니다. Google Drive에 자동 저장을 시도합니다. 여전히 실패하면 네트워크·플랫폼 한도를 확인하거나 잠시 후 다시 시도해 주세요.",
   server: "업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
@@ -39,11 +37,9 @@ export async function getUploadErrorMessageFromResponse(res: Response): Promise<
     return UPLOAD_ERROR_MESSAGE.payloadTooLarge;
   }
   if (res.status === 429) {
-    if (/5GB|1GB|일일|한도/i.test(raw)) return UPLOAD_ERROR_MESSAGE.dailyQuota;
-    return raw || UPLOAD_ERROR_MESSAGE.dailyQuota;
+    return raw || UPLOAD_ERROR_MESSAGE.server;
   }
   if (res.status === 400) {
-    if (/1GB|1\s*GB|100MB|100\s*MB|이하|초과/i.test(raw)) return UPLOAD_ERROR_MESSAGE.size;
     if (/실행 파일|압축 파일/i.test(raw)) return UPLOAD_ERROR_MESSAGE.blocked;
     return raw || UPLOAD_ERROR_MESSAGE.server;
   }

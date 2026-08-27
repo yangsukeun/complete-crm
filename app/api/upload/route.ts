@@ -8,24 +8,21 @@ import {
 } from "@/lib/storage/google-drive-storage";
 import {
   inferStorageExtension,
+  inferUploadMimeType,
   sanitizeUploadDisplayName,
   validateUploadFile,
 } from "@/lib/upload-policy";
-import { DailyUploadQuotaError, releaseDailyUploadBytes, reserveDailyUploadBytes } from "@/lib/upload-daily-quota";
 
 export const runtime = "nodejs";
 /** 대용량 멀티파트 업로드 대비(Vercel 플랜별 상한은 대시보드에서 확인) */
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
-  let reservedBytes = 0;
-  let reservedUserId: string | null = null;
   try {
     const session = await getAppSession();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const userId = session.user.id;
 
     const formData = await req.formData();
     const file = formData.get("file");
@@ -38,7 +35,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: clientCheck.error }, { status: 400 });
     }
 
-    const mime = (file.type || "").toLowerCase() || "application/octet-stream";
+    const mime = inferUploadMimeType(file.name, file.type);
     const displayName = sanitizeUploadDisplayName(file.name);
     const fileExt = inferStorageExtension(mime, file.name);
     const storageKey = `u-${randomUUID()}.${fileExt}`;
@@ -57,26 +54,12 @@ export async function POST(req: Request) {
       }
     }
 
-    try {
-      await reserveDailyUploadBytes(userId, buffer.byteLength);
-      reservedBytes = buffer.byteLength;
-      reservedUserId = userId;
-    } catch (quotaErr) {
-      if (quotaErr instanceof DailyUploadQuotaError) {
-        throw quotaErr;
-      }
-      console.error("[upload] 일일 업로드 한도 집계 실패 — 업로드는 계속합니다.", quotaErr);
-    }
-
     const result = await storeUploadedFile({
       buffer,
       filename: storageKey,
       mime,
       originalName: displayName,
     });
-
-    reservedBytes = 0;
-    reservedUserId = null;
 
     if (result.provider === "google-drive") {
       const fid = parseGoogleDriveFileIdFromUrl(result.url);
@@ -90,12 +73,6 @@ export async function POST(req: Request) {
       ...(result.mirrorWarning ? { mirrorWarning: result.mirrorWarning } : {}),
     });
   } catch (e) {
-    if (reservedBytes > 0 && reservedUserId) {
-      await releaseDailyUploadBytes(reservedUserId, reservedBytes);
-    }
-    if (e instanceof DailyUploadQuotaError) {
-      return NextResponse.json({ error: e.message }, { status: 429 });
-    }
     console.error(e);
     const msg = e instanceof Error ? e.message : "업로드에 실패했습니다.";
     return NextResponse.json({ error: msg.length < 400 ? msg : "업로드에 실패했습니다." }, { status: 500 });

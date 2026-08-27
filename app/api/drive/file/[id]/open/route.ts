@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { assertExplorerConfigured } from "@/lib/drive/explorer-folder-guard";
@@ -6,6 +6,8 @@ import {
   assertCanAccessDriveFileId,
   loadDriveAccessActor,
 } from "@/lib/drive/folder-access";
+import { officeMimeToRepair, resolveDriveOpenUrl } from "@/lib/drive/google-office-open";
+import { getDriveV3 } from "@/lib/google-drive-admin";
 
 export const runtime = "nodejs";
 
@@ -45,6 +47,7 @@ export async function POST(_req: Request, ctx: RouteCtx) {
       select: {
         id: true,
         name: true,
+        mimeType: true,
         driveFileId: true,
         webViewLink: true,
         rootId: true,
@@ -84,9 +87,48 @@ export async function POST(_req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
-    const webViewLink =
-      row.webViewLink ||
-      `https://drive.google.com/file/d/${row.driveFileId}/view`;
+    const desiredMime = officeMimeToRepair(row.name, row.mimeType);
+    let storedLink = row.webViewLink;
+    if (desiredMime) {
+      try {
+        const drive = getDriveV3();
+        const updated = await drive.files.update({
+          fileId: row.driveFileId,
+          supportsAllDrives: true,
+          requestBody: { mimeType: desiredMime },
+          fields: "mimeType, webViewLink",
+        });
+        storedLink = updated.data.webViewLink ?? storedLink;
+        after(() =>
+          prisma.driveFile
+            .update({
+              where: { id: row.id },
+              data: {
+                mimeType: desiredMime,
+                webViewLink: storedLink,
+              },
+            })
+            .catch((e) => console.error("[drive/file open] db mime patch", e))
+        );
+      } catch (e) {
+        console.error("[drive/file open] google mime patch", e);
+        after(() =>
+          prisma.driveFile
+            .update({
+              where: { id: row.id },
+              data: { mimeType: desiredMime },
+            })
+            .catch((err) => console.error("[drive/file open] db mime patch", err))
+        );
+      }
+    }
+
+    const webViewLink = resolveDriveOpenUrl({
+      driveFileId: row.driveFileId,
+      fileName: row.name,
+      mimeType: desiredMime || row.mimeType,
+      webViewLink: storedLink,
+    });
 
     const userEmail = dbUser?.email?.trim() ?? "";
     return NextResponse.json({

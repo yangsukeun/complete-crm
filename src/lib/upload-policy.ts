@@ -2,12 +2,6 @@
  * /api/upload 및 클라이언트 검증 공통 정책 (옵션 B: 기본 허용 + 실행 확장자 차단)
  */
 
-/** 단일 업로드 요청당 최대 바이트 */
-export const UPLOAD_MAX_BYTES = 1024 * 1024 * 1024; // 1 GiB
-
-/** UTC 기준 사용자당 일일 누적 업로드 바이트 상한 */
-export const UPLOAD_DAILY_BYTES_PER_USER = 5 * 1024 * 1024 * 1024; // 5 GiB
-
 /** 소문자 비교용 — 파일명 끝이 해당 접미사이면 차단 */
 export const UPLOAD_BLOCKED_SUFFIXES = [
   ".exe",
@@ -33,10 +27,64 @@ export function validateUploadFile(file: File): { ok: true } | { ok: false; erro
       error: "실행 파일은 보안상 업로드할 수 없습니다. 압축 파일(.zip)로 보내주세요.",
     };
   }
-  if (file.size > UPLOAD_MAX_BYTES) {
-    return { ok: false, error: "파일 크기는 1GB 이하여야 합니다." };
-  }
   return { ok: true };
+}
+
+export function fileNameExtension(fileName: string): string {
+  const base = fileName.trim().split(/[/\\]/).pop() ?? fileName;
+  const dot = base.lastIndexOf(".");
+  if (dot < 0) return "";
+  return base
+    .slice(dot + 1)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** 확장자 → Drive/Office에 올릴 때 쓸 표준 MIME */
+export const EXT_TO_UPLOAD_MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  avif: "image/avif",
+  heic: "image/heic",
+  heif: "image/heif",
+  svg: "image/svg+xml",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  ogg: "video/ogg",
+  mov: "video/quicktime",
+  avi: "video/x-msvideo",
+  m4v: "video/x-m4v",
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain",
+  html: "text/html",
+  htm: "text/html",
+  csv: "text/csv",
+  zip: "application/zip",
+  rar: "application/vnd.rar",
+  "7z": "application/x-7z-compressed",
+  hwp: "application/x-hwp",
+  hwpx: "application/vnd.hancom.hwpx",
+};
+
+/** 확장자 우선. Windows+한컴은 .docx 를 application/haansoftdocx 로 보내 Drive가 다운로드만 함. */
+export function inferUploadMimeType(fileName: string, declared?: string | null): string {
+  const declaredNorm = (declared || "").trim().toLowerCase();
+  if (declaredNorm.includes("google-apps.")) return declaredNorm;
+  const ext = fileNameExtension(fileName);
+  const fromExt = ext ? EXT_TO_UPLOAD_MIME[ext] : undefined;
+  if (fromExt) return fromExt;
+  if (declaredNorm) return declaredNorm;
+  return "application/octet-stream";
 }
 
 /** 다운로드 표시명·API 응답용 (경로·위험 문자 제거, 길이 제한) */

@@ -72,6 +72,7 @@ import {
   EXPLORER_UPLOAD_LARGE_CONFIRM_MESSAGE,
   needsLargeUploadConfirm,
 } from "@/lib/drive/explorer-upload-limits";
+import { inferUploadMimeType } from "@/lib/upload-policy";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -223,9 +224,17 @@ async function mapPool<T, R>(
   return results;
 }
 
-function FileTypeIcon({ mimeType, isFolder }: { mimeType: string | null; isFolder: boolean }) {
+function FileTypeIcon({
+  mimeType,
+  isFolder,
+  name,
+}: {
+  mimeType: string | null;
+  isFolder: boolean;
+  name?: string;
+}) {
   if (isFolder) return <Folder className="size-4 shrink-0 text-amber-600" />;
-  const m = mimeType ?? "";
+  const m = name ? inferUploadMimeType(name, mimeType) : (mimeType ?? "");
   if (m.includes("spreadsheet") || m.includes("excel")) {
     return <FileSpreadsheet className="size-4 shrink-0 text-emerald-600" />;
   }
@@ -240,12 +249,14 @@ function FileTypeIcon({ mimeType, isFolder }: { mimeType: string | null; isFolde
 function FileTypeIconLarge({
   mimeType,
   isFolder,
+  name,
 }: {
   mimeType: string | null;
   isFolder: boolean;
+  name?: string;
 }) {
   if (isFolder) return <Folder className="size-14 text-amber-500" />;
-  const m = mimeType ?? "";
+  const m = name ? inferUploadMimeType(name, mimeType) : (mimeType ?? "");
   if (m.includes("spreadsheet") || m.includes("excel")) {
     return <FileSpreadsheet className="size-14 text-emerald-500" />;
   }
@@ -282,19 +293,21 @@ function DriveThumb({
   mimeType,
   isFolder,
   hasThumbHint,
+  name,
   className,
 }: {
   fileId: string;
   mimeType: string | null;
   isFolder: boolean;
   hasThumbHint: boolean;
+  name?: string;
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   if (isFolder || !hasThumbHint || failed) {
     return (
       <div className={cn("flex items-center justify-center bg-gray-50", className)}>
-        <FileTypeIconLarge mimeType={mimeType} isFolder={isFolder} />
+        <FileTypeIconLarge mimeType={mimeType} isFolder={isFolder} name={name} />
       </div>
     );
   }
@@ -2346,7 +2359,7 @@ export function DrivePageClient({
               {file.uploading || file.creating ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-gray-400" />
               ) : (
-                <FileTypeIcon mimeType={file.mimeType} isFolder={file.isFolder} />
+                <FileTypeIcon mimeType={file.mimeType} isFolder={file.isFolder} name={file.name} />
               )}
               {renamingId === file.id ? (
                 <Input
@@ -2734,6 +2747,7 @@ export function DrivePageClient({
                         mimeType={file.mimeType}
                         isFolder={file.isFolder}
                         hasThumbHint={hasThumb}
+                        name={file.name}
                       />
                     )}
                     {file.pinned && !busy && (
