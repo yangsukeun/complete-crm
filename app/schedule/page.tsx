@@ -1375,7 +1375,11 @@ function SchedulePageInner() {
     setMemoContent(memoData?.content ?? "");
   }, [tab, memoData]);
 
-  const { data: gcalStatus, mutate: mutateGcal } = useSWR<{ connected: boolean }>(
+  const { data: gcalStatus, mutate: mutateGcal } = useSWR<{
+    connected: boolean;
+    needsTasksReauth?: boolean;
+    authUrl?: string;
+  }>(
     session?.user && tab === "schedule" ? SWR_KEYS.googleCalendar : null,
     jsonFetcher,
     { dedupingInterval: 60_000, revalidateOnFocus: false }
@@ -2729,6 +2733,22 @@ function SchedulePageInner() {
                 {googleConnected ? (
                   <div className="space-y-2">
                     <p className="text-muted-foreground text-xs">연동되어 있습니다.</p>
+                    {gcalStatus?.needsTasksReauth ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+                        <p className="font-medium">구글 할일을 CRM에 가져오려면 재연결이 필요합니다.</p>
+                        <p className="mt-1 text-amber-800">
+                          기존 캘린더 가져오기는 그대로입니다. 한 번만 다시 동의해 주세요.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mt-2"
+                          onClick={handleGoogleConnect}
+                        >
+                          재연결 (할일 권한)
+                        </Button>
+                      </div>
+                    ) : null}
                     <Button
                       type="button"
                       variant="outline"

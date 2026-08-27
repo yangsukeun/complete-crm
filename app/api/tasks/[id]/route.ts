@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { getServerWorkspaceScopeFromRequest } from "@/lib/workspace";
@@ -16,6 +16,7 @@ import { isPrismaTaskColorColumnMissing } from "@/lib/prisma-task-color-fallback
 import type { Prisma } from "@prisma/client";
 import { TaskCreationSource } from "@prisma/client";
 import { z } from "zod";
+import { markGoogleTaskCompleted } from "@/lib/google-tasks-sync";
 
 /** Prisma·DB는 Node 런타임 전제 (Edge에서 cookies/Prisma 이슈 방지) */
 export const runtime = "nodejs";
@@ -91,6 +92,8 @@ function buildTaskDetailSelect(deferComments: boolean): Prisma.TaskSelect {
     recurringMemo: true,
     projectId: true,
     creationSource: true,
+    googleTaskId: true,
+    syncedFromGoogle: true,
     parentId: true,
     categoryId: true,
     orderIndex: true,
@@ -413,6 +416,7 @@ export async function PATCH(
         assignedToId: true,
         createdById: true,
         creationSource: true,
+        googleTaskId: true,
         updatedAt: true,
         assignees: { select: { userId: true } },
         assignedTo: { select: { name: true } },
@@ -455,6 +459,7 @@ export async function PATCH(
       "SCHEDULE",
       "MEMO",
       "UNKNOWN",
+      "GOOGLE",
     ]);
     let nextCreationSource: TaskCreationSource | undefined;
     if ("creationSource" in body && body.creationSource !== undefined && body.creationSource !== null) {
@@ -939,6 +944,15 @@ export async function PATCH(
         await createActivityLog(session.user.id, "TASK_COMPLETED", existing.title);
       } catch (logErr) {
         console.error("[tasks] PATCH activity log skipped:", logErr);
+      }
+      const googleTaskId = existing.googleTaskId;
+      if (googleTaskId) {
+        const tokenUserId = existing.createdById ?? session.user.id;
+        after(() =>
+          markGoogleTaskCompleted({ userId: tokenUserId, googleTaskId }).catch((e) =>
+            console.error("[tasks] google task complete skipped:", e)
+          )
+        );
       }
     }
 

@@ -35,8 +35,10 @@ import {
 } from "@/components/ui/popover";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { PageHeadline } from "@/components/page-headline";
+import { GoogleTaskSourceBadge } from "@/components/google-task-source-badge";
+import { useGoogleTasksSync } from "@/hooks/use-google-tasks-sync";
 import { toast } from "sonner";
-import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid, CheckCircle2, Rows3 } from "lucide-react";
+import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid, CheckCircle2, Rows3, RefreshCw } from "lucide-react";
 import { ProjectListView } from "@/components/project-list-view";
 import { formatUserName } from "@/lib/utils";
 import {
@@ -201,6 +203,7 @@ type Task = {
   lastEditedBy?: { id: string; name: string } | null;
   updatedAt?: string | null;
   creationSource?: string | null;
+  syncedFromGoogle?: boolean | null;
   projectId?: string | null;
   color?: string | null;
   completedAt?: string | null;
@@ -778,6 +781,8 @@ function TasksPageInner() {
       void mutateProjectMindmap();
     }, 400);
   }, [mutateTasksFull, mutateTaskPages, mutateLinks, mutateMindmapScoped, mutateProjectMindmap]);
+
+  const googleTasks = useGoogleTasksSync({ auto: true, onSynced: refreshTasks });
 
   const onTasksDetailUpdated = useCallback(() => {
     refreshTasks();
@@ -1402,11 +1407,33 @@ function TasksPageInner() {
             </Popover>
           )}
 
+          {googleTasks.showUi && googleTasks.needsReauth ? (
+            <Button variant="outline" size="sm" className="ml-auto" asChild>
+              <a href={googleTasks.authUrl || "/api/integrations/google-calendar/auth"}>
+                구글 할일 재연결
+              </a>
+            </Button>
+          ) : googleTasks.showUi && googleTasks.connected ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              disabled={googleTasks.syncing}
+              onClick={() => void googleTasks.importNow()}
+            >
+              <RefreshCw className={cn("mr-1.5 size-4", googleTasks.syncing && "animate-spin")} />
+              구글 할일 가져오기
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
             asChild
-            className="ml-auto text-muted-foreground"
+            className={cn(
+              "text-muted-foreground",
+              !(googleTasks.showUi && (googleTasks.connected || googleTasks.needsReauth)) && "ml-auto"
+            )}
           >
             <Link href="/trash" prefetch={false}>
               <Trash2 className="mr-1.5 size-4" />
@@ -1622,6 +1649,7 @@ function TasksPageInner() {
                                 {task.title}
                               </p>
                               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <GoogleTaskSourceBadge syncedFromGoogle={task.syncedFromGoogle} />
                                 <Badge variant={priorityVariant(task.priority)} className="text-[10px]">
                                   {priorityLabel(task.priority)}
                                 </Badge>

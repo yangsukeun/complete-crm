@@ -70,7 +70,7 @@ const createSchema = z.object({
   recurringRule: z.any().optional(),
   recurringMemo: z.union([z.string(), z.null()]).optional(),
   color: z.union([z.string(), z.null()]).optional(),
-  creationSource: z.enum(["PROJECT", "MINDMAP", "SCHEDULE", "MEMO", "UNKNOWN"]).optional(),
+  creationSource: z.enum(["PROJECT", "MINDMAP", "SCHEDULE", "MEMO", "UNKNOWN", "GOOGLE"]).optional(),
 });
 
 const TASK_CREATION_SOURCE_SET = new Set<string>([
@@ -79,6 +79,7 @@ const TASK_CREATION_SOURCE_SET = new Set<string>([
   TaskCreationSource.SCHEDULE,
   TaskCreationSource.MEMO,
   TaskCreationSource.UNKNOWN,
+  TaskCreationSource.GOOGLE,
 ]);
 
 function buildCreationSourceWhere(searchParams: URLSearchParams): Prisma.TaskWhereInput {
@@ -95,8 +96,10 @@ function buildCreationSourceWhere(searchParams: URLSearchParams): Prisma.TaskWhe
 const listSelect = {
   id: true,
   title: true,
-  creationSource: true,
-  dueDate: true,
+    creationSource: true,
+    googleTaskId: true,
+    syncedFromGoogle: true,
+    dueDate: true,
   isCompleted: true,
   status: true,
   priority: true,

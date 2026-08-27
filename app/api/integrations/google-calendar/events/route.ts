@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
-import prisma from "@/lib/prisma";
+import { getValidGoogleAccessToken } from "@/lib/google-oauth";
 
 /**
  * Google all-day `YYYY-MM-DD` → KST 자정(UTC Date).
@@ -18,39 +18,6 @@ function parseGoogleAllDayEndInclusiveKst(exclusiveYmd: string): Date {
   return new Date(parseGoogleAllDayStartKst(exclusiveYmd).getTime() - 1);
 }
 
-async function getValidAccessToken(userId: string): Promise<string | null> {
-  const row = await prisma.googleCalendarIntegration.findUnique({
-    where: { userId },
-  });
-  if (!row) return null;
-  const now = new Date();
-  if (row.expiresAt && row.expiresAt > now) {
-    return row.accessToken;
-  }
-  const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-  if (!row.refreshToken || !clientId || !clientSecret) return row.accessToken;
-
-  const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: row.refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!refreshRes.ok) return null;
-  const data = (await refreshRes.json()) as { access_token: string; expires_in?: number };
-  const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : null;
-  await prisma.googleCalendarIntegration.update({
-    where: { userId },
-    data: { accessToken: data.access_token, expiresAt },
-  });
-  return data.access_token;
-}
-
 /** 구글 캘린더 이벤트 조회 (timeMin, timeMax ISO 문자열) */
 export async function GET(req: NextRequest) {
   try {
@@ -63,7 +30,7 @@ export async function GET(req: NextRequest) {
     if (!timeMin || !timeMax) {
       return NextResponse.json({ error: "timeMin, timeMax required" }, { status: 400 });
     }
-    const accessToken = await getValidAccessToken(session.user.id);
+    const accessToken = await getValidGoogleAccessToken(session.user.id);
     if (!accessToken) {
       return NextResponse.json({ error: "Google Calendar not connected" }, { status: 401 });
     }

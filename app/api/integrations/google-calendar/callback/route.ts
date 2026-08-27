@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
+import { googleOauthScopesForRole } from "@/lib/google-oauth";
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
@@ -41,10 +42,13 @@ export async function GET(req: NextRequest) {
       access_token: string;
       refresh_token?: string;
       expires_in?: number;
+      scope?: string;
     };
     const expiresAt = token.expires_in
       ? new Date(Date.now() + token.expires_in * 1000)
       : null;
+    const oauthScopes =
+      token.scope?.trim() || googleOauthScopesForRole(session.user.role).join(" ");
 
     await prisma.googleCalendarIntegration.upsert({
       where: { userId: session.user.id },
@@ -53,11 +57,13 @@ export async function GET(req: NextRequest) {
         accessToken: token.access_token,
         refreshToken: token.refresh_token ?? null,
         expiresAt,
+        oauthScopes,
       },
       update: {
         accessToken: token.access_token,
         refreshToken: token.refresh_token ?? undefined,
         expiresAt,
+        oauthScopes,
       },
     });
 

@@ -56,6 +56,7 @@ import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs"
 import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { AuthorMetaLine } from "@/components/author-meta-line";
+import { GoogleTaskSourceBadge } from "@/components/google-task-source-badge";
 import { HistoryNavButtons } from "@/components/history-nav-buttons";
 
 type User = { id: string; name: string; email?: string; department?: string | null; position?: string | null };
@@ -78,6 +79,7 @@ type TaskDetail = {
   createdBy: { id: string; name: string; position?: string | null } | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  syncedFromGoogle?: boolean | null;
   revisions?: {
     field: string;
     user: { id: string; name: string; position?: string | null };
@@ -730,6 +732,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                 title="클릭하여 제목 수정"
               >
                 {task.title}
+                <GoogleTaskSourceBadge syncedFromGoogle={task.syncedFromGoogle} />
                 <Pencil className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </h1>
             )}

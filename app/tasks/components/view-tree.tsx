@@ -34,6 +34,7 @@ import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { Badge } from "@/components/ui/badge";
+import { GoogleTaskSourceBadge } from "@/components/google-task-source-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,6 +97,7 @@ type TaskData = {
   /** 서버 계산: 완료 후 3일 경과 시 기본 접힘 */
   defaultCollapsed?: boolean;
   creationSource?: string | null;
+  syncedFromGoogle?: boolean | null;
 };
 
 type TaskLink = {
@@ -568,6 +570,7 @@ function TaskNode({ data, id, selected }: NodeProps) {
           <Badge variant={priority.variant} className="text-[10px] px-1.5 py-0">
             {priority.label}
           </Badge>
+          <GoogleTaskSourceBadge syncedFromGoogle={task.syncedFromGoogle} />
           <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={20} />
         </div>
 
@@ -740,6 +743,7 @@ function UncategorizedTaskItem({
           <Badge variant={priority.variant} className="text-[10px] px-1.5 py-0">
             {priority.label}
           </Badge>
+          <GoogleTaskSourceBadge syncedFromGoogle={task.syncedFromGoogle} />
         </div>
       </div>
       <TaskAssigneeAvatars assignees={task.assignees} assignedTo={task.assignedTo} size={24} className="shrink-0" />

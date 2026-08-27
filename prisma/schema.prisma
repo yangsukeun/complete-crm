@@ -40,6 +40,7 @@ enum TaskCreationSource {
   SCHEDULE
   MEMO
   UNKNOWN
+  GOOGLE
 }
 
 /// 브랜드 프로젝트(일정 캘린더 마감 칩 등)
@@ -368,14 +369,18 @@ model UserTaskMindmapState {
 }
 
 model GoogleCalendarIntegration {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken  String
-  refreshToken String?
-  expiresAt    DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken          String
+  refreshToken         String?
+  expiresAt            DateTime?
+  /// 공백 구분 OAuth scope. 없으면 캘린더 전용 레거시 연동
+  oauthScopes          String?
+  /// 구글 Tasks → CRM 마지막 증분 동기화 시각
+  googleTasksSyncedAt  DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
   @@index([userId])
 }
 
@@ -655,6 +660,10 @@ model Task {
   dueDate      DateTime?
   isCompleted  Boolean        @default(false)
   status       TaskStatus     @default(TODO)
+  /// 구글 Tasks에서 가져온 항목. unique로 재동기화 중복 방지
+  googleTaskId String?        @unique
+  /// true면 출처 뱃지 「구글」. CRM 전용 필드(프로젝트 연결 등)는 동기화가 덮지 않음
+  syncedFromGoogle Boolean    @default(false)
   priority     TaskPriority   @default(MEDIUM)
   /// 반복 업무 여부
   isRecurring  Boolean        @default(false)
@@ -713,6 +722,7 @@ model Task {
   @@index([status, completedAt])
   @@index([creationSource])
   @@index([assignedToId, creationSource, status])
+  @@index([syncedFromGoogle])
 }
 
 // 업무 다중 담당자 (assignedToId 는 호환용으로 첫 담당자와 동기화)

@@ -9,6 +9,7 @@ import { Calendar, ListTodo, Target } from "lucide-react";
 import { jsonFetcher } from "@/lib/api-swr";
 import { cn } from "@/lib/utils";
 import { ScheduleTaskList, type ScheduleListTask } from "@/components/schedule-task-list";
+import { useGoogleTasksSync } from "@/hooks/use-google-tasks-sync";
 
 type BriefSchedule = {
   id: string;
@@ -57,6 +58,7 @@ export function DashboardTodayBrief() {
     revalidateOnFocus: true,
     dedupingInterval: 30_000,
   });
+  useGoogleTasksSync({ auto: true, onSynced: () => void mutate() });
 
   const handleTaskCompleted = useCallback(
     async (taskId: string) => {

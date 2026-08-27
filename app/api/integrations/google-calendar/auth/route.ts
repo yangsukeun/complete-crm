@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
+import { buildGoogleOAuthAuthUrl, googleOauthScopesForRole } from "@/lib/google-oauth";
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
-/** Google OAuth로 리다이렉트 */
-export async function GET(req: NextRequest) {
+/** Google OAuth로 리다이렉트. 대표는 Tasks scope 포함 */
+export async function GET() {
   const session = await getAppSession();
   if (!session?.user?.id) {
     const loginUrl = new URL("/login", BASE_URL);
@@ -15,8 +16,6 @@ export async function GET(req: NextRequest) {
   if (!clientId) {
     return NextResponse.redirect(new URL("/schedule?error=google_calendar_not_configured", BASE_URL));
   }
-  const redirectUri = `${BASE_URL}/api/integrations/google-calendar/callback`;
-  const scope = encodeURIComponent("https://www.googleapis.com/auth/calendar.events.readonly");
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
+  const url = buildGoogleOAuthAuthUrl(clientId, googleOauthScopesForRole(session.user.role));
   return NextResponse.redirect(url);
 }
