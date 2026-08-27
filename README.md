@@ -30,6 +30,8 @@ complete-crm/
 └── tsconfig.json    # paths: @/* → ./src/*
 ```
 
+GPT·다른 개발자에게 구조를 설명할 때: **`docs/CRM-구조-설명서.md`** 를 그대로 붙여 넣으면 된다. 인앱 AI 비서가 읽는 기능 안내는 `docs/PRODUCT_KNOWLEDGE.md`.
+
 ## 처음 실행
 
 ```bash
