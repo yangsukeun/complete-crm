@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
+import { leaveDisplayUsedDays } from "@/lib/leave/display-used";
 import { saveOneSignalIdsToUser } from "@/lib/onesignal/save-player-to-user";
 
 export async function GET() {
@@ -131,11 +132,11 @@ export async function GET() {
     await ensureLegacyCarryAccrual(session.user.id);
     const pool = await calculateLeavePool(session.user.id, new Date());
     const carryOver = pool.periodGranted.validCarry;
-    const annualUsed = balance?.annualUsed ?? 0;
-    const manualDeduction = balance?.manualDeduction ?? 0;
     const annualTotal = pool.periodGranted.periodGranted;
     const leaveRemaining = pool.available;
     const totalAvailable = pool.displayGranted;
+    const annualUsed = leaveDisplayUsedDays(totalAvailable, leaveRemaining);
+    const manualDeduction = balance?.manualDeduction ?? 0;
     const joinDateStr =
       user.joinDate instanceof Date
         ? user.joinDate.toISOString().slice(0, 10)

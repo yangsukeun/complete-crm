@@ -6,6 +6,7 @@ import { fifoAllocate, type FifoAllocation, type AccrualRow } from "@/lib/leave/
 import { usableAccrualFromYmd } from "@/lib/leave/leave-period";
 import { LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
 import { leaveRequestDays, isSickLeaveType } from "@/lib/leave/leave-request-days";
+import { shouldFifoPriorUsageOntoCurrentPool } from "@/lib/leave/display-used";
 
 export type ReapplyLogLine = string;
 
@@ -168,14 +169,24 @@ export async function reapplyLeaveConsumptionForUser(
 
   const balances = await prisma.leaveBalance.findMany({
     where: { userId },
-    select: { manualDeduction: true },
+    select: { manualDeduction: true, annualCarryOver: true },
   });
   const priorTotal = balances.reduce((s, b) => s + (b.manualDeduction ?? 0), 0);
+  const carryOverDays = balances.reduce((s, b) => s + (b.annualCarryOver ?? 0), 0);
 
   const run = async (tx: Prisma.TransactionClient) => {
-    if (priorTotal > 1e-6) {
+    if (
+      shouldFifoPriorUsageOntoCurrentPool({
+        manualDeduction: priorTotal,
+        annualCarryOver: carryOverDays,
+      })
+    ) {
       log.push(`이전 사용분(CRM 전) ${priorTotal}일 (FIFO 기준일 ${asOfYmd})`);
       await applyFifo(tx, userId, priorTotal, asOf, dryRun, log, "PRIOR", usableFromYmd);
+    } else if (priorTotal > 1e-6 && carryOverDays > 1e-6) {
+      log.push(
+        `이전 사용분 ${priorTotal}일 스킵 — 이월 ${carryOverDays}일이 이미 사용 후 잔여분`
+      );
     }
 
     const requests = await tx.leaveRequest.findMany({

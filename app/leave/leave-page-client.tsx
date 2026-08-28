@@ -495,18 +495,12 @@ export function LeavePageClient({
                       부여 {balance.annualTotal}일 + 이월(작년) {balance.carryOver!.toFixed(1)}일 = 총{" "}
                       {(balance.annualTotal + (balance.carryOver ?? 0)).toFixed(1)}일
                       {" − "}사용 {balance.used.toFixed(1)}일
-                      {(balance.manualDeduction ?? 0) > 0 && (
-                        <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
-                      )}
                       {" = "}
                       {balance.remaining.toFixed(1)}일
                     </>
                   ) : (
                     <>
                       부여 {balance.annualTotal ?? balance.total}일 − 사용 {balance.used.toFixed(1)}일
-                      {(balance.manualDeduction ?? 0) > 0 && (
-                        <> − 실제 사용 차감 {balance.manualDeduction!.toFixed(1)}일</>
-                      )}
                       {" = "}
                       {balance.remaining.toFixed(1)}일
                     </>

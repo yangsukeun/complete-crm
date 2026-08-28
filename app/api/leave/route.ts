@@ -17,6 +17,8 @@ import {
 } from "@/lib/leave-request-serialize";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
+import { leaveDisplayUsedDays } from "@/lib/leave/display-used";
+import { syncLeaveBalanceAnnualTotalIfStale } from "@/lib/leave-balance-sync";
 
 const leaveTypeDays: Record<string, number> = {
   ANNUAL: 1,
@@ -81,21 +83,23 @@ export async function GET() {
 
     const pool = await calculateLeavePool(uid, new Date());
 
-    let balanceRow: { annualUsed: number; manualDeduction: number; annualCarryOver: number } | null = null;
+    let balanceRow: { annualUsed: number; manualDeduction: number; annualCarryOver: number; annualTotal: number } | null =
+      null;
     try {
       balanceRow = await prisma.leaveBalance.findUnique({
         where: { userId_year: { userId: uid, year } },
-        select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
+        select: { annualUsed: true, manualDeduction: true, annualCarryOver: true, annualTotal: true },
       });
     } catch {
       balanceRow = null;
     }
-    const used = balanceRow?.annualUsed ?? 0;
-    const manualDeduction = balanceRow?.manualDeduction ?? 0;
     const carryOver = pool.periodGranted.validCarry;
     const periodGranted = pool.periodGranted.periodGranted;
     const remaining = pool.available;
     const total = pool.displayGranted;
+    const used = leaveDisplayUsedDays(total, remaining);
+    const manualDeduction = balanceRow?.manualDeduction ?? 0;
+    await syncLeaveBalanceAnnualTotalIfStale(uid, year, periodGranted, balanceRow, { annualUsed: used });
 
     const requests = (rawRequests as LeaveRequestWithUser[]).map((row) =>
       serializeLeaveRequestForViewer(row, uid, role)

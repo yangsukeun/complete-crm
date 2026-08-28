@@ -12,6 +12,7 @@ import { resolveAppModeForUser } from "@/lib/app-mode-server";
 import { formatUserName } from "@/lib/utils";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
+import { leaveDisplayUsedDays } from "@/lib/leave/display-used";
 import {
   prefetchCompanyDashboardAdmin,
   prefetchCompanyDashboardUser,
@@ -296,10 +297,9 @@ export default async function DashboardPage() {
         ? Math.round((completedTasks.length / tasksCreatedByMe.length) * 100)
         : 0;
     const carryOver = adminPool.periodGranted.validCarry;
-    const used = adminLeaveBalance?.annualUsed ?? 0;
-    const manual = adminLeaveBalance?.manualDeduction ?? 0;
-    const totalLeave = adminPool.displayGranted;
     const remaining = adminPool.available;
+    const totalLeave = adminPool.displayGranted;
+    const used = leaveDisplayUsedDays(totalLeave, remaining);
     const incompleteCount = tasksCreatedByMe.filter((t: any) => !t.isCompleted).length;
 
     return (
@@ -376,7 +376,7 @@ export default async function DashboardPage() {
             </div>
             <p className="mt-2 text-2xl font-semibold">{remaining}일</p>
             <p className="text-muted-foreground text-sm">
-              사용 {used + manual} / 전체 휴가 {totalLeave}일
+              사용 {used} / 전체 휴가 {totalLeave}일
             </p>
             <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
               연차/근태 →
@@ -499,10 +499,9 @@ export default async function DashboardPage() {
   const annualTotal = userPool.periodGranted.periodGranted;
 
   const carryOver = userPool.periodGranted.validCarry;
-  const used = leaveBalance?.annualUsed ?? 0;
-  const manual = leaveBalance?.manualDeduction ?? 0;
-  const totalLeave = userPool.displayGranted;
   const remaining = userPool.available;
+  const totalLeave = userPool.displayGranted;
+  const used = leaveDisplayUsedDays(totalLeave, remaining);
 
   const isDueSoonOrOverdue = (due: Date) => {
     const endOfToday = new Date();
@@ -585,7 +584,7 @@ export default async function DashboardPage() {
           </div>
           <p className="mt-2 text-2xl font-semibold">{remaining}일</p>
           <p className="text-muted-foreground text-sm">
-            사용 {used + manual} / 전체 휴가 {totalLeave}일
+            사용 {used} / 전체 휴가 {totalLeave}일
           </p>
           <span className="text-primary mt-1 inline-block text-sm font-medium hover:underline">
             연차/근태 →

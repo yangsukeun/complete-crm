@@ -1,9 +1,15 @@
 import prisma from "@/lib/prisma";
-import { toKstYmd } from "@/lib/date-kst";
+import { kstYmdToUtcDayStart, toKstYmd } from "@/lib/date-kst";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
-import { expiresAtFromAccrualYmd, startOfKstDayFromYmd } from "@/lib/leave/kst-date";
-import { previousLeavePeriodYmd } from "@/lib/leave/leave-period";
+import { addCalendarDaysKst, startOfKstDayFromYmd } from "@/lib/leave/kst-date";
+import { currentLeavePeriodYmd, previousLeavePeriodYmd } from "@/lib/leave/leave-period";
 import { LEGACY_CARRY_ACCRUAL_YMD } from "@/lib/leave/legacy-carry-sync";
+
+/** 이월분은 현재 입사기념 기간이 끝나는 다음날까지 사용 */
+export function carryOverExpiresAt(joinYmd: string, asOfYmd: string): Date {
+  const current = currentLeavePeriodYmd(joinYmd, asOfYmd);
+  return kstYmdToUtcDayStart(addCalendarDaysKst(current.end, 1));
+}
 
 /**
  * LeaveBalance.annualCarryOver → CARRY_OVER LeaveAccrual.
@@ -29,6 +35,10 @@ export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
   const preferredYmd = prev?.start ?? `${year}-01-01`;
   const calendarYmd = `${year}-01-01`;
   if (preferredYmd === LEGACY_CARRY_ACCRUAL_YMD) return;
+
+  const expiresAt = joinYmd
+    ? carryOverExpiresAt(joinYmd, asOfYmd)
+    : kstYmdToUtcDayStart(`${year + 1}-01-01`);
 
   const note = prev
     ? `직전 적용기간(${prev.start}~${prev.end}) 이월`
@@ -70,7 +80,7 @@ export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
         days: carryDays,
         accrualDateYmd: preferredYmd,
         accruedAt: startOfKstDayFromYmd(preferredYmd),
-        expiresAt: expiresAtFromAccrualYmd(preferredYmd),
+        expiresAt,
         note,
       },
     });
@@ -80,7 +90,12 @@ export async function ensureBalanceCarryAccrual(userId: string): Promise<void> {
   if (existing.days < carryDays - 1e-6 && existing.consumedDays <= 1e-6) {
     await prisma.leaveAccrual.update({
       where: { id: existing.id },
-      data: { days: carryDays, note },
+      data: { days: carryDays, note, expiresAt },
     });
+    return;
   }
+  await prisma.leaveAccrual.update({
+    where: { id: existing.id },
+    data: { expiresAt, note },
+  });
 }

@@ -481,13 +481,11 @@ export function ProfilePageClient({
                       <>
                         부여 {profile.annualTotal}일 + 이월 {profile.annualCarryOver}일 = 전체 {profile.totalAvailable ?? profile.annualTotal + (profile.annualCarryOver ?? 0)}일
                         {" − "}사용 {profile.annualUsed ?? 0}일
-                        {(profile.manualDeduction ?? 0) > 0 && <> − 실제 사용 차감 {profile.manualDeduction}일</>}
                         {" = "}{leaveRemaining}일
                       </>
                     ) : (
                       <>
                         부여 {profile.annualTotal}일 − 사용 {profile.annualUsed ?? 0}일
-                        {(profile.manualDeduction ?? 0) > 0 && <> − 실제 사용 차감 {profile.manualDeduction}일</>}
                         {" = "}{leaveRemaining}일
                       </>
                     )}

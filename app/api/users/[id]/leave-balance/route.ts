@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { getCurrentLeaveCalendarYearKst } from "@/lib/leave";
 import { calculateLeavePool } from "@/lib/leave/calculate-pool";
 import { ensureLegacyCarryAccrual } from "@/lib/leave/legacy-carry-sync";
+import { leaveDisplayUsedDays } from "@/lib/leave/display-used";
 import { getEmployeeManagerContext } from "@/lib/employee-admin-access-db";
 
 /**
@@ -40,11 +41,11 @@ export async function GET(
       select: { annualUsed: true, manualDeduction: true, annualCarryOver: true },
     });
     const carryOver = pool.periodGranted.validCarry;
-    const annualUsed = balance?.annualUsed ?? 0;
-    const manualDeduction = balance?.manualDeduction ?? 0;
     const annualTotal = pool.periodGranted.periodGranted;
     const leaveRemaining = pool.available;
     const totalAvailable = pool.displayGranted;
+    const annualUsed = leaveDisplayUsedDays(totalAvailable, leaveRemaining);
+    const manualDeduction = balance?.manualDeduction ?? 0;
 
     return NextResponse.json({
       annualTotal,
