@@ -31,10 +31,17 @@ export async function GET(req: Request) {
     }
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
-    const where: { status?: (typeof VALID_STATUSES)[number] } =
+    const deleteRequestedOnly = searchParams.get("deleteRequested") === "1";
+    const where: {
+      status?: (typeof VALID_STATUSES)[number];
+      deleteRequestedAt?: { not: null };
+    } =
       statusFilter && VALID_STATUSES.includes(statusFilter as (typeof VALID_STATUSES)[number])
         ? { status: statusFilter as (typeof VALID_STATUSES)[number] }
         : {};
+    if (deleteRequestedOnly) {
+      where.deleteRequestedAt = { not: null };
+    }
 
     // [PERF-E] 목록 페이지네이션 (기본 50건)
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10) || 50));
@@ -50,6 +57,7 @@ export async function GET(req: Request) {
         include: {
           issuedBy: { select: { id: true, name: true } },
           project: { select: { id: true, name: true } },
+          deleteRequestedBy: { select: { id: true, name: true } },
         },
       }),
     ]);

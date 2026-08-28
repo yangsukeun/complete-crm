@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useReactToPrint } from "react-to-print";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeadline } from "@/components/page-headline";
-import { ArrowLeft, FileDown, Mail, Pencil, FolderKanban, Send } from "lucide-react";
+import { ArrowLeft, FileDown, Mail, Pencil, FolderKanban, Send, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Image from "next/image";
@@ -50,6 +51,10 @@ export type QuotationViewData = {
   updatedAt?: string;
   remarks: string | null;
   issuedBy: { name: string } | null;
+  issuedById?: string | null;
+  deleteRequestedAt?: string | null;
+  deleteRequestedById?: string | null;
+  deleteRequestedByName?: string | null;
   items: { description: string; quantity: number; unitPrice: number; amount: number }[];
 };
 
@@ -57,19 +62,26 @@ export function QuotationView({
   quotation,
   company,
   canEdit = false,
+  canApproveDelete = false,
+  canRequestDelete = false,
   linkedProject = null,
 }: {
   quotation: QuotationViewData;
   company: CompanyViewData | null;
   canEdit?: boolean;
+  canApproveDelete?: boolean;
+  canRequestDelete?: boolean;
   linkedProject?: { id: string; name: string } | null;
 }) {
+  const router = useRouter();
   const contentRef = useRef<HTMLDivElement>(null);
   const [mailOpen, setMailOpen] = useState(false);
   const [toEmail, setToEmail] = useState("");
   const [projectSuggestOpen, setProjectSuggestOpen] = useState(false);
   const [projectSuggestQuote, setProjectSuggestQuote] = useState<QuoteProjectSuggestPayload | null>(null);
   const [markingSent, setMarkingSent] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deletePending = Boolean(quotation.deleteRequestedAt);
 
   const handlePrint = useReactToPrint({
     contentRef,
@@ -145,6 +157,98 @@ export function QuotationView({
     toast.message("메일을 보낸 뒤에는 아래 '발송 완료 처리'를 눌러 주세요.", { duration: 6000 });
   };
 
+  const handleRequestDelete = async () => {
+    if (
+      !confirm(
+        `견적서 ${quotation.quotationNumber} 삭제를 팀장에게 요청할까요?\n승인되면 견적서가 삭제됩니다.`
+      )
+    ) {
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/quotations/${quotation.id}/delete-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "요청에 실패했습니다.");
+      toast.success("삭제 요청을 보냈습니다. 팀장 승인을 기다려 주세요.");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "요청에 실패했습니다.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleCancelDeleteRequest = async () => {
+    if (!confirm("삭제 요청을 취소할까요?")) return;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/quotations/${quotation.id}/delete-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "취소에 실패했습니다.");
+      toast.success("삭제 요청을 취소했습니다.");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "취소에 실패했습니다.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleRejectDeleteRequest = async () => {
+    if (!confirm("삭제 요청을 반려할까요?")) return;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/quotations/${quotation.id}/delete-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "반려에 실패했습니다.");
+      toast.success("삭제 요청을 반려했습니다.");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "반려에 실패했습니다.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleApproveOrDirectDelete = async () => {
+    const fromRequest = deletePending;
+    const ok = confirm(
+      fromRequest
+        ? `삭제 요청을 승인하고 견적서 ${quotation.quotationNumber}를 삭제할까요?\n연결된 프로젝트·자금요청의 견적 연결은 해제됩니다.`
+        : `견적서 ${quotation.quotationNumber}를 삭제할까요?\n팀장급만 삭제할 수 있습니다. 연결된 프로젝트·자금요청의 견적 연결은 해제됩니다.`
+    );
+    if (!ok) return;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(
+        fromRequest ? `/api/quotations/${quotation.id}/delete-request` : `/api/quotations/${quotation.id}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "삭제에 실패했습니다.");
+      toast.success("견적서를 삭제했습니다.");
+      router.push("/quotations");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const issuedAtFormatted = format(new Date(quotation.issuedAt), "yyyy-MM-dd HH:mm:ss", { locale: ko });
   const updatedAtFormatted = quotation.updatedAt
     ? format(new Date(quotation.updatedAt), "yyyy-MM-dd HH:mm", { locale: ko })
@@ -190,6 +294,61 @@ export function QuotationView({
               </Link>
             </Button>
           )}
+          {canRequestDelete && !deletePending ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              disabled={deleteBusy}
+              onClick={() => void handleRequestDelete()}
+            >
+              <Trash2 className="mr-2 size-4" />
+              삭제 요청
+            </Button>
+          ) : null}
+          {canRequestDelete && deletePending ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deleteBusy}
+              onClick={() => void handleCancelDeleteRequest()}
+            >
+              삭제 요청 취소
+            </Button>
+          ) : null}
+          {canApproveDelete && deletePending ? (
+            <>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteBusy}
+                onClick={() => void handleApproveOrDirectDelete()}
+              >
+                <Trash2 className="mr-2 size-4" />
+                삭제 승인
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={deleteBusy}
+                onClick={() => void handleRejectDeleteRequest()}
+              >
+                반려
+              </Button>
+            </>
+          ) : null}
+          {canApproveDelete && !deletePending ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              disabled={deleteBusy}
+              onClick={() => void handleApproveOrDirectDelete()}
+            >
+              <Trash2 className="mr-2 size-4" />
+              삭제
+            </Button>
+          ) : null}
           {(quotation.status !== "SENT" || !linkedProject) && (
             <Button
               variant="secondary"
@@ -221,6 +380,12 @@ export function QuotationView({
         ) : (
           <Badge variant="secondary">프로젝트 없음</Badge>
         )}
+        {deletePending ? (
+          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+            삭제 승인 대기
+            {quotation.deleteRequestedByName ? ` · ${quotation.deleteRequestedByName}` : ""}
+          </Badge>
+        ) : null}
       </div>
       {updatedAtFormatted && (
         <p className="text-muted-foreground text-right text-xs">

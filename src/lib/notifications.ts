@@ -41,7 +41,8 @@ export type NotificationTypeEnum =
   | "TASK_DUE_D1"
   | "TASK_DUE_OVERDUE"
   | "DAILY_DIGEST"
-  | "LEAVE_COMPENSATION";
+  | "LEAVE_COMPENSATION"
+  | "QUOTATION_DELETE";
 export type NotificationPriority = "high" | "medium" | "low";
 
 type CreateNotificationInput = {
@@ -75,6 +76,7 @@ const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriorit
   TASK_DUE_OVERDUE: "high",
   DAILY_DIGEST: "medium",
   LEAVE_COMPENSATION: "high",
+  QUOTATION_DELETE: "high",
 };
 
 /**

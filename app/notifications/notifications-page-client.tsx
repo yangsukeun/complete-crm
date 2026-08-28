@@ -29,6 +29,7 @@ const TYPE_LABELS: Record<string, string> = {
   WORK_LOG_SUBMITTED: "업무일지",
   LEAVE_REQUEST: "휴가",
   PROJECT_COMPLETED: "프로젝트 완료",
+  QUOTATION_DELETE: "견적서 삭제",
 };
 
 export function NotificationsPageClient() {

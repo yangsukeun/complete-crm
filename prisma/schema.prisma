@@ -175,6 +175,7 @@ enum NotificationType {
   TASK_DUE_OVERDUE   // 마감일 경과(당일 윈도우) Cron
   DAILY_DIGEST       // 일일 업무 다이제스트 Cron
   LEAVE_COMPENSATION // 연차 만료 시 수당 지급 필요(§61, 사용촉진 미실시)
+  QUOTATION_DELETE   // 견적서 삭제 요청·승인·반려
 }
 
 /// 알림이 연결된 리소스(읽음 처리·백필용). 기존 type/link는 그대로 유지.
@@ -289,6 +290,7 @@ model User {
   paymentRequests        PaymentRequest[]
   paymentRequestAlerts   PaymentRequestAlert[]
   quotations            Quotation[]
+  quotationDeleteRequests Quotation[] @relation("QuotationDeleteRequestedBy")
   announcements         Announcement[]
   boardPosts            BoardPost[]
   boardPostsDeletedByMe BoardPost[]       @relation("BoardPostDeletedBy")
@@ -1374,6 +1376,10 @@ model Quotation {
   issuedBy         User?             @relation(fields: [issuedById], references: [id], onDelete: SetNull)
   issuedAt         DateTime          @default(now()) // 발행일시
   remarks          String?           // 특이사항/비고
+  /// 직원이 삭제를 요청한 시각. 팀장급이 승인하면 실제 삭제
+  deleteRequestedAt    DateTime?
+  deleteRequestedById  String?
+  deleteRequestedBy    User?     @relation("QuotationDeleteRequestedBy", fields: [deleteRequestedById], references: [id], onDelete: SetNull)
   projectId        String?
   project          Project?          @relation("QuotationLinkedProject", fields: [projectId], references: [id], onDelete: SetNull)
   createdAt        DateTime          @default(now())
@@ -1383,6 +1389,8 @@ model Quotation {
   linkedAsPrimaryFor Project?      @relation("ProjectPrimaryQuote")
   @@index([issuedById])
   @@index([quotationNumber])
+  @@index([deleteRequestedAt])
+  @@index([deleteRequestedById])
   // 목록 API: status 필터 + issuedAt 내림차순 / 전체 최신순
   @@index([status, issuedAt(sort: Desc)])
   @@index([issuedAt(sort: Desc)])

@@ -26,6 +26,7 @@ import { FileText, Plus, LayoutTemplate } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { canApproveQuotationDelete } from "@/lib/quotation-delete-access";
 
 type Quotation = {
   id: string;
@@ -39,6 +40,8 @@ type Quotation = {
   issuedBy: { name: string };
   projectId: string | null;
   project?: { id: string; name: string } | null;
+  deleteRequestedAt?: string | null;
+  deleteRequestedBy?: { id: string; name: string } | null;
 };
 
 const STATUS_OPTIONS = [
@@ -97,11 +100,13 @@ type QuotationsListJson = {
 };
 
 export default function QuotationsPage() {
-  const { status } = useSession();
+  const { status, data: session } = useSession();
+  const canApproveDelete = canApproveQuotationDelete(session?.user?.role);
   const [list, setList] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [deleteRequestedOnly, setDeleteRequestedOnly] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   /** // [PERF-E] 견적 목록 페이지 크기 */
@@ -114,6 +119,7 @@ export default function QuotationsPage() {
       try {
         const qs = new URLSearchParams();
         if (statusFilter) qs.set("status", statusFilter);
+        if (deleteRequestedOnly) qs.set("deleteRequested", "1");
         qs.set("limit", String(pageSize));
         qs.set("offset", String(offset));
         const res = await fetch(`/api/quotations?${qs.toString()}`);
@@ -154,13 +160,13 @@ export default function QuotationsPage() {
         setLoadingMore(false);
       }
     },
-    [statusFilter, pageSize]
+    [statusFilter, deleteRequestedOnly, pageSize]
   );
 
   useEffect(() => {
     if (status === "unauthenticated" || status === "loading") return;
     void loadPage(0, false);
-  }, [status, statusFilter, loadPage]);
+  }, [status, statusFilter, deleteRequestedOnly, loadPage]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loadingMore) return;
@@ -184,6 +190,55 @@ export default function QuotationsPage() {
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "상태 변경에 실패했습니다.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }, []);
+
+  const handleApproveDelete = useCallback(
+    async (q: Quotation) => {
+      if (
+        !confirm(
+          `삭제 요청을 승인하고 견적서 ${q.quotationNumber}를 삭제할까요?\n연결된 프로젝트·자금요청의 견적 연결은 해제됩니다.`
+        )
+      ) {
+        return;
+      }
+      setUpdatingId(q.id);
+      try {
+        const res = await fetch(`/api/quotations/${q.id}/delete-request`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? "삭제 실패");
+        toast.success("견적서를 삭제했습니다.");
+        setList((prev) => prev.filter((row) => row.id !== q.id));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "삭제에 실패했습니다.");
+      } finally {
+        setUpdatingId(null);
+      }
+    },
+    []
+  );
+
+  const handleRejectDelete = useCallback(async (q: Quotation) => {
+    if (!confirm("삭제 요청을 반려할까요?")) return;
+    setUpdatingId(q.id);
+    try {
+      const res = await fetch(`/api/quotations/${q.id}/delete-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "반려 실패");
+      toast.success("삭제 요청을 반려했습니다.");
+      setList((prev) =>
+        prev.map((row) =>
+          row.id === q.id ? { ...row, deleteRequestedAt: null, deleteRequestedBy: null } : row
+        )
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "반려에 실패했습니다.");
     } finally {
       setUpdatingId(null);
     }
@@ -227,17 +282,36 @@ export default function QuotationsPage() {
         {FILTER_TABS.map((tab: any) => (
           <Button
             key={tab.value || "all"}
-            variant={statusFilter === tab.value ? "secondary" : "ghost"}
+            variant={!deleteRequestedOnly && statusFilter === tab.value ? "secondary" : "ghost"}
             size="sm"
             className={cn(
               "shrink-0",
-              statusFilter === tab.value && "bg-white shadow-sm dark:bg-slate-800"
+              !deleteRequestedOnly && statusFilter === tab.value && "bg-white shadow-sm dark:bg-slate-800"
             )}
-            onClick={() => setStatusFilter(tab.value)}
+            onClick={() => {
+              setDeleteRequestedOnly(false);
+              setStatusFilter(tab.value);
+            }}
           >
             {tab.label}
           </Button>
         ))}
+        {canApproveDelete ? (
+          <Button
+            variant={deleteRequestedOnly ? "secondary" : "ghost"}
+            size="sm"
+            className={cn(
+              "shrink-0",
+              deleteRequestedOnly && "bg-white shadow-sm dark:bg-slate-800"
+            )}
+            onClick={() => {
+              setStatusFilter("");
+              setDeleteRequestedOnly(true);
+            }}
+          >
+            삭제 요청
+          </Button>
+        ) : null}
       </div>
 
       {loading ? (
@@ -245,13 +319,17 @@ export default function QuotationsPage() {
       ) : list.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/30 py-12 text-center">
           <FileText className="mx-auto size-12 text-slate-400" />
-          <p className="text-muted-foreground mt-2 text-sm">등록된 견적서가 없습니다.</p>
+          <p className="text-muted-foreground mt-2 text-sm">
+            {deleteRequestedOnly ? "대기 중인 삭제 요청이 없습니다." : "등록된 견적서가 없습니다."}
+          </p>
+          {!deleteRequestedOnly ? (
           <Button asChild variant="outline" size="sm" className="mt-4">
             <Link href="/quotations/new">
               <Plus className="mr-2 size-4" />
               새 견적서 작성
             </Link>
           </Button>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-xl border-2 border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/50 overflow-hidden">
@@ -265,7 +343,7 @@ export default function QuotationsPage() {
                 <TableHead className="font-medium">상태</TableHead>
                 <TableHead className="font-medium">발행일</TableHead>
                 <TableHead className="font-medium">프로젝트</TableHead>
-                <TableHead className="w-[80px] font-medium" />
+                <TableHead className="w-[200px] font-medium text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -303,20 +381,53 @@ export default function QuotationsPage() {
                     {format(new Date(q.issuedAt), "yyyy.MM.dd", { locale: ko })}
                   </TableCell>
                   <TableCell>
-                    {q.projectId || q.project ? (
-                      <Badge className="bg-emerald-600 hover:bg-emerald-600 font-normal">프로젝트 연결됨</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="font-normal text-muted-foreground">
-                        프로젝트 없음
-                      </Badge>
-                    )}
+                    <div className="flex flex-col gap-1">
+                      {q.projectId || q.project ? (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600 font-normal">프로젝트 연결됨</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="font-normal text-muted-foreground">
+                          프로젝트 없음
+                        </Badge>
+                      )}
+                      {q.deleteRequestedAt ? (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-300 bg-amber-50 font-normal text-amber-900"
+                        >
+                          삭제 승인 대기
+                          {q.deleteRequestedBy?.name ? ` · ${q.deleteRequestedBy.name}` : ""}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link href={`/quotations/${q.id}`} prefetch={true}>
-                        보기
-                      </Link>
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      {canApproveDelete && q.deleteRequestedAt ? (
+                        <>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={updatingId === q.id}
+                            onClick={() => void handleApproveDelete(q)}
+                          >
+                            승인
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={updatingId === q.id}
+                            onClick={() => void handleRejectDelete(q)}
+                          >
+                            반려
+                          </Button>
+                        </>
+                      ) : null}
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/quotations/${q.id}`} prefetch={true}>
+                          보기
+                        </Link>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

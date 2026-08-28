@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { getAppSession } from "@/auth";
 import { QuotationView } from "./quotation-view";
+import { canApproveQuotationDelete, canRequestQuotationDelete } from "@/lib/quotation-delete-access";
 
 /** 로그인·견적별 데이터이므로 generateStaticParams 미적용 (항상 동적). */
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export default async function QuotationPage({
       where: { id },
       include: {
         issuedBy: { select: { name: true } },
+        deleteRequestedBy: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
         items: {
           orderBy: { sortOrder: "asc" },
@@ -71,6 +73,9 @@ export default async function QuotationPage({
     remarks: quotation.remarks,
     issuedBy: quotation.issuedBy,
     issuedById: quotation.issuedById,
+    deleteRequestedAt: quotation.deleteRequestedAt?.toISOString() ?? null,
+    deleteRequestedById: quotation.deleteRequestedById,
+    deleteRequestedByName: quotation.deleteRequestedBy?.name ?? null,
     items: quotation.items.map((i: any) => ({
       description: i.description,
       quantity: i.quantity,
@@ -79,6 +84,12 @@ export default async function QuotationPage({
     })),
   };
   const canEdit = session.user.id === quotation.issuedById;
+  const canApproveDelete = canApproveQuotationDelete(session.user.role);
+  const canRequestDelete = canRequestQuotationDelete({
+    role: session.user.role,
+    userId: session.user.id,
+    issuedById: quotation.issuedById,
+  });
 
   const companyData = company;
 
@@ -87,6 +98,8 @@ export default async function QuotationPage({
       quotation={data}
       company={companyData}
       canEdit={canEdit}
+      canApproveDelete={canApproveDelete}
+      canRequestDelete={canRequestDelete}
       linkedProject={quotation.project}
     />
   );

@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { syncQuotationProjectLink } from "@/lib/quote-project-link";
 import { notifyProjectCompletedStakeholders } from "@/lib/project-completion-notify";
+import { canApproveQuotationDelete } from "@/lib/quotation-delete-access";
+import { deleteQuotationRecord, notifyQuotationDeleteRequester } from "@/lib/quotation-delete";
 
 const VALID_STATUSES = [
   "DRAFT",
@@ -271,5 +273,55 @@ export async function PATCH(
   } catch (e) {
     console.error("[PATCH /api/quotations/[id]]", e);
     return NextResponse.json({ error: toErrorMessage(e).slice(0, 300) });
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getAppSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!canApproveQuotationDelete(session.user.role)) {
+      return NextResponse.json(
+        { error: "견적서는 팀장급 승인 후 삭제할 수 있습니다. 발행자는 삭제 요청을 보내 주세요." },
+        { status: 403 }
+      );
+    }
+    const { id } = await params;
+    const existing = await prisma.quotation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        quotationNumber: true,
+        title: true,
+        deleteRequestedById: true,
+        projectId: true,
+      },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "견적서를 찾을 수 없습니다." }, { status: 404 });
+    }
+    const requesterId = existing.deleteRequestedById;
+    await deleteQuotationRecord(id);
+    if (requesterId) {
+      await notifyQuotationDeleteRequester({
+        requesterId,
+        actorId: session.user.id,
+        quotationNumber: existing.quotationNumber,
+        title: existing.title,
+        result: "approved",
+      });
+    }
+    revalidatePath("/quotations");
+    revalidateTag("dashboard-sales-stats", "default");
+    if (existing.projectId) revalidatePath(`/projects/${existing.projectId}`);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("[DELETE /api/quotations/[id]]", e);
+    return NextResponse.json({ error: toErrorMessage(e).slice(0, 300) }, { status: 500 });
   }
 }
