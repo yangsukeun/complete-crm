@@ -10,7 +10,7 @@ describe("withDriveThumbnailSize", () => {
 
   it("clamps width", () => {
     expect(clampThumbnailWidth("256")).toBe(256);
-    expect(clampThumbnailWidth("9999")).toBe(512);
+    expect(clampThumbnailWidth("9999")).toBe(1600);
     expect(clampThumbnailWidth(null)).toBe(256);
   });
 });

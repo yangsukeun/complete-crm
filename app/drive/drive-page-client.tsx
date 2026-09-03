@@ -51,6 +51,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FolderPickerModal, type FolderPickerSelection } from "@/components/drive/folder-picker-modal";
+import { DrivePreviewLightbox } from "@/components/drive/drive-preview-lightbox";
+import { isExplorerImageFile } from "@/lib/drive/explorer-preview";
 import { postExplorerFolder } from "@/lib/drive/explorer-folder-api";
 import {
   canManageExplorerFolderTrash,
@@ -446,6 +448,10 @@ export function DrivePageClient({
 
   const selectableFiles = useMemo(
     () => displayFiles.filter((f) => !f.uploading && !f.creating),
+    [displayFiles]
+  );
+  const previewImages = useMemo(
+    () => displayFiles.filter((f) => isExplorerImageFile(f)),
     [displayFiles]
   );
   const selectedCount = selectedIds.size;
@@ -1534,9 +1540,13 @@ export function DrivePageClient({
     }
   };
 
-  /** 인앱 미리보기: JIT 부여 후 iframe(Drive preview) */
+  /** 인앱 미리보기: 이미지는 폴더 내 좌우 넘김, 그 외는 Drive iframe */
   const openFilePreview = async (file: DriveFileRow) => {
     if (file.isFolder || file.uploading || file.creating) return;
+    if (isExplorerImageFile(file)) {
+      setPreviewFile(file);
+      return;
+    }
     if (openingId) return;
     setOpeningId(file.id);
     try {
@@ -2879,65 +2889,16 @@ export function DrivePageClient({
       </div>
 
       {previewFile && (
-        <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setPreviewFile(null)}
-          role="presentation"
-        >
-          <div
-            className="flex h-[85vh] w-[90vw] max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={previewFile.name}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-              <span className="truncate text-sm font-medium">{previewFile.name}</span>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 gap-1 bg-sky-600 text-xs text-white hover:bg-sky-700"
-                  disabled={openingId === previewFile.id}
-                  onClick={() => void openFileInGoogle(previewFile)}
-                >
-                  구글에서 열기
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1"
-                  disabled={batchBusy}
-                  onClick={() => handleDownloadFile(previewFile)}
-                >
-                  <Download className="size-3.5" />
-                  다운로드
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1"
-                  onClick={() => setPreviewFile(null)}
-                >
-                  <X className="size-3.5" />
-                  닫기
-                </Button>
-              </div>
-            </div>
-            <iframe
-              title={previewFile.name}
-              src={
-                previewFile.driveFileId
-                  ? `https://drive.google.com/file/d/${previewFile.driveFileId}/preview`
-                  : previewFile.webViewLink || "about:blank"
-              }
-              className="h-full w-full flex-1 border-0"
-              allow="autoplay"
-            />
-          </div>
-        </div>
+        <DrivePreviewLightbox
+          file={previewFile}
+          images={previewImages}
+          openingId={openingId}
+          downloadBusy={batchBusy}
+          onClose={() => setPreviewFile(null)}
+          onSelect={setPreviewFile}
+          onOpenInGoogle={(f) => void openFileInGoogle(f)}
+          onDownload={handleDownloadFile}
+        />
       )}
 
       <FolderPickerModal
