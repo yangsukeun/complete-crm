@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canUseAwayFeature, canViewAwayOverview, computeWorkedMs, formatAwayDuration, formatDurationMinutes, isCsTeamManager, summarizeAwayLogs } from "@/lib/attendance-away-access";
+import { canUseAwayFeature, canViewAwayOverview, computeWorkedMs, formatAwayDuration, formatDurationMinutes, isCsTeamManager, staleAwayEndedAt, summarizeAwayLogs } from "@/lib/attendance-away-access";
 import { getDefaultPermissionsForRole, hasPermission } from "@/lib/permissions";
 
 describe("canUseAwayFeature", () => {
@@ -122,5 +122,13 @@ describe("attendance_import permission defaults", () => {
       true,
     );
     expect(hasPermission("USER", JSON.stringify(["dashboard"]), "attendance_import")).toBe(false);
+  });
+});
+
+describe("staleAwayEndedAt", () => {
+  it("ends at next KST midnight after the start day", () => {
+    expect(staleAwayEndedAt(new Date("2026-09-04T07:38:29.250Z")).toISOString()).toBe(
+      "2026-09-04T15:00:00.000Z",
+    );
   });
 });

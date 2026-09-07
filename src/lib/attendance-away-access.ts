@@ -2,6 +2,7 @@ import { isCsOrgDepartment } from "@/lib/org-access";
 import { isCsDepartment } from "@/lib/cs-tools-access";
 import { parsePermissions } from "@/lib/permissions";
 import { isExecutiveOrAdmin } from "@/lib/role-access";
+import { addDaysKstYmd, kstYmdToUtcDayStart, toKstYmd } from "@/lib/date-kst";
 
 /** User.permissions 개별 지정으로만 부여. 역할 기본값으로는 이석 버튼을 열지 않음. */
 export const AWAY_EXCEPTION_FEATURE = "attendance_away";
@@ -139,4 +140,9 @@ export function canViewAwayOverview(opts: {
 export function notifyAwayStatusChanged() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(AWAY_STATUS_EVENT));
+}
+
+/** 어제 이전에 열린 이석이 닫히지 않았을 때, 그 날 KST 자정에 종료된 것으로 본다. */
+export function staleAwayEndedAt(startedAt: Date): Date {
+  return kstYmdToUtcDayStart(addDaysKstYmd(toKstYmd(startedAt), 1));
 }

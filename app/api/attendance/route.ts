@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import { createActivityLog } from "@/lib/activity-log";
-import { closeOpenAwayLogs } from "@/lib/attendance-admin";
+import { closeOpenAwayLogs, closeStaleOpenAwayLogs } from "@/lib/attendance-admin";
 import { kstYmdToUtcDayStart, startOfDayKst } from "@/lib/date-kst";
 import prisma from "@/lib/prisma";
 import { getClientIpFromRequest, getClientUserAgent } from "@/lib/request-client-meta";
@@ -94,6 +94,7 @@ export async function POST(req: Request) {
           checkInUa: clientUa,
         },
       });
+      await closeStaleOpenAwayLogs(session.user.id, now);
       await createActivityLog(session.user.id, "CHECK_IN", "출근", clientIp);
       return NextResponse.json(attendance);
     }

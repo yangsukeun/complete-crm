@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { requireAwayActor } from "@/lib/attendance-admin";
+import { closeStaleOpenAwayLogs, requireAwayActor } from "@/lib/attendance-admin";
 import { startOfDayKst } from "@/lib/date-kst";
 
 export const runtime = "nodejs";
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
       );
     }
 
+    await closeStaleOpenAwayLogs(auth.user.id, now);
     const open = await prisma.awayLog.findFirst({
       where: { userId: auth.user.id, endedAt: null },
       select: { id: true },

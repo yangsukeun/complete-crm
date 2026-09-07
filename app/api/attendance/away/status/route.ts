@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getAppSession } from "@/auth";
+import { closeStaleOpenAwayLogs } from "@/lib/attendance-admin";
 import { startOfDayKst } from "@/lib/date-kst";
 import { summarizeAwayLogs } from "@/lib/attendance-away-access";
 
@@ -14,7 +15,9 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const todayStart = startOfDayKst(new Date());
+    const now = new Date();
+    await closeStaleOpenAwayLogs(session.user.id, now);
+    const todayStart = startOfDayKst(now);
     const logs = await prisma.awayLog.findMany({
       where: { userId: session.user.id, startedAt: { gte: todayStart } },
       select: { id: true, type: true, startedAt: true, endedAt: true },

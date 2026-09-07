@@ -5,7 +5,12 @@ import prisma from "@/lib/prisma";
 import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 import { userHasPermission } from "@/lib/permissions";
 import { isExecutiveOrAdmin } from "@/lib/role-access";
-import { canUseAwayFeature, canViewAwayOverview } from "@/lib/attendance-away-access";
+import {
+  canUseAwayFeature,
+  canViewAwayOverview,
+  staleAwayEndedAt,
+} from "@/lib/attendance-away-access";
+import { startOfDayKst } from "@/lib/date-kst";
 
 export async function requireAttendanceImport() {
   const session = await getAppSession();
@@ -93,4 +98,20 @@ export async function closeOpenAwayLogs(userId: string, at: Date) {
     where: { userId, endedAt: null },
     data: { endedAt: at },
   });
+}
+
+/** 오늘 이전에 시작된 열린 이석만 종료. 당일 이석은 그대로 둔다. */
+export async function closeStaleOpenAwayLogs(userId: string, now = new Date()) {
+  const todayStart = startOfDayKst(now);
+  const stale = await prisma.awayLog.findMany({
+    where: { userId, endedAt: null, startedAt: { lt: todayStart } },
+    select: { id: true, startedAt: true },
+  });
+  for (const row of stale) {
+    await prisma.awayLog.update({
+      where: { id: row.id },
+      data: { endedAt: staleAwayEndedAt(row.startedAt) },
+    });
+  }
+  return stale.length;
 }
