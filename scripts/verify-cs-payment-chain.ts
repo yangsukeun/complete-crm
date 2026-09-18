@@ -59,6 +59,7 @@ async function main() {
   const userPerms = getCsTeamDefaultPermissions("USER");
   assert(!userPerms.includes("tasks") && !userPerms.includes("quotations"), "CS USER: tasks/quotations 제외");
   assert(!userPerms.includes("finance_view"), "CS USER: finance_view 제외");
+  assert(userPerms.includes("finance_request"), "CS USER: finance_request 유지(이체 요청)");
   const leadPerms = getCsTeamDefaultPermissions("TEAM_LEAD");
   assert(leadPerms.includes("finance_view") && !leadPerms.includes("tasks"), "CS 팀장: finance_view만 복구");
   const chiefPerms = getCsTeamDefaultPermissions("CENTER_CHIEF");

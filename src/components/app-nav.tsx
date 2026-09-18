@@ -43,7 +43,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useLayoutShared } from "@/components/layout-shared-context";
 import { cn } from "@/lib/utils";
-import { userHasPermission } from "@/lib/permissions";
+import { hasFinancePageAccess, userHasPermission } from "@/lib/permissions";
 import { isMasterEmail } from "@/lib/master-account";
 import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
 import { canManageEmployeesSync } from "@/lib/employee-admin-access";
@@ -76,6 +76,8 @@ type NavLink = {
   label: string;
   icon: typeof LayoutDashboard;
   featureKey?: string;
+  /** 이 중 하나라도 있으면 메뉴 표시 (자금 조회 vs 자금 요청) */
+  anyFeatureKeys?: string[];
   companyOnly?: boolean;
   hint?: string;
   awayOverviewOnly?: boolean;
@@ -128,8 +130,14 @@ const hrGroupLinks: {
 ];
 
 // [재무/영업 관리]: 에메랄드/그린 계열
-const financeGroupLinks: { href: string; label: string; icon: typeof Wallet; featureKey?: string }[] = [
-  { href: "/finance/requests", label: "자금 관리", icon: Wallet, featureKey: "finance_view" },
+const financeGroupLinks: {
+  href: string;
+  label: string;
+  icon: typeof Wallet;
+  featureKey?: string;
+  anyFeatureKeys?: string[];
+}[] = [
+  { href: "/finance/requests", label: "자금 관리", icon: Wallet, anyFeatureKeys: ["finance_view", "finance_request"] },
   { href: "/quotations", label: "견적서", icon: FileText, featureKey: "quotations" },
 ];
 
@@ -395,11 +403,20 @@ export function AppNav() {
       return true;
     }
   };
+  const canSeeLink = (l: { featureKey?: string; anyFeatureKeys?: string[]; href?: string }) => {
+    if (l.href === "/finance/requests") {
+      return userForPermission ? hasFinancePageAccess(userForPermission) : true;
+    }
+    if (l.anyFeatureKeys && l.anyFeatureKeys.length > 0) {
+      return l.anyFeatureKeys.some((k) => can(k));
+    }
+    return !l.featureKey || can(l.featureKey);
+  };
 
   const visibleNav = (links: NavLink[]) =>
     links.filter(
       (l) =>
-        (!l.featureKey || can(l.featureKey)) &&
+        canSeeLink(l) &&
         (!l.companyOnly || isCompany) &&
         (!l.csAccessOnly || canSeeCsTools) &&
         navHrefAllowedForOrg(l.href, orgUnit)
@@ -438,14 +455,14 @@ export function AppNav() {
   const showCsSectionNav = canSeeCsTools && onCsSection;
   const hrLinks = hrGroupLinks.filter(
     (l: any) =>
-      (!l.featureKey || can(l.featureKey)) &&
+      canSeeLink(l) &&
       (!l.companyOnly || isCompany) &&
       (!l.awayOverviewOnly || canSeeAwayOverview) &&
       (!l.csAccessOnly || canSeeCsTools) &&
       navHrefAllowedForOrg(l.href, orgUnit)
   );
   const financeLinks = financeGroupLinks.filter(
-    (l: any) => (!l.featureKey || can(l.featureKey)) && navHrefAllowedForOrg(l.href, orgUnit)
+    (l: any) => canSeeLink(l) && navHrefAllowedForOrg(l.href, orgUnit)
   );
 
   const adminLinks = ADMIN_MENU_DEFS.filter((d) => {

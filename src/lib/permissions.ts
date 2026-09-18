@@ -150,3 +150,32 @@ export function userHasPermission(
   const r = String(user.role ?? "USER").toUpperCase() as RoleName;
   return hasPermission(r, user.permissions ?? null, feature);
 }
+
+type PermissionUser = { role?: string | null; permissions?: string | null };
+
+function asPermissionUser(user: PermissionUser): { role: string; permissions: string | null } {
+  return {
+    role: String(user.role ?? "USER"),
+    permissions: user.permissions ?? null,
+  };
+}
+
+/**
+ * 자금 관리 메뉴·페이지.
+ * 조회(finance_view)와 요청(finance_request)을 한 화면에서 쓰므로 둘 중 하나만 있어도 연다.
+ * 이체 담당자(transferExecutorIds) 여부와는 무관 — 담당이 아닌 경영지원 직원도 요청할 수 있어야 한다.
+ */
+export function hasFinancePageAccess(user: PermissionUser): boolean {
+  const u = asPermissionUser(user);
+  return userHasPermission(u, "finance_view") || userHasPermission(u, "finance_request");
+}
+
+/**
+ * 새 결제(자금이체) 요청.
+ * 대표/관리자는 결재만. 이체 담당자가 아니어도 finance_request 있으면 신청 가능.
+ */
+export function canCreatePaymentRequest(user: PermissionUser): boolean {
+  const role = String(user.role ?? "USER").toUpperCase();
+  if (role === "EXECUTIVE" || role === "ADMIN") return false;
+  return userHasPermission(asPermissionUser(user), "finance_request");
+}

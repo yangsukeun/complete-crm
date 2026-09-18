@@ -23,7 +23,8 @@ const CS_HIDE = new Set([
 
 /**
  * CS팀 USER / TEAM_LEAD / CENTER_CHIEF 기본 권한.
- * - tasks·quotations·finance_view 기본 제외
+ * - tasks·quotations·finance_view 기본 제외 (조회/승인 화면)
+ * - 일반 직원은 finance_request 유지 → 자금이체 요청 메뉴는 보임
  * - TEAM_LEAD·CENTER_CHIEF 만 finance_view 다시 포함 (이체·승인 화면)
  * 다른 부서 기본값은 건드리지 않음 — 호출측에서 CS팀일 때만 사용.
  */
@@ -36,10 +37,10 @@ export function getCsTeamDefaultPermissions(role: string | null | undefined): st
     r === "TEAM_LEAD" || r === "CENTER_CHIEF" || r === "USER" ? (r === "CENTER_CHIEF" ? "TEAM_LEAD" : r) : "USER";
   // CENTER_CHIEF는 TEAM_LEAD 기본(승인 키 포함)에서 출발
   let list = getDefaultPermissionsForRole(baseRole).filter((k) => !CS_HIDE.has(k));
+  if (!list.includes("finance_request")) list = [...list, "finance_request"];
   if (r === "TEAM_LEAD" || r === "CENTER_CHIEF") {
     if (!list.includes("finance_view")) list = [...list, "finance_view"];
     if (!list.includes("finance_approve")) list = [...list, "finance_approve"];
-    if (!list.includes("finance_request")) list = [...list, "finance_request"];
   }
   // CENTER_CHIEF 전용 키는 없음 — finance_approve로 자금 승인 UI 사용
   return list;

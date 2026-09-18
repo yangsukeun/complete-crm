@@ -21,7 +21,7 @@ import {
   isPaymentRequestInFinanceScope,
 } from "@/lib/finance-scope";
 import { getUserDepartments } from "@/lib/user-departments";
-import { userHasPermission } from "@/lib/permissions";
+import { canCreatePaymentRequest, userHasPermission } from "@/lib/permissions";
 import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
 const createSchema = z.object({
@@ -553,6 +553,10 @@ export async function POST(req: Request) {
       select: { role: true, name: true, department: true },
     });
     const requesterRole = (requesterUser?.role ?? session.user.role) as string | undefined;
+    const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(() => null);
+    if (!canCreatePaymentRequest({ role: requesterRole, permissions: permsJson })) {
+      return NextResponse.json({ error: "자금 요청 권한이 없습니다." }, { status: 403 });
+    }
 
     const companyForPost = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
     let transferExecutorIdsPost: string[] = [];

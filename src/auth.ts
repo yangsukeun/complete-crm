@@ -41,7 +41,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (params.user) {
         token.department = (params.user as { department?: string | null }).department ?? "";
         token.position = (params.user as { position?: string | null }).position ?? "";
-      } else if ((token.department === undefined || token.position === undefined) && token.id) {
+        (token as { permissionsRefreshedAt?: number }).permissionsRefreshedAt = Date.now();
+      } else if (token.id) {
+        const t = token as { permissions?: string | null; permissionsRefreshedAt?: number };
+        const last = typeof t.permissionsRefreshedAt === "number" ? t.permissionsRefreshedAt : 0;
+        if (Date.now() - last > 60_000) {
+          try {
+            t.permissions = await resolveEffectivePermissionsJson(String(token.id));
+            t.permissionsRefreshedAt = Date.now();
+          } catch {
+            t.permissionsRefreshedAt = Date.now();
+          }
+        }
+      }
+      if ((token.department === undefined || token.position === undefined) && token.id && !params.user) {
         try {
           const u = await prisma.user.findUnique({
             where: { id: String(token.id) },

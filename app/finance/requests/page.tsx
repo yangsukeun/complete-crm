@@ -46,8 +46,8 @@ import {
   paymentRequestNeedsExecutiveDirectApproval,
   paymentRequestNeedsExecutiveFirstLineApproval,
 } from "@/lib/finance-payment-request-policy";
-// TODO(security): /finance/requests 는 메뉴(featureKey)로만 숨기고 URL 직접 접근은 막지 않음.
-// 다른 페이지와 일관성 유지. CS팀 메뉴 숨김과 별도로 API/RSC 가드는 후속 이슈로 처리.
+import { canCreatePaymentRequest } from "@/lib/permissions";
+// 자금 메뉴는 finance_view 또는 finance_request. 이체 담당자가 아니어도 요청 가능.
 import * as XLSX from "xlsx";
 
 type Vendor = {
@@ -885,7 +885,10 @@ export default function FinanceRequestsPage() {
   const isCenterChief = role === "CENTER_CHIEF";
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
   const isTransferExecutor = transferExecutorIds.includes(myUserId);
-  const canRequest = !isExecutive;
+  const canRequest = canCreatePaymentRequest({
+    role,
+    permissions: (session?.user as { permissions?: string | null } | undefined)?.permissions ?? null,
+  });
   const canComplete = isTransferExecutor;
   const isSelfScope = financeScope?.kind === "SELF";
   const isRequesterStyleScope =

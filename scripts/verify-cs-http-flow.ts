@@ -66,6 +66,7 @@ async function main() {
   assert(!userPerms.includes("tasks"), "시나리오1: CS USER tasks 숨김");
   assert(!userPerms.includes("quotations"), "시나리오1: CS USER quotations 숨김");
   assert(!userPerms.includes("finance_view"), "시나리오1: CS USER finance_view 숨김");
+  assert(userPerms.includes("finance_request"), "시나리오1: CS USER finance_request 유지");
   console.log("시나리오2: URL 직접접근 미차단은 정책상 유지 (TODO 주석)");
 
   const leadPerms = getCsTeamDefaultPermissions("TEAM_LEAD");

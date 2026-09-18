@@ -56,6 +56,7 @@ describe("finance payment approval flow", () => {
     expect(userPerms).not.toContain("tasks");
     expect(userPerms).not.toContain("quotations");
     expect(userPerms).not.toContain("finance_view");
+    expect(userPerms).toContain("finance_request");
 
     const leadPerms = getCsTeamDefaultPermissions("TEAM_LEAD");
     expect(leadPerms).not.toContain("tasks");
