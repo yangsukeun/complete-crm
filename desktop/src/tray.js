@@ -1,6 +1,7 @@
 const { app, Tray, Menu, nativeImage, shell } = require("electron");
 const settings = require("./settings");
 const { checkForUpdatesManually } = require("./updater");
+const { chooseRoot } = require("./local-files");
 
 function createTray({ iconPath, showWindow, openInApp, quit }) {
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
@@ -30,6 +31,19 @@ function createTray({ iconPath, showWindow, openInApp, quit }) {
               click: toggle("askDownloadLocation"),
             },
             { label: "다운로드 폴더 열기", click: () => shell.openPath(settings.get("downloadDir")) },
+          ],
+        },
+        {
+          label: "PC 폴더 연결",
+          submenu: [
+            {
+              label: `NAS 문서함 폴더 지정… (${settings.get("nasUncRoot") || "지정 안 됨"})`,
+              click: () => chooseRoot("nas").then(rebuild),
+            },
+            {
+              label: `구글 드라이브 폴더 지정… (${settings.get("driveRoot") || "지정 안 됨"})`,
+              click: () => chooseRoot("drive").then(rebuild),
+            },
           ],
         },
         {

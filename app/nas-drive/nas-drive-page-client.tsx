@@ -6,11 +6,15 @@ import {
   ExternalLink,
   File,
   Folder,
+  FolderOpen,
   Loader2,
+  Monitor,
   RefreshCw,
   Server,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useCrmDesktop } from "@/lib/crm-desktop";
 import { cn } from "@/lib/utils";
 
 type NasFile = {
@@ -107,6 +111,18 @@ export function NasDrivePageClient() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  /** 데스크톱 앱에서만: 사내망 NAS 경로로 직접 열기·탐색기에서 보기 */
+  const desktop = useCrmDesktop();
+  const runDesktop = async (action: "open" | "reveal", nasPath: string) => {
+    if (!desktop) return;
+    const result =
+      action === "open" ? await desktop.openNasFile(nasPath) : await desktop.revealNasItem(nasPath);
+    if (!result.ok) toast.error(result.message);
+  };
+  const gridCols = desktop
+    ? "grid-cols-[minmax(0,2fr)_120px_100px_300px]"
+    : "grid-cols-[minmax(0,2fr)_120px_100px_120px]";
+
   const onRowActivate = (file: NasFile) => {
     if (file.isDir) {
       void load(file.path);
@@ -131,6 +147,19 @@ export function NasDrivePageClient() {
           <span>NAS 문서함</span>
         </div>
         <div className="flex items-center gap-2">
+          {desktop && data && !error && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              title="이 폴더를 PC 탐색기에서 열기"
+              onClick={() => void runDesktop("reveal", data.path)}
+            >
+              <FolderOpen className="size-4" />
+              폴더 위치 열기
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -181,7 +210,12 @@ export function NasDrivePageClient() {
       )}
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="grid grid-cols-[minmax(0,2fr)_120px_100px_120px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+        <div
+          className={cn(
+            "grid gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground",
+            gridCols
+          )}
+        >
           <span>이름</span>
           <span>수정일</span>
           <span>크기</span>
@@ -223,7 +257,10 @@ export function NasDrivePageClient() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") onRowActivate(file);
               }}
-              className="grid grid-cols-[minmax(0,2fr)_120px_100px_120px] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm hover:bg-gray-50"
+              className={cn(
+                "grid items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm hover:bg-gray-50",
+                gridCols
+              )}
             >
               <div className="flex min-w-0 items-center gap-2">
                 {file.isDir ? (
@@ -237,7 +274,7 @@ export function NasDrivePageClient() {
               <span className="text-xs text-muted-foreground">
                 {file.isDir ? "—" : formatSize(file.size)}
               </span>
-              <div>
+              <div className="flex flex-wrap gap-1">
                 {file.isDir ? (
                   <Button
                     type="button"
@@ -249,16 +286,44 @@ export function NasDrivePageClient() {
                     열기
                   </Button>
                 ) : (
+                  <>
+                    {desktop && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-xs text-sky-700"
+                        onClick={() => void runDesktop("open", file.path)}
+                        title="사내망 NAS에서 PC 프로그램으로 열기"
+                      >
+                        <Monitor className="size-3.5" />
+                        PC에서 열기
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      onClick={() => openExternal(file.openUrl)}
+                      title="NAS에서 열람"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      NAS에서
+                    </Button>
+                  </>
+                )}
+                {desktop && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="h-7 gap-1 px-2 text-xs"
-                    onClick={() => openExternal(file.openUrl)}
-                    title="NAS에서 열람"
+                    onClick={() => void runDesktop("reveal", file.path)}
+                    title="PC 탐색기에서 위치 보기"
                   >
-                    <ExternalLink className="size-3.5" />
-                    NAS에서
+                    <FolderOpen className="size-3.5" />
+                    폴더 위치 열기
                   </Button>
                 )}
               </div>

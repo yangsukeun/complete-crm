@@ -5,6 +5,7 @@ const { createTray } = require("./tray");
 const { setupDownloads } = require("./downloads");
 const { startNotifier } = require("./notifier");
 const { setupUpdater } = require("./updater");
+const { setupLocalFiles } = require("./local-files");
 
 const APP_ID = "kr.co.complete.crm";
 const ICON_PATH = path.join(__dirname, "..", "build", "icon.png");
@@ -236,6 +237,10 @@ function init() {
     onCount: (count) => tray.setUnreadCount(count),
   });
   setupUpdater({ getWindow: () => mainWindow, beforeQuit: () => (isQuitting = true) });
+  setupLocalFiles({
+    isAllowedSender: (frame) => Boolean(frame && isCrmUrl(frame.url)),
+    getWindow: () => mainWindow,
+  });
 }
 
 app.on("before-quit", () => {

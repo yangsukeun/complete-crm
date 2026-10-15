@@ -24,9 +24,11 @@ import {
   FileVideo,
   Folder,
   FolderInput,
+  FolderOpen,
   FolderPlus,
   HardDrive,
   Loader2,
+  Monitor,
   Plus,
   Presentation,
   RefreshCw,
@@ -75,6 +77,7 @@ import {
   needsLargeUploadConfirm,
 } from "@/lib/drive/explorer-upload-limits";
 import { inferUploadMimeType } from "@/lib/upload-policy";
+import { driveLocalFileName, isGoogleAppsFile, useCrmDesktop } from "@/lib/crm-desktop";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -1510,6 +1513,34 @@ export function DrivePageClient({
   };
 
   /** JIT 권한 부여 후 구글 Drive에서 열기 (탐색기 파일 전용) */
+  /**
+   * 데스크톱 앱에서만: Google Drive for desktop 로컬 폴더에서 열기·탐색기에서 보기.
+   * 검색 결과처럼 현재 폴더가 아닌 항목도 있으므로 상위 경로는 서버에서 다시 받는다.
+   */
+  const desktop = useCrmDesktop();
+  const runDesktop = async (file: DriveFileRow, action: "open" | "reveal") => {
+    if (!desktop || file.uploading || file.creating) return;
+    let folders: string[] = [];
+    if (file.parentId) {
+      const res = await fetch(`/api/drive/breadcrumb?id=${encodeURIComponent(file.parentId)}`);
+      const body = (await res.json().catch(() => ({}))) as BreadcrumbPayload;
+      if (!res.ok || !body.path) {
+        showToast(body.error || "폴더 경로를 확인하지 못했습니다.");
+        return;
+      }
+      folders = body.path.map((p) => p.name);
+    }
+    const segments = [...folders, driveLocalFileName(file.name, file.mimeType)];
+    const result =
+      action === "open"
+        ? await desktop.openDriveFile(segments)
+        : await desktop.revealDriveItem(segments);
+    if (!result.ok) showToast(result.message);
+  };
+  /** 구글 문서·시트 등은 PC 프로그램으로 열 수 없어 "PC에서 열기"를 숨긴다 */
+  const canOpenOnPc = (file: DriveFileRow) =>
+    Boolean(desktop) && !file.isFolder && !isGoogleAppsFile(file.mimeType);
+
   const openFileInGoogle = async (file: DriveFileRow) => {
     if (file.isFolder || file.uploading || file.creating) return;
     if (openingId) return;
@@ -2490,6 +2521,22 @@ export function DrivePageClient({
                   >
                     열기
                   </Button>
+                  {desktop && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      title="PC 탐색기에서 이 폴더 열기"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void runDesktop(file, "reveal");
+                      }}
+                    >
+                      <FolderOpen className="size-3.5" />
+                      폴더 위치 열기
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant={file.pinned ? "secondary" : "outline"}
@@ -2581,6 +2628,38 @@ export function DrivePageClient({
                   >
                     구글에서 열기
                   </Button>
+                  {canOpenOnPc(file) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs text-sky-700"
+                      title="PC의 구글 드라이브 폴더에서 열기"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void runDesktop(file, "open");
+                      }}
+                    >
+                      <Monitor className="size-3.5" />
+                      PC에서 열기
+                    </Button>
+                  )}
+                  {desktop && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      title="PC 탐색기에서 위치 보기"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void runDesktop(file, "reveal");
+                      }}
+                    >
+                      <FolderOpen className="size-3.5" />
+                      폴더 위치 열기
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
@@ -2827,12 +2906,22 @@ export function DrivePageClient({
                               >
                                 구글에서 열기
                               </DropdownMenuItem>
+                              {canOpenOnPc(file) && (
+                                <DropdownMenuItem onSelect={() => void runDesktop(file, "open")}>
+                                  PC에서 열기
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onSelect={() => handleDownloadFile(file)}
                               >
                                 다운로드
                               </DropdownMenuItem>
                             </>
+                          )}
+                          {desktop && (
+                            <DropdownMenuItem onSelect={() => void runDesktop(file, "reveal")}>
+                              폴더 위치 열기
+                            </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onSelect={() => void togglePin(file)}>
                             {file.pinned ? "고정 해제" : "상단 고정"}

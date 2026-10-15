@@ -15,6 +15,10 @@ const DEFAULTS = {
   /** 트레이 숨김 안내를 이미 보여줬는지 */
   trayHintShown: false,
   desktopNotifications: true,
+  /** NAS 문서함 공유 폴더 UNC 경로(예: \\NAS\문서공유). File Station /문서공유 에 대응 */
+  nasUncRoot: "",
+  /** CRM 구글 드라이브 탐색기 루트의 PC 경로(예: G:\공유 드라이브\컴플리트) */
+  driveRoot: "",
   windowBounds: null,
   windowMaximized: false,
   /** 마지막으로 알림을 띄운 시각(ISO). 이전 알림을 다시 띄우지 않기 위함 */
