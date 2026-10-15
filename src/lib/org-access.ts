@@ -75,6 +75,7 @@ const CS_NAV_PREFIXES = [
   "/finance/requests",
   "/profile",
   "/admin/employee-leave-summary",
+  "/admin/logs",
 ];
 
 /** 3PL 직원 메뉴 — 물류 홈·연차·이체·회사정보 */
@@ -83,6 +84,7 @@ const LOGISTICS_NAV_PREFIXES = [
   "/leave",
   "/finance/requests",
   "/admin/company",
+  "/admin/logs",
   "/profile",
 ];
 

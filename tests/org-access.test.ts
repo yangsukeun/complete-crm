@@ -32,7 +32,9 @@ describe("org-access", () => {
     expect(navHrefAllowedForOrg("/board", "CS")).toBe(false);
     expect(navHrefAllowedForOrg("/cs-tools", "CS")).toBe(true);
     expect(navHrefAllowedForOrg("/leave", "CS")).toBe(true);
+    expect(navHrefAllowedForOrg("/admin/logs", "CS")).toBe(true);
     expect(navHrefAllowedForOrg("/admin/company", "LOGISTICS")).toBe(true);
+    expect(navHrefAllowedForOrg("/admin/logs", "LOGISTICS")).toBe(true);
     expect(navHrefAllowedForOrg("/cs-tools", "LOGISTICS")).toBe(false);
     expect(navHrefAllowedForOrg("/tasks", "HQ")).toBe(true);
   });

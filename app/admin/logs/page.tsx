@@ -3,8 +3,8 @@ import { getAppSession } from "@/auth";
 import { redirect } from "next/navigation";
 import { PageHeadline } from "@/components/page-headline";
 import prisma from "@/lib/prisma";
-import { userHasPermission } from "@/lib/permissions";
-import { normalizeDepartment } from "@/lib/work-log-access";
+import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
+import { canViewOthersDailyWorkLog, hasDailyReportMenuAccess } from "@/lib/work-log-access";
 import { AdminLogsClient } from "./admin-logs-client";
 
 export default async function AdminLogsPage() {
@@ -17,9 +17,10 @@ export default async function AdminLogsPage() {
   });
   const role = me?.role ?? session.user.role ?? "USER";
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
-  const canLogs =
-    isExecutive ||
-    userHasPermission({ role, permissions: me?.permissions ?? null }, "admin_logs");
+  const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(
+    () => me?.permissions ?? null
+  );
+  const canLogs = hasDailyReportMenuAccess({ role, permissions: permsJson });
   if (!canLogs) redirect("/dashboard");
 
   let employees = await prisma.user.findMany({
@@ -35,19 +36,21 @@ export default async function AdminLogsPage() {
     orderBy: [{ role: "asc" }, { name: "asc" }],
   });
 
-  /** 팀장·admin_logs 권한(임원 제외): 같은 부서(팀) 사원·팀장만 목록에 표시. 임원·관리자 제외. */
+  /** 사원급·팀장급·다른 부서 권한을 병렬로 적용. 기본은 같은 팀도 비공개. */
   if (!isExecutive && canLogs) {
-    const dept = normalizeDepartment(me?.department);
-    employees = employees.filter((e) => {
-      if (e.role === "EXECUTIVE" // Prisma enum
-        || e.role === "ADMIN") return false;
-      if (!dept) return e.id === session.user.id;
-      return normalizeDepartment(e.department) === dept;
-    });
+    employees = employees.filter((e) =>
+      canViewOthersDailyWorkLog({
+        viewerId: session.user.id,
+        viewerRole: role,
+        viewerDepartment: me?.department,
+        viewerPermissions: permsJson,
+        target: e,
+      })
+    );
   }
 
   const headlineDesc = !isExecutive && canLogs
-    ? "같은 부서(팀) 소속 직원만 표시됩니다. 본인 프로필에 부서가 없으면 본인만 보이거나 목록이 비어 있을 수 있습니다."
+    ? "사원급·팀장급·다른 부서 조회 권한이 겹치는 직원만 표시됩니다. 권한이 없으면 같은 팀 일지도 볼 수 없습니다."
     : "직원을 선택하고 날짜를 지정하면 해당 날짜의 자동 생성된 Daily Report를 볼 수 있습니다.";
 
   return (

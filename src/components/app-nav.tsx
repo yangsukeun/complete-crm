@@ -44,6 +44,7 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useLayoutShared } from "@/components/layout-shared-context";
 import { cn } from "@/lib/utils";
 import { hasFinancePageAccess, userHasPermission } from "@/lib/permissions";
+import { hasDailyReportMenuAccess } from "@/lib/work-log-access";
 import { isMasterEmail } from "@/lib/master-account";
 import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
 import { canManageEmployeesSync } from "@/lib/employee-admin-access";
@@ -141,7 +142,7 @@ const financeGroupLinks: {
   { href: "/quotations", label: "견적서", icon: FileText, featureKey: "quotations" },
 ];
 
-/** 관리 드롭다운: 대표는 전부, 그 외는 기능 권한(예: 팀장 admin_logs → Daily Report만) */
+/** 관리 드롭다운: 대표는 전부, 그 외는 기능 권한 */
 const ADMIN_MENU_DEFS: {
   href: string;
   label: string;
@@ -150,6 +151,8 @@ const ADMIN_MENU_DEFS: {
   /** 마스터 계정 전용(감사용 화면). 대표/관리자에게도 숨김 */
   masterOnly?: boolean;
   feature?: string;
+  /** Daily Report 조회(사원급/팀장급 권한 병렬) */
+  dailyReport?: boolean;
   /** 대표·관리자 + CS 팀장/센터장 */
   csLeaveOverview?: boolean;
 }[] = [
@@ -159,7 +162,7 @@ const ADMIN_MENU_DEFS: {
   { href: "/admin/attendance-import", label: "근태 기록 가져오기", icon: Upload, feature: "attendance_import" },
   { href: "/admin/attendance", label: "월별 근태", icon: CalendarClock, feature: "attendance_import" },
   { href: "/admin/permissions", label: "기능 권한", icon: Shield, executiveOnly: true },
-  { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, feature: "admin_logs" },
+  { href: "/admin/logs", label: "Daily Report 조회", icon: FileText, dailyReport: true },
   { href: "/admin/departments-positions", label: "부서·직책", icon: Layers, feature: "admin_departments" },
   { href: "/admin/projects", label: "브랜드/프로젝트", icon: FolderKanban, feature: "admin_projects" },
   { href: "/admin/trash", label: "삭제된 항목", icon: Trash2, masterOnly: true },
@@ -474,6 +477,12 @@ export function AppNav() {
       return canViewEmployeeLeaveSummary({
         role: session?.user?.role,
         department: session?.user?.department,
+      });
+    }
+    if (d.dailyReport) {
+      return hasDailyReportMenuAccess({
+        role: session?.user?.role,
+        permissions: (session?.user as { permissions?: string | null } | undefined)?.permissions ?? null,
       });
     }
     if (d.executiveOnly) return isExecutive;

@@ -3,14 +3,14 @@ import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { extractTaskStatusMarkers, getOrCreateDailyWorkLog, stripTaskStatusMarkers } from "@/lib/activity-log";
 import { createNotificationWithOptions } from "@/lib/notifications";
-import { userHasPermission } from "@/lib/permissions";
-import { assertCanViewOthersDailyWorkLog } from "@/lib/work-log-access";
+import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
+import { assertCanViewOthersDailyWorkLog, hasDailyReportMenuAccess } from "@/lib/work-log-access";
 import { todayYmdKst } from "@/lib/date-kst";
 
 /**
  * GET: 오늘(또는 date 파라미터)의 업무일지 조회. 없으면 ActivityLog 기반으로 자동 생성 후 반환.
  * - date: YYYY-MM-DD (기본: 오늘)
- * - userId: 관리자만 지정 가능, 지정 시 해당 직원 일지
+ * - userId: 본인 또는 Daily Report 조회 권한(사원급/팀장급, 필요 시 다른 부서)이 맞는 직원
  */
 export async function GET(req: Request) {
   try {
@@ -23,26 +23,28 @@ export async function GET(req: Request) {
     const dateStr = searchParams.get("date") ?? todayYmdKst();
     const targetUserId = searchParams.get("userId") ?? null;
 
-    const isExecutive = session.user.role === "EXECUTIVE" || session.user.role === "ADMIN";
-    const canViewOthersLogs =
-      isExecutive ||
-      userHasPermission(session.user as { role: string; permissions?: string | null }, "admin_logs");
-    /** 타인 일지: 임원/관리자 또는 admin_logs 권한(팀장 기본 포함) */
+    const viewer = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { department: true, role: true },
+    });
+    const viewerRole = String(viewer?.role ?? session.user.role ?? "USER");
+    const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(() => null);
+    const canViewOthersLogs = hasDailyReportMenuAccess({
+      role: viewerRole,
+      permissions: permsJson,
+    });
     const userId = targetUserId && canViewOthersLogs ? targetUserId : session.user.id;
 
-    if (targetUserId && !canViewOthersLogs) {
+    if (targetUserId && targetUserId !== session.user.id && !canViewOthersLogs) {
       return NextResponse.json({ error: "다른 직원의 Daily Report는 조회할 수 없습니다." }, { status: 403 });
     }
 
     if (targetUserId && canViewOthersLogs && targetUserId !== session.user.id) {
-      const viewer = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { department: true, role: true },
-      });
       const gate = await assertCanViewOthersDailyWorkLog({
         viewerId: session.user.id,
-        viewerRole: String(viewer?.role ?? session.user.role ?? "USER"),
+        viewerRole,
         viewerDepartment: viewer?.department,
+        viewerPermissions: permsJson,
         targetUserId,
       });
       if (!gate.ok) {

@@ -29,7 +29,9 @@ export const FEATURE_LABELS: Record<string, string> = {
   attendance_away: "CS 이석(부재중) 예외",
   /** 직원 관리 화면·계정 생성/수정/엑셀/비번 (위임 시 role·관리자·기능권한 편집 불가) */
   employee_manage: "직원 관리",
-  admin_logs: "Daily Report 조회",
+  work_log_view_staff: "Daily Report · 사원급 조회",
+  work_log_view_lead: "Daily Report · 팀장급 조회",
+  work_log_view_other_dept: "Daily Report · 다른 부서 조회",
   admin_departments: "부서·직책",
   admin_projects: "브랜드/프로젝트",
   admin_company: "회사 정보",
@@ -67,7 +69,6 @@ const DEFAULT_BY_ROLE: Record<RoleName, string[]> = {
     "attendance",
     "announcements",
     "board",
-    "admin_logs", // 직원 Daily Report 조회 (/admin/logs) — 팀장 기본
     "profile",
   ],
   /** 센터장: 자금 승인 중심 (CS팀 실제 기본값은 resolve에서 재조정) */
