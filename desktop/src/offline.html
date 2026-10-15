@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>COMPLETE CRM - 연결 안 됨</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex; align-items: center; justify-content: center;
+        font-family: "Pretendard", "Malgun Gothic", sans-serif;
+        background: #f8f7fc; color: #1f1d2b;
+      }
+      .card { text-align: center; max-width: 420px; padding: 40px; }
+      h1 { font-size: 20px; margin: 0 0 12px; }
+      p { font-size: 14px; color: #5b5870; line-height: 1.6; margin: 0 0 24px; }
+      button {
+        background: #6d28d9; color: #fff; border: 0; border-radius: 8px;
+        padding: 10px 24px; font-size: 14px; cursor: pointer;
+      }
+      button:hover { background: #5b21b6; }
+      small { display: block; margin-top: 16px; color: #8a879c; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>CRM 서버에 연결할 수 없습니다</h1>
+      <p>인터넷 연결을 확인한 뒤 다시 시도해 주세요.<br />연결되면 자동으로 다시 접속합니다.</p>
+      <button id="retry">다시 연결</button>
+      <small id="url"></small>
+    </div>
+    <script>
+      document.getElementById("url").textContent =
+        new URLSearchParams(location.search).get("url") || "";
+      const retry = () => window.crmDesktop && window.crmDesktop.retry();
+      document.getElementById("retry").addEventListener("click", retry);
+      window.addEventListener("online", retry);
+      setInterval(() => navigator.onLine && retry(), 30000);
+    </script>
+  </body>
+</html>

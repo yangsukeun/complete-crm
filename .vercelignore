@@ -5,6 +5,9 @@ out
 .vercel
 coverage
 
+# 윈도우 데스크톱 앱 (웹 배포와 무관)
+desktop/
+
 # 대용량 로컬 동기화 폴더 (배포 불필요)
 synology 드라이브
 *ynology*

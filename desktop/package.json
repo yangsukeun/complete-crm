@@ -1,0 +1,64 @@
+{
+  "name": "complete-crm-desktop",
+  "productName": "COMPLETE CRM",
+  "version": "0.1.0",
+  "description": "주식회사 컴플리트 CRM 윈도우 프로그램",
+  "author": "주식회사 컴플리트",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env CRM_URL=http://localhost:3000 electron .",
+    "dist": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "kr.co.complete.crm",
+    "productName": "COMPLETE CRM",
+    "copyright": "© 주식회사 컴플리트",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "COMPLETE-CRM-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "COMPLETE CRM",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "yangsukeun",
+        "repo": "complete-crm",
+        "releaseType": "release"
+      }
+    ]
+  }
+}
