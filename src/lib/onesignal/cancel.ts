@@ -49,12 +49,20 @@ async function postSilentBadgeSyncToOneSignal(body: Record<string, unknown>): Pr
 }
 
 /**
- * 전 디바이스 뱃지 카운트 동기화 (silent push)
+ * 뱃지 카운트 동기화 푸시를 보낼지.
+ * 웹 푸시(크롬·PWA)는 조용한(silent) 푸시를 지원하지 않아, 이 푸시가 내용이 빈 알림으로 표시되고
+ * 크롬을 켤 때 밀린 빈 알림이 한꺼번에 떴다. 지금 구독은 모두 웹이므로 기본은 끈다.
+ * 네이티브 앱을 붙이면 ONESIGNAL_BADGE_SYNC_PUSH=1 로 켠다(그때도 웹 구독에는 보내지 않음).
+ */
+const BADGE_SYNC_PUSH_ENABLED = process.env.ONESIGNAL_BADGE_SYNC_PUSH === "1";
+
+/**
+ * 전 디바이스 뱃지 카운트 동기화 (silent push) — 네이티브 앱 전용
  * - external_id 경로 + subscription_ids 경로를 병행(기기 누락 방지)
  */
 export async function syncBadgeCount(userId: string, count: number): Promise<void> {
   const uid = userId?.trim();
-  if (!uid) return;
+  if (!uid || !BADGE_SYNC_PUSH_ENABLED) return;
   const safeCount = Math.max(0, Math.min(9999, Number.isFinite(count) ? count : 0));
 
   // userIds 기반 external_id는 이미 Transfer/login로 정렬되어 있다고 가정
@@ -68,6 +76,9 @@ export async function syncBadgeCount(userId: string, count: number): Promise<voi
     headings: { en: " ", ko: " " },
     contents: { en: " ", ko: " " },
     data: { type: "badge_sync", count: safeCount },
+    // 웹 구독에는 보내지 않는다(빈 알림으로 표시됨). 밀려도 1분 뒤 폐기
+    isAnyWeb: false,
+    ttl: 60,
   };
 
   let subscriptionIds: string[] = [];
@@ -98,6 +109,8 @@ export async function syncBadgeCount(userId: string, count: number): Promise<voi
           headings: { en: " ", ko: " " },
           contents: { en: " ", ko: " " },
           data: { type: "badge_sync", count: safeCount },
+          isAnyWeb: false,
+          ttl: 60,
         }
       : null;
 
