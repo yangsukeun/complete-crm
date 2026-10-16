@@ -44,6 +44,7 @@ import {
 } from "@/lib/upload-client-validate";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
+import { TaskStagesPanel } from "@/components/task-stages/task-stages-panel";
 import { HistoryNavButtons } from "@/components/history-nav-buttons";
 import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { CreateTaskModal } from "@/components/create-task-modal";
@@ -747,6 +748,16 @@ export default function TaskDetailPage() {
               <Button type="button" size="sm" onClick={() => void saveAssignees()} disabled={savingAssignees}>
                 {savingAssignees ? "저장 중..." : "담당자 저장"}
               </Button>
+            </div>
+          )}
+
+          {/* 단계 — 단계별 담당자·진행 상황 (회사(팀) 프로젝트만) */}
+          {task.scope === "TEAM" && (
+            <div className="border-t border-border/40 px-0 py-6" id="stages">
+              <h2 className="mb-3 text-sm font-semibold text-gray-900">단계</h2>
+              <ClientErrorBoundary>
+                <TaskStagesPanel taskId={task.id} />
+              </ClientErrorBoundary>
             </div>
           )}
 

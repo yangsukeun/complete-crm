@@ -13,6 +13,7 @@ import { onesignalOptOutAndDeregister } from "@/lib/onesignal/client-logout";
 import {
   Calendar,
   ListTodo,
+  ListOrdered,
   LayoutDashboard,
   Users,
   CalendarClock,
@@ -113,6 +114,7 @@ const aiGroupLinks: { href: string; label: string; icon: typeof Sparkles; hint: 
 
 const workGroupLinks: NavLink[] = [
   { href: "/tasks", label: "Projects", icon: ListTodo, featureKey: "tasks" },
+  { href: "/stages", label: "단계 현황", icon: ListOrdered, featureKey: "tasks", companyOnly: true, hint: "프로젝트 단계·담당자 진행" },
   { href: "/trash", label: "휴지통", icon: Trash2, featureKey: "tasks", hint: "삭제된 프로젝트" },
 ];
 

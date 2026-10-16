@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { getTaskCardAccentColor, PROJECT_TASK_COLORS, taskHasPaletteColor } from "@/lib/project-task-colors";
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
+import { TaskStagesPanel } from "@/components/task-stages/task-stages-panel";
 import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { AuthorMetaLine } from "@/components/author-meta-line";
@@ -125,7 +126,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
   const [assigneePickerIds, setAssigneePickerIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [copyingToPersonal, setCopyingToPersonal] = useState(false);
-  const [detailTab, setDetailTab] = useState<"detail" | "audit">("detail");
+  const [detailTab, setDetailTab] = useState<"detail" | "stages" | "audit">("detail");
   const [auditRows, setAuditRows] = useState<
     { id: string; field: string; oldValue: string | null; newValue: string | null; createdAt: string; actor: { id: string; name: string | null } }[]
   >([]);
@@ -600,6 +601,17 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         >
           상세
         </Button>
+        {task.scope === "TEAM" && (
+          <Button
+            type="button"
+            variant={detailTab === "stages" ? "secondary" : "ghost"}
+            size="sm"
+            className="rounded-b-none"
+            onClick={() => setDetailTab("stages")}
+          >
+            단계
+          </Button>
+        )}
         <Button
           type="button"
           variant={detailTab === "audit" ? "secondary" : "ghost"}
@@ -610,7 +622,11 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
           변경 이력
         </Button>
       </div>
-      {detailTab === "audit" ? (
+      {detailTab === "stages" ? (
+        <div className="px-6 py-6">
+          <TaskStagesPanel taskId={taskId} onChanged={onUpdate} />
+        </div>
+      ) : detailTab === "audit" ? (
         <div className="px-6 py-8">
           {auditLoading ? (
             <p className="text-muted-foreground text-sm">불러오는 중...</p>

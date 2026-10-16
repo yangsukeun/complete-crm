@@ -261,6 +261,8 @@ model User {
   schedules        Schedule[]         @relation("ScheduleOwner")
   assignedTasks    Task[]             @relation("TaskAssignee")
   taskAssigneeRows TaskAssignee[]
+  taskStageAssignments TaskStageAssignee[]
+  taskStageProgressLogs TaskStageProgress[]
   createdTasks     Task[]             @relation("TaskCreator")
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]
@@ -705,6 +707,7 @@ model Task {
   additionalParents TaskLink[] @relation("TaskLinkChild")
   additionalChildren TaskLink[] @relation("TaskLinkParent")
   assignees         TaskAssignee[]
+  stages            TaskStage[]
   revisions        TaskRevision[]
   mentions         TaskMention[]
   notificationLogs NotificationLog[]
@@ -738,6 +741,72 @@ model TaskAssignee {
   @@unique([taskId, userId])
   @@index([userId])
   @@index([taskId])
+}
+
+// 프로젝트(업무) 단계 진행 상태: 대기 → 진행 중 → 완료
+enum TaskStageStatus {
+  PENDING
+  ACTIVE
+  DONE
+}
+
+// 프로젝트(업무)를 순서 있는 단계로 나눈 것. 한 번에 하나의 단계만 ACTIVE
+model TaskStage {
+  id          String          @id @default(cuid())
+  taskId      String
+  task        Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  orderIndex  Int
+  name        String
+  status      TaskStageStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  assignees   TaskStageAssignee[]
+  progressLogs TaskStageProgress[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  @@index([taskId, orderIndex])
+  @@index([status])
+}
+
+// 단계 담당자. 단계 담당자 전원이 completedAt 을 채우면 단계가 완료되고 다음 단계가 시작된다
+model TaskStageAssignee {
+  id          String    @id @default(cuid())
+  stageId     String
+  stage       TaskStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 마지막으로 저장한 진행률(0~100)
+  progress    Int       @default(0)
+  /// 마지막 진행 메모(목록 표시용). 전체 기록은 TaskStageProgress
+  lastNote    String?
+  lastSavedAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  @@unique([stageId, userId])
+  @@index([userId])
+}
+
+// 단계 진행 기록(저장 버튼). 날짜별로 쌓인다
+model TaskStageProgress {
+  id        String    @id @default(cuid())
+  stageId   String
+  stage     TaskStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      String
+  progress  Int
+  createdAt DateTime  @default(now())
+  @@index([stageId, createdAt])
+}
+
+// 자주 쓰는 단계 묶음(예: 기획→디자인→개발→검수)
+model TaskStageTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  stageNames  String[]
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // 업무 본문 @멘션으로 호출된 사용자 (동기화·알림용)
