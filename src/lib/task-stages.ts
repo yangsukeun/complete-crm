@@ -1,8 +1,11 @@
 import "server-only";
 
-import type { Prisma, TaskStageStatus } from "@prisma/client";
+import type { Prisma, TaskStageStatus, TaskStatus } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { appendWorkLogOnceForTaskStatus } from "@/lib/activity-log";
+import { todayYmdKst } from "@/lib/date-kst";
 import { createNotificationWithOptions } from "@/lib/notifications";
+import { findProjectFolderUrl, PROJECT_FOLDER_MARKER } from "@/lib/project-folder";
 
 /**
  * 프로젝트(업무 화면의 최상위 Task) 단계 진행.
@@ -177,6 +180,37 @@ async function normalizeStages(tx: Prisma.TransactionClient, taskId: string) {
   return { started, allDone, wasAllDone: stages.length > 0 && stages.every((s) => s.status === "DONE") };
 }
 
+/**
+ * 프로젝트 상태를 단계 진행에 맞춘다.
+ * 진행 중인 단계가 있으면 IN_PROGRESS(진행중), 모든 단계가 끝나면 DONE(완료).
+ * 단계가 없으면 건드리지 않는다(기존처럼 사람이 상태를 바꿈).
+ */
+async function syncTaskStatusWithStages(taskId: string, actorId: string) {
+  const [task, stages] = await Promise.all([
+    prisma.task.findUnique({ where: { id: taskId }, select: { id: true, title: true, status: true } }),
+    prisma.taskStage.findMany({ where: { taskId }, select: { status: true } }),
+  ]);
+  if (!task || stages.length === 0) return;
+  const next: TaskStatus = stages.every((s) => s.status === "DONE") ? "DONE" : "IN_PROGRESS";
+  if (task.status === next) return;
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data:
+      next === "DONE"
+        ? { status: "DONE", isCompleted: true, completedAt: new Date() }
+        : { status: "IN_PROGRESS", isCompleted: false, ...(task.status === "DONE" ? { completedAt: null, archivedAt: null } : {}) },
+  });
+  // 업무 화면에서 상태를 바꿀 때와 같이 최초 단계 이동을 업무일지에 남긴다
+  void appendWorkLogOnceForTaskStatus({
+    userId: actorId,
+    dateStr: todayYmdKst(),
+    taskId,
+    taskTitle: task.title,
+    status: next,
+  }).catch((e) => console.error("[task-stages] work-log skipped:", e));
+}
+
 async function notifyStageStarted(taskId: string, taskTitle: string, stageIds: string[], actorId: string) {
   if (stageIds.length === 0) return;
   const stages = await loadStages(taskId);
@@ -330,6 +364,7 @@ export async function replaceTaskStages(taskId: string, viewer: StageViewer, inp
     return normalizeStages(tx, taskId);
   });
 
+  await syncTaskStatusWithStages(taskId, viewer.id);
   const after = await loadStages(taskId);
   await notifyStageStarted(taskId, task.title, result.started, viewer.id);
 
@@ -375,6 +410,7 @@ export async function setMyStageCompleted(stageId: string, viewer: StageViewer, 
     return normalizeStages(tx, row.stage.taskId);
   });
 
+  await syncTaskStatusWithStages(task.id, viewer.id);
   await notifyStageStarted(task.id, task.title, result.started, viewer.id);
   if (result.allDone && !result.wasAllDone) await notifyAllDone(task, viewer.id);
   return { stageAdvanced: result.started.length > 0 || result.allDone, allDone: result.allDone };
@@ -434,6 +470,7 @@ export async function getStageOverview(viewer: StageViewer, includeDone: boolean
       title: true,
       dueDate: true,
       createdBy: { select: { id: true, name: true } },
+      attachments: { where: { deletedAt: null, url: { contains: PROJECT_FOLDER_MARKER } }, select: { url: true }, take: 1 },
       stages: { include: stageInclude, orderBy: { orderIndex: "asc" } },
     },
     orderBy: { updatedAt: "desc" },
@@ -447,6 +484,7 @@ export async function getStageOverview(viewer: StageViewer, includeDone: boolean
       title: t.title,
       dueDate: t.dueDate?.toISOString() ?? null,
       createdBy: t.createdBy,
+      folderUrl: findProjectFolderUrl(t.attachments),
       overallProgress: overallProgress(stages),
       allDone: stages.length > 0 && stages.every((s) => s.status === "DONE"),
       activeStageNumber: active?.number ?? null,
@@ -472,7 +510,15 @@ export async function getAssigneeStages(targetUserId: string, viewer: StageViewe
       stage: {
         include: {
           ...stageInclude,
-          task: { select: { id: true, title: true, dueDate: true, stages: { select: { id: true }, orderBy: { orderIndex: "asc" } } } },
+          task: {
+            select: {
+              id: true,
+              title: true,
+              dueDate: true,
+              attachments: { where: { deletedAt: null, url: { contains: PROJECT_FOLDER_MARKER } }, select: { url: true }, take: 1 },
+              stages: { select: { id: true }, orderBy: { orderIndex: "asc" } },
+            },
+          },
         },
       },
     },
@@ -481,7 +527,12 @@ export async function getAssigneeStages(targetUserId: string, viewer: StageViewe
   const items = rows.map((r) => {
     const index = r.stage.task.stages.findIndex((s) => s.id === r.stageId);
     return {
-      task: { id: r.stage.task.id, title: r.stage.task.title, dueDate: r.stage.task.dueDate?.toISOString() ?? null },
+      task: {
+        id: r.stage.task.id,
+        title: r.stage.task.title,
+        dueDate: r.stage.task.dueDate?.toISOString() ?? null,
+        folderUrl: findProjectFolderUrl(r.stage.task.attachments),
+      },
       totalStages: r.stage.task.stages.length,
       stage: serializeStage(r.stage, index),
       mine: {

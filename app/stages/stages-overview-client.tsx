@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2, RefreshCw, UserRound } from "lucide-react";
+import { CheckCircle2, FolderOpen, Loader2, RefreshCw, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StageProgressBar } from "@/components/task-stages/stage-progress-bar";
@@ -14,6 +14,7 @@ type OverviewProject = {
   title: string;
   dueDate: string | null;
   createdBy: { id: string; name: string } | null;
+  folderUrl: string | null;
   overallProgress: number;
   allDone: boolean;
   activeStageNumber: number | null;
@@ -139,6 +140,12 @@ export function StagesOverviewClient() {
                 </span>
               )}
               {p.dueDate && <span className="text-xs text-muted-foreground">마감 {new Date(p.dueDate).toLocaleDateString("ko")}</span>}
+              {p.folderUrl && (
+                <Link href={p.folderUrl} prefetch={false} className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:underline">
+                  <FolderOpen className="size-3.5" />
+                  자료 폴더
+                </Link>
+              )}
               <StageProgressBar value={p.overallProgress} className="ml-auto w-48" />
             </div>
 

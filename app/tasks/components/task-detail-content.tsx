@@ -55,6 +55,8 @@ import { getTaskCardAccentColor, PROJECT_TASK_COLORS, taskHasPaletteColor } from
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
 import { TaskStagesPanel } from "@/components/task-stages/task-stages-panel";
+import { StageStrip } from "@/components/task-stages/stage-strip";
+import { findProjectFolderUrl } from "@/lib/project-folder";
 import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { AuthorMetaLine } from "@/components/author-meta-line";
@@ -592,6 +594,15 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
         style={{ background: getTaskCardAccentColor(task.color) }}
         aria-hidden
       />
+      {task.scope === "TEAM" && (
+        <div className="px-4 pt-3 empty:hidden">
+          <StageStrip
+            taskId={taskId}
+            onOpenStages={() => setDetailTab("stages")}
+            folderUrl={findProjectFolderUrl(task.attachments)}
+          />
+        </div>
+      )}
       <div className="flex gap-1 border-b border-border px-4 pt-2">
         <Button
           type="button"

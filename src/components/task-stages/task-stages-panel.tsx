@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { StageActionBox } from "./stage-action-box";
 import { StageEditor } from "./stage-editor";
 import { StageProgressBar } from "./stage-progress-bar";
+import { notifyStagesChanged } from "./stage-strip";
 import { STAGE_STATUS_CLASS, STAGE_STATUS_LABEL, stageFetch, type StageView, type TaskStagesResponse } from "./types";
 
 function StageIcon({ status }: { status: StageView["status"] }) {
@@ -45,6 +46,7 @@ export function TaskStagesPanel({ taskId, onChanged }: { taskId: string; onChang
 
   const refresh = () => {
     setReloadKey((k) => k + 1);
+    notifyStagesChanged(taskId);
     onChanged?.();
   };
 
@@ -67,6 +69,7 @@ export function TaskStagesPanel({ taskId, onChanged }: { taskId: string; onChang
         onSaved={(next) => {
           setData(next);
           setEditing(false);
+          notifyStagesChanged(taskId);
           onChanged?.();
         }}
       />

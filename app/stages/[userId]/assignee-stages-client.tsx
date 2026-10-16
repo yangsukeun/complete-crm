@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FolderOpen, Loader2 } from "lucide-react";
 import { PageHeadline } from "@/components/page-headline";
 import { StageActionBox } from "@/components/task-stages/stage-action-box";
 import { StageProgressBar } from "@/components/task-stages/stage-progress-bar";
@@ -12,7 +12,7 @@ import { STAGE_STATUS_CLASS, STAGE_STATUS_LABEL, stageFetch, type StageView } fr
 import { cn } from "@/lib/utils";
 
 type Item = {
-  task: { id: string; title: string; dueDate: string | null };
+  task: { id: string; title: string; dueDate: string | null; folderUrl: string | null };
   totalStages: number;
   stage: StageView;
   mine: { progress: number; lastNote: string | null; lastSavedAt: string | null; completedAt: string | null };
@@ -38,6 +38,12 @@ function StageCard({ item, isMe, onChanged }: { item: Item; isMe: boolean; onCha
           {stage.number}/{totalStages}단계 · {stage.name} · {STAGE_STATUS_LABEL[stage.status]}
         </span>
         {task.dueDate && <span className="text-xs text-muted-foreground">마감 {new Date(task.dueDate).toLocaleDateString("ko")}</span>}
+        {task.folderUrl && (
+          <Link href={task.folderUrl} prefetch={false} className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:underline">
+            <FolderOpen className="size-3.5" />
+            자료 폴더
+          </Link>
+        )}
         <StageProgressBar value={mine.progress} className="ml-auto w-40" />
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">

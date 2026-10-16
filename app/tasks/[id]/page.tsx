@@ -46,6 +46,8 @@ import {
 import { TaskAttachmentRow } from "@/components/task-attachment-row";
 import { TaskBodyEditorWithTabs } from "@/components/task-body-editor-with-tabs";
 import { TaskStagesPanel } from "@/components/task-stages/task-stages-panel";
+import { StageStrip } from "@/components/task-stages/stage-strip";
+import { findProjectFolderUrl } from "@/lib/project-folder";
 import { HistoryNavButtons } from "@/components/history-nav-buttons";
 import { lastTaskBodyEditorName } from "@/lib/task-body-revision-meta";
 import { CreateTaskModal } from "@/components/create-task-modal";
@@ -673,6 +675,15 @@ export default function TaskDetailPage() {
               </Link>
             </div>
           ) : null}
+          {task.scope === "TEAM" && (
+            <div className="mb-4 empty:hidden">
+              <StageStrip
+                taskId={task.id}
+                onOpenStages={() => document.getElementById("stages")?.scrollIntoView({ behavior: "smooth" })}
+                folderUrl={findProjectFolderUrl(task.attachments)}
+              />
+            </div>
+          )}
           <div className="flex items-start gap-3">
             <Checkbox
               checked={task.isCompleted}
