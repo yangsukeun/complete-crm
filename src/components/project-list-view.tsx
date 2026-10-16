@@ -11,6 +11,7 @@ import { getTaskCardAccentColor } from "@/lib/project-task-colors";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
 import { cn, formatUserName } from "@/lib/utils";
 import type { ProjectTableTask, ProjectTableTaskStatus } from "@/components/project-table-view";
+import { StageSummaryBadge } from "@/components/task-stages/stage-summary-badge";
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
 
@@ -91,6 +92,7 @@ export function ProjectListView<T extends ProjectTableTask>({
               >
                 {task.title}
               </span>
+              <StageSummaryBadge stages={task.stages} className="hidden max-w-[220px] shrink-0 md:inline-flex" />
               <Badge variant={priorityVariant(task.priority)} className="hidden shrink-0 text-[10px] sm:inline-flex">
                 {priorityLabel(task.priority)}
               </Badge>

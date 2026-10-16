@@ -40,6 +40,7 @@ import { useGoogleTasksSync } from "@/hooks/use-google-tasks-sync";
 import { toast } from "sonner";
 import { Plus, Filter, GitBranch, FileText, List as ListIcon, List as ListTableIcon, Trash2, LayoutGrid, CheckCircle2, Rows3, RefreshCw } from "lucide-react";
 import { ProjectListView } from "@/components/project-list-view";
+import { StageSummaryBadge, type StageSummaryItem } from "@/components/task-stages/stage-summary-badge";
 import { formatUserName } from "@/lib/utils";
 import {
   addDays,
@@ -209,6 +210,7 @@ type Task = {
   completedAt?: string | null;
   archivedAt?: string | null;
   defaultCollapsed?: boolean;
+  stages?: StageSummaryItem[];
 };
 
 function taskCreatorId(t: Task): string | null {
@@ -1648,6 +1650,7 @@ function TasksPageInner() {
                               >
                                 {task.title}
                               </p>
+                              <StageSummaryBadge stages={task.stages} className="mt-1 max-w-full" />
                               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                 <GoogleTaskSourceBadge syncedFromGoogle={task.syncedFromGoogle} />
                                 <Badge variant={priorityVariant(task.priority)} className="text-[10px]">

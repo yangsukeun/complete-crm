@@ -139,6 +139,11 @@ const listSelect = {
     },
   },
   ...taskListAssigneesInclude,
+  /** 목록 카드의 "N/M단계" 표시용(이름·상태만) */
+  stages: {
+    orderBy: { orderIndex: "asc" },
+    select: { name: true, status: true },
+  },
 } as const;
 
 const SHELF_STATUS_TOKENS = new Set<string>(["TODO", "IN_PROGRESS", "DONE"]);

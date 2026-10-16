@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
+import { StageSummaryBadge, type StageSummaryItem } from "@/components/task-stages/stage-summary-badge";
 import { formatUserName, cn } from "@/lib/utils";
 import { getTaskCardAccentColor } from "@/lib/project-task-colors";
 import { isPlainLeftClick } from "@/lib/peek-navigation";
@@ -47,6 +48,8 @@ export type ProjectTableTask = {
   } | null;
   createdById?: string | null;
   createdBy?: { id: string; name: string; position?: string | null };
+  /** 프로젝트 단계(있으면 목록에 "N/M단계" 표시) */
+  stages?: StageSummaryItem[];
   color?: string | null;
 };
 
@@ -260,6 +263,7 @@ export function ProjectTableView<T extends ProjectTableTask = ProjectTableTask>(
                       >
                         {task.title}
                       </Link>
+                      <StageSummaryBadge stages={task.stages} className="mt-0.5 max-w-full" />
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn("text-xs font-medium", STATUS_BADGE_CLASS[eff])}>
