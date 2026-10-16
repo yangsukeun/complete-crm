@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
+import { withoutCsTeam } from "@/lib/project-assignee-filter";
 import { cn } from "@/lib/utils";
 import {
   postUploadFile,
@@ -722,7 +723,7 @@ export default function TaskDetailPage() {
             <div className="mt-4 rounded-lg border bg-muted/15 p-3 space-y-2">
               <p className="text-xs font-medium text-muted-foreground">담당자 변경 (복수 선택)</p>
               <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                {workspaceUsers.map((u) => (
+                {withoutCsTeam(workspaceUsers, assigneeDraft).map((u) => (
                   <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50">
                     <Checkbox
                       checked={assigneeDraft.includes(u.id)}

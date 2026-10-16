@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatUserName, cn } from "@/lib/utils";
+import { withoutCsTeam } from "@/lib/project-assignee-filter";
 import { PROJECT_TASK_COLORS } from "@/lib/project-task-colors";
 import { TaskAssigneeAvatars } from "@/components/task-assignee-avatars";
 import { TaskCreationSource } from "@prisma/client";
@@ -225,7 +226,7 @@ export function CreateTaskModal({
                   {loadingUsers ? (
                     <p className="text-muted-foreground text-sm px-1 py-2">불러오는 중...</p>
                   ) : (
-                    users.map((u) => (
+                    withoutCsTeam(users, assigneeIds).map((u) => (
                       <label
                         key={u.id}
                         className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/60"

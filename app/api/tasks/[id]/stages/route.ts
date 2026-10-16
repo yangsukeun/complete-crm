@@ -1,4 +1,5 @@
 import { getCachedUsersMinimal } from "@/lib/cache/users-list";
+import { withoutCsTeam } from "@/lib/project-assignee-filter";
 import { getTaskStages, replaceTaskStages, StageError, type StageInput } from "@/lib/task-stages";
 import { readJson, withStageViewer } from "@/lib/task-stages-http";
 
@@ -11,9 +12,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const data = await getTaskStages(id, viewer);
     if (!data.canEdit) return { ...data, candidates: [] };
     const users = await getCachedUsersMinimal();
+    // CS팀은 프로젝트 단계 담당 대상이 아니라 후보에서 뺀다(이미 지정된 사람은 이름 표시를 위해 남김)
+    const assigned = new Set(data.stages.flatMap((s) => s.assignees.map((a) => a.userId)));
     return {
       ...data,
-      candidates: users.map((u) => ({
+      candidates: withoutCsTeam(users, assigned).map((u) => ({
         id: u.id,
         name: u.name,
         position: u.position,

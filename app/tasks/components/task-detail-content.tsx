@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { copyTaskToPersonal } from "@/actions/tasks";
 import { formatUserName } from "@/lib/utils";
+import { withoutCsTeam } from "@/lib/project-assignee-filter";
 import { workspaceFetchHeaders } from "@/lib/workspace-fetch-headers";
 import { taskDetailErrorMessage } from "@/lib/task-detail-error-message";
 import { cn } from "@/lib/utils";
@@ -784,7 +785,7 @@ export function TaskDetailContent({ taskId, onUpdate }: TaskDetailContentProps) 
                   {loadingUsers ? (
                     <p className="text-muted-foreground p-2 text-xs">불러오는 중...</p>
                   ) : (
-                    users.map((u) => (
+                    withoutCsTeam(users, assigneePickerIds).map((u) => (
                       <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted">
                         <Checkbox
                           checked={assigneePickerIds.includes(u.id)}
