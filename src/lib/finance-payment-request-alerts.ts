@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { createNotificationWithOptions } from "@/lib/notifications";
 
 export function parseTransferExecutorIds(idsJson: string | null | undefined): string[] {
   if (!idsJson?.trim()) return [];
@@ -33,7 +34,31 @@ export async function loadTransferExecutorIds(): Promise<string[]> {
   }
 }
 
-/** 이체 담당자·요청자 등에게 PaymentRequestAlert 생성 (중복 무시) */
+/** 요청의 현재 상태에 맞는 알림 문구 */
+async function buildPaymentAlertMessage(requestId: string): Promise<string | null> {
+  const r = await prisma.paymentRequest.findUnique({
+    where: { id: requestId },
+    select: { amount: true, status: true, vendor: { select: { name: true } }, requester: { select: { name: true } } },
+  });
+  if (!r) return null;
+  const what = `${r.vendor?.name ?? "거래처"} ${r.amount.toLocaleString("ko-KR")}원`;
+  const who = r.requester?.name ? `${r.requester.name}님의 ` : "";
+  switch (r.status) {
+    case "TEAM_LEAD_APPROVED":
+      return `자금 이체가 승인되었습니다: ${what}. 이체를 진행해 주세요.`;
+    case "COMPLETED":
+      return `요청하신 자금 이체가 완료되었습니다: ${what}`;
+    case "REJECTED":
+      return `자금 이체 요청이 반려되었습니다: ${what}`;
+    default:
+      return `${who}자금 이체 요청이 있습니다: ${what}. 승인해 주세요.`;
+  }
+}
+
+/**
+ * 이체 담당자·요청자 등에게 PaymentRequestAlert 생성 (중복 무시)
+ * 새로 생긴 알람은 재무 화면 배지뿐 아니라 종 알림·푸시로도 보낸다(전에는 배지만 있어 놓치기 쉬웠다).
+ */
 export async function ensurePaymentRequestAlerts(
   requestId: string,
   userIds: readonly string[]
@@ -42,18 +67,39 @@ export async function ensurePaymentRequestAlerts(
   if (unique.length === 0) return;
 
   const now = new Date().toISOString();
+  const inserted: string[] = [];
   for (const userId of unique) {
     try {
-      await prisma.$executeRawUnsafe(
+      const count = await prisma.$executeRawUnsafe(
         'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
         cuidLike(),
         requestId,
         userId,
         now
       );
+      if (count > 0) inserted.push(userId);
     } catch (err) {
       console.error("[finance] ensurePaymentRequestAlerts failed", { requestId, userId, err });
     }
+  }
+  if (inserted.length === 0) return;
+
+  try {
+    const message = await buildPaymentAlertMessage(requestId);
+    if (!message) return;
+    await Promise.allSettled(
+      inserted.map((userId) =>
+        createNotificationWithOptions({
+          userId,
+          type: "PAYMENT_REQUEST",
+          message,
+          link: "/finance/requests",
+          pushTitle: "자금 이체",
+        })
+      )
+    );
+  } catch (err) {
+    console.error("[finance] payment notification failed", { requestId, err });
   }
 }
 

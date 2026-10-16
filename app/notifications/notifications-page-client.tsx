@@ -30,6 +30,7 @@ const TYPE_LABELS: Record<string, string> = {
   LEAVE_REQUEST: "휴가",
   PROJECT_COMPLETED: "프로젝트 완료",
   QUOTATION_DELETE: "견적서 삭제",
+  PAYMENT_REQUEST: "자금 이체",
 };
 
 export function NotificationsPageClient() {

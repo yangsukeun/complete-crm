@@ -331,7 +331,7 @@ export async function PATCH(
     }
 
     try {
-      if (nextStatus === "COMPLETED" && current.requesterId) {
+      if ((nextStatus === "COMPLETED" || nextStatus === "REJECTED") && current.requesterId) {
         await ensurePaymentRequestAlerts(id, [current.requesterId]);
       }
     } catch (err) {

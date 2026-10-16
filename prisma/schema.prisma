@@ -176,6 +176,7 @@ enum NotificationType {
   DAILY_DIGEST       // 일일 업무 다이제스트 Cron
   LEAVE_COMPENSATION // 연차 만료 시 수당 지급 필요(§61, 사용촉진 미실시)
   QUOTATION_DELETE   // 견적서 삭제 요청·승인·반려
+  PAYMENT_REQUEST    // 자금 이체 요청·승인·완료·반려
 }
 
 /// 알림이 연결된 리소스(읽음 처리·백필용). 기존 type/link는 그대로 유지.

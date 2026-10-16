@@ -636,8 +636,6 @@ export async function POST(req: Request) {
       },
     });
 
-    const now = new Date().toISOString();
-    const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
 
     if (needsExecutiveFirstLine) {
       // 이체 담당자·김소윤 요청: 대표/임원에게 알람 (없으면 팀장에게 폴백)
@@ -647,17 +645,7 @@ export async function POST(req: Request) {
           select: { id: true },
         });
         const notifyIds = execs.length > 0 ? execs.map((u) => u.id) : (await prisma.user.findMany({ where: { role: "TEAM_LEAD" }, select: { id: true } })).map((u) => u.id);
-        for (const userId of notifyIds) {
-          try {
-            await prisma.$executeRawUnsafe(
-              'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-              cuidLike(),
-              paymentRequest.id,
-              userId,
-              now
-            );
-          } catch (_) {}
-        }
+        await ensurePaymentRequestAlerts(paymentRequest.id, notifyIds);
       } catch (alertErr) {
         console.error("대표/임원 알람 생성 실패:", alertErr);
       }
@@ -676,17 +664,7 @@ export async function POST(req: Request) {
     } else if (isRequesterTeamLead) {
       // 팀장이 요청한 경우: 결제(이체) 담당자에게만 알람 등록
       try {
-        for (const userId of transferExecutorIdsPost) {
-          try {
-            await prisma.$executeRawUnsafe(
-              'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-              cuidLike(),
-              paymentRequest.id,
-              userId,
-              now
-            );
-          } catch (_) {}
-        }
+        await ensurePaymentRequestAlerts(paymentRequest.id, transferExecutorIdsPost);
       } catch (alertErr) {
         console.error("이체 담당자 알람 생성 실패:", alertErr);
       }
