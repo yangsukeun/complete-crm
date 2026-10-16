@@ -4,6 +4,11 @@ const settings = require("./settings");
 const POLL_MS = 60 * 1000;
 /** 한 번에 이보다 많이 쌓이면 "새 알림 N개" 로 묶어서 보여준다 */
 const MAX_INDIVIDUAL = 3;
+/**
+ * 이보다 오래된 알림은 윈도우 알림으로 띄우지 않는다(개수만 갱신).
+ * 앱을 오래 꺼 두었다가 켰을 때 밀린 알림이 쏟아지지 않게 하기 위함 — 서버 푸시 TTL과 같은 취지.
+ */
+const MAX_AGE_MS = 30 * 60 * 1000;
 
 /**
  * 웹 푸시(OneSignal)는 Electron에서 동작하지 않으므로,
@@ -12,12 +17,16 @@ const MAX_INDIVIDUAL = 3;
 function startNotifier({ session, iconPath, getWindow, openInApp, onCount }) {
   async function poll() {
     let list;
+    let serverNow;
     try {
       const res = await session.fetch(`${settings.crmUrl()}/api/notifications?unreadOnly=true&limit=20`, {
         cache: "no-store",
       });
       if (!res.ok) return; // 401: 아직 로그인 전
       list = await res.json();
+      // 기준 시각은 PC 시계가 아닌 서버 시각(Date 헤더)으로 잡는다
+      const date = Date.parse(res.headers.get("date") || "");
+      serverNow = Number.isFinite(date) ? date : Date.now();
     } catch {
       return; // 오프라인 등 — 다음 주기에 다시 시도
     }
@@ -27,12 +36,15 @@ function startNotifier({ session, iconPath, getWindow, openInApp, onCount }) {
 
     const last = settings.get("lastNotifiedAt");
     const newest = list.reduce((max, n) => (n.createdAt > max ? n.createdAt : max), last || "");
-    if (newest) settings.set("lastNotifiedAt", newest);
+    // 미읽음이 없어도 기준점을 잡아야 첫 새 알림을 놓치지 않는다
+    settings.set("lastNotifiedAt", newest || new Date(serverNow).toISOString());
 
-    // 처음 실행 시에는 기존 미읽음 알림을 한꺼번에 띄우지 않는다
+    // 처음 로그인했을 때는 기존 미읽음 알림을 띄우지 않는다
     if (!last) return;
 
-    const fresh = list.filter((n) => n.createdAt > last).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const fresh = list
+      .filter((n) => n.createdAt > last && serverNow - Date.parse(n.createdAt) <= MAX_AGE_MS)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     if (fresh.length === 0 || !settings.get("desktopNotifications") || !Notification.isSupported()) return;
 
     // 창을 보고 있는 중이면 웹 화면의 알림으로 충분하다

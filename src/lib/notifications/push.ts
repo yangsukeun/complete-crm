@@ -20,7 +20,23 @@ export type PushPayload = {
   priority?: PushPriority;
   /** Notification DB id (있으면 OneSignal id를 역저장) */
   notificationDbId?: string;
+  /** 기기에 전달되지 못한 푸시를 보관하는 시간(초). 미지정 시 PUSH_DEFAULT_TTL_SECONDS */
+  ttlSeconds?: number;
 };
+
+/**
+ * 꺼져 있던 기기에 쌓인 푸시는 이 시간이 지나면 버린다.
+ * OneSignal 기본값(3일)이면 브라우저를 켜거나 로그인할 때 밀린 푸시가 한꺼번에 도착한다.
+ * 지난 알림은 CRM 알림함에서 볼 수 있으므로 푸시로 다시 보낼 필요가 없다.
+ */
+const PUSH_DEFAULT_TTL_SECONDS = 2 * 60 * 60;
+
+/**
+ * 같은 topic의 푸시는 기기에 전달되기 전까지 마지막 1건으로 대체된다(Web Push Topic).
+ * 구독은 한 사용자에게 묶이므로 고정 topic이면 "기기마다 밀린 푸시는 최신 1건"이 된다.
+ * 여러 명에게 보내는 공지·게시글 푸시도 같은 규칙을 적용하려고 수신자 수와 무관하게 쓴다.
+ */
+const PUSH_WEB_TOPIC = "crm-notify";
 
 /** 서버: ONESIGNAL_APP_ID 또는 클라이언트와 동일한 NEXT_PUBLIC_ONESIGNAL_APP_ID */
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID || process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
@@ -273,6 +289,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       contents,
       data,
       priority: pri,
+      ttl: payload.ttlSeconds ?? PUSH_DEFAULT_TTL_SECONDS,
     };
     if (launchUrl) baseBody.web_url = launchUrl;
     const pushOrigin = publicAppOriginForPush();
@@ -285,11 +302,7 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       /* 아이콘 생략 */
     }
 
-    const singleRecipient = externalIds.length === 1;
-    const webPushTopic =
-      singleRecipient
-        ? `crm-${externalIds[0]}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
-        : undefined;
+    const webPushTopic = PUSH_WEB_TOPIC;
 
     function hasInvalidExternalAliases(errors: unknown): boolean {
       if (!errors || typeof errors !== "object") return false;
