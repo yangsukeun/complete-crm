@@ -17,6 +17,8 @@ const NEXTAUTH_COOKIES = [
 
 function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/api/")) return true;
+  // AI 앱(MCP) 연결용 OAuth 메타데이터
+  if (pathname.startsWith("/.well-known/oauth-")) return true;
   // PWA manifest / 푸시 SW — 인증 없이 원본(JSON·JS)이 나가야 함 (리다이렉트 시 콘솔 Manifest·worker 오류)
   if (pathname === "/manifest.json" || pathname === "/manifest.webmanifest") return true;
   if (pathname === "/OneSignalSDKWorker.js" || pathname === "/OneSignalSDKUpdaterWorker.js") return true;
