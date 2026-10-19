@@ -838,11 +838,29 @@ export default function FinanceRequestsPage() {
     }
   };
 
-  const handleDeleteRequest = async (id: string) => {
-    if (!confirm("이 결제 요청을 삭제할까요? (이체 완료 전까지만 삭제할 수 있습니다)")) return;
+  /** 본인 요청이 아니면(이체 담당자·대표가 이체 대기 건 삭제) 사유를 받는다 */
+  const handleDeleteRequest = async (id: string, isOwn: boolean) => {
+    let reason = "";
+    if (isOwn) {
+      if (!confirm("이 결제 요청을 삭제할까요? (이체 완료 전까지만 삭제할 수 있습니다)")) return;
+    } else {
+      const input = prompt(
+        "승인된 이체 요청을 삭제합니다. 실제로 이체하지 않은 건만 삭제하세요.\n삭제 사유를 입력해 주세요. (요청자와 대표에게 알림이 갑니다)"
+      );
+      if (input === null) return;
+      reason = input.trim();
+      if (!reason) {
+        toast.error("삭제 사유를 입력해 주세요.");
+        return;
+      }
+    }
     setCompletingId(id);
     try {
-      const res = await fetch(`/api/finance/requests/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/finance/requests/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isOwn ? {} : { reason }),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "삭제 실패");
       toast.success("삭제했습니다.");
@@ -890,6 +908,11 @@ export default function FinanceRequestsPage() {
     permissions: (session?.user as { permissions?: string | null } | undefined)?.permissions ?? null,
   });
   const canComplete = isTransferExecutor;
+  /** 본인 요청은 이체 완료 전까지, 이체 담당자·대표는 이체 대기(승인 완료) 건만 삭제 */
+  const canDeleteRequest = (r: { status: string; requester?: { id: string } | null }) =>
+    r.status !== "COMPLETED" &&
+    (r.requester?.id === myUserId ||
+      ((isTransferExecutor || isExecutive) && r.status === "TEAM_LEAD_APPROVED"));
   const isSelfScope = financeScope?.kind === "SELF";
   const isRequesterStyleScope =
     financeScope?.kind === "SELF" || financeScope?.kind === "SELF_AND_DEPARTMENTS";
@@ -1246,11 +1269,11 @@ export default function FinanceRequestsPage() {
                               {completingId === r.id ? "처리 중..." : "이체완료"}
                             </Button>
                           )}
-                          {(r.requester?.id === session?.user?.id) && r.status !== "COMPLETED" && (
+                          {canDeleteRequest(r) && (
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleDeleteRequest(r.id)}
+                              onClick={() => handleDeleteRequest(r.id, r.requester?.id === myUserId)}
                               disabled={completingId === r.id}
                               className="text-destructive hover:text-destructive"
                             >
@@ -1567,11 +1590,11 @@ export default function FinanceRequestsPage() {
                           {completingId === r.id ? "처리 중..." : "이체완료"}
                         </Button>
                       )}
-                      {(r.requester?.id === session?.user?.id) && r.status !== "COMPLETED" && (
+                      {canDeleteRequest(r) && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleDeleteRequest(r.id)}
+                          onClick={() => handleDeleteRequest(r.id, r.requester?.id === myUserId)}
                           disabled={completingId === r.id}
                           className="text-destructive hover:text-destructive"
                         >

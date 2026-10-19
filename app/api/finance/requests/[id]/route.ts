@@ -19,6 +19,7 @@ import {
   loadTransferExecutorIds,
   notifyCenterChiefsOnCsTeamLeadApproval,
   notifyExecutivesOnTeamLeadApproval,
+  notifyPaymentRequestDeleted,
   notifyTransferExecutorsOnApproval,
 } from "@/lib/finance-payment-request-alerts";
 import { getFinanceScope, isPaymentRequestInFinanceScope } from "@/lib/finance-scope";
@@ -371,8 +372,19 @@ export async function PATCH(
   }
 }
 
+const deleteSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+
+/**
+ * 삭제 권한
+ * - 요청자 본인: 이체 완료 전까지
+ * - 이체 담당자·대표(승인자): 승인이 끝나 이체를 기다리는 건(TEAM_LEAD_APPROVED)만, 사유 필수.
+ *   승인 후 이체가 필요 없어진 건을 요청자 없이도 정리할 수 있게 하기 위함.
+ *   삭제하면 요청자와 다른 대표에게 사유를 담아 알린다.
+ */
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -381,22 +393,69 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
+    const body = await req.json().catch(() => ({}));
+    const parsed = deleteSchema.safeParse(body ?? {});
+    if (!parsed.success) {
+      return NextResponse.json({ error: "삭제 사유가 올바르지 않습니다." }, { status: 400 });
+    }
+    const reason = parsed.data.reason ?? "";
 
     const current = await prisma.paymentRequest.findUnique({
       where: { id },
-      select: { id: true, requesterId: true, status: true },
+      select: {
+        id: true,
+        requesterId: true,
+        status: true,
+        amount: true,
+        vendor: { select: { name: true } },
+      },
     });
     if (!current) {
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
-    }
-    if (current.requesterId !== session.user.id) {
-      return NextResponse.json({ error: "본인 요청만 삭제할 수 있습니다." }, { status: 403 });
     }
     if (current.status === "COMPLETED") {
       return NextResponse.json({ error: "이체 완료된 요청은 삭제할 수 없습니다." }, { status: 400 });
     }
 
+    const deletedByManager = current.requesterId !== session.user.id;
+    if (deletedByManager) {
+      const actor = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { role: true },
+      });
+      const role = actor?.role ?? session.user.role;
+      const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
+      const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
+      if (!isExecutive && !transferExecutorIds.includes(session.user.id)) {
+        return NextResponse.json({ error: "본인 요청만 삭제할 수 있습니다." }, { status: 403 });
+      }
+      if (current.status !== "TEAM_LEAD_APPROVED") {
+        return NextResponse.json(
+          { error: "승인이 끝나 이체를 기다리는 요청만 삭제할 수 있습니다." },
+          { status: 400 }
+        );
+      }
+      if (!reason) {
+        return NextResponse.json({ error: "삭제 사유를 입력해 주세요." }, { status: 400 });
+      }
+    }
+
     await prisma.paymentRequest.delete({ where: { id } });
+
+    if (deletedByManager) {
+      try {
+        await notifyPaymentRequestDeleted({
+          actorId: session.user.id,
+          requesterId: current.requesterId,
+          vendorName: current.vendor?.name ?? null,
+          amount: current.amount,
+          reason,
+        });
+      } catch (err) {
+        console.error("[DELETE /api/finance/requests/:id] delete notify failed", err);
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

@@ -132,3 +132,39 @@ export async function notifyCenterChiefsOnCsTeamLeadApproval(requestId: string):
     chiefs.map((u) => u.id)
   );
 }
+
+/**
+ * 이체 담당자·대표가 승인된(이체 대기) 요청을 삭제했을 때
+ * 요청자와 대표 전원(삭제한 사람 제외)에게 사유를 담아 알린다.
+ * 요청 행은 이미 지워졌으므로 PaymentRequestAlert 없이 종 알림·푸시로만 보낸다.
+ */
+export async function notifyPaymentRequestDeleted(input: {
+  actorId: string;
+  requesterId: string | null;
+  vendorName: string | null;
+  amount: number;
+  reason: string;
+}): Promise<void> {
+  const [actor, execs] = await Promise.all([
+    prisma.user.findUnique({ where: { id: input.actorId }, select: { name: true } }),
+    prisma.user.findMany({ where: { role: { in: ["EXECUTIVE", "ADMIN"] } }, select: { id: true } }),
+  ]);
+  const recipients = new Set(execs.map((u) => u.id));
+  if (input.requesterId) recipients.add(input.requesterId);
+  recipients.delete(input.actorId);
+  if (recipients.size === 0) return;
+
+  const what = `${input.vendorName ?? "거래처"} ${input.amount.toLocaleString("ko-KR")}원`;
+  const message = `${actor?.name ?? "이체 담당자"}님이 승인된 자금 이체 요청을 삭제했습니다: ${what} (사유: ${input.reason})`;
+  await Promise.allSettled(
+    [...recipients].map((userId) =>
+      createNotificationWithOptions({
+        userId,
+        type: "PAYMENT_REQUEST",
+        message,
+        link: "/finance/requests",
+        pushTitle: "자금 이체 삭제",
+      })
+    )
+  );
+}
