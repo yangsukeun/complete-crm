@@ -17,6 +17,7 @@ import type { Prisma } from "@prisma/client";
 import { TaskCreationSource } from "@prisma/client";
 import { z } from "zod";
 import { markGoogleTaskCompleted } from "@/lib/google-tasks-sync";
+import { notifyTaskBodyUpdated } from "@/lib/task-body-update-notify";
 
 /** Prisma·DB는 Node 런타임 전제 (Edge에서 cookies/Prisma 이슈 방지) */
 export const runtime = "nodejs";
@@ -1054,6 +1055,27 @@ export async function PATCH(
         await syncTaskMentionsForTask(id, nextUnique);
       } catch (syncErr) {
         console.error("[tasks] PATCH mention sync skipped:", syncErr);
+      }
+
+      // 프로젝트 글이 바뀌면 담당자·작성자에게 "누가 새로 작성/업데이트했습니다" 알림 (회사 프로젝트만)
+      if (descChanged && existing.scope === "TEAM") {
+        const prevBody = String(existing.description ?? "").trim();
+        const recipientIds = [
+          ...existing.assignees.map((a) => a.userId),
+          ...(existing.assignedToId ? [existing.assignedToId] : []),
+          ...(existing.createdById ? [existing.createdById] : []),
+        ];
+        after(() =>
+          notifyTaskBodyUpdated({
+            taskId: id,
+            taskTitle: data.title ?? existing.title,
+            actorId: session.user.id,
+            actorName,
+            wasEmpty: prevBody.length === 0,
+            recipientIds,
+            skipIds: toNotify,
+          }).catch((e) => console.error("[tasks] body update notify:", e))
+        );
       }
     }
 

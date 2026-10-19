@@ -31,6 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
   PROJECT_COMPLETED: "프로젝트 완료",
   QUOTATION_DELETE: "견적서 삭제",
   PAYMENT_REQUEST: "자금 이체",
+  TASK_BODY_UPDATED: "프로젝트 글",
 };
 
 export function NotificationsPageClient() {

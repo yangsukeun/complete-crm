@@ -43,7 +43,8 @@ export type NotificationTypeEnum =
   | "DAILY_DIGEST"
   | "LEAVE_COMPENSATION"
   | "QUOTATION_DELETE"
-  | "PAYMENT_REQUEST";
+  | "PAYMENT_REQUEST"
+  | "TASK_BODY_UPDATED";
 export type NotificationPriority = "high" | "medium" | "low";
 
 type CreateNotificationInput = {
@@ -79,6 +80,7 @@ const DEFAULT_PRIORITY_BY_TYPE: Record<NotificationTypeEnum, NotificationPriorit
   LEAVE_COMPENSATION: "high",
   QUOTATION_DELETE: "high",
   PAYMENT_REQUEST: "high",
+  TASK_BODY_UPDATED: "medium",
 };
 
 /**
@@ -147,6 +149,7 @@ const DEDUP_UNREAD_BY_LINK_TYPES: NotificationTypeEnum[] = [
   "CHAT_MESSAGE",
   "BOARD_MENTION",
   "TASK_BODY_MENTION",
+  "TASK_BODY_UPDATED",
 ];
 
 export async function createNotificationWithOptions(input: CreateNotificationInput): Promise<void> {
