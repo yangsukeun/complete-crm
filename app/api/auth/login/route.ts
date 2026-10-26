@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { signIn } from "@/auth";
 import prisma from "@/lib/prisma";
-import { compare, hash } from "bcryptjs";
+import { verifyLoginPassword } from "@/lib/verify-login-password";
 import { createLoginToken } from "@/lib/login-token-store";
 
-const DEV_PASSWORD = "dev1234";
 
 /**
  * 이메일/비밀번호 검증 후 NextAuth signIn으로 세션 생성.
@@ -56,22 +55,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "로그인에 실패했습니다." }, { status: 401 });
     }
 
-    let ok = false;
-    if (!user.password) {
-      ok = false;
-    } else {
-      ok = await compare(password, user.password);
-      if (!ok && password === DEV_PASSWORD) {
-        const hashed = await hash(DEV_PASSWORD, 10);
-        await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
-        ok = true;
-      }
-      if (!ok && password.length >= 4 && !user.password.startsWith("$2")) {
-        const hashed = await hash(password, 10);
-        await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
-        ok = true;
-      }
-    }
+    const ok = await verifyLoginPassword(password, user.password);
 
     if (!ok) {
       if (isForm) {

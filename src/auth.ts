@@ -3,7 +3,7 @@ import NextAuth from "next-auth";
 import type { Session } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { compare, hash } from "bcryptjs";
+import { verifyLoginPassword } from "@/lib/verify-login-password";
 import { authConfig } from "@/auth.config";
 import prisma from "@/lib/prisma";
 import { consumeLoginToken } from "@/lib/login-token-store";
@@ -170,13 +170,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 비밀번호 미설정 계정", emailRaw);
             return null;
           }
-          let ok = await compare(passwordRaw, user.password);
-          // DB에 bcrypt가 아닌 값이 저장된 경우 입력값으로 재저장 후 로그인 허용
-          if (!ok && passwordRaw.length >= 4 && !user.password.startsWith("$2")) {
-            const rehashed = await hash(passwordRaw, 10);
-            await prisma.user.update({ where: { id: user.id }, data: { password: rehashed } });
-            ok = true;
-          }
+          const ok = await verifyLoginPassword(passwordRaw, user.password);
           if (!ok) {
             if (process.env.NODE_ENV === "development") console.warn("[auth] 로그인 실패: 비밀번호 불일치", emailRaw);
             return null;
