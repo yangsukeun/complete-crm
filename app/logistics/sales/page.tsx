@@ -5,10 +5,11 @@ import { LogisticsSalesStore } from "@/lib/logistics-sales-store";
 import { SalesError } from "@/lib/logistics-sales";
 import { SalesPanel } from "./sales-panel";
 export const dynamic="force-dynamic";
-export default async function Page(){
+export default async function Page({searchParams}:{searchParams:Promise<{view?:string;record?:string}>}){
+ const query=await searchParams;
  const actor=(await getAppSession())?.user?.id;if(!actor)redirect("/login");
  let records;
  try{records=await new LogisticsSalesStore(prisma).read(actor);}
  catch(e){if(e instanceof SalesError&&(e.status===401||e.status===403))notFound();throw e;}
- return <SalesPanel initial={records}/>;
+ return <SalesPanel key={`${query.view}-${query.record}`} initial={records} view={query.view} recordId={query.record}/>;
 }
