@@ -1,3 +1,5 @@
+import { verifiedSubscriptions } from "../onesignal/verified-subscriptions";
+import { allowSubscriptionFallback } from "../onesignal/push-policy";
 import "server-only";
 
 import prisma from "@/lib/prisma";
@@ -201,7 +203,9 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
         console.log("[OneSignal push] ② 스킵: DB에 존재하는 userId 없음", { requestedExternalIds });
         return;
       }
-      const ACTIVE_MS = 3 * 60 * 1000;
+      const enabledUsers = await prisma.user.findMany({ where: { id: { in: rows.map(r => r.id) }, accountDisabled: false }, select: { id: true } });
+      rows = rows.filter(r => enabledUsers.some(u => u.id === r.id));
+      const ACTIVE_MS = payload.url?.startsWith("/chat/") ? 0 : 3 * 60 * 1000;
       try {
         const presence = await prisma.user.findMany({
           where: { id: { in: rows.map((r) => r.id) } },
@@ -249,7 +253,8 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
       }
       subscriptionIds = [...all];
     } catch (dbErr) {
-      console.error("[OneSignal push] DB 조회 실패 → external_id만 사용", dbErr);
+      console.error("[OneSignal push] 계정 상태 확인 실패, 전송 중단", dbErr);
+      return;
     }
 
     const launchUrl = absoluteUrlForPush(appendPushNotificationSourceQuery(payload.url));
@@ -384,10 +389,15 @@ export async function sendPushToUsers(payload: PushPayload): Promise<void> {
     };
     if (webPushTopic) subBody.web_push_topic = webPushTopic;
 
+    if (payload.url?.startsWith("/chat/")) {
+      const checked = await Promise.all(externalIds.map(id => verifiedSubscriptions(id)));
+      subscriptionIds = subscriptionIds.filter(id => checked.some(v => v.ids.includes(id)));
+      subBody.include_subscription_ids = subscriptionIds;
+    }
     const ext = await postOneSignal(extBody);
-    const extDelivered = ext.recipients > 0 && !ext.invalidExternalAliases;
+    const extDelivered = ext.recipients > 0 || !!ext.oneSignalId;
     let sub: PostPushResult | undefined;
-    if (subscriptionIds.length > 0 && !extDelivered) {
+    if (subscriptionIds.length > 0 && !extDelivered && allowSubscriptionFallback(ext)) {
       sub = await postOneSignal(subBody);
     }
 

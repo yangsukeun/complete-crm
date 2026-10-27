@@ -1,3 +1,4 @@
+import { suppressMergedPush } from "./onesignal/push-policy";
 import { startOfDay, endOfDay, addDays } from "date-fns";
 import prisma from "@/lib/prisma";
 import { sendPushToUser as sendPushToUserImpl } from "./notifications/push";
@@ -171,7 +172,7 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
         });
         persisted = true;
         notificationId = existing.id;
-        mergedExistingUnread = true;
+        mergedExistingUnread = suppressMergedPush(type, existing.createdAt);
       } else {
         const created = await prisma.notification.create({
           data: { userId, type, message, link },
@@ -226,8 +227,9 @@ export async function createNotificationWithOptions(input: CreateNotificationInp
   if (shouldSendPush) {
     await sendPushToUser({
       userId,
-      title: pushTitle?.trim() ? pushTitle.trim() : "새 알림",
-      message,
+      title: type === "CHAT_MESSAGE" ? "COMPLETE CRM" : (pushTitle?.trim() ? pushTitle.trim() : "새 알림"),
+      message: type === "CHAT_MESSAGE" ? "새 채팅이 있습니다. CRM에서 확인하세요." : message,
+      data: type === "CHAT_MESSAGE" ? { chatId: link.split("/")[2] } : undefined,
       url: link || undefined,
       priority,
       notificationDbId: notificationId ?? undefined,
