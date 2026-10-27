@@ -1,0 +1,11 @@
+import { beforeEach,it,expect,vi } from "vitest";
+import { OWNER,DIRECTOR,RuaWorkStore } from "../src/lib/rua-work";
+const f=vi.hoisted(()=>({id:null as string|null,open:vi.fn()}));
+vi.mock("@/auth",()=>({getAppSession:async()=>f.id?{user:{id:f.id,role:"ADMIN"}}:null}));
+vi.mock("@/lib/rua-store",()=>({openRuaStore:f.open}));
+import { GET,POST } from "../app/api/rua-work/route";
+beforeEach(()=>{f.id=null;f.open.mockReset();f.open.mockResolvedValue(new RuaWorkStore());});
+const request=(body:unknown)=>new Request("https://www.cpcrm.co.kr/api/rua-work",{method:"POST",headers:{origin:"https://www.cpcrm.co.kr"},body:JSON.stringify(body)});
+it("rejects anonymous/other admin/director before store access",async()=>{for(const id of [null,"other-admin",DIRECTOR]){f.id=id;expect((await GET(new Request("https://www.cpcrm.co.kr/api/rua-work?view=diary"))).status).toBe(id?404:401);expect((await POST(request({action:"diary",raw:"x",key:"request-123",source:"human"}))).status).toBe(id?404:401);}expect(f.open).not.toHaveBeenCalled();});
+it("preserves owner records, rejects sharing/AI/forged actor and avoids shared cache",async()=>{f.id=OWNER;const body={action:"diary",raw:"합성 검증",key:"request-123",source:"human"};expect((await POST(request(body))).status).toBe(200);expect((await POST(request(body))).status).toBe(200);for(const extra of [{action:"assign"},{source:"ai"},{actor:"other"}])expect((await POST(request({...body,...extra}))).status).toBe(400);const r=await GET(new Request("https://www.cpcrm.co.kr/api/rua-work?view=diary"));expect((await r.json()).notes).toHaveLength(1);expect(r.headers.get("cache-control")).toBe("private, no-store");});
+it("handles malformed input and failed storage without success claims",async()=>{f.id=OWNER;expect((await POST(request(null))).status).toBe(400);f.open.mockRejectedValue(new Error("database unavailable"));expect((await POST(request({action:"diary",raw:"x",key:"request-123",source:"human"}))).status).toBe(503);});

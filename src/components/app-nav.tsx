@@ -429,6 +429,7 @@ export function AppNav() {
 
   const mainLinks = visibleNav(mainGroupLinks);
   const workLinks = visibleNav(workGroupLinks);
+  if (session?.user?.id === "cmmitn4830000fc0jt8c1l2jf") workLinks.unshift({ href: "/rua-project", label: "루와의 프로젝트", icon: FolderKanban, hint: "대표 개인 기록" });
   workLinks.unshift({ href: "/workspaces", label: "업무영역", icon: FolderKanban, hint: "경영지원 · 마케팅 · CS · 3PL" });
   const resourceLinks = visibleNav(resourceGroupLinks);
   const commsLinks = visibleNav(commsGroupLinks);
