@@ -16,6 +16,10 @@ export class PostgresRuaWorkStore {
     ownerOnly(actor);
     return this.db.$transaction(async tx => (await this.replay(tx)).store.readDiary(actor));
   }
+  async readDiaryTransaction(actor: string | null, tx: Prisma.TransactionClient) {
+    ownerOnly(actor);
+    return (await this.replay(tx)).store.readDiary(actor);
+  }
   async readProject(actor: string | null) {
     ownerOnly(actor);
     return this.db.$transaction(async tx => (await this.replay(tx)).store.readProject(actor));

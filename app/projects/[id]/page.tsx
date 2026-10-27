@@ -1,3 +1,5 @@
+import { OWNER } from "@/lib/rua-work";
+import { DiaryProcessingPanel } from "../../rua-project/processing-panel";
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { getAppSession } from "@/auth";
@@ -44,5 +46,5 @@ export default async function ProjectDetailPage({
   });
   if (!exists) notFound();
 
-  return <ProjectDetailClient projectId={id} />;
+  return <><ProjectDetailClient projectId={id} />{session.user.id === OWNER && <DiaryProcessingPanel projectId={id} />}</>;
 }

@@ -1,0 +1,12 @@
+import {it,expect,vi,beforeEach} from 'vitest';
+vi.mock('server-only',()=>({}));
+const f=vi.hoisted(()=>({id:null as string|null,disabled:false,rows:[] as {body:unknown}[]}));
+vi.mock('@/auth',()=>({getAppSession:async()=>f.id?{user:{id:f.id}}:null}));
+vi.mock('@/lib/prisma',()=>({default:{user:{findUnique:async()=>({accountDisabled:f.disabled})},project:{findMany:async()=>[{id:'p',name:'Synthetic',brand:{name:'Test'}}]},$queryRaw:async()=>f.rows}}));
+vi.mock('@/lib/rua-work-postgres',()=>({PostgresRuaWorkStore:class{async readDiary(){return{notes:[]}}}}));
+import {GET,POST} from '../app/api/rua-project-processing/route';
+import {OWNER} from '../src/lib/rua-work';
+beforeEach(()=>{f.id=null;f.disabled=false});
+it('blocks anonymous, other admin/director and disabled owner without exposing records',async()=>{expect((await GET()).status).toBe(401);for(const id of ['other-admin','cmmius59l000ihlpo4a4cpfq2']){f.id=id;expect((await GET()).status).toBe(404);}f.id=OWNER;f.disabled=true;expect((await GET()).status).toBe(404);});
+it('owner status is no-store and does not mark AI read',async()=>{f.id=OWNER;const r=await GET();expect(r.status).toBe(200);expect(r.headers.get('cache-control')).toBe('private, no-store');expect(await r.json()).toMatchObject({aiRead:false,delivery:'on-demand-tool-only',results:[]});});
+it('rejects foreign origin, missing confirmation and unknown instruction fields',async()=>{f.id=OWNER;const req=(origin:string,body:object)=>new Request('https://www.cpcrm.co.kr/api/rua-project-processing',{method:'POST',headers:{origin},body:JSON.stringify(body)});expect((await POST(req('https://other.invalid',{}))).status).toBe(403);expect((await POST(req('https://www.cpcrm.co.kr',{}))).status).toBe(400);expect((await POST(req('https://www.cpcrm.co.kr',{sourceId:'note',version:1,index:0,projectId:'p',confirmed:true,execute:'delete'}))).status).toBe(400);});
