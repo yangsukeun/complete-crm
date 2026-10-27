@@ -1,3 +1,5 @@
+import {resolveFinanceAccess} from "@/lib/finance-access";
+import {financeScopePrismaWhere} from "@/lib/finance-scope";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -66,10 +68,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Not Found" }, { status: 404 });
     }
 
+    const {scope:financeScope}=await resolveFinanceAccess(session.user.id);
     const quoteId = project.quoteId ?? project.quote?.id ?? null;
     const paymentRequests = quoteId
       ? await prisma.paymentRequest.findMany({
-          where: { quotationId: quoteId },
+          where: { quotationId: quoteId, ...financeScopePrismaWhere(financeScope) },
           orderBy: { requestedAt: "desc" },
           select: {
             id: true,
@@ -91,7 +94,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
       ...project,
       paymentRequests,
-      paymentSummary: { quoted, paid, outstanding },
+      paymentSummary: financeScope.kind === "ALL" ? { quoted, paid, outstanding } : null,
+      paymentScope: financeScope.kind,
     });
   } catch (e) {
     console.error("GET /api/projects/[id]", e);

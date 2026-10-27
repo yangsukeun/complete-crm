@@ -106,7 +106,7 @@ type ProjectPayload = {
     completedAt: string | null;
     description: string | null;
   }[];
-  paymentSummary: { quoted: number; paid: number; outstanding: number };
+  paymentSummary: { quoted: number; paid: number; outstanding: number } | null;
   updatedAt?: string | null;
   createdBy?: { name: string } | null;
   lastEditedBy?: { name: string } | null;
@@ -441,18 +441,18 @@ export function ProjectDetailClient({ projectId, embed }: { projectId: string; e
             <div className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/20 p-4 text-center text-sm">
               <div>
                 <p className="text-muted-foreground text-xs">견적금액</p>
-                <p className="font-semibold tabular-nums mt-1">{formatWon(sum.quoted)}</p>
+                <p className="font-semibold tabular-nums mt-1">{sum ? formatWon(sum.quoted) : "전체 집계 비공개"}</p>
               </div>
               <div>
                 <p className="text-muted-foreground text-xs">입금완료</p>
                 <p className="font-semibold tabular-nums mt-1 text-emerald-700 dark:text-emerald-400">
-                  {formatWon(sum.paid)}
+                  {sum ? formatWon(sum.paid) : "전체 집계 비공개"}
                 </p>
               </div>
               <div>
                 <p className="text-muted-foreground text-xs">미수금</p>
                 <p className="font-semibold tabular-nums mt-1 text-amber-700 dark:text-amber-400">
-                  {formatWon(sum.outstanding)}
+                  {sum ? formatWon(sum.outstanding) : "전체 집계 비공개"}
                 </p>
               </div>
             </div>

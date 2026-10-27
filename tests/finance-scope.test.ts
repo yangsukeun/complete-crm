@@ -1,3 +1,4 @@
+import {WORKSPACE_OWNER} from "../src/lib/workspace-areas";
 import { describe, expect, it } from "vitest";
 import {
   getFinanceScope,
@@ -6,44 +7,11 @@ import {
 import { getUserDepartments } from "@/lib/user-departments";
 
 describe("getFinanceScope", () => {
-  it("ADMIN/EXECUTIVE → ALL", () => {
-    expect(
-      getFinanceScope({
-        userId: "u1",
-        role: "EXECUTIVE",
-        department: "경영",
-        transferExecutorIds: [],
-      }).kind
-    ).toBe("ALL");
-    expect(
-      getFinanceScope({
-        userId: "u1",
-        role: "ADMIN",
-        department: null,
-        transferExecutorIds: ["u1"],
-      }).label
-    ).toBe("전체");
-  });
-
-  it("이체담당자 → ALL (팀장이어도 기존 범위 유지)", () => {
-    const scope = getFinanceScope({
-      userId: "kim",
-      role: "USER",
-      department: "경영지원",
-      transferExecutorIds: ["kim"],
-    });
-    expect(scope.kind).toBe("ALL");
-    expect(scope.isTransferExecutor).toBe(true);
-
-    const leadAlso = getFinanceScope({
-      userId: "kim",
-      role: "TEAM_LEAD",
-      department: "마케팅",
-      transferExecutorIds: ["kim"],
-    });
-    expect(leadAlso.kind).toBe("ALL");
-  });
-
+  it("only the exact owner has global scope; roles and transfer assignment do not grant it",()=>{
+ for(const role of ['ADMIN','EXECUTIVE','USER'])expect(getFinanceScope({userId:'other',role,transferExecutorIds:['other']}).kind).toBe('SELF');
+ expect(getFinanceScope({userId:WORKSPACE_OWNER,role:'ADMIN',transferExecutorIds:[]}).kind).toBe('ALL');
+ expect(getFinanceScope({userId:'lead',role:'TEAM_LEAD',department:'CS팀',transferExecutorIds:['lead']}).kind).toBe('DEPARTMENT');
+ });
   it("TEAM_LEAD / CENTER_CHIEF → DEPARTMENT (주부서+겸직)", () => {
     const lead = getFinanceScope({
       userId: "tl",
@@ -189,7 +157,7 @@ describe("isPaymentRequestInFinanceScope", () => {
 
   it("ALL: 모두 허용", () => {
     const scope = getFinanceScope({
-      userId: "exec",
+      userId: WORKSPACE_OWNER,
       role: "EXECUTIVE",
       department: null,
       transferExecutorIds: [],

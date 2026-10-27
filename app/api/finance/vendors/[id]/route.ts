@@ -1,3 +1,4 @@
+import {resolveFinanceAccess,canAccessFinanceVendor} from "@/lib/finance-access";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -22,11 +23,12 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
+    if(!await canAccessFinanceVendor(session.user.id,id,false))return NextResponse.json({error:"Forbidden"},{status:403});
     const vendor = await prisma.vendor.findUnique({ where: { id } });
     if (!vendor) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json(vendor);
+    return NextResponse.json((await resolveFinanceAccess(session.user.id)).scope.kind === "ALL" ? vendor : {...vendor,bankName:"",accountNumber:"",ownerName:"",contactPerson:null},{headers:{"Cache-Control":"private, no-store"}});
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "거래처를 불러올 수 없습니다." }, { status: 500 });
@@ -43,6 +45,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
+    if(!await canAccessFinanceVendor(session.user.id,id,true))return NextResponse.json({error:"Forbidden"},{status:403});
     const body = await req.json();
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
@@ -55,7 +58,7 @@ export async function PATCH(
       where: { id },
       data: parsed.data,
     });
-    return NextResponse.json(vendor);
+    return NextResponse.json((await resolveFinanceAccess(session.user.id)).scope.kind === "ALL" ? vendor : {...vendor,bankName:"",accountNumber:"",ownerName:"",contactPerson:null},{headers:{"Cache-Control":"private, no-store"}});
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "거래처 수정에 실패했습니다." }, { status: 500 });
@@ -72,6 +75,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
+    if((await resolveFinanceAccess(session.user.id)).scope.kind!=="ALL")return NextResponse.json({error:"Forbidden"},{status:403});
     const usedCount = await prisma.paymentRequest.count({ where: { vendorId: id } });
     if (usedCount > 0) {
       return NextResponse.json(

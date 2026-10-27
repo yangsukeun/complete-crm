@@ -1,3 +1,5 @@
+import {resolveFinanceAccess} from "@/lib/finance-access";
+import {financeScopePrismaWhere} from "@/lib/finance-scope";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -14,6 +16,7 @@ export async function GET() {
       );
     }
 
+    const {scope}=await resolveFinanceAccess(session.user.id);
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { role: true },
@@ -25,7 +28,7 @@ export async function GET() {
       let count = 0;
       try {
         count = await prisma.paymentRequestAlert.count({
-          where: { userId: session.user.id, readAt: null },
+          where: { userId: session.user.id, readAt: null, request:{...financeScopePrismaWhere(scope)} },
         });
       } catch (err) {
         console.error("[GET /api/finance/alerts/count] executive paymentRequestAlert.count", err);
@@ -45,7 +48,7 @@ export async function GET() {
       let alertCount = 0;
       try {
         alertCount = await prisma.paymentRequestAlert.count({
-          where: { userId: session.user.id, readAt: null },
+          where: { userId: session.user.id, readAt: null, request:{...financeScopePrismaWhere(scope)} },
         });
       } catch (err) {
         console.error("[GET /api/finance/alerts/count] team lead paymentRequestAlert.count", err);
@@ -64,7 +67,7 @@ export async function GET() {
     let count = 0;
     try {
       count = await prisma.paymentRequestAlert.count({
-        where: { userId: session.user.id, readAt: null },
+        where: { userId: session.user.id, readAt: null, request:{...financeScopePrismaWhere(scope)} },
       });
     } catch (err) {
       console.error("[GET /api/finance/alerts/count] paymentRequestAlert.count", err);

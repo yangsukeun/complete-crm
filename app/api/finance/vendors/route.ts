@@ -1,3 +1,4 @@
+import {resolveFinanceAccess} from "@/lib/finance-access";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -18,10 +19,11 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const {scope}=await resolveFinanceAccess(session.user.id);
     const vendors = await prisma.vendor.findMany({
       orderBy: { name: "asc" },
     });
-    return NextResponse.json(vendors);
+    return NextResponse.json(scope.kind === "ALL" ? vendors : vendors.map(v=>({id:v.id,name:v.name,category:v.category,bankName:"",accountNumber:"",ownerName:"",contactPerson:null})),{headers:{"Cache-Control":"private, no-store"}});
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "거래처 목록을 불러올 수 없습니다." }, { status: 500 });
@@ -34,6 +36,7 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    await resolveFinanceAccess(session.user.id);
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {

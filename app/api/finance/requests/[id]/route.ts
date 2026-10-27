@@ -1,3 +1,4 @@
+import {resolveFinanceAccess,redactPaymentBank} from "@/lib/finance-access";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -22,10 +23,7 @@ import {
   notifyPaymentRequestDeleted,
   notifyTransferExecutorsOnApproval,
 } from "@/lib/finance-payment-request-alerts";
-import { getFinanceScope, isPaymentRequestInFinanceScope } from "@/lib/finance-scope";
-import { getUserDepartments } from "@/lib/user-departments";
-import { userHasPermission } from "@/lib/permissions";
-import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
+import { isPaymentRequestInFinanceScope } from "@/lib/finance-scope";
 
 // TODO(security): /finance/requests URL 직접 접근·API는 finance_view 미검사(메뉴만 숨김). 후속 가드 이슈.
 
@@ -40,37 +38,7 @@ const updateSchema = z.object({
   ]),
 });
 
-async function resolveViewerFinanceScope(userId: string, roleHint?: string | null) {
-  const dbUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true, department: true, additionalDepartments: true },
-  });
-  const role = (dbUser?.role ?? roleHint) as string | undefined;
-  const transferExecutorIds = await loadTransferExecutorIds().catch(() => [] as string[]);
-  const userDepartments = getUserDepartments({
-    department: dbUser?.department ?? null,
-    additionalDepartments: dbUser?.additionalDepartments ?? null,
-  });
-  const permsJson = await resolveEffectivePermissionsJson(userId).catch(() => null);
-  const hasFinanceView = userHasPermission(
-    { role: role ?? "USER", permissions: permsJson },
-    "finance_view"
-  );
-  const scope = getFinanceScope({
-    userId,
-    role,
-    department: userDepartments.primary,
-    userDepartments,
-    transferExecutorIds,
-    hasFinanceView,
-  });
-  return {
-    scope,
-    role,
-    department: userDepartments.primary,
-    transferExecutorIds,
-  };
-}
+const resolveViewerFinanceScope=resolveFinanceAccess;
 
 /** 상세 조회 — 스코프 밖이면 403 */
 export async function GET(
@@ -96,15 +64,15 @@ export async function GET(
       return NextResponse.json({ error: "요청을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const { scope } = await resolveViewerFinanceScope(session.user.id, session.user.role);
+    const { scope } = await resolveViewerFinanceScope(session.user.id);
     if (!isPaymentRequestInFinanceScope(scope, row)) {
       return NextResponse.json({ error: "조회 권한이 없습니다." }, { status: 403 });
     }
 
     return NextResponse.json({
-      ...row,
+      ...redactPaymentBank(row,scope),
       financeScope: { kind: scope.kind, label: scope.label },
-    });
+    },{headers:{"Cache-Control":"private, no-store",Vary:"Cookie"}});
   } catch (e) {
     console.error("[GET /api/finance/requests/:id]", e);
     return NextResponse.json({ error: "결제 요청을 불러올 수 없습니다." }, { status: 500 });
@@ -154,7 +122,7 @@ export async function PATCH(
       role: scopedRole,
       department: viewerDepartment,
       transferExecutorIds,
-    } = await resolveViewerFinanceScope(session.user.id, session.user.role);
+    } = await resolveViewerFinanceScope(session.user.id);
 
     const requesterRowEarly = current.requesterId
       ? await prisma.user.findUnique({
@@ -194,7 +162,7 @@ export async function PATCH(
         requesterId: row.requesterId,
         vendorId: row.vendorId,
         requester: row.requester,
-        vendor: row.vendor,
+        vendor: redactPaymentBank(row,scope).vendor,
       });
     }
 
@@ -360,7 +328,7 @@ export async function PATCH(
       requesterId: updated.requesterId,
       vendorId: updated.vendorId,
       requester: updated.requester,
-      vendor: updated.vendor,
+      vendor: redactPaymentBank(updated,scope).vendor,
     });
   } catch (e) {
     console.error(e);
@@ -417,6 +385,9 @@ export async function DELETE(
       return NextResponse.json({ error: "이체 완료된 요청은 삭제할 수 없습니다." }, { status: 400 });
     }
 
+    const {scope}=await resolveFinanceAccess(session.user.id);
+    const requester=current.requesterId?await prisma.user.findUnique({where:{id:current.requesterId},select:{department:true}}):null;
+    if(!isPaymentRequestInFinanceScope(scope,{...current,requester}))return NextResponse.json({error:"Forbidden"},{status:403});
     const deletedByManager = current.requesterId !== session.user.id;
     if (deletedByManager) {
       const actor = await prisma.user.findUnique({

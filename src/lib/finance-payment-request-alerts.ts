@@ -1,3 +1,5 @@
+import {WORKSPACE_OWNER} from "./workspace-areas";
+import {isPaymentRequestInFinanceScope} from "./finance-scope";
 import prisma from "@/lib/prisma";
 import { createNotificationWithOptions } from "@/lib/notifications";
 
@@ -66,10 +68,15 @@ export async function ensurePaymentRequestAlerts(
   const unique = [...new Set(userIds.filter((id) => typeof id === "string" && id.length > 0))];
   if (unique.length === 0) return;
 
+  const request=await prisma.paymentRequest.findUnique({where:{id:requestId},select:{requesterId:true,requester:{select:{department:true}}}});
+  if(!request)return;
+  const {resolveFinanceAccess}=await import("./finance-access");
   const now = new Date().toISOString();
   const inserted: string[] = [];
   for (const userId of unique) {
     try {
+      const {scope}=await resolveFinanceAccess(userId);
+      if(!isPaymentRequestInFinanceScope(scope,request))continue;
       const count = await prisma.$executeRawUnsafe(
         'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
         cuidLike(),
@@ -149,7 +156,7 @@ export async function notifyPaymentRequestDeleted(input: {
     prisma.user.findUnique({ where: { id: input.actorId }, select: { name: true } }),
     prisma.user.findMany({ where: { role: { in: ["EXECUTIVE", "ADMIN"] } }, select: { id: true } }),
   ]);
-  const recipients = new Set(execs.map((u) => u.id));
+  const recipients = new Set(execs.filter(u=>u.id===WORKSPACE_OWNER).map((u) => u.id));
   if (input.requesterId) recipients.add(input.requesterId);
   recipients.delete(input.actorId);
   if (recipients.size === 0) return;

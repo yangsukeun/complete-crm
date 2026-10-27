@@ -267,6 +267,11 @@ function updateRequestStatusInList<T extends PaymentRequest>(
 const VENDOR_CATEGORIES = ["인쇄", "식대", "용역", "자재", "기타"];
 
 export default function FinanceRequestsPage() {
+ const {data:session,status}=useSession();
+ if(status!=="authenticated"||!session?.user?.id)return <p className="p-6">로그인 확인이 필요합니다.</p>;
+ return <FinanceRequestsContent key={session.user.id}/>;
+}
+function FinanceRequestsContent() {
   const { data: session, status: authStatus } = useSession();
   const router = useRouter();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
@@ -422,6 +427,7 @@ export default function FinanceRequestsPage() {
         setTransferExecutorIds([]);
       }
     } catch (e) {
+      setRequests([]);setCompletedRequests([]);setPendingRequests([]);setFinanceScope(null);setVendors([]);
       // 에러 시 기존 목록 유지 (사라지지 않도록) + 사용자에게 표시
       toast.error(e instanceof Error ? e.message : "목록을 불러오지 못했습니다.");
     } finally {
@@ -1002,7 +1008,7 @@ export default function FinanceRequestsPage() {
           </Button>
         )}
         <span className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-          조회 범위: {scopeLabel}
+          조회 범위: {scopeLabel}{financeScope?.kind!=="ALL"&&" · 은행정보 대표 전용"}
         </span>
       </div>
 

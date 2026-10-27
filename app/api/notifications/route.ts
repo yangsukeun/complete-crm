@@ -1,3 +1,4 @@
+import {WORKSPACE_OWNER} from "@/lib/workspace-areas";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -37,10 +38,10 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(
-      list.map((n: any) => ({
+      list.map((n) => ({
         id: n.id,
         type: n.type,
-        message: n.message,
+        message: n.type === "PAYMENT_REQUEST" && session.user.id !== WORKSPACE_OWNER ? "결제 요청 내역이 변경되었습니다. 권한이 있는 내역은 결제 요청 화면에서 확인하세요." : n.message,
         link: n.link,
         isRead: n.isRead,
         createdAt: n.createdAt.toISOString(),

@@ -1,3 +1,5 @@
+import {resolveFinanceAccess} from "@/lib/finance-access";
+import {financeScopePrismaWhere} from "@/lib/finance-scope";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -71,9 +73,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "이체 담당자만 일괄 이체완료할 수 있습니다." }, { status: 403 });
     }
 
+    const {scope}=await resolveFinanceAccess(session.user.id);
     const ids = [...new Set(parsed.data.ids)];
     const rows = await prisma.paymentRequest.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...financeScopePrismaWhere(scope) },
       select: { id: true, status: true, requesterId: true, vendorId: true },
     });
 

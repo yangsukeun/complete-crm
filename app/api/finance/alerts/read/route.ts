@@ -1,3 +1,5 @@
+import {resolveFinanceAccess} from "@/lib/finance-access";
+import {financeScopePrismaWhere} from "@/lib/finance-scope";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -9,12 +11,8 @@ export async function POST() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const now = new Date().toISOString();
-    await prisma.$executeRawUnsafe(
-      'UPDATE "PaymentRequestAlert" SET "readAt" = $1::timestamptz WHERE "userId" = $2 AND "readAt" IS NULL',
-      now,
-      session.user.id
-    );
+    const {scope}=await resolveFinanceAccess(session.user.id);
+    await prisma.paymentRequestAlert.updateMany({where:{userId:session.user.id,readAt:null,request:{...financeScopePrismaWhere(scope)}},data:{readAt:new Date()}});
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

@@ -1,3 +1,4 @@
+import {mayDownloadFinanceAttachment} from "@/lib/finance-attachment-access";
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
@@ -45,6 +46,8 @@ export async function GET(req: Request) {
   } catch {
     /* 원본 유지 */
   }
+
+  try { if(!await mayDownloadFinanceAttachment(session.user.id,rawUrl))return NextResponse.json({error:"Forbidden"},{status:403}); } catch {return NextResponse.json({error:"File access could not be verified"},{status:403});}
 
   const fileName = sanitizeDownloadName(nameRaw || "download");
 

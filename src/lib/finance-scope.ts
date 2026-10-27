@@ -1,16 +1,4 @@
-/**
- * 자금(결제 요청) 조회 범위 — 모든 자금 조회 API가 이 함수 하나를 통과한다.
- *
- * 우선순위:
- * 1. ADMIN / EXECUTIVE → ALL
- * 2. 이체담당자(transferExecutorIds) → ALL (기존 담당 범위 유지)
- * 3. TEAM_LEAD / CENTER_CHIEF → DEPARTMENT (주부서+겸직 전부)
- * 4. 비팀장 + finance_view + 겸직 있음 → SELF_AND_DEPARTMENTS (겸직 부서 건 ∪ 본인 건)
- * 5. 그 외 → SELF
- *
- * 승인·결재(PATCH)는 이 스코프와 무관 — 기존 role·주부서 가드 유지.
- */
-
+import {WORKSPACE_OWNER} from "./workspace-areas";
 import { normalizeDepartment } from "@/lib/leave-department-access";
 import {
   getUserDepartments,
@@ -53,7 +41,7 @@ export function getFinanceScope(input: {
   const department = depts.primary;
   const isTransferExecutor = input.transferExecutorIds.includes(input.userId);
 
-  if (role === "ADMIN" || role === "EXECUTIVE") {
+  if (input.userId === WORKSPACE_OWNER) {
     return {
       kind: "ALL",
       label: "전체",
@@ -61,17 +49,6 @@ export function getFinanceScope(input: {
       department,
       departments: depts.all,
       isTransferExecutor,
-    };
-  }
-
-  if (isTransferExecutor) {
-    return {
-      kind: "ALL",
-      label: "전체",
-      userId: input.userId,
-      department,
-      departments: depts.all,
-      isTransferExecutor: true,
     };
   }
 
@@ -83,7 +60,7 @@ export function getFinanceScope(input: {
       userId: input.userId,
       department,
       departments: list,
-      isTransferExecutor: false,
+      isTransferExecutor,
     };
   }
 
@@ -95,7 +72,7 @@ export function getFinanceScope(input: {
       userId: input.userId,
       department,
       departments: depts.additional,
-      isTransferExecutor: false,
+      isTransferExecutor,
     };
   }
 
@@ -105,7 +82,7 @@ export function getFinanceScope(input: {
     userId: input.userId,
     department,
     departments: [],
-    isTransferExecutor: false,
+    isTransferExecutor,
   };
 }
 
@@ -130,7 +107,7 @@ export function isPaymentRequestInFinanceScope(
     scope.departments.some((d) => normalizeDepartment(d) === applicantDept);
 
   if (scope.kind === "DEPARTMENT") {
-    return deptMatch;
+    return scope.departments.length === 0 ? row.requesterId === scope.userId : deptMatch;
   }
 
   // SELF_AND_DEPARTMENTS: 겸직 부서 건 ∪ 본인 건

@@ -1,9 +1,10 @@
+import {resolveFinanceAccess,redactPaymentBank} from "@/lib/finance-access";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import {
-  canTeamLeadApprovePaymentRequest,
+
   fetchDepartmentsWithTeamLead,
   isCsTeamDepartment,
   paymentRequestNeedsExecutiveDirectApproval,
@@ -17,11 +18,10 @@ import {
 } from "@/lib/finance-payment-request-alerts";
 import {
   financeScopePrismaWhere,
-  getFinanceScope,
+
   isPaymentRequestInFinanceScope,
 } from "@/lib/finance-scope";
-import { getUserDepartments } from "@/lib/user-departments";
-import { canCreatePaymentRequest, userHasPermission } from "@/lib/permissions";
+import { canCreatePaymentRequest } from "@/lib/permissions";
 import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
 
 const createSchema = z.object({
@@ -70,461 +70,16 @@ function normalizePaymentRequestAttachments(input: {
 }
 
 export async function GET() {
-  try {
-    const session = await getAppSession();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    let role: string | undefined = session.user.role as string | undefined;
-    try {
-      const roleRows = await prisma.$queryRawUnsafe<{ role: string }[]>(
-        'SELECT role FROM "User" WHERE id = $1',
-        session.user.id
-      );
-      if (roleRows[0]) role = roleRows[0].role;
-    } catch (_) {}
-    const company = await prisma.companyInfo.findFirst({ orderBy: { updatedAt: "desc" } });
-    // 회사 설정과 동일하게 raw로 읽어 이체 담당자 목록 확실히 반영
-    let transferExecutorIds: string[] = [];
-    if (company?.id) {
-      const rows = await prisma.$queryRawUnsafe<{ transferExecutorIds: string | null }[]>(
-        'SELECT "transferExecutorIds" FROM "CompanyInfo" WHERE id = $1',
-        company.id
-      );
-      transferExecutorIds = getTransferExecutorIds(rows[0]?.transferExecutorIds ?? null);
-    }
-    const isTransferExecutor = transferExecutorIds.includes(session.user.id);
-
-    const departmentsWithTeamLeadSet = await fetchDepartmentsWithTeamLead(prisma);
-    const departmentsWithTeamLead = [...departmentsWithTeamLeadSet];
-    const viewerRow = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { department: true, additionalDepartments: true },
-    });
-    const userDepartments = getUserDepartments({
-      department: viewerRow?.department ?? null,
-      additionalDepartments: viewerRow?.additionalDepartments ?? null,
-    });
-    const viewerDepartment = userDepartments.primary;
-    const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(() => null);
-    const hasFinanceView = userHasPermission(
-      { role: role ?? "USER", permissions: permsJson },
-      "finance_view"
-    );
-    const financeScope = getFinanceScope({
-      userId: session.user.id,
-      role,
-      department: viewerDepartment,
-      userDepartments,
-      transferExecutorIds,
-      hasFinanceView,
-    });
-    const listMeta = {
-      departmentsWithTeamLead,
-      viewerDepartment,
-      financeScope: {
-        kind: financeScope.kind,
-        label: financeScope.label,
-      },
-    };
-
-    const filterByScope = <T extends { requesterId?: string | null; requester?: { department?: string | null } | null }>(
-      rows: T[]
-    ): T[] => rows.filter((r) => isPaymentRequestInFinanceScope(financeScope, r));
-
-    // 대표/임원: 전체 조회 후 완료/미완료로 분리 (다른 직원 요청 포함, 새/옛 건 구분 없음)
-    if (isExecutive(role)) {
-      const allRequests = await prisma.paymentRequest.findMany({
-        where: {},
-        include: {
-          requester: { select: { id: true, name: true, email: true, position: true, department: true } },
-          vendor: true,
-          quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
-        },
-        orderBy: { requestedAt: "desc" },
-      });
-      let unreadCount = 0;
-      try {
-        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-          session.user.id
-        );
-        unreadCount = Number(countRows[0]?.count ?? 0);
-      } catch (_) {}
-      const completedRequests = allRequests
-        .filter((r: any) => r.status === "COMPLETED")
-        .sort((a: any, b: any) => (b.completedAt ? b.completedAt.getTime() : 0) - (a.completedAt ? a.completedAt.getTime() : 0));
-      const pendingRequests = allRequests.filter(
-        (r: any) =>
-          r.status === "PENDING" ||
-          r.status === "EXECUTIVE_PENDING" ||
-          (isTransferExecutor && r.status === "TEAM_LEAD_APPROVED")
-      );
-      const mapWithAttachments = (r: any) => ({
-        ...r,
-        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment ?? null, attachments: r.attachments }),
-      });
-      return NextResponse.json(
-        {
-          completedRequests: completedRequests.map(mapWithAttachments),
-          pendingRequests: pendingRequests.map(mapWithAttachments),
-          isExecutiveTransferExecutor: isTransferExecutor,
-          transferExecutorIds,
-          paymentAlertUnreadCount: unreadCount,
-          ...listMeta,
-        },
-        { headers: { "Cache-Control": "no-store, max-age=0" } }
-      );
-    }
-
-    // 팀장: 전체 목록 (raw SQL로 조회해 Prisma 오류 우회) + 미확인 알람 수
-    if (isTeamLead(role)) {
-      type Row = {
-        id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
-        r_id: string; r_name: string; r_email: string; r_position: string | null; r_department: string | null;
-        v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
-        q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
-      };
-      const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
-         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position, u.department as r_department,
-         v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
-         q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
-         FROM "PaymentRequest" pr
-         LEFT JOIN "User" u ON pr."requesterId" = u.id
-         LEFT JOIN "Vendor" v ON pr."vendorId" = v.id
-         LEFT JOIN "Quotation" q ON pr."quotationId" = q.id
-         ORDER BY pr."requestedAt" DESC`
-      );
-      const requests = rawRows.map((r: any) => ({
-        id: r.id,
-        status: r.status,
-        amount: r.amount,
-        requestedAt: r.requestedAt,
-        completedAt: r.completedAt,
-        description: r.description,
-        attachment: r.attachment,
-        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
-        requesterId: r.requesterId,
-        vendorId: r.vendorId,
-        requester: {
-          id: r.r_id,
-          name: r.r_name,
-          email: r.r_email,
-          position: r.r_position,
-          department: r.r_department,
-        },
-        vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
-        quotation: r.q_id
-          ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
-          : null,
-      }));
-      const scopedRequests = filterByScope(requests);
-      const pendingIds = scopedRequests
-        .filter((r: any) => {
-          if (r.status !== "PENDING") return false;
-          if (
-            paymentRequestNeedsExecutiveFirstLineApproval(
-              r.requesterId,
-              r.requester?.name,
-              transferExecutorIds
-            )
-          ) {
-            return false;
-          }
-          return canTeamLeadApprovePaymentRequest(
-            viewerDepartment,
-            r.requester?.department,
-            departmentsWithTeamLeadSet
-          );
-        })
-        .map((r: any) => r.id);
-      const now = new Date().toISOString();
-      const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
-      if (pendingIds.length > 0) {
-        try {
-          const placeholders = pendingIds.map((_, i) => `$${i + 2}`).join(",");
-          const existingRows = await prisma.$queryRawUnsafe<{ requestId: string }[]>(
-            `SELECT "requestId" FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "requestId" IN (${placeholders})`,
-            session.user.id,
-            ...pendingIds
-          );
-          const existingSet = new Set(existingRows.map((e: any) => e.requestId));
-          for (const requestId of pendingIds) {
-            if (existingSet.has(requestId)) continue;
-            try {
-              await prisma.$executeRawUnsafe(
-                'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-                cuidLike(),
-                requestId,
-                session.user.id,
-                now
-              );
-            } catch (_) {}
-          }
-        } catch (e) {
-          console.error("팀장 알람 보정 실패:", e);
-        }
-      }
-      let finalUnread = 0;
-      try {
-        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-          session.user.id
-        );
-        finalUnread = Number(countRows[0]?.count ?? 0);
-      } catch (_) {}
-      return NextResponse.json(
-        { requests: scopedRequests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
-        { headers: { "Cache-Control": "no-store, max-age=0" } }
-      );
-    }
-
-    // 센터장(CS팀 2차): 부서 스코프 목록 + CS팀 CENTER_CHIEF_APPROVED 알람 보정
-    if (isCenterChief(role)) {
-      type Row = {
-        id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
-        r_id: string; r_name: string; r_email: string; r_position: string | null; r_department: string | null;
-        v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
-        q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
-      };
-      const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
-         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position, u.department as r_department,
-         v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
-         q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
-         FROM "PaymentRequest" pr
-         LEFT JOIN "User" u ON pr."requesterId" = u.id
-         LEFT JOIN "Vendor" v ON pr."vendorId" = v.id
-         LEFT JOIN "Quotation" q ON pr."quotationId" = q.id
-         ORDER BY pr."requestedAt" DESC`
-      );
-      const requests = rawRows.map((r: any) => ({
-        id: r.id,
-        status: r.status,
-        amount: r.amount,
-        requestedAt: r.requestedAt,
-        completedAt: r.completedAt,
-        description: r.description,
-        attachment: r.attachment,
-        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
-        requesterId: r.requesterId,
-        vendorId: r.vendorId,
-        requester: {
-          id: r.r_id,
-          name: r.r_name,
-          email: r.r_email,
-          position: r.r_position,
-          department: r.r_department,
-        },
-        vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
-        quotation: r.q_id
-          ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
-          : null,
-      }));
-      const scopedRequests = filterByScope(requests);
-      const pendingIds = scopedRequests
-        .filter(
-          (r: any) =>
-            r.status === "CENTER_CHIEF_APPROVED" && isCsTeamDepartment(r.requester?.department)
-        )
-        .map((r: any) => r.id);
-      const now = new Date().toISOString();
-      const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
-      if (pendingIds.length > 0) {
-        try {
-          const placeholders = pendingIds.map((_, i) => `$${i + 2}`).join(",");
-          const existingRows = await prisma.$queryRawUnsafe<{ requestId: string }[]>(
-            `SELECT "requestId" FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "requestId" IN (${placeholders})`,
-            session.user.id,
-            ...pendingIds
-          );
-          const existingSet = new Set(existingRows.map((e: any) => e.requestId));
-          for (const requestId of pendingIds) {
-            if (existingSet.has(requestId)) continue;
-            try {
-              await prisma.$executeRawUnsafe(
-                'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-                cuidLike(),
-                requestId,
-                session.user.id,
-                now
-              );
-            } catch (_) {}
-          }
-        } catch (e) {
-          console.error("센터장 알람 보정 실패:", e);
-        }
-      }
-      let finalUnread = 0;
-      try {
-        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-          session.user.id
-        );
-        finalUnread = Number(countRows[0]?.count ?? 0);
-      } catch (_) {}
-      return NextResponse.json(
-        { requests: scopedRequests, paymentAlertUnreadCount: finalUnread, transferExecutorIds, ...listMeta },
-        { headers: { "Cache-Control": "no-store, max-age=0" } }
-      );
-    }
-
-    // 이체 담당자(일반/팀장 아님): 팀장과 동일하게 raw SQL로 전체 목록 조회 + 팀장 승인(이체대기) 건 알람 보정
-    if (isTransferExecutor) {
-      type Row = {
-        id: string; status: string; amount: number; requestedAt: string; completedAt: string | null;
-        description: string | null; attachment: string | null; attachments: any; requesterId: string; vendorId: string; quotationId: string | null;
-        r_id: string; r_name: string; r_email: string; r_position: string | null; r_department: string | null;
-        v_id: string; v_name: string; v_bankName: string; v_accountNumber: string; v_ownerName: string; v_category: string;
-        q_id: string | null; q_quotationNumber: string | null; q_title: string | null; q_finalAmount: number | null; q_clientName: string | null;
-      };
-      const rawRows = await prisma.$queryRawUnsafe<Row[]>(
-        `SELECT pr.id, pr.status, pr.amount, pr."requestedAt", pr."completedAt", pr.description, pr.attachment, pr.attachments, pr."requesterId", pr."vendorId", pr."quotationId",
-         u.id as r_id, u.name as r_name, u.email as r_email, u.position as r_position, u.department as r_department,
-         v.id as v_id, v.name as v_name, v."bankName" as v_bankName, v."accountNumber" as v_accountNumber, v."ownerName" as v_ownerName, v.category as v_category,
-         q.id as q_id, q."quotationNumber" as q_quotationNumber, q.title as q_title, q."finalAmount" as q_finalAmount, q."clientName" as q_clientName
-         FROM "PaymentRequest" pr
-         LEFT JOIN "User" u ON pr."requesterId" = u.id
-         LEFT JOIN "Vendor" v ON pr."vendorId" = v.id
-         LEFT JOIN "Quotation" q ON pr."quotationId" = q.id
-         ORDER BY pr."requestedAt" DESC`
-      );
-      const requests = rawRows.map((r: any) => ({
-        id: r.id,
-        status: r.status,
-        amount: r.amount,
-        requestedAt: r.requestedAt,
-        completedAt: r.completedAt,
-        description: r.description,
-        attachment: r.attachment,
-        attachments: normalizePaymentRequestAttachments({ attachment: r.attachment, attachments: r.attachments }),
-        requesterId: r.requesterId,
-        vendorId: r.vendorId,
-        requester: {
-          id: r.r_id,
-          name: r.r_name,
-          email: r.r_email,
-          position: r.r_position,
-          department: r.r_department,
-        },
-        vendor: { id: r.v_id, name: r.v_name, bankName: r.v_bankName, accountNumber: r.v_accountNumber, ownerName: r.v_ownerName, category: r.v_category },
-        quotation: r.q_id
-          ? { id: r.q_id, quotationNumber: r.q_quotationNumber ?? "", title: r.q_title ?? "", finalAmount: r.q_finalAmount ?? 0, clientName: r.q_clientName ?? "" }
-          : null,
-      }));
-      const approvedIds = requests.filter((r: any) => r.status === "TEAM_LEAD_APPROVED").map((r: any) => r.id);
-      if (approvedIds.length > 0) {
-        const now = new Date().toISOString();
-        const cuidLike = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 11)}`;
-        try {
-          const placeholders = approvedIds.map((_, i) => `$${i + 2}`).join(",");
-          const existingRows = await prisma.$queryRawUnsafe<{ requestId: string }[]>(
-            `SELECT "requestId" FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "requestId" IN (${placeholders})`,
-            session.user.id,
-            ...approvedIds
-          );
-const existingSet = new Set(existingRows.map((e: any) => e.requestId));
-      for (const requestId of approvedIds) {
-            if (existingSet.has(requestId)) continue;
-            try {
-              await prisma.$executeRawUnsafe(
-                'INSERT INTO "PaymentRequestAlert" (id, "requestId", "userId", "createdAt") VALUES ($1, $2, $3, $4::timestamptz) ON CONFLICT ("requestId", "userId") DO NOTHING',
-                cuidLike(),
-                requestId,
-                session.user.id,
-                now
-              );
-            } catch (_) {}
-          }
-        } catch (e) {
-          console.error("이체 담당자 알람 보정 실패:", e);
-        }
-      }
-      let unreadCount = 0;
-      try {
-        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-          session.user.id
-        );
-        unreadCount = Number(countRows[0]?.count ?? 0);
-      } catch (_) {}
-      return NextResponse.json(
-        { requests, paymentAlertUnreadCount: unreadCount, transferExecutorIds, ...listMeta },
-        { headers: { "Cache-Control": "no-store, max-age=0" } }
-      );
-    }
-
-    // 비팀장 겸직+finance_view: 겸직 부서 건 ∪ 본인 건
-    if (financeScope.kind === "SELF_AND_DEPARTMENTS") {
-      const requests = await prisma.paymentRequest.findMany({
-        where: financeScopePrismaWhere(financeScope) as any,
-        include: {
-          requester: {
-            select: { id: true, name: true, email: true, position: true, department: true },
-          },
-          vendor: true,
-          quotation: {
-            select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true },
-          },
-        },
-        orderBy: { requestedAt: "desc" },
-      });
-      const scoped = filterByScope(requests);
-      const mapped = scoped.map((r: any) => ({
-        ...r,
-        attachments: normalizePaymentRequestAttachments({
-          attachment: r.attachment ?? null,
-          attachments: r.attachments,
-        }),
-      }));
-      let paymentAlertUnreadCount = 0;
-      try {
-        const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-          'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-          session.user.id
-        );
-        paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
-      } catch (_) {}
-      return NextResponse.json({
-        requests: mapped,
-        paymentAlertUnreadCount,
-        transferExecutorIds,
-        ...listMeta,
-      });
-    }
-
-    // 일반 직원(요청자): 본인 요청만 + 이체완료 알람 수
-    const requests = await prisma.paymentRequest.findMany({
-      where: { requesterId: session.user.id },
-      include: {
-        requester: {
-          select: { id: true, name: true, email: true, position: true, department: true },
-        },
-        vendor: true,
-        quotation: { select: { id: true, quotationNumber: true, title: true, finalAmount: true, clientName: true } },
-      },
-      orderBy: { requestedAt: "desc" },
-    });
-    const mapped = requests.map((r: any) => ({
-      ...r,
-      attachments: normalizePaymentRequestAttachments({ attachment: r.attachment ?? null, attachments: r.attachments }),
-    }));
-    let paymentAlertUnreadCount = 0;
-    try {
-      const countRows = await prisma.$queryRawUnsafe<{ count: number }[]>(
-        'SELECT COUNT(*) as count FROM "PaymentRequestAlert" WHERE "userId" = $1 AND "readAt" IS NULL',
-        session.user.id
-      );
-      paymentAlertUnreadCount = Number(countRows[0]?.count ?? 0);
-    } catch (_) {}
-    return NextResponse.json({ requests: mapped, paymentAlertUnreadCount, transferExecutorIds, ...listMeta });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "결제 요청 목록을 불러올 수 없습니다." }, { status: 500 });
-  }
+ try {
+ const session=await getAppSession();if(!session?.user?.id)return NextResponse.json({error:'Unauthorized'},{status:401});
+ const {scope,role,transferExecutorIds}=await resolveFinanceAccess(session.user.id);
+ const rows=await prisma.paymentRequest.findMany({where:financeScopePrismaWhere(scope),include:{requester:{select:{id:true,name:true,position:true,department:true}},vendor:true,quotation:{select:{id:true,quotationNumber:true,title:true,finalAmount:true,clientName:true}}},orderBy:{requestedAt:'desc'}});
+ const requests=rows.filter(row=>isPaymentRequestInFinanceScope(scope,row)).map(row=>({...redactPaymentBank(row,scope),attachments:normalizePaymentRequestAttachments({attachment:row.attachment??null,attachments:row.attachments})}));
+ const paymentAlertUnreadCount=await prisma.paymentRequestAlert.count({where:{userId:session.user.id,readAt:null,request:{...financeScopePrismaWhere(scope)}}});
+ const departmentsWithTeamLead=Array.from(await fetchDepartmentsWithTeamLead(prisma));
+ const metadata={viewerDepartment:scope.department,departmentsWithTeamLead,requests,transferExecutorIds,paymentAlertUnreadCount,financeScope:{kind:scope.kind,label:scope.label},isTransferExecutor:scope.isTransferExecutor};
+ return NextResponse.json(isExecutive(role)?{...metadata,completedRequests:requests.filter(r=>r.status==='COMPLETED'),pendingRequests:requests.filter(r=>r.status!=='COMPLETED'&&r.status!=='REJECTED'),isExecutiveTransferExecutor:scope.isTransferExecutor}:metadata,{headers:{'Cache-Control':'private, no-store',Vary:'Cookie'}});
+ }catch {return NextResponse.json({error:'지출 조회 권한 또는 저장소를 확인할 수 없습니다.'},{status:403});}
 }
 
 export async function POST(req: Request) {
@@ -533,6 +88,7 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    await resolveFinanceAccess(session.user.id);
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
@@ -622,7 +178,7 @@ export async function POST(req: Request) {
         amount: parsed.data.amount,
         description: parsed.data.description || null,
         attachment: uniqAttachments[0] ?? null,
-        attachments: uniqAttachments.length > 0 ? (uniqAttachments as any) : undefined,
+        attachments: uniqAttachments.length > 0 ? uniqAttachments : undefined,
         requesterId: session.user.id,
         quotationId: parsed.data.quotationId && parsed.data.quotationId !== "" ? parsed.data.quotationId : null,
         status: initialStatus,
@@ -694,7 +250,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json(paymentRequest);
+    return NextResponse.json(redactPaymentBank(paymentRequest,(await resolveFinanceAccess(session.user.id)).scope));
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "결제 요청에 실패했습니다." }, { status: 500 });
