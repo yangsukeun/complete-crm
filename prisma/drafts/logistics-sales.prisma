@@ -1,0 +1,27 @@
+// Merge into schema.prisma only after review. Raw Prisma SQL adapter works without client generation.
+model LogisticsSalesRecord {
+ id String @id
+ scope String
+ kind String
+ parentId String? @map("parent_id")
+ version Int
+ data Json
+ parent LogisticsSalesRecord? @relation("SalesTree", fields: [parentId], references: [id], onDelete: Restrict)
+ children LogisticsSalesRecord[] @relation("SalesTree")
+ @@index([parentId], map: "logistics_sales_parent")
+ @@index([scope,kind], map: "logistics_sales_scope_kind")
+ @@map("logistics_sales_records")
+}
+model LogisticsSalesCommand {
+ id String @id
+ actor String
+ requestKey String @map("request_key")
+ hash String
+ command Json
+ before Json
+ result Json
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@unique([actor,requestKey])
+ @@index([actor,createdAt], map: "logistics_sales_commands_actor_time")
+ @@map("logistics_sales_commands")
+}
