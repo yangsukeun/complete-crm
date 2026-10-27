@@ -57,9 +57,7 @@ export function WorkspaceSwitcher() {
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )}
       >
-        <Building2 className="size-3.5" />
-        TEAM
-      </button>
+        <Building2 className="size-3.5" />회사 업무</button>
       <button
         type="button"
         role="tab"
@@ -72,9 +70,7 @@ export function WorkspaceSwitcher() {
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )}
       >
-        <Lock className="size-3.5" />
-        MY
-      </button>
+        <Lock className="size-3.5" />내 업무</button>
     </div>
   );
 }

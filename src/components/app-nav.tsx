@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { UnifiedNavigation } from "./unified-navigation";
+import { workspaceAreas, WORKSPACE_OWNER } from "../lib/workspace-areas";
 import NextImage from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -8,7 +10,7 @@ import { Suspense, useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { jsonFetcher, SWR_KEYS, SWR_LOGO_SETTINGS_KEY } from "@/lib/api-swr";
 import type { LogoSettingsApiPayload } from "@/lib/header-bootstrap";
-import { useWorkspaceStore } from "@/store/workspace-store";
+import { useWorkspaceStore, type WorkspaceState } from "@/store/workspace-store";
 import { onesignalOptOutAndDeregister } from "@/lib/onesignal/client-logout";
 import {
   Calendar,
@@ -35,9 +37,7 @@ import {
   BrainCircuit,
   Trash2,
   Shield,
-  Link2,
   Server,
-  Package,
   Upload,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
@@ -87,11 +87,7 @@ type NavLink = {
 };
 
 // [메인]: 대시보드·CS·3PL (자주 쓰는 단일 진입)
-const mainGroupLinks: NavLink[] = [
-  { href: "/dashboard", label: "대시보드", icon: LayoutDashboard, featureKey: "dashboard" },
-  { href: "/cs-tools", label: "CS 링크", icon: Link2 },
-  { href: "/logistics", label: "3PL", icon: Package, hint: "3PL 물류 (준비중)" },
-];
+
 
 /** 게시판·드라이브·NAS — 「자료」 드롭다운 */
 const resourceGroupLinks: NavLink[] = [
@@ -180,10 +176,8 @@ export function AppNav() {
   const { data: session } = useSession();
   const { mutate: swrMutate } = useSWRConfig();
   const { logoUrl, setLogoUrl } = useLayoutShared();
-  const currentWorkspace = useWorkspaceStore((s: any) => s.currentWorkspace);
-  const urlMode = useWorkspaceStore((s: any) => s.urlSearchMode);
-  const [paymentAlertCount, setPaymentAlertCount] = useState(0);
-  const [paymentAlertLabel, setPaymentAlertLabel] = useState<string>("알림");
+  const currentWorkspace = useWorkspaceStore((s: WorkspaceState) => s.currentWorkspace);
+  const urlMode = useWorkspaceStore((s: WorkspaceState) => s.urlSearchMode);
   /** [PERF-3차] 모드는 UrlSearchModeBridge·WorkspaceThemeSync·영속 스토어와 정렬 — /api/mode GET 제거 */
   const effectiveMode: "company" | "personal" =
     urlMode === "MY"
@@ -217,7 +211,7 @@ export function AppNav() {
   const userForPermissionForBadge = session?.user as { role?: string; permissions?: string | null } | undefined;
   const canChatForBadge = (() => {
     try {
-      return userForPermissionForBadge ? userHasPermission(userForPermissionForBadge as any, "chat") : true;
+      return userForPermissionForBadge ? userHasPermission({ ...userForPermissionForBadge, role: userForPermissionForBadge.role ?? "USER" }, "chat") : true;
     } catch {
       return true;
     }
@@ -277,7 +271,7 @@ export function AppNav() {
   const userForTasksBadge = session?.user as { role?: string; permissions?: string | null } | undefined;
   const canTasksForBadge = (() => {
     try {
-      return userForTasksBadge ? userHasPermission(userForTasksBadge as any, "tasks") : true;
+      return userForTasksBadge ? userHasPermission({ ...userForTasksBadge, role: userForTasksBadge.role ?? "USER" }, "tasks") : true;
     } catch {
       return true;
     }
@@ -299,7 +293,7 @@ export function AppNav() {
   const userForBoardBadge = session?.user as { role?: string; permissions?: string | null } | undefined;
   const canBoardForBadge = (() => {
     try {
-      return userForBoardBadge ? userHasPermission(userForBoardBadge as any, "board") : true;
+      return userForBoardBadge ? userHasPermission({ ...userForBoardBadge, role: userForBoardBadge.role ?? "USER" }, "board") : true;
     } catch {
       return true;
     }
@@ -352,17 +346,8 @@ export function AppNav() {
     return () => window.removeEventListener(BOARD_NEW_POST_EVENT, onNewPost);
   }, [boardBadgeEnabled, mutateBoardNewBadge]);
 
-  useEffect(() => {
-    if (!financeBadgeEnabled) {
-      setPaymentAlertCount(0);
-      setPaymentAlertLabel("알림");
-      return;
-    }
-    if (financeBadge) {
-      setPaymentAlertCount(financeBadge.count ?? 0);
-      setPaymentAlertLabel(financeBadge.label ?? "알림");
-    }
-  }, [financeBadge, financeBadgeEnabled]);
+  const paymentAlertCount = financeBadgeEnabled ? (financeBadge?.count ?? 0) : 0;
+
 
   useEffect(() => {
     if (!financeBadgeEnabled) return;
@@ -403,7 +388,7 @@ export function AppNav() {
   const userForPermission = session?.user as { role?: string; permissions?: string | null } | undefined;
   const can = (featureKey: string) => {
     try {
-      return userForPermission ? userHasPermission(userForPermission as any, featureKey) : true;
+      return userForPermission ? userHasPermission({ ...userForPermission, role: userForPermission.role ?? "USER" }, featureKey) : true;
     } catch {
       return true;
     }
@@ -427,24 +412,12 @@ export function AppNav() {
         navHrefAllowedForOrg(l.href, orgUnit)
     );
 
-  const mainLinks = visibleNav(mainGroupLinks);
+
   const workLinks = visibleNav(workGroupLinks);
   if (session?.user?.id === "cmmitn4830000fc0jt8c1l2jf") workLinks.unshift({ href: "/rua-project", label: "루와의 프로젝트", icon: FolderKanban, hint: "대표 개인 기록" });
   workLinks.unshift({ href: "/workspaces", label: "업무영역", icon: FolderKanban, hint: "경영지원 · 마케팅 · CS · 3PL" });
   const resourceLinks = visibleNav(resourceGroupLinks);
   const commsLinks = visibleNav(commsGroupLinks);
-  const aiActive = aiGroupLinks.some(
-    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
-  );
-  const resourceActive = resourceLinks.some(
-    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
-  );
-  const commsActive = commsLinks.some(
-    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
-  );
-  const workActive = workLinks.some(
-    (l) => pathname === l.href || pathname.startsWith(l.href + "/")
-  );
   const canSeeAwayOverview = canViewAwayOverview({
     role: session?.user?.role,
     department: session?.user?.department,
@@ -461,7 +434,7 @@ export function AppNav() {
   const onCsSection = isCsSectionPath(pathname);
   const showCsSectionNav = canSeeCsTools && onCsSection;
   const hrLinks = hrGroupLinks.filter(
-    (l: any) =>
+    (l: NavLink) =>
       canSeeLink(l) &&
       (!l.companyOnly || isCompany) &&
       (!l.awayOverviewOnly || canSeeAwayOverview) &&
@@ -469,7 +442,7 @@ export function AppNav() {
       navHrefAllowedForOrg(l.href, orgUnit)
   );
   const financeLinks = financeGroupLinks.filter(
-    (l: any) => canSeeLink(l) && navHrefAllowedForOrg(l.href, orgUnit)
+    (l: NavLink) => canSeeLink(l) && navHrefAllowedForOrg(l.href, orgUnit)
   );
 
   const adminLinks = ADMIN_MENU_DEFS.filter((d) => {
@@ -539,7 +512,7 @@ export function AppNav() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
         {/* Left: 로고(또는 아이콘) + 서비스명 COMPLETE CRM */}
         <div className="flex items-center gap-2 sm:gap-3">
           <HistoryNavButtons className="shrink-0" />
@@ -568,418 +541,11 @@ export function AppNav() {
               />
             )}
             <span className="hidden sm:inline">COMPLETE CRM</span>
-            {!logoUrl && (
-              <span className="hidden text-sm font-normal text-gray-500 sm:inline">COMPLETE CRM</span>
-            )}
           </Link>
         </div>
 
         {/* Center: 네비게이션 */}
-        <nav className="hidden flex-1 items-center justify-center gap-1 md:flex">
-          {/* 대시보드 단일 버튼 */}
-          {isHqOrg && (
-          <Button variant="ghost" asChild className={cn("flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200", pathname === "/dashboard" || pathname.startsWith("/dashboard/") ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")}>
-            <Link href="/dashboard" prefetch={false} className="flex items-center gap-1.5">
-              <LayoutDashboard className="size-4" />
-              <span>대시보드</span>
-            </Link>
-          </Button>
-          )}
 
-          {/* Projects + 휴지통 */}
-          {workLinks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    workActive
-                      ? "bg-gray-100 text-gray-900"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  )}
-                >
-                  <span className="relative inline-flex">
-                    <ListTodo className="size-4" />
-                    {projectAssignBadgeCount > 0 && (
-                      <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                        {projectAssignBadgeCount > 99 ? "99+" : projectAssignBadgeCount}
-                      </span>
-                    )}
-                  </span>
-                  <span>Projects</span>
-                  <ChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-48">
-                <DropdownMenuLabel className="text-muted-foreground text-xs">프로젝트</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {workLinks.map(({ href, label, icon: Icon, hint }) => {
-                  const isActive = pathname === href || pathname.startsWith(href + "/");
-                  return (
-                    <DropdownMenuItem key={href} asChild>
-                      <Link
-                        href={href}
-                        prefetch={false}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2",
-                          isActive && "bg-gray-100 text-gray-900"
-                        )}
-                      >
-                        <Icon className="mt-0.5 size-4 shrink-0" />
-                        <span className="flex flex-col">
-                          <span>{label}</span>
-                          {hint && (
-                            <span className="text-muted-foreground text-[11px]">{hint}</span>
-                          )}
-                        </span>
-                      </Link>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* 자료: 게시판·파일·NAS */}
-          {resourceLinks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    resourceActive
-                      ? "bg-gray-100 text-gray-900"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  )}
-                >
-                  <span className="relative inline-flex shrink-0">
-                    <FolderOpen className="size-4" />
-                    {boardNewCount > 0 && (
-                      <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                        {boardNewCount > 99 ? "99+" : boardNewCount}
-                      </span>
-                    )}
-                  </span>
-                  <span>자료</span>
-                  <ChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-52">
-                <DropdownMenuLabel className="text-muted-foreground text-xs">자료</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {resourceLinks.map(({ href, label, icon: Icon, hint }) => {
-                  const isActive = pathname === href || pathname.startsWith(href + "/");
-                  return (
-                    <DropdownMenuItem key={href} asChild>
-                      <Link
-                        href={href}
-                        prefetch={false}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2",
-                          isActive && "bg-gray-100 text-gray-900"
-                        )}
-                      >
-                        <span className="relative mt-0.5 inline-flex shrink-0">
-                          <Icon className="size-4" />
-                          {href === "/board" && boardNewCount > 0 && (
-                            <span className="absolute -right-2 -top-2 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
-                              {boardNewCount > 99 ? "99+" : boardNewCount}
-                            </span>
-                          )}
-                        </span>
-                        <span className="flex flex-col">
-                          <span>{label}</span>
-                          {hint && (
-                            <span className="text-muted-foreground text-[11px]">{hint}</span>
-                          )}
-                        </span>
-                      </Link>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* CS 링크 — 진입만. 공지·라운지·업체는 CS 구역 상단 메뉴 */}
-          {mainLinks.some((l) => l.href === "/cs-tools") && (
-            <Button
-              variant="ghost"
-              asChild
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                onCsSection
-                  ? "bg-gray-100 text-gray-900"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              )}
-            >
-              <Link href="/cs-tools" prefetch={false} className="flex items-center gap-1.5">
-                <Link2 className="size-4" />
-                <span>CS 링크</span>
-              </Link>
-            </Button>
-          )}
-
-          {/* 3PL 물류 — 단독 (도약패키지 연동 예정) */}
-          {mainLinks.some((l) => l.href === "/logistics") && (
-            <Button
-              variant="ghost"
-              asChild
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                pathname === "/logistics" || pathname.startsWith("/logistics/")
-                  ? "bg-gray-100 text-gray-900"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              )}
-            >
-              <Link href="/logistics" prefetch={false} className="flex items-center gap-1.5">
-                <Package className="size-4" />
-                <span>3PL</span>
-              </Link>
-            </Button>
-          )}
-
-          {/* 소통: 공지·채팅 */}
-          {commsLinks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    commsActive
-                      ? "bg-gray-100 text-gray-900"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  )}
-                >
-                  <span className="relative inline-flex shrink-0">
-                    <MessageCircle className="size-4" />
-                    {chatUnreadCount > 0 && (
-                      <span className="absolute -right-2 -top-2 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                        {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                      </span>
-                    )}
-                  </span>
-                  <span>소통</span>
-                  <ChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-52">
-                <DropdownMenuLabel className="text-muted-foreground text-xs">소통</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {commsLinks.map(({ href, label, icon: Icon, hint }) => {
-                  const isActive = pathname === href || pathname.startsWith(href + "/");
-                  return (
-                    <DropdownMenuItem key={href} asChild>
-                      <Link
-                        href={href}
-                        prefetch={false}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2",
-                          isActive && "bg-gray-100 text-gray-900"
-                        )}
-                      >
-                        <span className="relative mt-0.5 inline-flex shrink-0">
-                          <Icon className="size-4" />
-                          {href === "/chat" && chatUnreadCount > 0 && (
-                            <span className="absolute -right-2 -top-2 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold leading-none text-white">
-                              {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                            </span>
-                          )}
-                        </span>
-                        <span className="flex flex-col">
-                          <span>{label}</span>
-                          {hint && (
-                            <span className="text-muted-foreground text-[11px]">{hint}</span>
-                          )}
-                        </span>
-                      </Link>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* [AI] - 비서·허브 */}
-          {isHqOrg && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                  aiActive
-                    ? "bg-gray-100 text-gray-900"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                )}
-              >
-                <Sparkles className="size-4" />
-                <span>AI</span>
-                <ChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" className="w-52">
-              <DropdownMenuLabel className="text-muted-foreground text-xs">AI 기능</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {aiGroupLinks.map(({ href, label, icon: Icon, hint }) => {
-                const isActive = pathname === href || pathname.startsWith(href + "/");
-                return (
-                  <DropdownMenuItem key={href} asChild>
-                    <Link
-                      href={href}
-                      prefetch={false}
-                      className={cn(
-                        "flex cursor-pointer items-start gap-2 transition-colors",
-                        isActive && "bg-gray-100 text-gray-900"
-                      )}
-                    >
-                      <Icon className="mt-0.5 size-4 shrink-0" />
-                      <span className="flex flex-col">
-                        <span>{label}</span>
-                        <span className="text-muted-foreground text-[11px]">{hint}</span>
-                      </span>
-                    </Link>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          )}
-
-          {/* [인사/일정 관리] - 인디고/블루 */}
-          {hrLinks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    hrLinks.some((l: any) => pathname === l.href || pathname.startsWith(l.href + "/"))
-                      ? "bg-indigo-50 text-indigo-700"
-                      : "text-indigo-600/90 hover:bg-indigo-50 hover:text-indigo-700"
-                  )}
-                >
-                  <Calendar className="size-4" />
-                  <span>인사/일정</span>
-                  <ChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-44">
-                <DropdownMenuLabel className="text-xs text-indigo-600">인사/일정 관리</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {hrLinks.map(({ href, label, icon: Icon }) => {
-                  const isActive = pathname === href || pathname.startsWith(href + "/");
-                  return (
-                    <DropdownMenuItem key={href} asChild>
-                      <Link
-                        href={href}
-                        className={cn(
-                          "flex items-center gap-2 cursor-pointer transition-colors",
-                          isActive && "bg-indigo-50 text-indigo-700"
-                        )}
-                      >
-                        <Icon className="size-4" />
-                        {label}
-                      </Link>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* [재무/영업 관리] - 에메랄드/그린 */}
-          {financeLinks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    financeLinks.some((l: any) => pathname === l.href || pathname.startsWith(l.href + "/"))
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "text-emerald-600/90 hover:bg-emerald-50 hover:text-emerald-700"
-                  )}
-                >
-                  <Wallet className="size-4" />
-                  <span>재무/영업</span>
-                  <ChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-44">
-                <DropdownMenuLabel className="text-xs text-emerald-600">재무/영업 관리</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {financeLinks.map(({ href, label, icon: Icon }) => {
-                  const isActive = pathname === href || pathname.startsWith(href + "/");
-                  return (
-                    <DropdownMenuItem key={href} asChild>
-                      <Link
-                        href={href}
-                        prefetch={false}
-                        className={cn(
-                          "flex items-center gap-2 cursor-pointer transition-colors",
-                          isActive && "bg-emerald-50 text-emerald-700"
-                        )}
-                      >
-                        <Icon className="size-4" />
-                        {label}
-                        {href === "/finance/requests" && paymentAlertCount > 0 && (
-                          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            <span className="opacity-90">{paymentAlertLabel}</span>
-                            <span>{paymentAlertCount > 99 ? "99+" : paymentAlertCount}</span>
-                          </span>
-                        )}
-                      </Link>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Admin Dropdown (for executives) */}
-          {adminLinks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200",
-                    adminLinks.some((l: any) => pathname.startsWith(l.href))
-                      ? "bg-violet-50 text-violet-700"
-                      : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-                  )}
-                >
-                  <Settings className="size-4" />
-                  <span>관리</span>
-                  <ChevronDown className="size-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-48">
-                <DropdownMenuLabel className="text-xs text-gray-500">관리자 메뉴</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {adminLinks.map(({ href, label, icon: Icon }) => (
-                  <DropdownMenuItem key={href} asChild>
-                    <Link
-                      href={href}
-                      prefetch={false}
-                      className={cn(
-                        "flex items-center gap-2 cursor-pointer",
-                        pathname === href && "bg-violet-50 text-violet-700"
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      {label}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </nav>
 
         {/* Right: 워크스페이스 토글 + 알림 + 사용자 메뉴(이름 클릭 시 로그아웃 등) */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -1055,105 +621,22 @@ export function AppNav() {
         </div>
       </div>
 
+      <UnifiedNavigation pathname={pathname} areas={session?.user?.id?workspaceAreas({id:session.user.id,department:session.user.department}):[]} dashboard={isHqOrg} groups={[
+        {label:"프로젝트",links:workLinks.filter(l=>l.href!=="/rua-project"&&l.href!=="/workspaces").map(l=>({...l,count:l.href==="/tasks"?projectAssignBadgeCount:0}))},
+        {label:"내 업무",links:session?.user?.id===WORKSPACE_OWNER?[{href:"/rua-project",label:"루와의 프로젝트",hint:"대표 전용 개인 기록"}]:[]},
+        {label:"자료",links:resourceLinks.map(l=>({...l,count:l.href==="/board"?boardNewCount:0}))},
+        {label:"소통",links:commsLinks.map(l=>({...l,count:l.href==="/chat"?chatUnreadCount:0}))},
+        {label:"AI",links:isHqOrg?aiGroupLinks:[]},
+        {label:"인사·일정",links:hrLinks},
+        {label:"재무·영업",links:financeLinks.map(l=>({...l,count:l.href==="/finance/requests"?paymentAlertCount:0}))},
+        {label:"관리",links:adminLinks}
+      ]}/>
       {showCsSectionNav && (
         <Suspense fallback={null}>
           <CsSectionNav items={csNavItems} />
         </Suspense>
       )}
 
-      {/* Mobile Navigation (shown below header on small screens) */}
-      <div className="flex overflow-x-auto border-t border-gray-100 bg-white px-4 py-2 md:hidden">
-        <div className="flex gap-1">
-          {mainLinks.map(({ href, label, icon: Icon }) => {
-            const isActive =
-              href === "/cs-tools"
-                ? onCsSection
-                : pathname === href || pathname.startsWith(href + "/");
-            return (
-              <Link
-                key={href}
-                href={href}
-                prefetch={false}
-                className={cn(
-                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
-                  isActive ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-                )}
-              >
-                <Icon className="size-4" />
-                {label}
-              </Link>
-            );
-          })}
-          {[
-            ...workLinks,
-            ...resourceLinks,
-            ...commsLinks,
-            ...(isHqOrg ? aiGroupLinks : []),
-            ...hrLinks,
-            ...financeLinks,
-          ].map(({ href, label, icon: Icon }) => {
-            const isActive = pathname === href || pathname.startsWith(href + "/");
-            const isHr = hrLinks.some((l: any) => l.href === href);
-            const isFinance = financeLinks.some((l: any) => l.href === href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                prefetch={false}
-                className={cn(
-                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
-                  isActive
-                    ? isHr
-                      ? "bg-indigo-50 text-indigo-700"
-                      : isFinance
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-gray-100 text-gray-900"
-                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-                )}
-              >
-                <Icon className="size-4" />
-                {label}
-                {href === "/board" && boardNewCount > 0 && (
-                  <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
-                    {boardNewCount > 99 ? "99+" : boardNewCount}
-                  </span>
-                )}
-                {href === "/chat" && chatUnreadCount > 0 && (
-                  <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
-                    {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                  </span>
-                )}
-                {href === "/tasks" && projectAssignBadgeCount > 0 && (
-                  <span className="ml-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
-                    {projectAssignBadgeCount > 99 ? "99+" : projectAssignBadgeCount}
-                  </span>
-                )}
-                {href === "/finance/requests" && paymentAlertCount > 0 && (
-                  <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                    <span>{paymentAlertLabel}</span>
-                    <span>{paymentAlertCount > 99 ? "99+" : paymentAlertCount}</span>
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-          {adminLinks.length > 0 && (
-            <Link
-              href={adminLinks[0]?.href ?? "/admin"}
-              prefetch={false}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium",
-                pathname.startsWith("/admin")
-                  ? "bg-violet-50 text-violet-700"
-                  : "text-gray-500 hover:bg-gray-100"
-              )}
-            >
-              <Settings className="size-4" />
-              관리
-            </Link>
-          )}
-        </div>
-      </div>
     </header>
   );
 }
