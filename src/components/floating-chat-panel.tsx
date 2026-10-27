@@ -1,4 +1,5 @@
 "use client";
+import { useActiveChatRoom } from "@/hooks/use-active-chat-room";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -53,6 +54,7 @@ export function FloatingChatPanel() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  useActiveChatRoom(minimized ? null : chatId);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);

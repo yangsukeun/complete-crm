@@ -52,6 +52,7 @@ import Link from "next/link";
 import { ImageLightbox } from "@/components/chat/image-lightbox";
 import { ChatMessagesSkeleton } from "@/components/detail/detail-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useActiveChatRoom } from "@/hooks/use-active-chat-room";
 import { subscribeChatMessagesForChatRoom } from "@/lib/supabase/realtime-client";
 import type { RealtimeSubscriptionHandle } from "@/lib/supabase/realtime-client";
 import { parseGoogleDriveFileIdFromUrl } from "@/lib/google-drive-url-utils";
@@ -177,6 +178,7 @@ export function ChatPageClient({ initialChatId = null }: { initialChatId?: strin
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId);
+  useActiveChatRoom(selectedChatId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [readAtByUserId, setReadAtByUserId] = useState<Record<string, string | null>>({});
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
