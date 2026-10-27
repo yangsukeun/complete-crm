@@ -1,0 +1,4 @@
+import {it,expect,vi} from "vitest";
+import {pendingTest,PUSH_TEST_TTL} from "../src/lib/onesignal/push-test-state";
+it("reload and other tabs retain the same request, including unknown response",()=>{const uuid=vi.fn(()=>"key");const p=pendingTest(null,"device",100,uuid);const stored=JSON.stringify(p);expect(pendingTest(stored,"device",200,uuid)).toEqual(p);expect(pendingTest(stored,"device",300,uuid)).toEqual(p);expect(uuid).toHaveBeenCalledTimes(1);});
+it("accepted state survives reload; expiry or changed device does not generate a fresh key",()=>{const uuid=vi.fn();const stored=JSON.stringify({key:"key",subscriptionId:"device",createdAt:100,accepted:true});expect(pendingTest(stored,"device",200,uuid).accepted).toBe(true);expect(()=>pendingTest(stored,"device",100+PUSH_TEST_TTL,uuid)).toThrow();expect(()=>pendingTest(stored,"other",200,uuid)).toThrow();expect(uuid).not.toHaveBeenCalled();});
