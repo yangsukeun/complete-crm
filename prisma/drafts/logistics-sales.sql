@@ -1,4 +1,5 @@
--- REVIEW ONLY. Not in migrations/; never executed against production by this task.
+-- Applied with Supabase migration create_logistics_sales_server_storage on 2026-10-27.
+-- Recorded source only; do not rerun against existing tables.
 BEGIN;
 CREATE TABLE public.logistics_sales_records (
  id TEXT PRIMARY KEY, scope TEXT NOT NULL CHECK(scope='logistics'),
