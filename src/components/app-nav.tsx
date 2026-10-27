@@ -429,6 +429,7 @@ export function AppNav() {
 
   const mainLinks = visibleNav(mainGroupLinks);
   const workLinks = visibleNav(workGroupLinks);
+  workLinks.unshift({ href: "/workspaces", label: "업무영역", icon: FolderKanban, hint: "경영지원 · 마케팅 · CS · 3PL" });
   const resourceLinks = visibleNav(resourceGroupLinks);
   const commsLinks = visibleNav(commsGroupLinks);
   const aiActive = aiGroupLinks.some(

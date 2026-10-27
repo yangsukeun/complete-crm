@@ -1,0 +1,6 @@
+import { it,expect } from "vitest";
+import { workspaceAreas,WORKSPACE_OWNER } from "../src/lib/workspace-areas";
+import { readFileSync } from "node:fs";
+it("uses exact owner ID for all areas and verified departments for staff",()=>{expect(workspaceAreas({id:WORKSPACE_OWNER})).toHaveLength(4);expect(workspaceAreas({id:"staff",department:"물류"})).toEqual(["logistics"]);expect(workspaceAreas({id:"admin",department:null})).toEqual([]);for(const [department,area] of [["CS팀","cs"],["경영지원","management"],["마케팅","marketing"]])expect(workspaceAreas({id:"user",department})).toEqual([area]);});
+it("does not derive logistics privileges from a name or unrelated department",()=>{expect(workspaceAreas({id:"물류팀장",department:"마케팅"})).toEqual(["marketing"]);expect(workspaceAreas({id:"user",department:"전물류외부"})).toEqual([]);});
+it("production workspace reads current DB department and has no fixture or mutation transport",()=>{const page=readFileSync('app/workspaces/[area]/page.tsx','utf8'),ui=readFileSync('src/components/workspace-home.tsx','utf8');expect(page).toContain('getAppSession');expect(page).toContain('prisma.user.findUnique');expect(page).toContain('if(!allowed.includes');expect(page).not.toMatch(/fixture|LOCAL_MOCK/);expect(ui).not.toMatch(/fetch\(|<form|localStorage/);expect(ui).toContain('area==="logistics"&&owner');});
