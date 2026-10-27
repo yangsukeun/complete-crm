@@ -7,10 +7,10 @@ import {
 import { getUserDepartments } from "@/lib/user-departments";
 
 describe("getFinanceScope", () => {
-  it("only the exact owner has global scope; roles and transfer assignment do not grant it",()=>{
- for(const role of ['ADMIN','EXECUTIVE','USER'])expect(getFinanceScope({userId:'other',role,transferExecutorIds:['other']}).kind).toBe('SELF');
+  it("only the exact owner has global scope; roles do not grant it; designated transfer reading is explicit",()=>{
+ for(const role of ['ADMIN','EXECUTIVE','USER'])expect(getFinanceScope({userId:'other',role,transferExecutorIds:[]}).kind).toBe('SELF');
  expect(getFinanceScope({userId:WORKSPACE_OWNER,role:'ADMIN',transferExecutorIds:[]}).kind).toBe('ALL');
- expect(getFinanceScope({userId:'lead',role:'TEAM_LEAD',department:'CS팀',transferExecutorIds:['lead']}).kind).toBe('DEPARTMENT');
+ expect(getFinanceScope({userId:'lead',role:'TEAM_LEAD',department:'CS팀',transferExecutorIds:['lead'],allowTransferGlobalRead:false}).kind).toBe('DEPARTMENT');
  });
   it("TEAM_LEAD / CENTER_CHIEF → DEPARTMENT (주부서+겸직)", () => {
     const lead = getFinanceScope({

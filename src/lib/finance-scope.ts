@@ -33,6 +33,8 @@ export function getFinanceScope(input: {
   transferExecutorIds: readonly string[];
   /** 비팀장 겸직 조회 확장에 필요 */
   hasFinanceView?: boolean;
+  /** Read-only exception. Mutations must explicitly disable this. */
+  allowTransferGlobalRead?: boolean;
 }): FinanceScope {
   const role = String(input.role ?? "").toUpperCase();
   const depts =
@@ -41,7 +43,7 @@ export function getFinanceScope(input: {
   const department = depts.primary;
   const isTransferExecutor = input.transferExecutorIds.includes(input.userId);
 
-  if (input.userId === WORKSPACE_OWNER) {
+  if (input.userId === WORKSPACE_OWNER || (isTransferExecutor && input.allowTransferGlobalRead !== false)) {
     return {
       kind: "ALL",
       label: "전체",

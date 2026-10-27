@@ -122,7 +122,7 @@ export async function PATCH(
       role: scopedRole,
       department: viewerDepartment,
       transferExecutorIds,
-    } = await resolveViewerFinanceScope(session.user.id);
+    } = await resolveViewerFinanceScope(session.user.id,"write");
 
     const requesterRowEarly = current.requesterId
       ? await prisma.user.findUnique({
@@ -385,7 +385,7 @@ export async function DELETE(
       return NextResponse.json({ error: "이체 완료된 요청은 삭제할 수 없습니다." }, { status: 400 });
     }
 
-    const {scope}=await resolveFinanceAccess(session.user.id);
+    const {scope}=await resolveFinanceAccess(session.user.id,"write");
     const requester=current.requesterId?await prisma.user.findUnique({where:{id:current.requesterId},select:{department:true}}):null;
     if(!isPaymentRequestInFinanceScope(scope,{...current,requester}))return NextResponse.json({error:"Forbidden"},{status:403});
     const deletedByManager = current.requesterId !== session.user.id;

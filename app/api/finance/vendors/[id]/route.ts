@@ -75,7 +75,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
-    if((await resolveFinanceAccess(session.user.id)).scope.kind!=="ALL")return NextResponse.json({error:"Forbidden"},{status:403});
+    if((await resolveFinanceAccess(session.user.id,"write")).scope.kind!=="ALL")return NextResponse.json({error:"Forbidden"},{status:403});
     const usedCount = await prisma.paymentRequest.count({ where: { vendorId: id } });
     if (usedCount > 0) {
       return NextResponse.json(
