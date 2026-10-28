@@ -16,12 +16,12 @@ describe('named reviewer direct API',()=>{
   mock.user.mockImplementation(async({where}:{where:{id:string}})=>({id:where.id,role:where.id===MARKETING_LOG_REVIEWER?'TEAM_LEAD':'USER',department:'마케팅',accountDisabled:false}));
   mock.read.mockResolvedValue({id:'synthetic-log',date:'2026-10-28',content:'synthetic',status:'SUBMITTED'});
  });
- it('reads exact target/date without creating staff drafts',async()=>{
-  const response=await GET(request());expect(response.status).toBe(200);
+ it.each([...MARKETING_LOG_TARGETS])('reads exact target %s/date without creating staff drafts',async(target)=>{
+  const response=await GET(request(target));expect(response.status).toBe(200);
   expect(mock.read).toHaveBeenCalledWith({where:{userId_date:{userId:target,date:'2026-10-28'}}});
   expect(mock.create).not.toHaveBeenCalled();expect(response.headers.get('cache-control')).toBe('private, no-store');
  });
- it.each(['cmmitn4830000fc0jt8c1l2jf','cmqu62595000d94im1hdpj79t','unlisted'])('blocks direct target %s before log read',async(id)=>{
+ it.each(['cmmitn4830000fc0jt8c1l2jf','unlisted'])('blocks direct target %s before log read',async(id)=>{
   expect((await GET(request(id))).status).toBe(403);expect(mock.read).not.toHaveBeenCalled();expect(mock.create).not.toHaveBeenCalled();
  });
  it('blocks anonymous, inactive viewer and other ordinary team lead',async()=>{
