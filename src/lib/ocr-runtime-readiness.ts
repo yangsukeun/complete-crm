@@ -1,0 +1,6 @@
+export type OcrReadiness={db:{tablesReady:boolean;issuerColumn:boolean;browserDenied:boolean;serverBypass:boolean;storageBoundary:boolean};bucket:{name:string;public:boolean;fileSizeLimit:number|null;mimeTypes:string[]|null}};
+export function ocrPilotReady(state:OcrReadiness){return state.db.tablesReady&&state.db.issuerColumn&&state.db.browserDenied&&state.db.serverBypass&&state.db.storageBoundary&&state.bucket.name==='crm-ocr-originals'&&state.bucket.public===false&&state.bucket.fileSizeLimit!==null&&state.bucket.fileSizeLimit>0&&state.bucket.fileSizeLimit<=8388608&&!!state.bucket.mimeTypes?.includes('image/jpeg')&&state.bucket.mimeTypes.includes('image/png')&&state.bucket.mimeTypes.every(t=>['image/jpeg','image/png'].includes(t));}
+export function ocrEnvironmentReady(env:Record<string,string|undefined>){
+ if(env.CRM_OCR_PILOT_ENABLED!=='true'||!env.SUPABASE_SERVICE_ROLE_KEY||!env.DATABASE_URL)return false;
+ try{const storage=new URL(env.NEXT_PUBLIC_SUPABASE_URL??''),database=new URL(env.DATABASE_URL);return storage.origin==='https://vgelnrycivorwczdqpsu.supabase.co'&&(decodeURIComponent(database.username).endsWith('.vgelnrycivorwczdqpsu')||database.hostname==='db.vgelnrycivorwczdqpsu.supabase.co');}catch{return false;}
+}

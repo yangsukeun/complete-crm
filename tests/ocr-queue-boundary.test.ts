@@ -1,0 +1,10 @@
+import {it,expect} from 'vitest';
+import {createHash} from 'node:crypto';
+import {planResultReceipt,assertCurrentLease,type QueueLease} from '../src/lib/ocr-queue-boundary';
+const grant={deviceId:'device',companyId:'company',active:true,expiresAt:200};
+const lease:QueueLease={jobId:'job',companyId:'company',deviceId:'device',documentId:'document',revision:1,documentRevision:1,leaseId:'lease',expiresAt:200,cancelled:false,state:'leased'};
+const result={status:'needs_review',registrationAuthorized:false,extraction:{provider:'windows-local',connected:true,observations:[],errors:[]}};
+const input={grant,lease,leaseId:'lease',revision:1,result,resultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),existing:null,now:100,validateResult:()=>{}};
+it('returns stable receipt after response loss, never an inventory authorization',()=>{const first=planResultReceipt(input);expect(first.write).toBe(true);const retry=planResultReceipt({...input,lease:{...lease,state:'needs_review'},existing:first.receipt});expect(retry).toEqual({receipt:first.receipt,write:false});});
+it('blocks revoked/foreign/expired devices and cancelled/reassigned/stale leases',()=>{for(const g of [{...grant,active:false},{...grant,companyId:'other'},{...grant,deviceId:'other'},{...grant,expiresAt:100}])expect(()=>assertCurrentLease(g,lease,100)).toThrow();for(const l of [{...lease,cancelled:true},{...lease,documentRevision:2},{...lease,expiresAt:100}])expect(()=>assertCurrentLease(grant,l,100)).toThrow();expect(()=>planResultReceipt({...input,leaseId:'other'})).toThrow();});
+it('rejects changed digest, competing receipt, malformed schema and approval',()=>{expect(()=>planResultReceipt({...input,resultDigest:'bad'})).toThrow();const first=planResultReceipt(input);expect(()=>planResultReceipt({...input,existing:{...first.receipt,resultDigest:'other'}})).toThrow();expect(()=>planResultReceipt({...input,validateResult:()=>{throw Error('invalid schema');}})).toThrow();expect(()=>planResultReceipt({...input,result:{...result,registrationAuthorized:true}})).toThrow();});

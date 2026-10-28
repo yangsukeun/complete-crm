@@ -1,0 +1,7 @@
+'use client';
+import {useState} from 'react';
+export default function DevicePairForm({deviceId}:{deviceId:string}){
+ const [text,setText]=useState(''),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[status,setStatus]=useState('');
+ async function submit(){if(!confirmed||busy)return;setBusy(true);try{const data=JSON.parse(text);if(typeof data.publicKey!=='string'||!data.publicKey.startsWith('-----BEGIN PUBLIC KEY-----'))throw Error();const response=await fetch(`/api/logistics-ocr/devices/${deviceId}/issue`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await response.json();setStatus(response.ok?`상태: ${result.state}. PC에서 저장 확인을 완료해야 활성화됩니다.`:response.status===503?'운영 전달 경로가 아직 활성화되지 않았습니다.':'요청을 처리하지 못했습니다. 기존 상태를 확인한 뒤 진행하세요.');}catch{setStatus('공개 연결 정보와 연결 상태를 확인하세요. 결과가 불확실하면 새 요청을 만들지 마세요.');}finally{setBusy(false);}}
+ return <section className="space-y-4"><label className="block">PC 도우미의 공개 연결 JSON<textarea className="mt-2 min-h-48 w-full rounded border p-3" value={text} onChange={e=>{setText(e.target.value);setConfirmed(false);}}/></label><label className="flex gap-2"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>내 PC 도우미의 공개키 지문과 이 요청의 confirmedFingerprint가 동일함을 직접 확인했습니다.</label><button className="rounded bg-violet-700 px-4 py-3 text-white disabled:opacity-50" disabled={!confirmed||busy} onClick={submit}>{busy?'확인 중':'이 PC 연결 요청 확인'}</button><p role="status">{status}</p></section>;
+}
