@@ -1,7 +1,7 @@
 import {InquiryError,type SiteIdentity,type WebsiteInquiryService} from './website-inquiry';
 export type InquiryRuntime={service:WebsiteInquiryService;authenticateSite:(request:Request)=>Promise<SiteIdentity|null>;allowRequest:(request:Request,identity:SiteIdentity)=>Promise<boolean>};
 // Must wire a verified site credential, shared rate limiter and approved database before activation.
-export function getInquiryRuntime():InquiryRuntime|null{return null;}
+export async function getInquiryRuntime():Promise<InquiryRuntime|null>{return (await import('./website-inquiry-runtime')).productionInquiryRuntime();}
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'};
 export async function inquiryPost(request:Request,runtime:InquiryRuntime|null){
  if(!runtime)return Response.json({code:'INTAKE_NOT_CONFIGURED',persisted:false},{status:503,headers});

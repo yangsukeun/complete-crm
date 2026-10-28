@@ -4,7 +4,7 @@ import {getInquiryRuntime} from '@/lib/website-inquiry-http';
 export const dynamic='force-dynamic';
 export default async function WebsiteInquiries({searchParams}:{searchParams:Promise<{id?:string}>}){
  const actor=(await getAppSession())?.user?.id;if(!actor)redirect('/login');
- const runtime=getInquiryRuntime();
+ const runtime=await getInquiryRuntime();
  if(!runtime)return <main className="mx-auto max-w-4xl p-8"><h1 className="text-2xl font-bold">홈페이지 문의 확인</h1><p className="mt-4">CRM 접수 연결 준비 중입니다. 실제 문의 수집과 담당자 알림은 아직 활성화되지 않았습니다.</p></main>;
  const {id}=await searchParams;
  let items;

@@ -25,3 +25,14 @@
 
 ## 모바일 404 읽기 점검
 운영 7d2ce98에서 /logistics, /logistics/purchases, /logistics/sales, /logistics/ocr, /logistics/ocr/device 및 /workspaces/[area] 존재. 헤더 3PL href는 /logistics, 카드 OCR href는 /logistics/ocr로 일치한다. 장치 화면은 대표 아닌 계정·비활성 계정에 notFound(), OCR 홈은 기존 대표/물류 권한 실패에 notFound()한다. 첨부만으로 경로 누락인지 권한 차단인지 결정 불가. 실제 URL 회신 전 운영 수정 없음.
+
+## 2026-10-28 접수 runtime 연결 후 상태
+
+- corporate runtime 코드가 Prisma 저장·내부 알림 및 사이트별 분당 60회 카운터와 연결됐다. 새 테이블 RLS/직접 접근 차단 준비 검사 실패 시 비활성이다.
+- 인증값은 CRM에 저장하지 않고 SHA256/발급시각/만료시각만 받는다. 최대 7일, corporate POST 단일 경로만 허용하고 GET이나 다른 CRM 조회 권한은 없다. Origin도 정확히 일치해야 하지만 Origin만으로 인증하지 않는다.
+- 설정 이름: CRM_WEBSITE_INTAKE_ENABLED, CRM_CORPORATE_INQUIRY_SHA256, CRM_CORPORATE_INQUIRY_ISSUED_AT, CRM_CORPORATE_INQUIRY_EXPIRES_AT, CRM_CORPORATE_INQUIRY_ORIGIN. 실제 생성·설정은 아직 0건이다. CRM Vercel에서 CRM_CORPORATE_INQUIRY 검색 결과 없음 확인(값 열람 없음).
+- 동의 버전 corporate-inquiry-v1-20261028: 주식회사 컴플리트가 문의 상담/CRM 저장/내부 담당 확인 목적으로 이름·전화·이메일·회사·선택 서비스·본문·동의 버전/시각을 수집, CRM 5년 보관, 철회/삭제 요청 y.complete@bscomplete.com. 자동 파기·광고 동의·외부 이메일 발송은 포함하지 않는다. 홈페이지의 탭 임시저장 고지도 활성화 전에 반영해야 한다.
+- 현재 확정받은 Origin은 p9ialwoyh 개별 배포 주소뿐이다. 새 코드 배포는 새 immutable 주소를 만들므로 최종 안정적 alias를 홈페이지 작업에서 확정해야 한다. 이를 다른 호스트로 임의 확장하지 않았다.
+- 홈페이지 api/inquiries.mjs는 공유 allowRequest 어댑터와 sendToCRM이 없으면 기본 비활성. CRM의 site 전체 제한은 홈페이지 익명/IP 요청 제한을 대체하지 않는다. 어댑터 전달 시 Origin 고정 헤더, Bearer 서버전용, redirect:error, 15초 timeout을 모두 사용해야 한다.
+- 확인한 환경에 Vercel CLI가 없다(PATH/CRM node_modules/홈페이지 node_modules/일반 global 설치 경로). 연결된 Vercel 관리 API 도구도 없다. 정상 Dashboard 접근은 가능하지만 새 인증 입력·저장에는 browser computer-use의 사용자 직접 입력 요구가 적용된다. 기존 Vercel 로그인 비밀/쿠키를 추출해 API 호출하지 않는다. 공식 WebMCP Open Vercel Plugin을 열었으나 호출 가능한 Vercel 도구는 추가되지 않았다.
+- 인증값을 먼저 생성하거나 채팅·로그·평문 파일에 남기지 않았다. 최종 Origin/홈페이지 제한 어댑터/지원되는 서버 비밀 설정 경로가 준비되면 한 번만 생성·설정하고 합성 종단 확인을 진행한다. 현재 실제 접수·외부 이메일·배포는 미실행이다.

@@ -1,0 +1,20 @@
+import prisma from './prisma';
+import {createInquiryDb,allowInquirySite} from './website-inquiry-pg';
+import {WebsiteInquiryService} from './website-inquiry';
+import {corporateInquiryAuthenticator} from './website-inquiry-auth';
+import {corporateIntakeConfig} from './website-inquiry-config';
+import type {InquiryRuntime} from './website-inquiry-http';
+/** Existing Prisma only; no credential issuance, email, push, or external dispatch. */
+export async function productionInquiryRuntime():Promise<InquiryRuntime|null>{
+ const config=corporateIntakeConfig(process.env);if(!config)return null;
+ try{
+  const rows=await prisma.$queryRaw<{ready:boolean}[]>`SELECT count(*)=2 AND bool_and(c.relrowsecurity AND NOT has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') AND NOT has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS ready FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('website_inquiries','website_inquiry_rate_limits')`;
+  if(!rows[0]?.ready)return null;
+  const authenticate=corporateInquiryAuthenticator(config);
+  return {service:new WebsiteInquiryService(createInquiryDb(prisma)),authenticateSite:async request=>{
+   // Origin is an additional bound input, never a substitute for server authentication.
+   if(request.headers.get('origin')!==config.origin)return null;
+   return authenticate(request);
+  },allowRequest:(_request,identity)=>allowInquirySite(prisma,identity.site,60)};
+ }catch{return null;}
+}
