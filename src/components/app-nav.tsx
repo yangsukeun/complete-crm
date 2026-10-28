@@ -458,6 +458,7 @@ export function AppNav() {
     }
     if (d.dailyReport) {
       return hasDailyReportMenuAccess({
+        id:session?.user?.id, department:session?.user?.department,
         role: session?.user?.role,
         permissions: (session?.user as { permissions?: string | null } | undefined)?.permissions ?? null,
       });

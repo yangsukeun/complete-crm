@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import {MARKETING_LOG_REVIEWER,MARKETING_LOG_TARGETS,namedLogReviewer} from './work-log-review-scope';
 
 export function normalizeDepartment(value: string | null | undefined): string {
   return (value ?? "").trim();
@@ -47,9 +48,12 @@ export function getWorkLogViewCaps(user: {
 }
 
 export function hasDailyReportMenuAccess(user: {
+  id?:string; department?:string|null; accountDisabled?:boolean;
   role?: string | null;
   permissions?: string | null;
 }): boolean {
+  if(user.accountDisabled)return false;
+  if(user.id===MARKETING_LOG_REVIEWER)return namedLogReviewer(user);
   if (isPrivilegedRole(user.role)) return true;
   const caps = getWorkLogViewCaps(user);
   return caps.staff || caps.lead;
@@ -60,9 +64,10 @@ export function canViewOthersDailyWorkLog(params: {
   viewerRole: string;
   viewerDepartment: string | null | undefined;
   viewerPermissions?: string | null;
-  target: { id: string; role: string; department?: string | null };
+  target: { id: string; role: string; department?: string | null; accountDisabled?:boolean };
 }): boolean {
   if (params.viewerId === params.target.id) return true;
+  if(params.viewerId===MARKETING_LOG_REVIEWER)return namedLogReviewer({id:params.viewerId,role:params.viewerRole,department:params.viewerDepartment})&&MARKETING_LOG_TARGETS.has(params.target.id)&&params.target.role==='USER'&&params.target.department?.trim()==='마케팅'&&!params.target.accountDisabled;
   if (isPrivilegedRole(params.viewerRole)) return true;
   if (isPrivilegedRole(params.target.role)) return false;
 
@@ -96,11 +101,11 @@ export async function assertCanViewOthersDailyWorkLog(params: {
   targetUserId: string;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   if (params.viewerId === params.targetUserId) return { ok: true };
-  if (isPrivilegedRole(params.viewerRole)) return { ok: true };
+  if (params.viewerId!==MARKETING_LOG_REVIEWER&&isPrivilegedRole(params.viewerRole)) return { ok: true };
 
   const target = await prisma.user.findUnique({
     where: { id: params.targetUserId },
-    select: { id: true, role: true, department: true },
+    select: { id: true, role: true, department: true, accountDisabled:true },
   });
   if (!target) {
     return { ok: false, status: 404, error: "직원을 찾을 수 없습니다." };

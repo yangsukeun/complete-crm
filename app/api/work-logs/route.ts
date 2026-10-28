@@ -22,14 +22,17 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date") ?? todayYmdKst();
     const targetUserId = searchParams.get("userId") ?? null;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)||!Number.isFinite(Date.parse(dateStr))||new Date(dateStr).toISOString().slice(0,10)!==dateStr)return NextResponse.json({error:'날짜 형식이 올바르지 않습니다.'},{status:400});
 
     const viewer = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { department: true, role: true },
+      select: { id:true, department: true, role: true, accountDisabled:true },
     });
+    if(!viewer||viewer.accountDisabled)return NextResponse.json({error:'접근할 수 없습니다.'},{status:403});
     const viewerRole = String(viewer?.role ?? session.user.role ?? "USER");
     const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(() => null);
     const canViewOthersLogs = hasDailyReportMenuAccess({
+      ...viewer,
       role: viewerRole,
       permissions: permsJson,
     });
@@ -52,13 +55,14 @@ export async function GET(req: Request) {
       }
     }
 
-    const log = await getOrCreateDailyWorkLog(userId, dateStr);
+    const log = userId===session.user.id?await getOrCreateDailyWorkLog(userId, dateStr):await prisma.dailyWorkLog.findUnique({where:{userId_date:{userId,date:dateStr}}});
+    if(!log)return NextResponse.json({error:'해당 날짜에 작성된 일지가 없습니다.'},{status:404,headers:{'Cache-Control':'private, no-store'}});
     return NextResponse.json({
       ...log,
       // 내부 중복 방지 마커는 UI에 노출하지 않음
       content: stripTaskStatusMarkers(log.content ?? ""),
-      monthDeadlines: log.monthDeadlines ?? [],
-    });
+      monthDeadlines: 'monthDeadlines' in log ? log.monthDeadlines ?? [] : [],
+    },{headers:{'Cache-Control':'private, no-store',Vary:'Cookie'}});
   } catch (e) {
     console.error("Work logs GET:", e);
     return NextResponse.json(

@@ -13,18 +13,18 @@ export default async function AdminLogsPage() {
 
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, role: true, department: true, permissions: true },
+    select: { id: true, role: true, department: true, permissions: true, accountDisabled:true },
   });
   const role = me?.role ?? session.user.role ?? "USER";
   const isExecutive = role === "EXECUTIVE" || role === "ADMIN";
   const permsJson = await resolveEffectivePermissionsJson(session.user.id).catch(
     () => me?.permissions ?? null
   );
-  const canLogs = hasDailyReportMenuAccess({ role, permissions: permsJson });
+  const canLogs = !!me&&hasDailyReportMenuAccess({ ...me,role, permissions: permsJson });
   if (!canLogs) redirect("/dashboard");
 
   let employees = await prisma.user.findMany({
-    where: {},
+    where: {accountDisabled:false},
     select: {
       id: true,
       name: true,
@@ -58,7 +58,7 @@ export default async function AdminLogsPage() {
       <PageHeadline title="Daily Report 조회" description={headlineDesc} />
       <Suspense fallback={<p className="text-muted-foreground text-sm">불러오는 중...</p>}>
         <AdminLogsClient
-          employees={employees.map((e: any) => ({
+          employees={employees.map((e) => ({
             id: e?.id ?? "",
             name: e?.name ?? "",
             email: e?.email ?? "",
