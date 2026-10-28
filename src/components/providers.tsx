@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatAlerts } from "@/components/chat-alerts";
+
 import dynamic from "next/dynamic";
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
@@ -70,7 +70,7 @@ export function Providers({
         <LayoutSharedProvider initial={headerBootstrap}>
           <ProfileMeCacheSync userId={session?.user?.id} />
           <PresenceHeartbeat />
-          <ChatAlerts />
+
           <MobileWebPushHintBanner />
           {/* OneSignal 구독 ID 서버 등록. 모바일 진단: NEXT_PUBLIC_DEBUG_TOKEN_MOBILE=1 또는 NEXT_PUBLIC_DEBUG_ONESIGNAL=1 */}
           <OneSignalPushTokenRegister />

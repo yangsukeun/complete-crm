@@ -3,6 +3,8 @@ import { useEffect,useRef,useState } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { BellRing } from "lucide-react";
+import { Dialog, DialogTrigger, DialogContent, DialogTitle } from "./ui/dialog";
 import { WebPushControls } from "./web-push-controls";
 import { chatAlertKey,shouldAlert,type ChatAlert } from "../lib/chat-alert-policy";
 type Settings={enabled:boolean;sound:boolean};
@@ -43,5 +45,15 @@ export function ChatAlerts(){
  useEffect(()=>{if(!settings.enabled)setAlerts([]);},[settings.enabled]);
  async function change(next:Settings){setSettings(next);latestSettings.current=next;try{localStorage.setItem(`crm-chat-alert-settings:${user}`,JSON.stringify(next));}catch{}if(next.sound){try{audio.current??=new AudioContext();await audio.current.resume();}catch{}}}
  if(!user)return null;
- return <aside className="fixed bottom-3 left-3 z-50 max-h-[85dvh] overflow-y-auto w-80 max-w-[calc(100vw-24px)] space-y-2" aria-label="채팅 알림"><button className="min-h-11 rounded border bg-white px-3 text-gray-900 shadow" aria-expanded={opened} onClick={()=>setOpened(!opened)}>채팅 알림 설정</button>{opened&&<div className="rounded border bg-white p-3 text-gray-900 shadow"><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settings.enabled} onChange={e=>void change({...settings,enabled:e.target.checked})}/>다른 채팅방 팝업</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settings.sound} onChange={e=>void change({...settings,sound:e.target.checked})}/>소리 사용 (기본 꺼짐)</label><p className="text-sm">이 브라우저 설정입니다. 기기 알림 권한은 바꾸지 않습니다. 새로 연 탭에서는 소리를 다시 켜야 할 수 있습니다.</p><WebPushControls /></div>}<div aria-live="polite">{alerts.map(a=><div key={a.id} className="mb-2 rounded-xl border border-purple-300 bg-white p-3 text-gray-900 shadow-lg"><p className="font-bold">새 채팅</p><p className="break-words">{a.message}</p><div className="flex justify-between"><Link className="inline-flex min-h-11 items-center text-purple-800 underline" href={a.link} onClick={()=>setAlerts(v=>v.filter(n=>n.id!==a.id))}>대화 열기</Link><button className="min-h-11 px-3" onClick={()=>setAlerts(v=>v.filter(n=>n.id!==a.id))}>닫기</button></div></div>)}</div></aside>;
+ return <>
+  <Dialog open={opened} onOpenChange={setOpened}>
+   <DialogTrigger asChild><button type="button" className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-purple-800 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600" aria-label="채팅 알림 설정" title="채팅 알림 설정"><BellRing className="size-5" aria-hidden="true" /></button></DialogTrigger>
+   <DialogContent className="text-gray-900 bg-white"><DialogTitle>채팅 알림 설정</DialogTitle>
+    <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settings.enabled} onChange={e=>void change({...settings,enabled:e.target.checked})}/>다른 채팅방 팝업</label>
+    <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settings.sound} onChange={e=>void change({...settings,sound:e.target.checked})}/>소리 사용 (기본 꺼짐)</label>
+    <p className="text-sm">이 브라우저 설정입니다. 기기 알림 권한은 바꾸지 않습니다. 새로 연 탭에서는 소리를 다시 켜야 할 수 있습니다.</p><WebPushControls />
+   </DialogContent>
+  </Dialog>
+  {alerts.length>0&&<aside className="fixed bottom-3 right-3 z-50 max-h-[70dvh] overflow-y-auto w-80 max-w-[calc(100vw-24px)] space-y-2" aria-label="새 채팅 알림"><div aria-live="polite">{alerts.map(a=><div key={a.id} className="mb-2 rounded-xl border border-purple-300 bg-white p-3 text-gray-900 shadow-lg"><p className="font-bold">새 채팅</p><p className="break-words">{a.message}</p><div className="flex justify-between"><Link className="inline-flex min-h-11 items-center text-purple-800 underline" href={a.link} onClick={()=>setAlerts(v=>v.filter(n=>n.id!==a.id))}>대화 열기</Link><button className="min-h-11 px-3" onClick={()=>setAlerts(v=>v.filter(n=>n.id!==a.id))}>닫기</button></div></div>)}</div></aside>}
+ </>;
 }

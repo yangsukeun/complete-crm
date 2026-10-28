@@ -40,6 +40,7 @@ import {
   Server,
   Upload,
 } from "lucide-react";
+import { ChatAlerts } from "@/components/chat-alerts";
 import { NotificationBell } from "@/components/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { useLayoutShared } from "@/components/layout-shared-context";
@@ -552,6 +553,7 @@ export function AppNav() {
         <div className="flex items-center gap-2 sm:gap-3">
           {isHqOrg && <WorkspaceSwitcher />}
           <NotificationBell />
+          <ChatAlerts />
 
           {/* User Dropdown (프로필/내 정보/로그아웃) */}
           {session?.user && (
