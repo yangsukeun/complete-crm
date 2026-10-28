@@ -31,7 +31,7 @@ export async function allowInquirySite(client:Client,site:Site,maxPerMinute=60){
  if(!Number.isInteger(maxPerMinute)||maxPerMinute<1||maxPerMinute>1000)throw new Error('Invalid rate limit');
  return client.$transaction(async tx=>{
   const rows=await tx.$queryRaw<{hits:number}[]>`INSERT INTO public.website_inquiry_rate_limits(source_site,window_start,hits) VALUES (${site},date_trunc('minute',clock_timestamp()),1)
-   ON CONFLICT(source_site) DO UPDATE SET
+   ON CONFLICT(source_site,bucket_key) DO UPDATE SET
     hits=CASE WHEN website_inquiry_rate_limits.window_start=date_trunc('minute',clock_timestamp()) THEN LEAST(website_inquiry_rate_limits.hits+1,1001) ELSE 1 END,
     window_start=date_trunc('minute',clock_timestamp()) RETURNING hits`;
   return rows[0].hits<=maxPerMinute;
