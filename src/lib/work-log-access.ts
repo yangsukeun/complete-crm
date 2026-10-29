@@ -1,3 +1,5 @@
+import {WORKSPACE_OWNER} from './workspace-areas';
+import {GOPRO_LOG_REVIEWER,goProLogReviewer} from './work-log-review-scope';
 import prisma from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import {MARKETING_LOG_REVIEWER,MARKETING_LOG_TARGETS,namedLogReviewer} from './work-log-review-scope';
@@ -53,6 +55,7 @@ export function hasDailyReportMenuAccess(user: {
   permissions?: string | null;
 }): boolean {
   if(user.accountDisabled)return false;
+  if(user.id===GOPRO_LOG_REVIEWER)return goProLogReviewer(user);
   if(user.id===MARKETING_LOG_REVIEWER)return namedLogReviewer(user);
   if (isPrivilegedRole(user.role)) return true;
   const caps = getWorkLogViewCaps(user);
@@ -67,6 +70,7 @@ export function canViewOthersDailyWorkLog(params: {
   target: { id: string; role: string; department?: string | null; accountDisabled?:boolean };
 }): boolean {
   if (params.viewerId === params.target.id) return true;
+  if(params.viewerId===GOPRO_LOG_REVIEWER)return goProLogReviewer({id:params.viewerId,role:params.viewerRole,department:params.viewerDepartment})&&params.target.id!==WORKSPACE_OWNER&&params.target.role==='USER'&&!params.target.accountDisabled;
   if(params.viewerId===MARKETING_LOG_REVIEWER)return namedLogReviewer({id:params.viewerId,role:params.viewerRole,department:params.viewerDepartment})&&MARKETING_LOG_TARGETS.has(params.target.id)&&params.target.role==='USER'&&params.target.department?.trim()==='마케팅'&&!params.target.accountDisabled;
   if (isPrivilegedRole(params.viewerRole)) return true;
   if (isPrivilegedRole(params.target.role)) return false;
@@ -101,7 +105,7 @@ export async function assertCanViewOthersDailyWorkLog(params: {
   targetUserId: string;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   if (params.viewerId === params.targetUserId) return { ok: true };
-  if (params.viewerId!==MARKETING_LOG_REVIEWER&&isPrivilegedRole(params.viewerRole)) return { ok: true };
+  if (params.viewerId!==MARKETING_LOG_REVIEWER&&params.viewerId!==GOPRO_LOG_REVIEWER&&isPrivilegedRole(params.viewerRole)) return { ok: true };
 
   const target = await prisma.user.findUnique({
     where: { id: params.targetUserId },

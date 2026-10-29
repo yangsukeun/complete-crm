@@ -4,3 +4,9 @@ export const MARKETING_LOG_TARGETS=new Set(['cmmity91o000210mw8mk0fcsj','cmq7p5f
 export function namedLogReviewer(user:{id?:string;role?:string|null;department?:string|null;accountDisabled?:boolean}){
  return user.id===MARKETING_LOG_REVIEWER&&user.role==='TEAM_LEAD'&&user.department?.trim()==='마케팅'&&!user.accountDisabled;
 }
+
+// Exact GoPro account verified 2026-10-29; read-only staff review, not a role grant.
+export const GOPRO_LOG_REVIEWER='cmmiu416h0000hlpoe4ax1cnq';
+export function goProLogReviewer(user:{id?:string;role?:string|null;department?:string|null;accountDisabled?:boolean}){
+ return user.id===GOPRO_LOG_REVIEWER&&user.role==='USER'&&user.department?.trim()==='경영지원'&&!user.accountDisabled;
+}
