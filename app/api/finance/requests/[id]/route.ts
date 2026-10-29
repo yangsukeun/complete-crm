@@ -1,3 +1,4 @@
+import {recordTransferCompletion,TransferCompletionError} from '@/lib/finance-transfer-completion';
 import {resolveFinanceAccess,redactPaymentBank} from "@/lib/finance-access";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
@@ -96,6 +97,11 @@ export async function PATCH(
         { error: "입력값이 올바르지 않습니다.", details: parsed.error.flatten() },
         { status: 400 }
       );
+    }
+
+    if(parsed.data.status==='COMPLETED'){
+      try {return NextResponse.json(await recordTransferCompletion(session.user.id,[id]));}
+      catch(error){if(error instanceof TransferCompletionError)return NextResponse.json({error:error.message},{status:error.status});throw error;}
     }
 
     const current = await prisma.paymentRequest.findUnique({

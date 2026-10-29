@@ -1,3 +1,4 @@
+import {canRecordTransferCompletion} from '@/lib/finance-transfer-completion-policy';
 import {resolveFinanceAccess,redactPaymentBank} from "@/lib/finance-access";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
@@ -74,8 +75,8 @@ export async function GET() {
  const session=await getAppSession();if(!session?.user?.id)return NextResponse.json({error:'Unauthorized'},{status:401});
  const {scope,role,transferExecutorIds}=await resolveFinanceAccess(session.user.id);
  const {scope:writeScope}=await resolveFinanceAccess(session.user.id,"write");
- const rows=await prisma.paymentRequest.findMany({where:financeScopePrismaWhere(scope),include:{requester:{select:{id:true,name:true,position:true,department:true}},vendor:true,quotation:{select:{id:true,quotationNumber:true,title:true,finalAmount:true,clientName:true}}},orderBy:{requestedAt:'desc'}});
- const requests=rows.filter(row=>isPaymentRequestInFinanceScope(scope,row)).map(row=>({...redactPaymentBank(row,scope),canActWithinScope:isPaymentRequestInFinanceScope(writeScope,row),attachments:normalizePaymentRequestAttachments({attachment:row.attachment??null,attachments:row.attachments})}));
+ const rows=await prisma.paymentRequest.findMany({where:financeScopePrismaWhere(scope),include:{requester:{select:{id:true,name:true,position:true,department:true,role:true}},vendor:true,quotation:{select:{id:true,quotationNumber:true,title:true,finalAmount:true,clientName:true}}},orderBy:{requestedAt:'desc'}});
+ const requests=rows.filter(row=>isPaymentRequestInFinanceScope(scope,row)).map(row=>({...redactPaymentBank(row,scope),canActWithinScope:isPaymentRequestInFinanceScope(writeScope,row),canCompleteTransfer:canRecordTransferCompletion(scope.isTransferExecutor,row),attachments:normalizePaymentRequestAttachments({attachment:row.attachment??null,attachments:row.attachments})}));
  const paymentAlertUnreadCount=await prisma.paymentRequestAlert.count({where:{userId:session.user.id,readAt:null,request:{...financeScopePrismaWhere(scope)}}});
  const departmentsWithTeamLead=Array.from(await fetchDepartmentsWithTeamLead(prisma));
  const metadata={viewerDepartment:scope.department,departmentsWithTeamLead,requests,transferExecutorIds,paymentAlertUnreadCount,financeScope:{kind:scope.kind,label:scope.label},isTransferExecutor:scope.isTransferExecutor};

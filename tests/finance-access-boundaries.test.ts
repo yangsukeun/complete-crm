@@ -1,7 +1,7 @@
 import {beforeEach,it,expect,vi} from 'vitest';
 const f=vi.hoisted(()=>({actor:'staff' as string|null,assignees:[] as string[],user:{role:'USER',department:'물류',additionalDepartments:null,accountDisabled:false},rows:[] as object[],findMany:vi.fn(),findUnique:vi.fn(),findFirst:vi.fn(),update:vi.fn(),remove:vi.fn(),count:vi.fn(),users:vi.fn()}));
 vi.mock('@/auth',()=>({getAppSession:async()=>f.actor?{user:{id:f.actor,role:'ADMIN'}}:null}));
-vi.mock('@/lib/prisma',()=>({default:{user:{findUnique:async()=>f.user,findMany:f.users},paymentRequest:{findMany:f.findMany,findUnique:f.findUnique,findFirst:f.findFirst,update:f.update,delete:f.remove},paymentRequestAlert:{count:f.count},vendor:{findUnique:f.findUnique,update:f.update,delete:f.remove}}}));
+vi.mock('@/lib/prisma',()=>({default:{$transaction:async(fn:(tx:{paymentRequest:{findMany:typeof f.findMany}})=>unknown)=>fn({paymentRequest:{findMany:f.findMany}}),user:{findUnique:async()=>f.user,findMany:f.users},paymentRequest:{findMany:f.findMany,findUnique:f.findUnique,findFirst:f.findFirst,update:f.update,delete:f.remove},paymentRequestAlert:{count:f.count},vendor:{findUnique:f.findUnique,update:f.update,delete:f.remove}}}));
 vi.mock('@/lib/permissions-resolve',()=>({resolveEffectivePermissionsJson:async()=>null}));
 vi.mock('@/lib/finance-payment-request-alerts',()=>({loadTransferExecutorIds:async()=>f.assignees,ensurePaymentRequestAlerts:vi.fn(),notifyCenterChiefsOnCsTeamLeadApproval:vi.fn(),notifyExecutivesOnTeamLeadApproval:vi.fn(),notifyPaymentRequestDeleted:vi.fn(),notifyTransferExecutorsOnApproval:vi.fn()}));
 import {resolveFinanceAccess,redactPaymentBank} from '../src/lib/finance-access';

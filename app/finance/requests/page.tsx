@@ -84,6 +84,7 @@ type PaymentRequest = {
   attachment: string | null;
   attachments?: string[] | null;
   canActWithinScope?: boolean;
+  canCompleteTransfer?: boolean;
   requester: {
     id: string;
     name: string;
@@ -979,8 +980,8 @@ function FinanceRequestsContent() {
   /** 일괄 이체완료: 이체 담당자만 */
   const canBatchComplete = isTransferExecutor && (showTwoSections ? allowTransferComplete : canComplete);
 
-  const approvedPendingForBatch = visiblePendingRequests.filter((r: PaymentRequest) => r.canActWithinScope!==false && r.status === "TEAM_LEAD_APPROVED");
-  const approvedRequestsForBatch = visibleRequests.filter((r: PaymentRequest) => r.canActWithinScope!==false && r.status === "TEAM_LEAD_APPROVED");
+  const approvedPendingForBatch = visiblePendingRequests.filter((r: PaymentRequest) => r.canCompleteTransfer===true && r.status === "TEAM_LEAD_APPROVED");
+  const approvedRequestsForBatch = visibleRequests.filter((r: PaymentRequest) => r.canCompleteTransfer===true && r.status === "TEAM_LEAD_APPROVED");
   const batchList = showTwoSections ? approvedPendingForBatch : approvedRequestsForBatch;
   const selectedBatchSum = batchList
     .filter((r: any) => selectedCompleteIds.has(r.id))
@@ -1156,7 +1157,7 @@ function FinanceRequestsContent() {
                       <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                         {canBatchComplete && (
                           <TableCell className="w-10 align-middle">
-                            {r.canActWithinScope!==false && r.status === "TEAM_LEAD_APPROVED" ? (
+                            {r.canCompleteTransfer===true && r.status === "TEAM_LEAD_APPROVED" ? (
                               <Checkbox
                                 checked={selectedCompleteIds.has(r.id)}
                                 onCheckedChange={() => toggleSelectComplete(r.id)}
@@ -1267,7 +1268,7 @@ function FinanceRequestsContent() {
                               </Button>
                             </div>
                           )}
-                          {r.canActWithinScope!==false && r.status === "TEAM_LEAD_APPROVED" && allowTransferComplete && (
+                          {r.canCompleteTransfer===true && r.status === "TEAM_LEAD_APPROVED" && allowTransferComplete && (
                             <Button
                               size="sm"
                               onClick={() => handleComplete(r.id)}
@@ -1462,7 +1463,7 @@ function FinanceRequestsContent() {
                 <TableRow key={r.id} className="border-slate-200 dark:border-slate-800">
                   {canBatchComplete && (
                     <TableCell className="w-10 align-middle">
-                      {r.canActWithinScope!==false && r.status === "TEAM_LEAD_APPROVED" ? (
+                      {r.canCompleteTransfer===true && r.status === "TEAM_LEAD_APPROVED" ? (
                         <Checkbox
                           checked={selectedCompleteIds.has(r.id)}
                           onCheckedChange={() => toggleSelectComplete(r.id)}
@@ -1588,7 +1589,7 @@ function FinanceRequestsContent() {
                           </Button>
                         </div>
                       )}
-                      {r.canActWithinScope!==false && canComplete && r.status === "TEAM_LEAD_APPROVED" && (
+                      {r.canCompleteTransfer===true && canComplete && r.status === "TEAM_LEAD_APPROVED" && (
                         <Button
                           size="sm"
                           onClick={() => handleComplete(r.id)}
