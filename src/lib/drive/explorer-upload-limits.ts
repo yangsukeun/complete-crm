@@ -7,13 +7,15 @@ export const EXPLORER_UPLOAD_CONFIRM_BYTES = 1024 * 1024 * 1024; // 1GB
 export const EXPLORER_UPLOAD_LARGE_CONFIRM_MESSAGE =
   "대용량 파일입니다. 업로드 중 탭을 닫으면 중단됩니다. 계속할까요?";
 
-/** 크기 유효성만 검사 (상한 없음) */
+/** 파일당 2GiB: 청크 프록시 비용과 세션 수명을 제한한다. */
+export const EXPLORER_UPLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 export function assertExplorerUploadSize(
   size: number
 ): { ok: true } | { ok: false; error: string } {
-  if (!Number.isFinite(size) || size < 0) {
+  if (!Number.isSafeInteger(size) || size < 0) {
     return { ok: false, error: "파일 크기가 올바르지 않습니다." };
   }
+  if (size > EXPLORER_UPLOAD_MAX_BYTES) return { ok: false, error: "파일당 최대 2GB까지 업로드할 수 있습니다." };
   return { ok: true };
 }
 

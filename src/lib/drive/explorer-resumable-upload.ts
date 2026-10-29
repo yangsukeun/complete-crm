@@ -105,9 +105,9 @@ function googleFileIdFromBody(file: unknown): string | null {
 /** Range: bytes=0-12345 → next offset 12346 */
 export function parseUploadedOffsetFromRange(range: string | null | undefined): number | null {
   if (!range) return null;
-  const m = /bytes=(\d+)-(\d+)/i.exec(range);
+  const m = /^bytes=0-(\d+)$/i.exec(range);
   if (!m) return null;
-  const end = Number(m[2]);
+  const end = Number(m[1]);
   if (!Number.isFinite(end) || end < 0) return null;
   return end + 1;
 }
@@ -132,6 +132,7 @@ function sleep(ms: number, signal?: AbortSignal) {
 
 function isRetryableUploadError(err: unknown): boolean {
   if (err instanceof DOMException && err.name === "AbortError") return false;
+  if (err instanceof Error && typeof (err as Error & {retryable?:boolean}).retryable === "boolean") return (err as Error & {retryable:boolean}).retryable;
   if (err instanceof TypeError) return true; // network
   const msg = err instanceof Error ? err.message : String(err);
   if (/네트워크|network|fetch|Failed to fetch|timeout|일시|502|503|429|ECONNRESET/i.test(msg)) {
@@ -151,7 +152,6 @@ async function queryUploadedOffset(
     headers: {
       "X-Upload-Session": sessionToken,
       "Content-Range": `bytes */${total}`,
-      "Content-Length": "0",
     },
     body: new Blob([]),
     signal,
@@ -163,13 +163,15 @@ async function queryUploadedOffset(
     file?: unknown;
   };
   if (!res.ok) {
-    throw new Error(body.error || "업로드 진행 상태를 확인할 수 없습니다.");
+    throw Object.assign(new Error(body.error || "업로드 진행 상태를 확인할 수 없습니다."),{retryable:res.status===429||res.status>=500});
   }
   if (body.status === 200 || body.status === 201) {
     return total;
   }
-  const offset = parseUploadedOffsetFromRange(body.range);
-  return offset ?? 0;
+  if (body.status !== 308) throw Object.assign(new Error('업로드 상태 응답이 올바르지 않습니다.'), {retryable:false});
+  const offset = parseUploadedOffsetFromRange(body.range) ?? 0;
+  if (offset > total) throw Object.assign(new Error('업로드 범위 응답이 올바르지 않습니다.'), {retryable:false});
+  return offset;
 }
 
 export async function uploadExplorerFileResumable(
@@ -275,7 +277,7 @@ export async function uploadExplorerFileResumable(
       };
       if (!res.ok) {
         const err = new Error(body.error || `${file.name} 청크 업로드 실패`);
-        (err as Error & { retryable?: boolean }).retryable = res.status >= 500;
+        (err as Error & { retryable?: boolean }).retryable = res.status === 429 || res.status >= 500;
         throw err;
       }
       return {
@@ -324,7 +326,7 @@ export async function uploadExplorerFileResumable(
           `${formatUploadBytes(offset)} / ${formatUploadBytes(total)} · 남음 ${formatUploadBytes(total - offset)}`
         );
         const result = await putChunk(offset, end);
-        consecutiveFailures = 0;
+
 
         if (result.status === 200 || result.status === 201) {
           googleFileId = googleFileIdFromBody(result.file);
@@ -333,8 +335,12 @@ export async function uploadExplorerFileResumable(
           break;
         }
 
-        const fromRange = parseUploadedOffsetFromRange(result.range);
-        offset = fromRange != null ? fromRange : end;
+        if (result.status !== 308) throw Object.assign(new Error('업로드 상태 응답이 올바르지 않습니다.'), {retryable:false});
+        const fromRange = parseUploadedOffsetFromRange(result.range) ?? 0;
+        if (fromRange > end) throw Object.assign(new Error('업로드 범위 응답이 올바르지 않습니다.'), {retryable:false});
+        if (fromRange <= offset) throw Object.assign(new Error('업로드가 진행되지 않았습니다.'), {retryable:true});
+        offset = fromRange;
+        consecutiveFailures = 0;
         report(offset, "uploading");
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
@@ -344,14 +350,15 @@ export async function uploadExplorerFileResumable(
           await controls.waitIfPaused();
           try {
             offset = await queryUploadedOffset(uploadUrl, sessionToken, total);
-          } catch {
-            /* keep local offset */
+          } catch (queryError) {
+            throw queryError;
           }
           continue;
         }
 
         consecutiveFailures += 1;
-        if (!isRetryableUploadError(e) && consecutiveFailures > 2) throw e;
+        if (!isRetryableUploadError(e)) throw e;
+        if (consecutiveFailures >= 8) throw new Error("업로드 재시도 8회에 실패했습니다. 연결과 폴더 권한을 확인하세요. 완료 여부가 불확실하면 목록을 먼저 확인하세요.");
 
         report(
           offset,
@@ -371,7 +378,7 @@ export async function uploadExplorerFileResumable(
             break;
           }
         } catch (qErr) {
-          if (consecutiveFailures >= 8) {
+          if (!isRetryableUploadError(qErr) || consecutiveFailures >= 8) {
             throw qErr instanceof Error ? qErr : e;
           }
         }
@@ -386,7 +393,6 @@ export async function uploadExplorerFileResumable(
         headers: {
           "X-Upload-Session": sessionToken,
           "Content-Range": `bytes */${total}`,
-          "Content-Length": "0",
         },
         body: new Blob([]),
         signal: ac.signal,
