@@ -13,7 +13,9 @@ export function createInquiryDb(client:Client):InquiryDb{
   },
   transaction:fn=>client.$transaction(async tx=>{
    // Pilot intake serialization plus a unique constraint makes concurrent/retried requests converge.
-   await tx.$queryRaw`SELECT pg_advisory_xact_lock(724804, 1)`;
+   // Prisma raw results cannot deserialize PostgreSQL void. Preserve the same
+   // transaction lock, but expose its return value as a supported scalar.
+   await tx.$queryRaw`SELECT pg_advisory_xact_lock(724804, 1)::text AS lock_result`;
    const adapter:InquiryTx={
     async find(site:Site,key:string){const rows=await tx.$queryRaw<{record:Inquiry}[]>`SELECT record FROM public.website_inquiries WHERE source_site=${site} AND request_id=${key}::uuid`;return rows[0]?.record??null;},
     activeUser:id=>active(tx,id),
