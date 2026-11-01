@@ -19,3 +19,9 @@ it('unauthenticated and unavailable requests fail closed, never return a saved r
  expect((await inquiryPost(request(),{authenticateSite:async()=>null} as unknown as InquiryRuntime)).status).toBe(401);
  const client=createInquiryPreflightClient({token,origin:'https://approved.invalid'},async()=>Response.json({persisted:true},{status:200}));await expect(client('192.0.2.1')).rejects.toThrow();
 });
+it('rejects saved-looking or oversized limiter receipts even without Content-Length',async()=>{
+ for(const body of [{operation:'rate-limit',allowed:true,persisted:true},{operation:'rate-limit',allowed:true},{operation:'rate-limit',allowed:true,persisted:false,padding:'x'.repeat(1024)}]){
+  const client=createInquiryPreflightClient({token,origin:'https://bscomplete.com'},async()=>Response.json(body));
+  await expect(client('192.0.2.1')).rejects.toThrow();
+ }
+});

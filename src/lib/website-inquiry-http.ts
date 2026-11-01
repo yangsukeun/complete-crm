@@ -23,5 +23,9 @@ export async function inquiryPost(request:Request,runtime:InquiryRuntime|null){
   }
   const result=await runtime.service.submit(identity,request.headers.get('Idempotency-Key'),raw);
   return Response.json(result,{status:result.duplicate?200:201,headers});
- }catch(error){const status=error instanceof InquiryError?error.status:error instanceof SyntaxError?400:503;return Response.json({code:error instanceof InquiryError?error.code:status===400?'INVALID_JSON':'STORAGE_UNAVAILABLE'},{status,headers:{...headers,...(status===429?{'Retry-After':'60'}:{})}});}
+ }catch(error){const status=error instanceof InquiryError?error.status:error instanceof SyntaxError?400:503;
+  // A transport/commit error can occur after persistence. Never call it definitely
+  // unsaved; retry the same request_id/payload rather than generating another key.
+  const uncertain=!(error instanceof InquiryError)&&!(error instanceof SyntaxError);
+  return Response.json({code:error instanceof InquiryError?error.code:status===400?'INVALID_JSON':'STORAGE_UNAVAILABLE',persisted:uncertain?null:false,outcome:uncertain?'unknown':'rejected'},{status,headers:{...headers,...(status===429?{'Retry-After':'60'}:{})}});}
 }

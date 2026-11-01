@@ -21,7 +21,9 @@ export function createInquiryPreflightClient(config:{token:string;origin:string}
   const response=await send('https://www.cpcrm.co.kr/api/integrations/website-inquiries/v1',{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers:{Authorization:`Bearer ${config.token}`,Origin:config.origin,'Content-Type':'application/json','X-Inquiry-Operation':'rate-limit'},body:JSON.stringify(privateInquirySubject(address,config.token))});
   if(response.status===429)return false;
   if(response.status!==200||Number(response.headers.get('content-length')??0)>1024)throw new Error('Limiter unavailable');
-  const body=await response.text();if(body.length>1024)throw new Error('Invalid limiter response');
-  const data=JSON.parse(body);if(data.operation!=='rate-limit'||data.allowed!==true)throw new Error('Invalid limiter receipt');return true;
+  const reader=response.body?.getReader();if(!reader)throw new Error('Invalid limiter response');
+  const chunks:Uint8Array[]=[];let size=0;
+  try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>1024)throw new Error('Invalid limiter response');chunks.push(part.value);}}finally{await reader.cancel();}
+  const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(data.operation!=='rate-limit'||data.allowed!==true||data.persisted!==false)throw new Error('Invalid limiter receipt');return true;
  };
 }

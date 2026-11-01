@@ -1,5 +1,7 @@
 export const CORPORATE_CONSENT_VERSION='corporate-inquiry-v1-20261028';
-export const APPROVED_CORPORATE_ORIGIN='https://complete-renewal-review-p9ialwoyh-completes-projects-652c4a87.vercel.app';
+// Local deployment candidate only; changing this constant does not enable intake.
+// Exact apex origin. www/preview hosts are not implicitly trusted.
+export const APPROVED_CORPORATE_ORIGIN='https://bscomplete.com';
 /** Contains only a verification digest and timestamps. Never accepts a plaintext bearer. */
 export function corporateIntakeConfig(env:Record<string,string|undefined>){
  if(env.CRM_WEBSITE_INTAKE_ENABLED!=='true'||env.CRM_CORPORATE_INQUIRY_ORIGIN!==APPROVED_CORPORATE_ORIGIN)return null;

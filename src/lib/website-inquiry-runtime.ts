@@ -11,7 +11,10 @@ export async function productionInquiryRuntime():Promise<InquiryRuntime|null>{
  try{
   const rows=await prisma.$queryRaw<{ready:boolean}[]>`SELECT count(*)=2 AND bool_and(c.relrowsecurity AND NOT has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') AND NOT has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS ready FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('website_inquiries','website_inquiry_rate_limits')`;
   if(!rows[0]?.ready)return null;
-  const columns=await prisma.$queryRaw<{ready:boolean}[]>`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='website_inquiry_rate_limits' AND column_name='bucket_key') AS ready`;
+  const columns=await prisma.$queryRaw<{ready:boolean}[]>`SELECT
+   EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='website_inquiry_rate_limits' AND column_name='bucket_key' AND is_nullable='NO' AND column_default='''site''::text')
+   AND EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.website_inquiry_rate_limits'::regclass AND c.contype='p'
+    AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord)=ARRAY['source_site','bucket_key']) AS ready`;
   if(!columns[0]?.ready)return null;
   const authenticate=corporateInquiryAuthenticator(config);
   return {service:new WebsiteInquiryService(createInquiryDb(prisma)),authenticateSite:async request=>{
