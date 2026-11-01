@@ -1,4 +1,4 @@
-import {validInquiryKey,validPreviousInquiryKey,type PreviousInquiryKey} from './website-inquiry-key-policy';
+import {validInquiryKey,validPreviousInquiryKey,validNextInquiryKey,type PreviousInquiryKey,type NextInquiryKey} from './website-inquiry-key-policy';
 export const CORPORATE_CONSENT_VERSION='corporate-inquiry-v1-20261028';
 // Local deployment candidate only; changing this constant does not enable intake.
 // Exact apex origin. www/preview hosts are not implicitly trusted.
@@ -19,5 +19,12 @@ export function corporateIntakeConfig(env:Record<string,string|undefined>){
   previous={tokenSha256:fields[0]!,issuedAt:Date.parse(fields[1]!),expiresAt:Date.parse(fields[2]!),acceptUntil:Date.parse(fields[3]!)};
   if(!validPreviousInquiryKey(primary,previous))return null;
  }
- return {...primary,previous,consentVersions:[CORPORATE_CONSENT_VERSION],origin:APPROVED_CORPORATE_ORIGIN};
+ const nextFields=['SHA256','ISSUED_AT','EXPIRES_AT','ACCEPT_UNTIL'].map(suffix=>env[`CRM_CORPORATE_INQUIRY_NEXT_${suffix}`]);
+ let next:NextInquiryKey|undefined;
+ if(nextFields.some(value=>value!==undefined)){
+  if(previous||nextFields.some(value=>!value))return null;
+  next={tokenSha256:nextFields[0]!,issuedAt:Date.parse(nextFields[1]!),expiresAt:Date.parse(nextFields[2]!),acceptUntil:Date.parse(nextFields[3]!)};
+  if(!validNextInquiryKey(primary,next))return null;
+ }
+ return {...primary,previous,next,consentVersions:[CORPORATE_CONSENT_VERSION],origin:APPROVED_CORPORATE_ORIGIN};
 }

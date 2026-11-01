@@ -1,11 +1,12 @@
 import {createHash,timingSafeEqual} from 'node:crypto';
 import type {SiteIdentity} from './website-inquiry';
-import {validInquiryKey,validPreviousInquiryKey,type InquiryKey,type PreviousInquiryKey} from './website-inquiry-key-policy';
+import {validInquiryKey,validPreviousInquiryKey,validNextInquiryKey,type InquiryKey,type PreviousInquiryKey,type NextInquiryKey} from './website-inquiry-key-policy';
 /** Inject approved configuration; this module never issues, stores or logs credentials.
- * Up to 90 days; at most one previous key with a 24-hour bounded overlap. */
-export function corporateInquiryAuthenticator(config:InquiryKey & {previous?:PreviousInquiryKey;consentVersions:readonly string[]},now:()=>number=Date.now){
- if(!validInquiryKey(config)||(config.previous&&!validPreviousInquiryKey(config,config.previous)))throw new Error('Invalid corporate intake configuration');
- const keys=[{...config,acceptUntil:config.expiresAt},...(config.previous?[config.previous]:[])];
+ * Up to 90 days; at most one previous OR next key with a 24-hour bounded overlap. */
+export function corporateInquiryAuthenticator(config:InquiryKey & {previous?:PreviousInquiryKey;next?:NextInquiryKey;consentVersions:readonly string[]},now:()=>number=Date.now){
+ if(!validInquiryKey(config)||(config.previous&&config.next)||(config.previous&&!validPreviousInquiryKey(config,config.previous))||(config.next&&!validNextInquiryKey(config,config.next)))throw new Error('Invalid corporate intake configuration');
+ const secondary=config.previous??config.next;
+ const keys=[{...config,acceptUntil:config.expiresAt},...(secondary?[secondary]:[])];
  return async(request:Request):Promise<SiteIdentity|null>=>{
   const time=now();if(request.method!=='POST'||new URL(request.url).pathname!=='/api/integrations/website-inquiries/v1')return null;
   const header=request.headers.get('authorization');
