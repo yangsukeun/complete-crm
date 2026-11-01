@@ -54,7 +54,7 @@ export default async function AdminLogsPage() {
     ? "일반 직원의 업무일지를 읽기 전용으로 조회합니다. 대표·임원·팀장급 일지는 제외됩니다."
     : !isExecutive && canLogs
     ? "사원급·팀장급·다른 부서 조회 권한이 겹치는 직원만 표시됩니다. 권한이 없으면 같은 팀 일지도 볼 수 없습니다."
-    : "직원을 선택하고 날짜를 지정하면 해당 날짜의 자동 생성된 Daily Report를 볼 수 있습니다.";
+    : "직원과 날짜를 선택해 저장된 Daily Report를 조회합니다. 조회만으로 직원 일지를 새로 생성하지 않습니다.";
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">

@@ -39,4 +39,17 @@ describe('named reviewer direct API',()=>{
   expect((await GET(request(target,'2026-02-30'))).status).toBe(400);
   mock.read.mockResolvedValueOnce(null);expect((await GET(request())).status).toBe(404);expect(mock.create).not.toHaveBeenCalled();
  });
+ it('owner read-only view preserves drafts and distinguishes missing from server failure',async()=>{
+  const owner='cmmitn4830000fc0jt8c1l2jf';
+  mock.session.mockResolvedValue({user:{id:owner,role:'ADMIN'}});
+  mock.user.mockResolvedValue({id:owner,role:'ADMIN',department:'',accountDisabled:false});
+  const readOnly=()=>new Request(`https://crm.test/api/work-logs?date=2026-10-31&userId=${owner}&mode=read-only`);
+  mock.read.mockResolvedValueOnce(null);
+  const missing=await GET(readOnly());expect(missing.status).toBe(404);expect(await missing.json()).toMatchObject({code:'WORK_LOG_NOT_FOUND'});
+  mock.read.mockResolvedValueOnce({id:'synthetic',date:'2026-10-31',content:'',status:'DRAFT'});
+  const empty=await GET(readOnly());expect(empty.status).toBe(200);expect(await empty.json()).toMatchObject({content:'',status:'DRAFT'});
+  const silent=vi.spyOn(console,'error').mockImplementation(()=>undefined);
+  try{mock.read.mockRejectedValueOnce(new Error('synthetic outage'));const failed=await GET(readOnly());expect(failed.status).toBe(500);expect(await failed.json()).toMatchObject({code:'WORK_LOG_READ_FAILED'});}finally{silent.mockRestore();}
+  expect(mock.create).not.toHaveBeenCalled();
+ });
 });

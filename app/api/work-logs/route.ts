@@ -55,8 +55,9 @@ export async function GET(req: Request) {
       }
     }
 
-    const log = userId===session.user.id?await getOrCreateDailyWorkLog(userId, dateStr):await prisma.dailyWorkLog.findUnique({where:{userId_date:{userId,date:dateStr}}});
-    if(!log)return NextResponse.json({error:'해당 날짜에 작성된 일지가 없습니다.'},{status:404,headers:{'Cache-Control':'private, no-store'}});
+    const readOnly = searchParams.get('mode') === 'read-only';
+    const log = userId===session.user.id&&!readOnly?await getOrCreateDailyWorkLog(userId, dateStr):await prisma.dailyWorkLog.findUnique({where:{userId_date:{userId,date:dateStr}}});
+    if(!log)return NextResponse.json({code:'WORK_LOG_NOT_FOUND',error:'해당 날짜에 저장된 일지가 없습니다.'},{status:404,headers:{'Cache-Control':'private, no-store',Vary:'Cookie'}});
     return NextResponse.json({
       ...log,
       // 내부 중복 방지 마커는 UI에 노출하지 않음
@@ -66,8 +67,8 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("Work logs GET:", e);
     return NextResponse.json(
-      { error: "Daily Report를 불러올 수 없습니다." },
-      { status: 500 }
+      { code:'WORK_LOG_READ_FAILED',error: "Daily Report를 불러올 수 없습니다." },
+      { status: 500,headers:{'Cache-Control':'private, no-store',Vary:'Cookie'} }
     );
   }
 }

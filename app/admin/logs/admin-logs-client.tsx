@@ -7,6 +7,7 @@ import { formatKstHm, todayYmdKst } from "@/lib/date-kst";
 import { ko } from "date-fns/locale";
 import { CalendarIcon, Loader2, Lock, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { readWorkLogResponse, validWorkLogDate } from "@/lib/work-log-response";
 
 type ActivityItem = {
   actionType: string;
@@ -44,43 +45,55 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
-  const loadLog = useCallback(async () => {
+  const loadLog = useCallback(async (signal: AbortSignal) => {
+    setNotice(null);
+    setLoadError(null);
+    setActivities([]);
+    setContent("");
+    setStatus("");
     if (!selectedUserId) {
-      setActivities([]);
-      setContent("");
-      setStatus("");
+      setLoading(false);
+      return;
+    }
+    if (!validWorkLogDate(dateStr)) {
+      setLoading(false);
+      setLoadError('올바른 날짜를 선택해 주세요.');
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch(`/api/work-logs?date=${dateStr}&userId=${selectedUserId}`);
-      if (!res.ok) throw new Error("불러오기 실패");
-      const data = await res.json();
-      setActivities(Array.isArray(data?.activities) ? data.activities : []);
-      setContent(data?.content ?? "");
-      setStatus(data?.status ?? "");
+      const query = new URLSearchParams({date:dateStr,userId:selectedUserId,mode:'read-only'});
+      const res = await fetch(`/api/work-logs?${query}`,{signal,cache:'no-store'});
+      const result = await readWorkLogResponse(res);
+      if (signal.aborted) return;
+      if (result.kind==='missing') setNotice('선택한 날짜에 저장된 일지가 없습니다. 프로젝트 활동이나 다른 업무 기록이 없다는 뜻은 아닙니다.');
+      else if (result.kind==='error') setLoadError(result.message);
+      else {setActivities(result.activities);setContent(result.content);setStatus(result.status);}
     } catch {
-      setActivities([]);
-      setContent("(불러오기 실패)");
-      setStatus("");
+      if (!signal.aborted) setLoadError('서버에 연결하지 못했습니다. 저장된 일지 유무는 확인되지 않았습니다. 다시 조회해 주세요.');
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [selectedUserId, dateStr]);
 
   useEffect(() => {
-    loadLog();
-  }, [loadLog]);
+    const controller = new AbortController();
+    void loadLog(controller.signal);
+    return () => controller.abort();
+  }, [loadLog,retry]);
 
   useEffect(() => {
     const uid = searchParams.get("userId");
     const d = searchParams.get("date");
     if (uid && employees.some((e) => e.id === uid)) setSelectedUserId(uid);
-    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDateStr(d);
+    if (d && validWorkLogDate(d)) setDateStr(d);
   }, [searchParams, employees]);
 
-  const selectedEmployee = employees.find((e: any) => e?.id === selectedUserId);
+  const selectedEmployee = employees.find((e) => e?.id === selectedUserId);
 
   return (
     <div className="flex flex-col gap-4 md:flex-row">
@@ -93,7 +106,7 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
             <input
               type="date"
               value={dateStr}
-              onChange={(e: any) => setDateStr(e.target.value)}
+              onChange={(e) => setDateStr(e.target.value)}
               className="border-input w-full rounded-md border bg-transparent py-2 pl-9 pr-3 text-sm"
             />
           </div>
@@ -101,7 +114,7 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
         <div>
           <label className="text-muted-foreground mb-2 block text-sm font-medium">직원</label>
           <ul className="max-h-[320px] space-y-0.5 overflow-y-auto rounded-md border border-border bg-muted/30 p-1">
-            {employees.map((e: any, idx: number) => (
+            {employees.map((e, idx) => (
               <li key={e?.id ?? idx}>
                 <button
                   type="button"
@@ -141,7 +154,7 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
           <div>
             <div className="border-border mb-4 flex flex-wrap items-center justify-between gap-2 border-b pb-3">
               <h3 className="font-medium">
-                {selectedEmployee?.name} · {format(new Date(`${dateStr}T12:00:00+09:00`), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
+                {selectedEmployee?.name} · {validWorkLogDate(dateStr)?format(new Date(`${dateStr}T12:00:00+09:00`), "yyyy년 M월 d일 (EEEE)", { locale: ko }):'날짜 확인 필요'}
               </h3>
               {status && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
@@ -149,6 +162,9 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
                 </span>
               )}
             </div>
+            {loadError && <div role="alert" className="mb-4 rounded-md border border-destructive p-4 text-sm">{loadError}</div>}
+            {notice && <p role="status" className="mb-4 rounded-md bg-muted p-4 text-sm">{notice}</p>}
+            <button type="button" className="mb-4 min-h-11 rounded-md border px-4 text-sm" onClick={()=>setRetry(value=>value+1)}>다시 조회</button>
             {activities.length > 0 && (
               <div className="border-border mb-4 rounded-lg border bg-muted/30 p-4">
                 <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -156,7 +172,7 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
                   출퇴근·활동 기록 (수정 불가)
                 </p>
                 <ul className="font-mono text-sm">
-                  {activities.map((a: any, i: any) => {
+                  {activities.map((a, i) => {
                     const time = formatKstHm(a.timestamp);
                     const label = activityLabel(a.actionType);
                     const ipText =
@@ -173,12 +189,12 @@ function AdminLogsClientInner({ employees }: { employees: Employee[] }) {
                 </ul>
               </div>
             )}
-            <div className="rounded-md bg-muted/30 p-4">
+            {!notice&&!loadError&&<div className="rounded-md bg-muted/30 p-4">
               <p className="text-muted-foreground mb-1.5 text-xs font-medium">추가 작성</p>
               <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
                 {content || "(추가 작성 내용 없음)"}
               </pre>
-            </div>
+            </div>}
           </div>
         )}
       </div>
