@@ -9,5 +9,5 @@ it('limits synthetic credential to corporate POST, expiry and exact route; ignor
  expect(await auth(req('GET'))).toBeNull();expect(await auth(req('POST','/api/website-inquiries'))).toBeNull();expect(await auth(req('POST',undefined,token+'x'))).toBeNull();
  expect(await auth(new Request('https://crm.invalid/api/integrations/website-inquiries/v1',{method:'POST',headers:{cookie:'synthetic-session',origin:'https://trusted.invalid'}}))).toBeNull();
  expect(await corporateInquiryAuthenticator(config,()=>2000)(req())).toBeNull();
- expect(()=>corporateInquiryAuthenticator({...config,expiresAt:config.issuedAt+8*86400000})).toThrow();
+ expect(()=>corporateInquiryAuthenticator({...config,expiresAt:config.issuedAt+91*86400000})).toThrow();
 });

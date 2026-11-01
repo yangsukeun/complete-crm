@@ -5,6 +5,10 @@
   "regions": ["icn1"],
   "crons": [
     {
+      "path": "/api/cron/website-inquiry-key-expiry",
+      "schedule": "0 0 * * *"
+    },
+    {
       "path": "/api/cron/archive-tasks",
       "schedule": "0 18 * * *"
     },

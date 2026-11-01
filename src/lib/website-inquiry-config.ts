@@ -1,3 +1,4 @@
+import {validInquiryKey,validPreviousInquiryKey,type PreviousInquiryKey} from './website-inquiry-key-policy';
 export const CORPORATE_CONSENT_VERSION='corporate-inquiry-v1-20261028';
 // Local deployment candidate only; changing this constant does not enable intake.
 // Exact apex origin. www/preview hosts are not implicitly trusted.
@@ -8,6 +9,15 @@ export function corporateIntakeConfig(env:Record<string,string|undefined>){
  const tokenSha256=env.CRM_CORPORATE_INQUIRY_SHA256??'';
  const issuedAt=Date.parse(env.CRM_CORPORATE_INQUIRY_ISSUED_AT??'');
  const expiresAt=Date.parse(env.CRM_CORPORATE_INQUIRY_EXPIRES_AT??'');
- if(!/^[a-f0-9]{64}$/.test(tokenSha256)||!Number.isFinite(issuedAt)||!Number.isFinite(expiresAt)||expiresAt<=issuedAt||expiresAt-issuedAt>7*86400000)return null;
- return {tokenSha256,issuedAt,expiresAt,consentVersions:[CORPORATE_CONSENT_VERSION],origin:APPROVED_CORPORATE_ORIGIN};
+ const primary={tokenSha256,issuedAt,expiresAt};
+ if(!validInquiryKey(primary))return null;
+ const fields=['SHA256','ISSUED_AT','EXPIRES_AT','ACCEPT_UNTIL'].map(suffix=>env[`CRM_CORPORATE_INQUIRY_PREVIOUS_${suffix}`]);
+ let previous:PreviousInquiryKey|undefined;
+ // Entirely absent supports the deployed single 7-day key. Partial/blank values fail closed.
+ if(fields.some(value=>value!==undefined)){
+  if(fields.some(value=>!value))return null;
+  previous={tokenSha256:fields[0]!,issuedAt:Date.parse(fields[1]!),expiresAt:Date.parse(fields[2]!),acceptUntil:Date.parse(fields[3]!)};
+  if(!validPreviousInquiryKey(primary,previous))return null;
+ }
+ return {...primary,previous,consentVersions:[CORPORATE_CONSENT_VERSION],origin:APPROVED_CORPORATE_ORIGIN};
 }
