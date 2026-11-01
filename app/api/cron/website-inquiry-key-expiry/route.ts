@@ -5,7 +5,7 @@ import {sendInquiryExpiryNotice} from '@/lib/website-inquiry-expiry';
 import {inquiryExpiryStore} from '@/lib/website-inquiry-expiry-pg';
 export const runtime='nodejs';
 export async function GET(request:Request){
- const denied=verifyCronRequest(request);if(denied)return denied;
+ const denied=verifyCronRequest(request,'website-inquiry-key-expiry');if(denied)return denied;
  const config=corporateIntakeConfig(process.env);
  if(!config)return Response.json({ok:false,code:'INTAKE_NOT_CONFIGURED'},{status:503});
  try{
