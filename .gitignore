@@ -44,3 +44,4 @@ backups/
 
 # API 감사 스크립트 마지막 실행 결과(로컬)
 scripts/audit-api-auth-last.json
+.avent-test/

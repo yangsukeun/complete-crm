@@ -1,0 +1,10 @@
+import {getAppSession} from '@/auth';
+import prisma from '@/lib/prisma';
+import {createOwnerPilot} from '@/lib/avent/owner-pilot';
+import {executeNodePreview} from '@/lib/avent/node-executor';
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=10;
+const handler=createOwnerPilot({sessionId:async()=>(await getAppSession())?.user?.id??null,user:id=>prisma.user.findUnique({where:{id},select:{id:true,accountDisabled:true}}),execute:executeNodePreview});
+export const GET=handler;
+export const POST=handler;
