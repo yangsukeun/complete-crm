@@ -10,7 +10,7 @@ export class OcrPostgresDatabase implements OcrDatabase{
  constructor(private db:Pick<PrismaClient,'$transaction'>){}
  async authenticateDevice(request:Request){const value=request.headers.get('authorization');if(!value?.startsWith('Bearer '))return null;const token=value.slice(7);if(token.length<32||token.length>256||/\s/.test(token))return null;const hash=createHash('sha256').update(token).digest('hex');return this.db.$transaction(async sql=>{const rows=await sql.$queryRawUnsafe<Array<{deviceId:string}>>(`SELECT d.id::text AS "deviceId" FROM crm_ocr_devices d WHERE d.token_hash=$1 AND d.is_synthetic=true AND d.client_id IS NULL AND d.revoked_at IS NULL AND d.issuer_state->>'state'='active' AND d.expires_at>now() AND d.token_expires_at>now()`,hash);return rows[0]??null;});}
  async transaction<T>(fn:(tx:OcrTransaction)=>Promise<T>):Promise<T>{return this.db.$transaction(async sql=>{
-  await sql.$queryRaw`SELECT pg_advisory_xact_lock(724803,1)`;
+  await sql.$queryRaw`SELECT pg_advisory_xact_lock(724803,1)::text AS lock_result`;
   return fn(this.adapter(sql));
  },{maxWait:5000,timeout:15000,isolationLevel:'ReadCommitted'});}
  private adapter(sql:Prisma.TransactionClient):OcrTransaction{

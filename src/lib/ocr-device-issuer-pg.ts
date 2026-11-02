@@ -2,7 +2,7 @@ import type {PrismaClient} from '@prisma/client';
 import type {Enrollment,EnrollmentDb} from './ocr-device-issuer';
 export function enrollmentDatabase(db:Pick<PrismaClient,'$transaction'>):EnrollmentDb{
  return {transaction:fn=>db.$transaction(async tx=>{
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(724803,1)`;
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(724803,1)::text AS lock_result`;
   return fn({
    activeUser:async id=>{const u=await tx.user.findUnique({where:{id},select:{accountDisabled:true}});return !!u&&!u.accountDisabled;},
    get:async id=>{
