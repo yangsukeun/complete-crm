@@ -39,7 +39,7 @@ export class PostgresRuaWorkStore {
     return this.db.$transaction(async tx => {
       // All writers use this transaction-scoped lock before reading the journal.
       // READ COMMITTED sees the previous writer after acquiring the lock.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(724801, 1)`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(724801, 1)::text AS lock_result`;
       const { store, setTime } = await this.replay(tx);
       const count = store.audit(OWNER).length;
       const at = new Date().toISOString(); setTime(at);

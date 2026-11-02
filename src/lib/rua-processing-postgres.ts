@@ -10,7 +10,7 @@ export async function readRuaProcessing(actor:string|null){const id=await active
 export async function applyRuaProcessing(actor:string|null,input:unknown,processor:Result['processor']='owner-confirmed'){
  const id=await activeOwner(actor);const parsed=processingInput.safeParse(input);if(!parsed.success)throw new WorkError(400,'원문 구간·버전·실제 프로젝트·명시적 확인이 필요합니다');
  const store:Store={atomic:async(key,body)=>prisma.$transaction(async tx=>{
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(724801,1)`;
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(724801,1)::text AS lock_result`;
   return body({source:async sourceId=>(await new PostgresRuaWorkStore(prisma).readDiaryTransaction(id,tx)).notes.find(n=>n.id===sourceId)??null,
    project:async projectId=>{const p=await tx.project.findFirst({where:{id:projectId},select:{id:true,deletedAt:true}});return p?{id:p.id,deleted:!!p.deletedAt}:null;},
    receipt:async requestKey=>{const rows=await tx.$queryRaw<Array<{body:Result}>>`SELECT body FROM rua_project_updates WHERE request_key=${requestKey} AND actor_id=${id}`;return rows[0]?.body??null;},
