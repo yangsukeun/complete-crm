@@ -66,3 +66,9 @@ src/lib/ocr-device-issuer.ts의 OCR_PILOT 및 기존 장치 계약은 이 ID를 
 ERP 작업의 고객사 읽기 확인에서 합성 고객사가 없다면 ERP 합성 고객사 1개(실제 거래·연락처·재고 없음)의 생성과 그 실제 발급 UUID 연결을 운영 승인 묶음에 포함한다. CRM UUID를 ERP 고객사 ID로 복사하거나 실고객을 대신 사용하지 않는다. 담당자는 이미 확인된 149e3fa6-eee5-4c78-abeb-f7f49e018dd8로 한정하며 다시 확인을 요구하지 않는다.
 
 ERP 작업이 이전에 사용한 PostgreSQL14 격리 회귀 환경은 부모가 확인 중이다. 이 작업에서 PATH/기본 설치경로에 없었던 사실을 PC 전체에 PostgreSQL이 없다는 뜻으로 확대하지 않는다. 실행 도구 경로·격리 DB 이름·접속 설정 전달 방식·기존 DB와 분리된 시험 스키마 사용 권한을 확인받은 후 테스트의 loopback 전용 가드를 유지하면서 연결한다. 운영 연결문자열이나 ERP 운영 DB로 대체하지 않는다. 아직 PG 시험 실행 결과는 SKIP 상태다.
+
+## 운영 사전 적용 기록 2026-11-02
+
+사용자 Sentinel_2a95b298df888191b7374857115b0b87 승인 후 CRM 프로젝트 vgelnrycivorwczdqpsu에서 새4객체 미존재·기존 FK 대상3개 존재를 확인했다. 정상 apply_migration crm_erp_ocr_synthetic_test_bridge 트랜잭션 적용 성공. mapping 만료도 created_at 이후 최대7일 CHECK로 제한했다. 재조회 결과4개 모두 RLS=true, FORCE RLS=false, anon/authenticated 접근=false, service_role/postgres 접근=true. 키/매핑/작업 데이터는 아직 등록하지 않았다. 독립 PG 회귀 SKIP은 이 운영 DDL 성공과 별개다.
+
+ERP 공개 인계 파일 제안: ERP 저장소 docs/ERP_CRM_OCR_PUBLIC_REGISTRATION.json. 개인키/토큰/환경변수 원문/서명 assertion을 절대 포함하지 않고 version, clientId, kid, publicJwk(kty/crv/x만), issuedAt, expiresAt, mapping(id/revision/erpUserId/erpCustomerId/crmCompanyId/approvedSha256/expiresAt)만 포함한다. CRM은 해당 공개 파일을 정상 허용 경로로 읽고 등록 전 필드·담당자·7일·합성 범위를 검증한다. 개인키 생성/ERP 저장은 ERP 작업 단일 주체이며 CRM은 생성하지 않는다. PC 장치 등록은 ERP 작업 담당이다.

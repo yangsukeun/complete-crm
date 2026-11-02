@@ -23,6 +23,7 @@ CREATE TABLE public.crm_ocr_erp_test_mappings (
  approved_sha256 text[] NOT NULL CHECK(cardinality(approved_sha256) BETWEEN 1 AND 10),
  expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
  CHECK(crm_custodian_id='cmmitn4830000fc0jt8c1l2jf'),
+ CHECK(expires_at>created_at AND expires_at<=created_at+interval '7 days'),
  UNIQUE(client_id,erp_user_id,erp_customer_id)
 );
 CREATE TABLE public.crm_ocr_erp_test_bindings (
