@@ -7,7 +7,7 @@ const observation=z.object({rawText:z.string().max(2000),productName:z.string().
 export const testJobSchema=z.object({jobId:uuid,binding:bindingSchema,status:z.enum(['queued','processing','needs_review','failed','cancelled']),revision:z.number().int().nonnegative(),registrationAuthorized:z.literal(false),observations:z.array(observation).max(100)}).strict();
 export type TestJob=z.infer<typeof testJobSchema>;
 export type TestPrincipal={clientId:string;issuer:'https://logistics-erp-mvp.vercel.app';audience:'https://www.cpcrm.co.kr';scope:'ocr.synthetic.submit-read';erpUserId:string;erpCustomerId:string;expiresAt:number;active:boolean};
-export type TestMapping={id:string;revision:number;clientId:string;erpUserId:string;erpCustomerId:string;crmCompanyId:string;active:boolean;syntheticOnly:boolean;expiresAt:number};
+export type TestMapping={id:string;revision:number;clientId:string;erpUserId:string;erpCustomerId:string;crmCompanyId:string;active:boolean;syntheticOnly:boolean;approvedSha256:string[];expiresAt:number};
 export class TestBridgeError extends Error{constructor(public status:number,public code:string){super(code);}}
 const fail=(status:number,code:string):never=>{throw new TestBridgeError(status,code);};
 /** Production transaction must lock mapping and unique(clientId,requestKey) across instances.
@@ -35,7 +35,7 @@ export class ErpOcrTestService{
   if(m.clientId!==p.clientId||m.erpUserId!==p.erpUserId||m.erpCustomerId!==p.erpCustomerId||!m.syntheticOnly||!Number.isFinite(m.expiresAt)||m.expiresAt<=this.now())fail(403,'MAPPING_DENIED');return m;
  }
  private check(b:TestBinding,m:TestMapping){if(b.erpUserId!==m.erpUserId||b.erpCustomerId!==m.erpCustomerId||b.companyId!==m.crmCompanyId||b.mappingId!==m.id)fail(403,'BINDING_SCOPE_DENIED');if(b.mappingRevision!==m.revision)fail(409,'MAPPING_REVISION_CHANGED');}
- private result(raw:TestJob,m:TestMapping){const job=testJobSchema.parse(raw);this.check(job.binding,m);if(job.status!=='needs_review'&&job.observations.length)fail(409,'RESULT_STATE_INVALID');return job;}
+ private result(raw:TestJob,m:TestMapping){const job=testJobSchema.parse(raw);this.check(job.binding,m);if(!m.approvedSha256?.includes(job.binding.sha256))fail(403,'SYNTHETIC_IMAGE_NOT_APPROVED');if(job.status!=='needs_review'&&job.observations.length)fail(409,'RESULT_STATE_INVALID');return job;}
  async enqueue(principal:TestPrincipal|null,input:unknown,image:Uint8Array){
   const p=this.principal(principal),b=bindingSchema.parse(input);
   if(!image.length||image.length>2*1024*1024)fail(413,'PILOT_IMAGE_LIMIT_2_MIB');
@@ -45,6 +45,7 @@ export class ErpOcrTestService{
    const m=await this.mapping(tx,p);this.check(b,m);
    const prior=await tx.byRequest(p.clientId,b.requestKey);
    if(prior){if(!same(prior.binding,b))fail(409,'REQUEST_BINDING_CONFLICT');return this.result(prior,m);}
+   if(!m.approvedSha256?.includes(b.sha256))fail(403,'SYNTHETIC_IMAGE_NOT_APPROVED');
    const job:TestJob={jobId:randomUUID(),binding:b,status:'queued',revision:1,registrationAuthorized:false,observations:[]};
    await tx.enqueue(p.clientId,job,bytes);return this.result(job,m);
   });

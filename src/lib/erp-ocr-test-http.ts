@@ -2,8 +2,8 @@ import {z} from 'zod';
 import {ErpOcrTestService,TestBridgeError,type TestPrincipal,bindingSchema} from './erp-ocr-test';
 export type TestRuntime={service:ErpOcrTestService;authenticate:(r:Request)=>Promise<TestPrincipal|null>};
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'};
-/** No cookie/device authentication fallback. Production verifier/mapping/queue deliberately not configured. */
-export async function productionTestRuntime():Promise<TestRuntime|null>{return null;}
+/** Lazy loading preserves disabled local tests; configured runtime has no cookie/device fallback. */
+export async function productionTestRuntime():Promise<TestRuntime|null>{if(process.env.CRM_ERP_OCR_TEST_ENABLED!=='true')return null;return (await import('./erp-ocr-test-runtime')).configuredTestRuntime();}
 export async function testBridgeHttp(r:Request,id:string|null,getRuntime:()=>Promise<TestRuntime|null>=productionTestRuntime){
  try{
   const rt=await getRuntime();if(!rt)return Response.json({error:'OCR_TEST_CONNECTION_DISABLED'},{status:503,headers});
