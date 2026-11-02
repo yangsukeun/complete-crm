@@ -56,3 +56,13 @@ ERP 서버 측 CRM_OCR_TEST_CLIENT_ID / CRM_OCR_TEST_KEY_ID / CRM_OCR_TEST_PRIVA
 2026-11-02 사용자 직접 답변 Sentinel_6bc0106601208191b03ae5df409a7b4b로 ERP 테스트 담당자 compelte2020@naver.com이 확정되었다. ERP 사용자 ID는 149e3fa6-eee5-4c78-abeb-f7f49e018dd8이다. 이 ID만 명시 매핑 계약의 erpUserId로 사용한다. 승인된 합성 ERP 고객사 UUID, 대응 CRM 합성 company UUID, 공개키 client/kid, 매핑 UUID/revision/기간, 승인 합성 이미지 해시는 아직 미설정이다. 기존 실고객사나 fixture UUID로 대체하지 않는다. 이 확인은 키 생성·운영 DB/권한·배포 승인이 아니다.
 
 최종 검증: 합성 회귀53건 PASS, 실제 ERP 브리지와 Ed25519 검증기 계약1건 PASS(공유16건 재실행 포함17건), 타입 검사 및 변경 파일 ESLint PASS. 최종 Webpack 전체 production build PASS. 최초 Turbopack 빌드는 약9분 compile 정체로 중단했으며, Webpack 첫 시도의 로컬 .next EPERM은 정상 실행 심사를 통해 해소했다. 임시 next.config.ts 수정은 원복했다. 격리 PostgreSQL 테스트1건은 환경 부재로 SKIP, 실제 HTTPS/Storage/PC OCR/운영 검증은 미실행이다.
+
+## 2026-11-02 읽기 전용 사전 확인 보완
+
+CRM 프로젝트 vgelnrycivorwczdqpsu의 정상 Supabase 연결에서 최소 SELECT로 확인했다. company_id=e0c563ba-919f-456d-a645-46c5f2b2ec70의 crm_ocr_devices는 0건, crm_ocr_documents는 0건, 같은 id의 logistics_sales_records도 0건이다. 사진·인증 해시/토큰·개인정보는 조회하지 않았다.
+
+src/lib/ocr-device-issuer.ts의 OCR_PILOT 및 기존 장치 계약은 이 ID를 syntheticOnly=true인 OCR 큐 합성 네임스페이스로 지정한다. 실제 CRM 거래처나 ERP customers.id로 등록된 회사가 아니다. 따라서 CRM 측 파일럿 companyId 후보로 재사용할 근거는 있으나, 이미 운영 등록·장치 활성화가 끝났다는 근거는 없다. 합성 범위 장치 등록과 명시 매핑을 정상 승인 절차로 완료해야 한다.
+
+ERP 작업의 고객사 읽기 확인에서 합성 고객사가 없다면 ERP 합성 고객사 1개(실제 거래·연락처·재고 없음)의 생성과 그 실제 발급 UUID 연결을 운영 승인 묶음에 포함한다. CRM UUID를 ERP 고객사 ID로 복사하거나 실고객을 대신 사용하지 않는다. 담당자는 이미 확인된 149e3fa6-eee5-4c78-abeb-f7f49e018dd8로 한정하며 다시 확인을 요구하지 않는다.
+
+ERP 작업이 이전에 사용한 PostgreSQL14 격리 회귀 환경은 부모가 확인 중이다. 이 작업에서 PATH/기본 설치경로에 없었던 사실을 PC 전체에 PostgreSQL이 없다는 뜻으로 확대하지 않는다. 실행 도구 경로·격리 DB 이름·접속 설정 전달 방식·기존 DB와 분리된 시험 스키마 사용 권한을 확인받은 후 테스트의 loopback 전용 가드를 유지하면서 연결한다. 운영 연결문자열이나 ERP 운영 DB로 대체하지 않는다. 아직 PG 시험 실행 결과는 SKIP 상태다.
