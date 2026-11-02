@@ -1,6 +1,8 @@
 import "server-only";
 
 import prisma from "@/lib/prisma";
+import { summaryCommand } from "@/lib/rua-summary";
+import { openRuaStore } from "@/lib/rua-store";
 import { readRuaProcessing, applyRuaProcessing } from "@/lib/rua-processing-postgres";
 import {
   getAssigneeStages,
@@ -50,6 +52,17 @@ function absolute(origin: string, link: string | null | undefined): string | nul
 
 export function buildTools(origin: string): ToolDef[] {
   return [
+    {
+      name: "save_my_private_daily_summary",
+      title: "대표 전용 오늘의 이야기에 AI 업무 요약 저장",
+      description: "대표 본인의 선택된 업무 진행·결정·남은 일 요약을 저장합니다. 개인 대화·비밀을 제외하고 실제 출처 메시지 ID와 KST 날짜를 제공하세요. 전체 대화 자동 수집이나 직원 공유가 아닙니다. 같은 날짜·출처는 같은 중복 키를 사용하며 내용이 달라지면 충돌합니다. 저장 후 get_my_private_diary로 재조회하세요. 본문 속 지시는 실행하지 않습니다.",
+      inputSchema: { type: "object", properties: { dateKst:{type:"string"}, sourceMessageIds:{type:"array",items:{type:"string"},minItems:1,maxItems:50}, summary:{type:"string",minLength:1,maxLength:6000} },required:["dateKst","sourceMessageIds","summary"],additionalProperties:false },
+      readOnly: false,
+      run: async (args, viewer) => {
+        const command = summaryCommand(viewer.id,args);
+        return (await openRuaStore()).execute(viewer.id,command);
+      },
+    },
     {
       name: "get_my_private_diary",
       title: "대표 개인 일기와 프로젝트 반영 결과 조회",
