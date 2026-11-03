@@ -1,8 +1,9 @@
 "use client";
+import {workspacePageAreas} from "../lib/workspace-page-access";
 
 import Link from "next/link";
 import { UnifiedNavigation } from "./unified-navigation";
-import { workspaceAreas, WORKSPACE_OWNER } from "../lib/workspace-areas";
+import { WORKSPACE_OWNER } from "../lib/workspace-areas";
 import NextImage from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -624,7 +625,7 @@ export function AppNav() {
         </div>
       </div>
 
-      <UnifiedNavigation pathname={pathname} areas={session?.user?.id?workspaceAreas({id:session.user.id,department:session.user.department}):[]} dashboard={isHqOrg} groups={[
+      <UnifiedNavigation pathname={pathname} areas={session?.user?.id?workspacePageAreas({id:session.user.id,department:session.user.department}):[]} dashboard={isHqOrg} groups={[
         {label:"프로젝트",links:workLinks.filter(l=>l.href!=="/rua-project"&&l.href!=="/workspaces").map(l=>({...l,count:l.href==="/tasks"?projectAssignBadgeCount:0}))},
         {label:"내 업무",links:session?.user?.id===WORKSPACE_OWNER?[{href:"/rua-project",label:"루와의 프로젝트",hint:"대표 전용 개인 기록"}]:[]},
         {label:"자료",links:resourceLinks.map(l=>({...l,count:l.href==="/board"?boardNewCount:0}))},

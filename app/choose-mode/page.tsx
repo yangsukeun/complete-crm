@@ -8,16 +8,12 @@ export default async function ChooseModePage() {
   const session = await getAppSession();
   if (!session?.user?.id) redirect("/login");
 
-  let department = session.user.department ?? null;
-  if (department == null || department === "") {
-    const row = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { department: true },
-    });
-    department = row?.department ?? null;
-  }
-
-  const org = resolveOrgUnit({ role: session.user.role, department });
+  const me = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, department: true, accountDisabled: true },
+  });
+  if (!me || me.accountDisabled) redirect("/login");
+  const org = resolveOrgUnit(me);
   if (org !== "HQ") {
     redirect(homePathForOrg(org));
   }
