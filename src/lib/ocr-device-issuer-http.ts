@@ -5,6 +5,12 @@ import {pairingInput} from './ocr-device-pairing';
 export async function deviceIssuerHttp(request:Request,id:string,action:string,actor:string|null,issuer:OcrDeviceIssuer|null){
  const headers={'Cache-Control':'private, no-store',Vary:'Cookie','X-Content-Type-Options':'nosniff'};
  try{
+  if(request.method==='GET'&&action==='status'){
+   if(!actor)throw new OcrBoundaryError(401,'Authentication required');
+   if(request.headers.get('sec-fetch-site')==='cross-site'||(request.headers.has('origin')&&request.headers.get('origin')!==new URL(request.url).origin))throw new OcrBoundaryError(403,'Invalid origin');
+   if(!issuer)throw new OcrBoundaryError(503,'Device issuance not connected');
+   return Response.json(await issuer.status(actor,id),{headers});
+  }
   if(request.method!=='POST'||!['issue','rotate','revoke','delivery'].includes(action))throw new OcrBoundaryError(405,'Method not allowed');
   if(action==='delivery'){if(request.headers.has('origin'))throw new OcrBoundaryError(403,'PC delivery only');}
   else{if(!actor)throw new OcrBoundaryError(401,'Authentication required');if(request.headers.get('origin')!==new URL(request.url).origin)throw new OcrBoundaryError(403,'Invalid origin');}

@@ -61,3 +61,24 @@ it('rotation PC refuses changed registration metadata and signs failure without 
  const {f,p}=await enrolled();const client=createPcDeliveryClient(f.now,f.post,{previousRequestKey:p.descriptor.requestKey,registeredAt:f.row().registeredAt+1,registrationExpiresAt:f.row().expiresAt});
  await f.service.rotate(OCR_PILOT.owner,OCR_PILOT.deviceId,client.publicDescriptor);const store=vi.fn(storeAck);await expect(client.receiveAndStore(store)).rejects.toThrow();expect(store).not.toHaveBeenCalled();expect(f.row().state).toBe('revoked');
 });
+
+it('owner status discloses only generation metadata and never mutates or issues',async()=>{
+ const {f,p}=await enrolled(),before=structuredClone(f.row());const request=()=>new Request(OCR_PILOT.origin+'/api/device/status');
+ const response=await deviceIssuerHttp(request(),OCR_PILOT.deviceId,'status',OCR_PILOT.owner,f.service);expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store');
+ expect(await response.json()).toEqual({previousRequestKey:p.descriptor.requestKey,registeredAt:before.registeredAt,registrationExpiresAt:before.expiresAt,tokenExpiresAt:before.tokenExpiresAt,state:'active'});expect(f.row()).toEqual(before);expect(f.secret).toHaveBeenCalledTimes(1);
+ f.time(before.tokenExpiresAt!);expect((await f.service.status(OCR_PILOT.owner,OCR_PILOT.deviceId)).state).toBe('expired');expect(f.row()).toEqual(before);
+});
+it('status denies other sessions, cross-origin, device/company mismatch and missing registration',async()=>{
+ const {f}=await enrolled();const req=(headers:Record<string,string>={})=>new Request(OCR_PILOT.origin+'/api/device/status',{headers});
+ expect((await deviceIssuerHttp(req(),OCR_PILOT.deviceId,'status',null,f.service)).status).toBe(401);
+ expect((await deviceIssuerHttp(req(),OCR_PILOT.deviceId,'status','staff',f.service)).status).toBe(403);
+ expect((await deviceIssuerHttp(req({origin:'https://other.invalid'}),OCR_PILOT.deviceId,'status',OCR_PILOT.owner,f.service)).status).toBe(403);
+ expect((await deviceIssuerHttp(req({'sec-fetch-site':'cross-site'}),OCR_PILOT.deviceId,'status',OCR_PILOT.owner,f.service)).status).toBe(403);
+ expect((await deviceIssuerHttp(req(),'other','status',OCR_PILOT.owner,f.service)).status).toBe(403);
+ expect((await deviceIssuerHttp(req(),OCR_PILOT.deviceId,'status',OCR_PILOT.owner,null)).status).toBe(503);
+ const empty=fixture();await expect(empty.service.status(OCR_PILOT.owner,OCR_PILOT.deviceId)).rejects.toMatchObject({status:404});
+ f.row().companyId='other';await expect(f.service.status(OCR_PILOT.owner,OCR_PILOT.deviceId)).rejects.toMatchObject({status:403});
+});
+it('status never hides revoked state and inactive owner cannot inspect it',async()=>{
+ const {f,p}=await enrolled();await f.service.revoke(OCR_PILOT.owner,OCR_PILOT.deviceId,p.descriptor.requestKey);const before=structuredClone(f.row());expect((await f.service.status(OCR_PILOT.owner,OCR_PILOT.deviceId)).state).toBe('revoked');expect(f.row()).toEqual(before);f.disable();await expect(f.service.status(OCR_PILOT.owner,OCR_PILOT.deviceId)).rejects.toMatchObject({status:403});
+});

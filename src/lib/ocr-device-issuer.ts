@@ -11,6 +11,15 @@ export class OcrDeviceIssuer {
  private async authorize(tx:EnrollmentTx,actor:string|null){if(!actor)throw new OcrBoundaryError(401,'Authentication required');if(actor!==OCR_PILOT.owner||!await tx.activeUser(actor))throw new OcrBoundaryError(403,'Owner only');}
  private receipt(row:Enrollment){return {deviceId:row.id,companyId:row.companyId,state:row.state==='active'&&(this.now()>=row.expiresAt||this.now()>=(row.tokenExpiresAt??0))?'expired':row.state,requestKey:row.requestKey,registrationExpiresAt:row.expiresAt,tokenExpiresAt:row.tokenExpiresAt,registrationAuthorized:false};}
  private disable(row:Enrollment,state:'uncertain'|'revoked',key:string,actor:string){row.state=state;row.tokenHash=null;row.tokenIssuedAt=null;row.tokenExpiresAt=null;if(row.delivery)delete row.delivery.envelope;row.audit.push({action:state,key,actor,at:this.now()});}
+ async status(actor:string|null,id:string){
+  return this.db.transaction(async tx=>{
+   await this.authorize(tx,actor);
+   if(id!==OCR_PILOT.deviceId)throw new OcrBoundaryError(403,'Pilot device only');
+   const row=await tx.get(id);if(!row)throw new OcrBoundaryError(404,'Not found');
+   if(row.companyId!==OCR_PILOT.companyId||row.registeredBy!==OCR_PILOT.owner)throw new OcrBoundaryError(403,'Registration scope mismatch');
+   return {previousRequestKey:row.requestKey,registeredAt:row.registeredAt,registrationExpiresAt:row.expiresAt,tokenExpiresAt:row.tokenExpiresAt,state:this.receipt(row).state};
+  });
+ }
  async issue(actor:string|null,id:string,raw:unknown){
   const pair=pairingInput.parse(raw);if(id!==OCR_PILOT.deviceId)throw new OcrBoundaryError(403,'Pilot device only');
   return this.db.transaction(async tx=>{
