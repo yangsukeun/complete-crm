@@ -8,6 +8,7 @@ export type CsSectionNavId =
   | "org"
   | "org-month"
   | "org-settings"
+  | "leave"
   | "attendance"
   | "away"
   | "idle";
@@ -42,6 +43,7 @@ export function csSectionNavItems(opts: {
   canViewAwayOverview: boolean;
 }): CsSectionNavItem[] {
   const items: CsSectionNavItem[] = [
+    { id: "leave", href: "/cs-tools/leave", label: "연차 신청·관리" },
     { id: "hub", href: "/cs-tools", label: "CS 링크" },
     { id: "notice", href: "/cs-lounge?tab=notice", label: "공지사항" },
     { id: "lounge", href: "/cs-lounge?tab=lounge", label: "익명 라운지" },
@@ -71,6 +73,8 @@ export function csSectionNavItemActive(opts: {
 }): boolean {
   const p = pathOnly(opts.pathname);
   switch (opts.id) {
+    case "leave":
+      return p === "/cs-tools/leave";
     case "hub":
       return p === "/cs-tools";
     case "notice":

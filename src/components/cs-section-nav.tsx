@@ -23,6 +23,7 @@ import {
 } from "@/lib/cs-section-nav";
 
 const ICONS: Record<CsSectionNavId, LucideIcon> = {
+  leave: CalendarDays,
   hub: Link2,
   notice: Megaphone,
   lounge: MessageCircle,
@@ -54,6 +55,7 @@ export function CsSectionNav({ items }: { items: CsSectionNavItem[] }) {
               key={item.id}
               href={item.href}
               prefetch={false}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200",
                 isActive

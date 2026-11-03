@@ -7,6 +7,7 @@ import { CsScreen } from "@/components/cs-screen";
 import { ColorChip } from "@/components/ui/color-chip";
 import Link from "next/link";
 import { Building2, CalendarPlus, Cake, Megaphone, Users } from "lucide-react";
+import {canSeeCsToolsDashboardCard} from '@/lib/cs-tools-access';
 import prisma from "@/lib/prisma";
 import { startOfDayKst } from "@/lib/date-kst";
 import { canUseAwayFeature, canViewAwayOverview, summarizeAwayLogs } from "@/lib/attendance-away-access";
@@ -92,14 +93,14 @@ export default async function CsToolsPage() {
       {loungeOk && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Link
-            href="/leave"
+            href={canSeeCsToolsDashboardCard({role:me?.role??session.user.role,department:me?.department??session.user.department}) ? "/cs-tools/leave" : "/leave"}
             className="flex flex-col gap-1 rounded-xl border bg-card p-5 transition-colors hover:bg-muted/50"
           >
             <span className="flex items-center gap-2 text-base font-semibold">
               <CalendarPlus className="size-4 text-muted-foreground" />
-              휴가 신청
+              CS 연차 신청·관리
             </span>
-            <span className="text-muted-foreground text-sm">연차/근태 화면에서 신청합니다.</span>
+            <span className="text-muted-foreground text-sm">CRM에서 연차 신청·취소와 기존 승인 상태를 확인합니다.</span>
           </Link>
           <Link
             href="/cs-clients"

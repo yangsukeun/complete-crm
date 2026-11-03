@@ -1,0 +1,11 @@
+import {describe,it,expect} from 'vitest';
+import {csLeaveEntry} from '../src/lib/cs-leave-entry';
+import {csSectionNavItems,csSectionNavItemActive,isCsSectionPath} from '../src/lib/cs-section-nav';
+import {canFirstApproveLeave,canCsCenterChiefFinalApproveLeave,canExecutiveFinalApproveLeave} from '../src/lib/leave-department-access';
+describe('CS leave entry reuses existing permissions',()=>{
+ it('allows active CS staff to apply without giving management access',()=>{expect(csLeaveEntry({role:'USER',department:'CS팀',accountDisabled:false})).toEqual({allowed:true,canViewSummary:false});});
+ it('preserves existing CS manager and executive summary access',()=>{for(const role of ['TEAM_LEAD','CENTER_CHIEF','ADMIN','EXECUTIVE'])expect(csLeaveEntry({role,department:'CS팀',accountDisabled:false})).toEqual({allowed:true,canViewSummary:true});});
+ it('rejects absent, disabled and non-CS users without changing their normal leave route',()=>{expect(csLeaveEntry(null).allowed).toBe(false);expect(csLeaveEntry({role:'ADMIN',department:null,accountDisabled:true}).allowed).toBe(false);for(const role of ['USER','TEAM_LEAD'])expect(csLeaveEntry({role,department:'마케팅',accountDisabled:false}).allowed).toBe(false);});
+ it('provides direct CS form navigation for ordinary staff and marks only its page active',()=>{expect(csSectionNavItems({canManageClients:false,canViewAwayOverview:false}).find(x=>x.id==='leave')?.href).toBe('/cs-tools/leave');expect(isCsSectionPath('/cs-tools/leave')).toBe(true);expect(csSectionNavItemActive({id:'leave',pathname:'/cs-tools/leave'})).toBe(true);expect(csSectionNavItemActive({id:'hub',pathname:'/cs-tools/leave'})).toBe(false);});
+ it('retains same-department first approval and CS chief final approval boundaries',()=>{const base={applicantDepartment:'CS팀',applicantRole:'USER',departmentsWithTeamLead:new Set(['CS팀']),status:'TEAM_LEAD_APPROVED'};expect(canFirstApproveLeave({viewerRole:'USER',viewerDepartment:'CS팀',applicantDepartment:'CS팀'})).toBe(false);expect(canFirstApproveLeave({viewerRole:'TEAM_LEAD',viewerDepartment:'마케팅',applicantDepartment:'CS팀'})).toBe(false);expect(canCsCenterChiefFinalApproveLeave({...base,viewerRole:'CENTER_CHIEF',viewerDepartment:'CS팀'})).toBe(true);expect(canExecutiveFinalApproveLeave(base)).toBe(false);});
+});
