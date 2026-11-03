@@ -1,3 +1,4 @@
+import { getCurrentLeaveActor } from "@/lib/leave-current-actor";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { getAppSession } from "@/auth";
@@ -53,15 +54,14 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const actor = await getCurrentLeaveActor(session.user.id);
+    if (!actor.ok) return NextResponse.json({ error: actor.error }, { status: actor.status });
 
-    const role = String(session.user.role ?? "").toUpperCase();
+    const role = String(actor.user.role ?? "").toUpperCase();
     const uid = session.user.id;
     const year = getCurrentLeaveCalendarYearKst();
 
-    const viewer = await prisma.user.findUnique({
-      where: { id: uid },
-      select: { department: true },
-    });
+    const viewer = actor.user;
 
     const rawRequests = await prisma.leaveRequest.findMany({
       where: leaveRequestListWhere(uid, role, viewer?.department),
@@ -147,6 +147,8 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const actor = await getCurrentLeaveActor(session.user.id);
+    if (!actor.ok) return NextResponse.json({ error: actor.error }, { status: actor.status });
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
@@ -185,7 +187,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const skipTeamLeadStep = applicantSkipsTeamLeadLeaveStep(session.user.role);
+    const skipTeamLeadStep = applicantSkipsTeamLeadLeaveStep(actor.user.role);
     const leave = await prisma.leaveRequest.create({
       data: {
         userId: session.user.id,

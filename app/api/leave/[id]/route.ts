@@ -1,3 +1,4 @@
+import { getCurrentLeaveActor } from "@/lib/leave-current-actor";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { getAppSession } from "@/auth";
@@ -106,7 +107,9 @@ export async function PATCH(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const role = session.user.role;
+    const actor = await getCurrentLeaveActor(session.user.id);
+    if (!actor.ok) return NextResponse.json({ error: actor.error }, { status: actor.status });
+    const role = actor.user.role;
 
     const { id } = await params;
     const body = await req.json();
@@ -183,11 +186,8 @@ export async function PATCH(
       }
     }
 
-    const viewer = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { department: true, role: true },
-    });
-    const viewerRole = String(viewer?.role ?? role ?? "").toUpperCase();
+    const viewer = actor.user;
+    const viewerRole = String(viewer.role).toUpperCase();
     const departmentsWithTeamLead = await fetchDepartmentsWithTeamLead(prisma);
     const cancelAuth = {
       cancelFromStatus: leave.cancelFromStatus,

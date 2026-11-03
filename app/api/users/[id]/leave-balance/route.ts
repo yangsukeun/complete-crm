@@ -1,3 +1,4 @@
+import { getCurrentLeaveActor } from "@/lib/leave-current-actor";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -19,6 +20,8 @@ export async function GET(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const actor = await getCurrentLeaveActor(session.user.id);
+    if (!actor.ok) return NextResponse.json({ error: actor.error }, { status: actor.status });
     const manager = await getEmployeeManagerContext(session.user.id);
     if (!manager?.ok) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

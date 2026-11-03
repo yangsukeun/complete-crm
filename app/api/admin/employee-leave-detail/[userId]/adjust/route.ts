@@ -1,3 +1,4 @@
+import { getCurrentLeaveActor } from "@/lib/leave-current-actor";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -10,7 +11,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!canAdjustEmployeeLeave(session.user.role)) {
+    const actor = await getCurrentLeaveActor(session.user.id);
+    if (!actor.ok) return NextResponse.json({ error: actor.error }, { status: actor.status });
+    if (!canAdjustEmployeeLeave(actor.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

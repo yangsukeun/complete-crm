@@ -1,3 +1,4 @@
+import { getCurrentLeaveActor } from "@/lib/leave-current-actor";
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -35,15 +36,10 @@ export async function GET(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const actor = await getCurrentLeaveActor(session.user.id);
+    if (!actor.ok) return NextResponse.json({ error: actor.error }, { status: actor.status });
 
-    const me = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, department: true },
-    });
-    const viewer = {
-      role: me?.role ?? session.user.role,
-      department: me?.department ?? session.user.department,
-    };
+    const viewer = actor.user;
     if (!canViewEmployeeLeaveSummary(viewer)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
