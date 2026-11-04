@@ -1,0 +1,10 @@
+import {test,expect,vi,beforeEach} from 'vitest';
+import {renderToStaticMarkup} from 'react-dom/server';
+const f=vi.hoisted(()=>({id:null as string|null,user:vi.fn()}));
+vi.mock('@/auth',()=>({getAppSession:async()=>f.id?{user:{id:f.id}}:null}));
+vi.mock('@/lib/prisma',()=>({default:{user:{findUnique:f.user}}}));
+vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw Error('REDIRECT '+p);},notFound:()=>{throw Error('NOT_FOUND');}}));
+import Page from '../app/logistics/seoyoung/page';
+beforeEach(()=>{f.id='SYNTHETIC';f.user.mockResolvedValue({id:'SYNTHETIC',department:'물류',accountDisabled:false});});
+test('fresh enabled logistics user gets memory-only settlement page',async()=>{const html=renderToStaticMarkup(await Page());expect(html).toContain('서영이앤티 정산하기');expect(html).toContain('브라우저 메모리');expect(f.user).toHaveBeenCalledWith({where:{id:'SYNTHETIC'},select:{id:true,department:true,accountDisabled:true}});});
+test('anonymous, disabled and non-logistics users blocked',async()=>{f.id=null;await expect(Page()).rejects.toThrow('REDIRECT /login');f.id='SYNTHETIC';for(const user of [{id:f.id,department:'물류',accountDisabled:true},{id:f.id,department:'마케팅',accountDisabled:false},null]){f.user.mockResolvedValue(user);await expect(Page()).rejects.toThrow('NOT_FOUND');}});
