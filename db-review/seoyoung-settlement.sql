@@ -28,7 +28,7 @@ CREATE TABLE seoyoung_settlement_events (
 );
 ALTER TABLE seoyoung_settlement_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE seoyoung_settlement_events ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON seoyoung_settlement_drafts,seoyoung_settlement_events FROM PUBLIC;
+REVOKE ALL ON seoyoung_settlement_drafts,seoyoung_settlement_events FROM PUBLIC, anon, authenticated, service_role;
 -- No browser role policies. Check existing server role/table-owner operation in isolated DB first.
 -- If the server role cannot access these tables, do not broaden grants automatically.
 COMMIT;
