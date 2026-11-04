@@ -63,3 +63,5 @@ HTTP 테스트의 세션 identity는 합성 fixture이고 최신 사용자 권�
 - 저장소 전체 Vitest: 106파일 통과, 3파일 기본 skip; 546테스트 통과, 4 skip. 서영 관련 33테스트 포함. 격리 PostgreSQL 2개 opt-in 단계는 별도 run05에서 실행·통과.
 - tsc --noEmit 통과, 변경 경로 ESLint 경고/오류 0, Next 전체 webpack build 통과.
 - git diff --check 통과. PostgreSQL 종료 후 localhost:45449 listen 없음 확인.
+
+추가 headless 회귀: 동일 해시 이름 변경 재업로드 건너뛰기, 초기화에서 돌아가기 시 원본 유지, 초기화 확정, 지연된 파일 읽기 중 취소 시 배치 미반영, 검색·분류, 18시트 다운로드 통과. PC/모바일 합성 화면 캡처 생성. 재업로드 테스트의 첫 실행은 새 반영 버튼 클릭 누락으로 대기 종료됐으며 테스트 절차 수정 후 통과했다. 사용자 Chrome을 다시 열지 않았다.
