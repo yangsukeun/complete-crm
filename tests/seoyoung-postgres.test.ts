@@ -1,6 +1,7 @@
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {createServer,type Server} from 'node:http';
 import type {AddressInfo} from 'node:net';
+import {draftRequestBody} from '../src/lib/seoyoung/transport';
 import {randomUUID} from 'node:crypto';
 import * as XLSX from 'xlsx';
 import {initialState,proposeParcels} from '../src/lib/seoyoung/settlement';
@@ -19,7 +20,7 @@ function snapshot(ready=false){const s=initialState('2026-10'),hash='a'.repeat(6
 beforeAll(async()=>{
  if(!enabled)return;const url=new URL(process.env.DATABASE_URL||'');if(url.hostname!=='127.0.0.1'||url.port!=='45449'||url.pathname!=='/seoyoung_isolated_verification')throw Error('Isolated database required');
  if(phase==='write')await prisma.user.createMany({data:[{id:'syn-staff',email:'seoyoung-staff@example.invalid',name:'Synthetic',password:'not-a-login-hash',department:'물류',role:'USER'},{id:'syn-other',email:'seoyoung-other@example.invalid',name:'Synthetic',password:'not-a-login-hash',department:'CS',role:'USER'},{id:'syn-disabled',email:'seoyoung-disabled@example.invalid',name:'Synthetic',password:'not-a-login-hash',department:'물류',role:'USER',accountDisabled:true}]});
- server=createServer(async(req,res)=>{try{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const request=new Request(origin+req.url,{method:req.method,headers:{origin:String(req.headers.origin||''),'Content-Type':'application/json'},...(req.method==='GET'?{}:{body:Buffer.concat(chunks).toString()})});const response=req.method==='GET'?await GET(request):await POST(request);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(await response.text());}catch{res.writeHead(500);res.end('isolated harness error');}});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+ server=createServer(async(req,res)=>{try{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const request=new Request(origin+req.url,{method:req.method,headers:{origin:String(req.headers.origin||''),'Content-Type':'application/json','Content-Encoding':String(req.headers['content-encoding']||'identity')},...(req.method==='GET'?{}:{body:Buffer.concat(chunks)})});const response=req.method==='GET'?await GET(request):await POST(request);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));}catch{res.writeHead(500);res.end('isolated harness error');}});await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 },30000);
 afterAll(async()=>{if(!enabled)return;if(server)await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve()));await prisma.$disconnect();});
 function call(body?:unknown,query=''){return fetch(origin+'/api/logistics-seoyoung'+query,{method:body?'POST':'GET',headers:{origin,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});}
@@ -41,9 +42,12 @@ it.skipIf(!enabled||phase!=='write')('real isolated PostgreSQL and HTTP enforce 
  const retry=save(5,true);expect((await call(retry)).status).toBe(503);expect((await (await call(undefined,'?month=2026-10')).json()).version).toBe(5);
  await prisma.$executeRawUnsafe('DROP TRIGGER seoyoung_test_fail ON seoyoung_settlement_events');await prisma.$executeRawUnsafe('DROP FUNCTION seoyoung_test_fail_audit()');expect((await call(retry)).status).toBe(200);
  const counts=await prisma.$queryRaw<{n:bigint}[]>`SELECT count(*) AS n FROM seoyoung_settlement_events`;expect(Number(counts[0].n)).toBe(6);
+ const large=snapshot();large.month='2026-11';large.rows=Array.from({length:12168},(_,i)=>({...large.rows[0],id:'syn-'+i,invoice:'SYN-'+i,line:i+2,issues:['합성 검토 전용 '.repeat(5)]}));large.files[0].rows=large.rows.length;
+ const json=JSON.stringify({action:'save',key:randomUUID(),expectedVersion:0,state:minimizeDraft(large)});expect(Buffer.byteLength(json)).toBeGreaterThan(3*1024*1024);const wire=await draftRequestBody(json);const saved=await fetch(origin+'/api/logistics-seoyoung',{method:'POST',headers:{origin,...wire.headers},body:wire.body});expect(saved.status).toBe(200);expect(saved.headers.get('content-encoding')).toBe('gzip');expect((await saved.json()).record.state.rows).toHaveLength(12168);
+
 },30000);
 it.skipIf(!enabled||phase!=='read')('after DB and application process restart reopen persisted record and September XLSX',async()=>{
  f.actor='syn-staff';const response=await call(undefined,'?month=2026-10');expect(response.status).toBe(200);const record=await response.json();expect(record.version).toBe(6);expect(record.status).toBe('draft');expect(record.state.rows).toHaveLength(1);expect(record.state.rows[0].quantity).toBe(2);
  const book=XLSX.read(await exportSettlement(record.state),{type:'array',cellFormula:true});expect(book.SheetNames.slice(0,12)).toEqual(SEPTEMBER_SHEETS);const w=book.Sheets['거래명세표'];expect(w.B10.v).toBe('품목');expect(w.S17.v).toBe(1);expect(w.AA17.f).toBe('S17*V17');expect(w.AF17.f).toBe('AA17*10%');expect(w['!merges']?.map(XLSX.utils.encode_range)).toContain('B2:AG3');expect(w.F36.f).toBe('AA35+AF35');
- const audit=await (await call(undefined,'?month=2026-10&history=1')).json();expect(audit).toHaveLength(6);
+ const audit=await (await call(undefined,'?month=2026-10&history=1')).json();expect(audit).toHaveLength(6);const largeResponse=await call(undefined,'?month=2026-11');expect(largeResponse.headers.get('content-encoding')).toBe('gzip');expect((await largeResponse.json()).state.rows).toHaveLength(12168);
 },30000);
