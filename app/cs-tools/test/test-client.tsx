@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { LeaveCalendar } from './leave-calendar';
 import { ReportReview } from './report-review';
+import { LedgerAudit } from './ledger-audit';
 import { addTestRequest, reconcileEmployee, reviewSchema, snapshotSchema, syntheticSnapshot, transitionEntry, type TestEntry, type TestSnapshot } from '@/lib/cs-complete-test';
 
 const kinds={PAID:'유급(연차)',UNPAID:'무급(휴무)',EVENT:'경조사',SICK_UNPAID:'병가(무급)'};
@@ -50,6 +51,7 @@ export function CsCompleteTestClient(){
   {tab==='직원 출퇴근'&&<section className="space-y-4"><p>원본 출퇴근 내역은 아직 대조되지 않았습니다. 아래 입력은 별도 TEST 기록이며 운영 근태에 반영되지 않습니다.</p><form className="flex flex-wrap gap-3" onSubmit={e=>{e.preventDefault();if(!employeeId||!date||checkOut<=checkIn){setError('직원·날짜·출퇴근 시간을 확인하세요.');return;}if(attendance.some(r=>r.employeeId===employeeId&&r.date===date)){setError('같은 날짜의 TEST 근태가 이미 있습니다.');return;}setAttendance(a=>[...a,{id:crypto.randomUUID(),employeeId,date,checkIn,checkOut}]);setDirty(true);setError('');}}><label>날짜 <input type="date" name="date" required className={inputClass} value={date} onChange={e=>setDate(e.target.value)}/></label><label>출근 <input type="time" required className={inputClass} value={checkIn} onChange={e=>setCheckIn(e.target.value)}/></label><label>퇴근 <input type="time" required className={inputClass} value={checkOut} onChange={e=>setCheckOut(e.target.value)}/></label><button className={inputClass}>TEST 기록</button></form>{attendance.filter(r=>!employeeId||r.employeeId===employeeId).map(r=><p key={r.id}>{r.date} · {label(r.employeeId)} · {r.checkIn}–{r.checkOut}</p>)}</section>}
   {tab==='원본 대조'&&<section className="space-y-4 rounded-xl border p-5"><h2 className="text-xl font-semibold">원본을 유지한 대조</h2><p>원본 사본은 수정하지 않습니다. TEST 신청·상태 변경만 별도 내역에 기록합니다. 이월은 발생에 이미 포함된 값으로 보존하며 두 번 더하지 않습니다. 승인된 유급 내역만 각 직원 적용 기간의 사용 계산에 반영합니다.</p><p>원본 직원 ID는 CRM 사용자 ID가 아닙니다. 이름만으로 직원 계정을 연결하지 않습니다. 퇴사·휴직·알 수 없는 상태의 신청을 막으며 음수 잔여를 0으로 바꾸지 않습니다.</p><p>원본 내역: {snapshot.entries.length}건 / 기대 건수 {snapshot.expectedEntryCount}건 · TEST 변경 이력 {audit.length}건</p><p>원본 출처: <a className="underline" href={snapshot.sourceUrl} target="_blank" rel="noreferrer">CS컴플리트</a></p><button className={inputClass} onClick={()=>{if(window.confirm('TEST 변경을 버리고 현재 원본 사본으로 되돌릴까요?')){setEntries(structuredClone(snapshot.entries));setAttendance([]);setAudit([]);setDirty(false);setMessage('원본 사본으로 TEST만 되돌렸습니다.');}}}>TEST 변경 되돌리기</button></section>}
   </>}
+  <LedgerAudit/>
   <ReportReview/>
   <footer className="border-t pt-4 text-sm text-muted-foreground">일일/월간 보고서·통신사 분석의 추가 재개발은 원본별 검증 후 연결 예정입니다. 이 화면이 모든 기존 CS 도구를 대체하지 않습니다.</footer>
  </main></fieldset>;
