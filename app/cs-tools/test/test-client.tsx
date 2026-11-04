@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { LeaveCalendar } from './leave-calendar';
 import { ReportReview } from './report-review';
 import { LedgerAudit } from './ledger-audit';
+import { readTestStartup, isSyntheticSnapshot } from '@/lib/cs-test-startup';
 import { addTestRequest, reconcileEmployee, reviewSchema, snapshotSchema, syntheticSnapshot, transitionEntry, type TestEntry, type TestSnapshot } from '@/lib/cs-complete-test';
 
 const kinds={PAID:'유급(연차)',UNPAID:'무급(휴무)',EVENT:'경조사',SICK_UNPAID:'병가(무급)'};
@@ -14,6 +15,7 @@ const employeeStates={ACTIVE:'재직',PARENTAL_LEAVE:'휴직',RETIRED:'퇴사',U
 const inputClass='rounded-lg border bg-background px-3 py-2 text-sm';
 function download(name:string,value:unknown){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 export function CsCompleteTestClient(){
+ const [initializing,setInitializing]=useState(true);const [startupAttempt,setStartupAttempt]=useState(0);
  const [serverVersion,setServerVersion]=useState(0);const [saving,setSaving]=useState(false);const [serverRows,setServerRows]=useState<{id:string;version:number;snapshotId:string;employeeCount:number;entryCount:number}[]>([]);
  const [snapshot,setSnapshot]=useState<TestSnapshot|null>(null);const [entries,setEntries]=useState<TestEntry[]>([]);
  const [tab,setTab]=useState<typeof tabs[number]>('대시보드');const [employeeId,setEmployeeId]=useState('');const [month,setMonth]=useState('2026-11');
@@ -22,6 +24,16 @@ export function CsCompleteTestClient(){
  const [audit,setAudit]=useState<{at:string;action:string;id:string;before?:TestEntry}[]>([]);
  const [attendance,setAttendance]=useState<{id:string;employeeId:string;date:string;checkIn:string;checkOut:string}[]>([]);
  const [checkIn,setCheckIn]=useState('09:00');const [checkOut,setCheckOut]=useState('18:00');
+ useEffect(()=>{
+  const controller=new AbortController();
+  void readTestStartup(fetch,controller.signal).then(({records,opened})=>{
+   if(controller.signal.aborted)return;
+   setServerRows(records);setError('');
+   if(opened){const r=opened.payload;setSnapshot(r.source);setEntries(r.testEntries);setAttendance(r.attendance);setAudit(r.audit);setEmployeeId(r.source.employees[0]?.sourceId??'');setServerVersion(opened.version);setDirty(false);setMessage('저장된 TEST 사본을 불러왔습니다. 버전 '+opened.version);}
+   else setMessage(records.length?'저장된 사본이 여러 개입니다. 사용할 사본을 선택하세요.':'저장된 TEST 사본이 없습니다. 실제 휴가 자료는 아직 이전되지 않았습니다.');
+  }).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:'사본을 불러오지 못했습니다.');}).finally(()=>{if(!controller.signal.aborted)setInitializing(false);});
+  return()=>controller.abort();
+ },[startupAttempt]);
  useEffect(()=>{const f=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',f);return()=>window.removeEventListener('beforeunload',f);},[dirty]);
  function load(s:TestSnapshot){if(dirty&&!window.confirm('현재 TEST 변경은 내보내기 전까지 임시 상태입니다. 다른 사본으로 바꾸시겠습니까?'))return false;setServerVersion(0);setSnapshot(s);setEntries(structuredClone(s.entries));setAttendance([]);setAudit([]);setEmployeeId(s.employees[0]?.sourceId??'');setDirty(false);setError('');setMessage('참조 원본과 TEST 내역을 분리해 불러왔습니다.');return true;}
  async function importFile(file?:File){if(!file)return;try{if(file.size>5_000_000)throw new Error('5MB 이하 JSON 사본만 사용할 수 있습니다.');const value:unknown=JSON.parse(await file.text());const review=reviewSchema.safeParse(value);if(review.success){if(load(review.data.source)){setEntries(review.data.testEntries);setAttendance(review.data.attendance);setAudit(review.data.audit);setDirty(review.data.audit.length>0||review.data.attendance.length>0);}return;}const parsed=snapshotSchema.safeParse(value);if(!parsed.success)throw new Error(parsed.error.issues[0]?.message??'사본 형식을 확인하세요.');load(parsed.data);}catch(e){setError(e instanceof Error?e.message:'파일을 읽을 수 없습니다.');}finally{if(upload.current)upload.current.value='';}}
@@ -34,7 +46,8 @@ export function CsCompleteTestClient(){
  const employees=snapshot?.employees??[];const visible=entries.filter(e=>(!employeeId||e.employeeSourceId===employeeId)&&(tab!=='월별 현황'||e.date.startsWith(month))).sort((a,b)=>b.date.localeCompare(a.date));
  const totalGranted=employees.reduce((s,e)=>s+e.grantedIncludingCarry,0);const totalReportedUsed=employees.reduce((s,e)=>s+e.reportedUsed,0);const totalReportedBalance=employees.reduce((s,e)=>s+e.reportedBalance,0);
  const label=(id:string)=>employees.find(e=>e.sourceId===id)?.name??'미확인 직원';
- return <fieldset disabled={saving}><main className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
+ return <fieldset disabled={saving||initializing}><main className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
+  <section aria-live="polite" className="rounded-xl border border-violet-300 p-4"><h2 className="text-lg font-semibold">{initializing?'저장된 업무 사본을 불러오는 중입니다':snapshot?(isSyntheticSnapshot(snapshot.snapshotId)?'가상 자료 · 기능 시험용':'불러온 사본 · 실제 원장 대조 필요'):'실제 자료 이전 대기'}</h2><p>실제 직원 휴가 자료의 이전은 아직 완료되지 않았습니다. 원본 407건과 직원별 합계 337건의 차이 및 직원 ID 연결을 확인해야 합니다. 가상 자료는 실제 잔여 휴가가 아닙니다.</p>{!snapshot&&!initializing&&<button type="button" className={inputClass} onClick={()=>{setInitializing(true);setStartupAttempt(n=>n+1);}}>저장 사본 다시 불러오기</button>}</section>
   <section className="flex flex-wrap gap-2 rounded-xl border p-3" aria-label="TEST 영구 저장"><button type="button" className={inputClass} onClick={serverList}>서버 사본 목록</button><button type="button" className={inputClass} disabled={!snapshot} onClick={serverSave}>서버 TEST 저장</button><span className="self-center text-sm">{saving?'처리 중…':serverVersion?'서버 버전 '+serverVersion:'아직 서버에 저장하지 않은 사본'}</span>{serverRows.map(r=><button key={r.id} type="button" className={inputClass} onClick={()=>serverOpen(r.id)}>{r.snapshotId} · 직원 {r.employeeCount}명 / 원장 {r.entryCount}건 · v{r.version}</button>)}</section>
   <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-semibold text-violet-700">CS · TEST</p><h1 className="text-3xl font-bold">CS컴플리트 시험실</h1><p className="mt-2 text-muted-foreground">원본 기준 연차 대조와 신청·승인 흐름을 별도 사본으로 확인합니다.</p></div><Link href="/cs-tools" className="rounded-lg border px-4 py-2">기존 CS로</Link></header>
   <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>TEST 전용 · 운영 연차와 분리</strong><p className="mt-1">편집 내용은 서버 TEST 저장을 눌러야 영구 보관됩니다. 원본 사본과 운영 연차는 변경하지 않습니다. 서버 사본 열기로 다른 허용 세션에서도 이어서 검토할 수 있습니다.</p></section>
