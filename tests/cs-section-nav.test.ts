@@ -30,6 +30,7 @@ describe("cs section nav", () => {
       "notice",
       "lounge",
       "clients",
+      "test",
       "org",
       "org-month",
       "org-settings",
@@ -40,6 +41,7 @@ describe("cs section nav", () => {
   });
 
   it("highlights lounge tabs and nested client routes separately", () => {
+    expect(csSectionNavItemActive({ id: "test", pathname: "/cs-tools/test" })).toBe(true);
     expect(csSectionNavItemActive({ id: "hub", pathname: "/cs-tools" })).toBe(true);
     expect(csSectionNavItemActive({ id: "hub", pathname: "/cs-tools/away" })).toBe(false);
     expect(csSectionNavItemActive({ id: "notice", pathname: "/cs-lounge", tab: "notice" })).toBe(true);

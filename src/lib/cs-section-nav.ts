@@ -1,6 +1,7 @@
 import { csClientNavLabel } from "@/lib/cs-client-access";
 
 export type CsSectionNavId =
+  | "test"
   | "hub"
   | "notice"
   | "lounge"
@@ -51,6 +52,7 @@ export function csSectionNavItems(opts: {
   ];
   if (opts.canManageClients) {
     items.push(
+      { id: "test", href: "/cs-tools/test", label: "TEST" },
       { id: "org", href: "/cs-org", label: "조직도" },
       { id: "org-month", href: "/cs-org/month", label: "월별 담당" },
       { id: "org-settings", href: "/cs-org/settings", label: "설정 창고" },
@@ -73,6 +75,8 @@ export function csSectionNavItemActive(opts: {
 }): boolean {
   const p = pathOnly(opts.pathname);
   switch (opts.id) {
+    case "test":
+      return p === "/cs-tools/test" || p.startsWith("/cs-tools/test/");
     case "leave":
       return p === "/cs-tools/leave";
     case "hub":

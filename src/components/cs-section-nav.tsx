@@ -23,6 +23,7 @@ import {
 } from "@/lib/cs-section-nav";
 
 const ICONS: Record<CsSectionNavId, LucideIcon> = {
+  test: Activity,
   leave: CalendarDays,
   hub: Link2,
   notice: Megaphone,
