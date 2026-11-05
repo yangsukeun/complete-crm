@@ -1,5 +1,7 @@
 # 대표 전용 고정 합성파일 파일럿
 
+이 문서는 최초 대표 전용 배포 기록이다. 2026-11-05 지정 담당자 합성시험 변경 및 현재 검증 범위는 [avent-staff-pilot-release.md](avent-staff-pilot-release.md)를 참조한다.
+
 운영 기준 faeb55a를 보존하는 별도 작업본. 승인 범위는 대표 기존 계정만, 고정 합성파일만이며 고객파일/직원 권한/실제 발주를 개방하지 않는다.
 
 - URL: /logistics/orders, API: /api/avent/pilot.
