@@ -12,6 +12,18 @@ function file(rows:Cell[][],type:'xlsx'|'xls'='xlsx'){
  const b=XLSX.utils.book_new();XLSX.utils.book_append_sheet(b,XLSX.utils.aoa_to_sheet([[...GENERAL_HEADERS],...rows]),'synthetic');return XLSX.write(b,{type:'array',bookType:type}) as ArrayBuffer;
 }
 describe('general mall review preserves evidence instead of issuing orders',()=>{
+ test.each(['data','formula'] as const)('undersized dimension cannot hide sparse row 6000 %s',async kind=>{
+  const b=XLSX.read(file([fixture()]),{type:'array'});
+  b.Sheets.synthetic.A6000=kind==='formula'?{t:'n',v:2,f:'1+1'}:{t:'s',v:'SYNTHETIC_LATE_ROW'};
+  b.Sheets.synthetic['!ref']='A1:AD6000';
+  const zip=await JSZip.loadAsync(XLSX.write(b,{type:'array',bookType:'xlsx'}));
+  const xml=await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+  zip.file('xl/worksheets/sheet1.xml',xml.replace(/<dimension ref="[^"]+"\/>/,'<dimension ref="A1"/>'));
+  const raw=await zip.generateAsync({type:'arraybuffer'});
+  await expect(verifyExpansion(raw)).resolves.toBeUndefined();
+  expect(()=>parseGeneralFile(raw)).toThrow('ROWS');
+  expect(()=>prepareGeneral(raw)).toThrow('ROWS');
+ });
  test.each(['xls','xlsx'] as const)('%s round trip preserves long string keys, every row and quantity',type=>{
   const raw=file([fixture(),fixture({1:'',2:'SAB-B',9:''})],type);const parsed=parseGeneralFile(raw);
   expect(parsed.rows[0][0]).toBe('12345678901234567890123456');expect(parsed.rows[1][1]).toBe('');

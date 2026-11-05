@@ -15,6 +15,12 @@ export function GeneralReview(){
   if(file&&(!/\.(xls|xlsx)$/i.test(file.name)||file.size<8||file.size>MAX_FILE_BYTES)){if(comparison)setReference(null);else setSource(null);setMessage('파일은 2MiB 이하의 XLS 또는 XLSX여야 합니다.');return;}
   if(comparison)setReference(file);else setSource(file);
  }
+ function selectFile(input:HTMLInputElement,comparison:boolean){
+  const file=input.files?.[0]??null;
+  // Keep the File in component memory only, never in the native input after selection.
+  input.value='';
+  pick(file,comparison);
+ }
  async function authorized(){try{const r=await fetch('/api/avent/pilot',{method:'GET',credentials:'same-origin',cache:'no-store'});return r.ok;}catch{return false;}}
  async function run(){
   if(running.current||!source)return;
@@ -56,8 +62,10 @@ export function GeneralReview(){
   <section className="avent-warning"><h2>검수용 · 업로드 불가</h2><p>30열 사방넷 원본의 행·키·수량을 그대로 보존합니다. 7열 매핑 검토표는 실제 발주 파일이 아닙니다. 세트·사은품 재계산, 상품 자동매핑, 주문 삭제·확정은 하지 않습니다.</p><p>이지오토 결제금액 정리, 스타배송, 직원몰, 네이트온/B2B·외부발주는 별도 업무입니다.</p></section>
   <form ref={inputs} onSubmit={e=>{e.preventDefault();void run();}}>
    <h2>1. 파일 선택</h2><p>단일 시트 XLS/XLSX · 첫 행은 기존 사방넷 30열 · 파일당 2MiB / 5,000행 이하. 수식·셀 오류·하이퍼링크·매크로·외부 연결은 지원하지 않습니다.</p>
-   <label>사방넷 원본 <input type="file" accept=".xls,.xlsx" onChange={e=>pick(e.target.files?.[0]??null,false)}/></label>
-   <label>비교할 30열 원본 (선택) <input type="file" accept=".xls,.xlsx" onChange={e=>pick(e.target.files?.[0]??null,true)}/></label>
+   <label>사방넷 원본 <input type="file" accept=".xls,.xlsx" aria-describedby="avent-source-selection" onChange={e=>selectFile(e.currentTarget,false)}/></label>
+   <p id="avent-source-selection">{source?'원본 선택됨 · 파일명 숨김':'원본 미선택'}</p>
+   <label>비교할 30열 원본 (선택) <input type="file" accept=".xls,.xlsx" aria-describedby="avent-reference-selection" onChange={e=>selectFile(e.currentTarget,true)}/></label>
+   <p id="avent-reference-selection">{reference?'비교본 선택됨 · 파일명 숨김':'비교본 미선택'}</p>
    <p>비교본은 같은 주문 묶음인지 확인하기 위한 자료입니다. 7열 검토본은 비교본으로 받을 수 없습니다. 선택하지 않으면 배치 일치와 과거 처리 여부는 확인하지 않습니다.</p>
    <div className="avent-actions"><button type="submit" disabled={!source||busy}>파일 검사 시작</button><button type="button" disabled={!busy} onClick={()=>invalidate('중지하고 결과를 폐기했습니다. 원본 파일은 변경하지 않았습니다.')}>중지</button><button type="button" onClick={()=>{invalidate('선택과 결과를 비웠습니다.');setSource(null);setReference(null);inputs.current?.reset();}}>선택·결과 비우기</button></div>
   </form>

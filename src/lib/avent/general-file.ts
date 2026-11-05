@@ -48,7 +48,9 @@ export function parseGeneralFile(data:ArrayBuffer):Table{
  // Normalize legacy zero local sizes only in a copy; retain the original bytes and hash.
  const parsingData=entries?data.slice(0):data;
  if(entries){const view=new DataView(parsingData);for(const e of entries){if(view.getUint32(e.offset+18,true)===0)view.setUint32(e.offset+18,e.compressed,true);if(view.getUint32(e.offset+22,true)===0)view.setUint32(e.offset+22,e.expanded,true);}}
- const book=XLSX.read(parsingData,{type:'array',cellFormula:true,cellHTML:false,cellText:false,cellDates:false,bookVBA:true,sheetRows:MAX_ROWS+2});
+ // Never truncate rows before validation: understated dimensions can hide late data/formulas.
+ // Production callers verify ZIP expansion first and enforce a Worker deadline.
+ const book=XLSX.read(parsingData,{type:'array',cellFormula:true,cellHTML:false,cellText:false,cellDates:false,bookVBA:true});
  if(book.vbaraw||book.SheetNames.length!==1||(book.Workbook?.Names?.length??0)>0)throw Error('ACTIVE_CONTENT');
  const sheet=book.Sheets[book.SheetNames[0]];
  if(sheet['!fullref']){const range=XLSX.utils.decode_range(sheet['!fullref']);if(range.e.r>MAX_ROWS||range.e.c>29)throw Error('ROWS');}
