@@ -6,6 +6,7 @@ vi.mock('@/auth',()=>({getAppSession:f.session}));
 vi.mock('@/lib/prisma',()=>({default:{user:{findUnique:f.user}}}));
 vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw Error(`redirect:${p}`);},notFound:()=>{throw Error('NOT_FOUND');}}));
 import Page from '../app/logistics/orders/page';
+import GeneralPage from '../app/logistics/orders/general/page';
 import Home from '../app/workspaces/[area]/page';
 beforeEach(()=>vi.resetAllMocks());
 
@@ -31,4 +32,13 @@ test('designated marketing staff gets only pilot navigation flags from server ho
  expect(page.props).toMatchObject({aventPilot:true,owner:false,limitedAccess:true});
  f.user.mockResolvedValue({id:AVENT_PILOT_STAFF,department:'마케팅',accountDisabled:true});
  await expect(Home({params:Promise.resolve({area:'logistics'})})).rejects.toThrow('NOT_FOUND');
+});
+
+test('general file review keeps the same exact account and disabled-account boundary',async()=>{
+ for(const id of [WORKSPACE_OWNER,AVENT_PILOT_STAFF]){
+  f.session.mockResolvedValue({user:{id}});f.user.mockResolvedValue({id,accountDisabled:false});await expect(GeneralPage()).resolves.toBeDefined();
+  f.user.mockResolvedValue({id,accountDisabled:true});await expect(GeneralPage()).rejects.toThrow('NOT_FOUND');
+ }
+ f.session.mockResolvedValue({user:{id:'ADMIN',role:'ADMIN'}});await expect(GeneralPage()).rejects.toThrow('NOT_FOUND');
+ f.session.mockResolvedValue(null);await expect(GeneralPage()).rejects.toThrow('redirect:/login');
 });
