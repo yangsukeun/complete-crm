@@ -19,7 +19,7 @@ describe("cs section nav", () => {
 
   it("shows manager client label and away links only for overview roles", () => {
     const staff = csSectionNavItems({ canManageClients: false, canViewAwayOverview: false });
-    expect(staff.map((i) => i.id)).toEqual(["leave", "hub", "notice", "lounge", "clients"]);
+    expect(staff.map((i) => i.id)).toEqual(["leave", "hub", "notice", "lounge", "clients", "test"]);
     expect(staff.find((i) => i.id === "clients")?.label).toBe("내 담당 업체");
 
     const lead = csSectionNavItems({ canManageClients: true, canViewAwayOverview: true });

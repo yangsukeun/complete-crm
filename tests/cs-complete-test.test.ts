@@ -1,10 +1,12 @@
 import { expect, it } from 'vitest';
 import { addTestRequest, canUseCsCompleteTest, reconcileEmployee, reviewSchema, snapshotSchema, syntheticSnapshot, transitionEntry } from '../src/lib/cs-complete-test';
-it('restricts TEST to active existing managers',()=>{
+it('allows active employees across departments, rejects absent disabled and unknown accounts',()=>{
  expect(canUseCsCompleteTest(null)).toBe(false);
- for(const role of ['ADMIN','EXECUTIVE','TEAM_LEAD','CENTER_CHIEF'])expect(canUseCsCompleteTest({role,department:'CS',accountDisabled:false})).toBe(true);
- expect(canUseCsCompleteTest({role:'USER',department:'CS',accountDisabled:false})).toBe(false);
- expect(canUseCsCompleteTest({role:'TEAM_LEAD',department:'OTHER',accountDisabled:false})).toBe(false);
+ expect(canUseCsCompleteTest({role:'EXTERNAL',department:null,accountDisabled:false})).toBe(false);
+ expect(canUseCsCompleteTest({role:'USER',department:null,accountDisabled:true})).toBe(false);
+ for(const role of ['USER','ADMIN','EXECUTIVE','TEAM_LEAD','CENTER_CHIEF'])expect(canUseCsCompleteTest({role,department:'CS',accountDisabled:false})).toBe(true);
+ expect(canUseCsCompleteTest({role:'USER',department:'CS',accountDisabled:false})).toBe(true);
+ expect(canUseCsCompleteTest({role:'TEAM_LEAD',department:'OTHER',accountDisabled:false})).toBe(true);
  expect(canUseCsCompleteTest({role:'ADMIN',department:'CS',accountDisabled:true})).toBe(false);
 });
 it('round trips source plus separate TEST edits and rejects invalid references',()=>{

@@ -19,7 +19,7 @@ export const reviewSchema=z.object({format:z.literal('cs-test-review-v1'),source
  if(r.attendance.some(a=>!r.source.employees.some(e=>e.sourceId===a.employeeId)))c.addIssue({code:'custom',message:'TEST 근태의 직원 참조를 확인하세요.'});
 });
 export function canUseCsCompleteTest(u:{role:string;department:string|null;accountDisabled:boolean}|null){
- return !!u&&!u.accountDisabled&&(['ADMIN','EXECUTIVE'].includes(u.role)||(['TEAM_LEAD','CENTER_CHIEF'].includes(u.role)&&['CS','CS팀'].includes(u.department??'')));
+ return !!u&&!u.accountDisabled&&['USER','TEAM_LEAD','CENTER_CHIEF','EXECUTIVE','ADMIN'].includes(u.role);
 }
 export function reconcileEmployee(employee:TestEmployee,snapshot:TestSnapshot,entries:TestEntry[]=snapshot.entries){
  const approvedPaid=entries.filter(e=>e.employeeSourceId===employee.sourceId&&e.status==='APPROVED'&&e.kind==='PAID'&&e.date>=employee.periodStart&&e.date<=employee.periodEnd).reduce((n,e)=>n+e.days,0);

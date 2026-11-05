@@ -13,13 +13,13 @@ beforeAll(async()=>{if(!enabled)return;const u=new URL(process.env.DATABASE_URL!
 },30000);
 afterAll(async()=>{if(!enabled)return;if(server)await new Promise<void>(r=>server.close(()=>r()));await prisma.$disconnect();});
 const call=(method='GET',body?:unknown,id='',requestOrigin=origin)=>fetch(origin+'/api/cs-complete-test'+(id?'?id='+id:''),{method,headers:{origin:requestOrigin},...(body?{body:JSON.stringify(body)}:{})});
-it.skipIf(!enabled)('persists isolated TEST through HTTP, blocks other roles, preserves snapshots and serializes revisions',async()=>{
- expect((await call()).status).toBe(401);for(const actor of ['test-user','test-disabled']){fixture.actor=actor;expect((await call()).status).toBe(403);}
+it.skipIf(!enabled)('persists isolated TEST through HTTP, allows active staff, preserves snapshots and serializes revisions',async()=>{
+ expect((await call()).status).toBe(401);for(const actor of ['test-disabled']){fixture.actor=actor;expect((await call()).status).toBe(403);}
  fixture.actor='test-manager';const source=syntheticSnapshot();const review={format:'cs-test-review-v1',source,testEntries:source.entries,attendance:[],audit:[]};
  expect((await call('PUT',{review,expectedVersion:0},'','https://other.invalid')).status).toBe(403);
  const first=await call('PUT',{review,expectedVersion:0});expect(first.status).toBe(200);const saved=await first.json();expect(saved.version).toBe(1);
  expect((await call('PUT',{review,expectedVersion:0})).status).toBe(409);
- fixture.actor='test-admin';const reopened=await (await call('GET',undefined,saved.id)).json();expect(reopened.payload).toEqual(review);expect(reopened.version).toBe(1);
+ fixture.actor='test-user';const reopened=await (await call('GET',undefined,saved.id)).json();expect(reopened.payload).toEqual(review);expect(reopened.version).toBe(1);
  const updated={...review,testEntries:transitionEntry(source,source.entries,'demo-3',1,'APPROVED')};
  const racing=await Promise.all([call('PUT',{review:updated,expectedVersion:1}),call('PUT',{review:updated,expectedVersion:1})]);expect(racing.map(r=>r.status).sort()).toEqual([200,409]);
  const after=await (await call('GET',undefined,saved.id)).json();expect(after.version).toBe(2);expect(after.payload.source.entries[2].status).toBe('PENDING');expect(after.payload.testEntries[2].status).toBe('APPROVED');

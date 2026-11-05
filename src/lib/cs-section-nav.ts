@@ -50,9 +50,9 @@ export function csSectionNavItems(opts: {
     { id: "lounge", href: "/cs-lounge?tab=lounge", label: "익명 라운지" },
     { id: "clients", href: "/cs-clients", label: csClientNavLabel(opts.canManageClients) },
   ];
+  items.push({ id: "test", href: "/cs-tools/test", label: "TEST" });
   if (opts.canManageClients) {
     items.push(
-      { id: "test", href: "/cs-tools/test", label: "TEST" },
       { id: "org", href: "/cs-org", label: "조직도" },
       { id: "org-month", href: "/cs-org/month", label: "월별 담당" },
       { id: "org-settings", href: "/cs-org/settings", label: "설정 창고" },
