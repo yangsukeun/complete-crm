@@ -8,7 +8,7 @@ export function createInquiryDb(client:Client):InquiryDb{
  return {
   activeUser:id=>active(client,id),
   async readVisible(actor,owner,id){
-   const rows=await client.$queryRaw<{record:Inquiry}[]>`SELECT record FROM public.website_inquiries WHERE (${owner} OR assigned_to=${actor}) AND (${id??null}::uuid IS NULL OR id=${id??null}::uuid) ORDER BY received_at DESC LIMIT 100`;
+   const rows=await client.$queryRaw<{record:Inquiry}[]>`SELECT record FROM public.website_inquiries WHERE (${owner} OR (source_site<>'esg' AND assigned_to=${actor})) AND (${id??null}::uuid IS NULL OR id=${id??null}::uuid) ORDER BY received_at DESC LIMIT 100`;
    return rows.map(row=>row.record);
   },
   transaction:fn=>client.$transaction(async tx=>{

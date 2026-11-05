@@ -1,0 +1,33 @@
+import {createHash} from 'node:crypto';
+import {expect,it} from 'vitest';
+import {WebsiteInquiryService,INQUIRY_OWNER,type Inquiry,type InquiryDb,type InquiryTx} from '../src/lib/website-inquiry';
+import {ESG_ORIGIN,ESG_CONSENT_VERSION,esgIntakeConfig,esgInquiryAuthenticator} from '../src/lib/website-inquiry-esg';
+import {inquiryPost} from '../src/lib/website-inquiry-http';
+const now=Date.parse('2026-11-05T00:00:00Z'),token='synthetic-esg-token-not-a-real-secret';
+const env={CRM_ESG_INQUIRY_ENABLED:'true',CRM_ESG_INQUIRY_ORIGIN:ESG_ORIGIN,CRM_ESG_INQUIRY_SHA256:createHash('sha256').update(token).digest('hex'),CRM_ESG_INQUIRY_ISSUED_AT:new Date(now).toISOString(),CRM_ESG_INQUIRY_EXPIRES_AT:new Date(now+90*86400000).toISOString()};
+const input={schema_version:'1',request_id:'77777777-7777-4777-8777-777777777777',source_site:'esg',consultation_type:'esg',esg_service:'both',contact:{company:'합성 검수 회사',name:'합성 담당자',email:'esg-qa@example.invalid'},original_message:'[합성 테스트] 관리대행과 소프트웨어 상담',preferred_schedule:'다음 달',consent:{accepted:true,version:ESG_CONSENT_VERSION,accepted_at:new Date(now).toISOString()}};
+function fixture(){
+ const rows:Inquiry[]=[],notices:string[]=[];let queue=Promise.resolve();
+ const db:InquiryDb={activeUser:async()=>true,readVisible:async()=>rows,transaction:async fn=>{const prior=queue;let release!:()=>void;queue=new Promise<void>(r=>release=r);await prior;try{const tx:InquiryTx={find:async(site,key)=>rows.find(r=>r.source_site===site&&r.request_id===key)??null,activeUser:async()=>true,insert:async row=>{rows.push(row);},notify:async(_id,user)=>{notices.push(user);}};return await fn(tx);}finally{release();}}};
+ const service=new WebsiteInquiryService(db,()=>new Date(now),[ESG_CONSENT_VERSION]);
+ return {rows,notices,service,runtime:{service,authenticateSite:esgInquiryAuthenticator(esgIntakeConfig(env)!,()=>now),allowRequest:async()=>true}};
+}
+function request(body:unknown=input,headers:Record<string,string>={},method='POST',path='/api/integrations/website-inquiries/v1'){
+ return new Request(`https://www.cpcrm.co.kr${path}`,{method,headers:{origin:ESG_ORIGIN,authorization:`Bearer ${token}`,'content-type':'application/json','Idempotency-Key':input.request_id,...headers},...(method==='GET'?{}:{body:JSON.stringify(body)})});
+}
+it.each(['agency','software','both'])('stores explicit ESG %s without phone; owner-only/no email/five years',async esg_service=>{
+ const f=fixture(),r=await inquiryPost(request({...input,esg_service}),f.runtime);expect(r.status).toBe(201);expect(await r.json()).toMatchObject({persisted:true,duplicate:false,notification_status:'queued'});
+ expect(f.rows[0]).toMatchObject({source_site:'esg',esg_service,assignedTo:null,retentionUntil:'2031-11-05T00:00:00.000Z'});expect(f.rows[0].email).toBeUndefined();expect(f.notices).toEqual([INQUIRY_OWNER]);expect(await f.service.read('unrelated')).toEqual([]);await expect(f.service.read('unrelated',f.rows[0].id)).rejects.toMatchObject({status:404});expect(await f.service.read(INQUIRY_OWNER)).toHaveLength(1);
+});
+it('concurrent retries store once and notify once; changed payload is 409',async()=>{const f=fixture();const results=await Promise.all(Array.from({length:5},()=>inquiryPost(request(),f.runtime)));expect(results.filter(r=>r.status===201)).toHaveLength(1);expect(f.rows).toHaveLength(1);expect(f.notices).toHaveLength(1);expect((await inquiryPost(request({...input,esg_service:'agency'}),f.runtime)).status).toBe(409);});
+it.each([{consultation_type:'general'},{consultation_type:'customer_service'},{esg_service:'other'},{contact:{...input.contact,phone:'01000000000'}},{contact:{...input.contact,company:''}},{assignedTo:'staff'},{selected_services:['general']},{consent:{...input.consent,accepted:false}}])('rejects invalid ESG scope/PII/routing %j',async patch=>{expect((await inquiryPost(request({...input,...patch}),fixture().runtime)).status).toBe(422);});
+it('legacy corporate/cs/3pl still require phone',async()=>{for(const source_site of ['corporate','cs','3pl']){const f=fixture();await expect(f.service.submit({site:source_site as 'corporate',consentVersions:[ESG_CONSENT_VERSION]},input.request_id,{schema_version:'1',request_id:input.request_id,source_site,consultation_type:'general',contact:input.contact,original_message:input.original_message,consent:input.consent})).rejects.toMatchObject({status:422});}});
+it('rejects absent/wrong auth, other origin and source',async()=>{const f=fixture();for(const headers of ([{authorization:''},{authorization:'Bearer wrong'},{origin:'https://bscomplete.com'}] as Record<string,string>[]))expect((await inquiryPost(request(input,headers),f.runtime)).status).toBe(401);expect((await inquiryPost(request({...input,source_site:'corporate',consultation_type:'general',esg_service:undefined,preferred_schedule:undefined,contact:{...input.contact,phone:'01000000000'}}),f.runtime)).status).toBe(403);});
+it('90 days exactly; expiration, premature use, GET/PATCH/other path/unknown operation denied',async()=>{expect(esgIntakeConfig({...env,CRM_ESG_INQUIRY_EXPIRES_AT:new Date(now+89*86400000).toISOString()})).toBeNull();expect(esgIntakeConfig({...env,CRM_ESG_INQUIRY_ENABLED:'false'})).toBeNull();for(const time of [now-1,now+90*86400000])expect(await esgInquiryAuthenticator(esgIntakeConfig(env)!,()=>time)(request())).toBeNull();const auth=fixture().runtime.authenticateSite;for(const req of [request(input,{},'GET'),request(input,{},'PATCH'),request(input,{},'POST','/api/website-inquiries'),request(input,{'X-Inquiry-Operation':'read'})])expect(await auth(req)).toBeNull();});
+it('rate limit, size and key mismatch cannot claim persistence',async()=>{const f=fixture();expect((await inquiryPost(request(),{...f.runtime,allowRequest:async()=>false})).status).toBe(429);expect((await inquiryPost(request({...input,original_message:'x'.repeat(17000)}),f.runtime)).status).toBe(413);expect((await inquiryPost(request(input,{'Idempotency-Key':'different'}),f.runtime)).status).toBe(422);expect(f.rows).toHaveLength(0);});
+it('ESG authenticated preflight limits only ESG subjects and creates no inquiry',async()=>{
+ const f=fixture(),calls:string[]=[];const rt={...f.runtime,limitSubject:async(site:string)=>{calls.push(site);return calls.length===1;}};
+ const body={day:new Date().toISOString().slice(0,10),subject_hash:'a'.repeat(64)};
+ const first=await inquiryPost(request(body,{'X-Inquiry-Operation':'rate-limit'}),rt);expect(first.status).toBe(200);expect(await first.json()).toEqual({operation:'rate-limit',allowed:true,persisted:false});
+ expect((await inquiryPost(request(body,{'X-Inquiry-Operation':'rate-limit'}),rt)).status).toBe(429);expect(calls).toEqual(['esg','esg']);expect(f.rows).toHaveLength(0);expect(f.notices).toHaveLength(0);
+});

@@ -4,7 +4,7 @@ import {z} from 'zod';
 export const INQUIRY_OWNER = 'cmmitn4830000fc0jt8c1l2jf';
 export const CS_INQUIRY_MAILBOX = 'cjhwoghd@gmail.com';
 export type InquiryMail={recipient:typeof CS_INQUIRY_MAILBOX;status:'queued'|'sending'|'accepted'|'uncertain';attemptId?:string};
-export const inquiryInput = z.object({
+const legacyInquiryInput = z.object({
  schema_version:z.literal('1'), request_id:z.string().uuid(), source_site:z.enum(['corporate','3pl','cs']),
  consultation_type:z.enum(['marketing','design','customer_service','logistics','general']),
  selected_services:z.array(z.enum(['marketing','design','customer_service','logistics','general'])).min(1).max(5).refine(v=>new Set(v).size===v.length).optional(),
@@ -12,6 +12,14 @@ export const inquiryInput = z.object({
  original_message:z.string().trim().min(1).max(2000),
  consent:z.object({accepted:z.literal(true),version:z.string().min(1).max(80),accepted_at:z.string().datetime()}).strict(),
 }).strict();
+const esgInquiryInput = legacyInquiryInput.omit({source_site:true,consultation_type:true,selected_services:true,contact:true}).extend({
+ source_site:z.literal('esg'),consultation_type:z.literal('esg'),
+ selected_services:z.never().optional(),
+ esg_service:z.enum(['agency','software','both']),
+ contact:z.object({name:z.string().trim().min(2).max(80),email:z.string().trim().email().max(254),company:z.string().trim().min(1).max(100)}).strict(),
+ preferred_schedule:z.string().trim().max(200).optional(),
+}).strict();
+export const inquiryInput=z.union([legacyInquiryInput,esgInquiryInput]);
 export type InquiryInput=z.infer<typeof inquiryInput>;
 export type Site=InquiryInput['source_site'];
 export type Inquiry=InquiryInput & {id:string;hash:string;receivedAt:string;retentionUntil:string;assignedTo:string|null;notificationId:string|null;status:'NEW'|'ASSIGNED';email?:InquiryMail};
@@ -36,9 +44,9 @@ export class WebsiteInquiryService {
   const input=parsed.data;
   if(identity.site!==input.source_site)throw new InquiryError(403,'SITE_MISMATCH');
   if(key!==input.request_id)throw new InquiryError(422,'INVALID_IDEMPOTENCY_KEY');
-  const allowed=identity.site==='corporate'?['marketing','design','customer_service','logistics','general']:identity.site==='3pl'?['logistics','general']:['customer_service','general'];
+  const allowed=identity.site==='esg'?['esg']:identity.site==='corporate'?['marketing','design','customer_service','logistics','general']:identity.site==='3pl'?['logistics','general']:['customer_service','general'];
   if(!allowed.includes(input.consultation_type))throw new InquiryError(422,'INVALID_SERVICE');
-  if(input.selected_services){
+  if(input.source_site!=='esg'&&input.selected_services){
    if(input.selected_services.some(service=>!allowed.includes(service))||(input.selected_services.length>1?input.consultation_type!=='general':input.consultation_type!==input.selected_services[0]))throw new InquiryError(422,'INVALID_SERVICE_SELECTION');
    input.selected_services.sort();
   }
@@ -63,7 +71,7 @@ export class WebsiteInquiryService {
   if(!actor)throw new InquiryError(401,'AUTH_REQUIRED');
   if(!await this.db.activeUser(actor))throw new InquiryError(403,'ACCESS_DENIED');
   if(id&&!z.string().uuid().safeParse(id).success)throw new InquiryError(400,'INVALID_ID');
-  const rows=await this.db.readVisible(actor,actor===INQUIRY_OWNER,id);
+  const rows=(await this.db.readVisible(actor,actor===INQUIRY_OWNER,id)).filter(row=>row.source_site!=='esg'||actor===INQUIRY_OWNER);
   if(id&&!rows.length)throw new InquiryError(404,'NOT_FOUND');
   return rows.map(({hash: _hash,notificationId: _notificationId,...row})=>{void _hash;void _notificationId;return row;});
  }
