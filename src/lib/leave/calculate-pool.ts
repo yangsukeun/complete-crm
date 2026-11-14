@@ -37,6 +37,9 @@ export type AccrualLinesByBucket = {
 };
 
 export type CalculatedLeavePool = LeavePool & {
+  /** Existing saved non-legacy accrual rows; read-only callers must not treat no data as zero balance. */
+  storedAccrualCount: number;
+  hasJoinDate: boolean;
   /** 표시용: 풀에 포함된 LeaveAccrual만의 consumedDays 합 */
   totalConsumedDaysFromAccruals: number;
   /** LeaveBalance.manualDeduction 합 (CRM 도입 전 사용 — 표시 전용, 풀 합산 제외) */
@@ -98,7 +101,7 @@ function groupAccrualLines(
 export async function calculateLeavePool(
   userId: string,
   asOf: Date = new Date(),
-  options?: { skipAccrue?: boolean }
+  options?: { skipAccrue?: boolean; readOnly?: boolean }
 ): Promise<CalculatedLeavePool> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -106,15 +109,17 @@ export async function calculateLeavePool(
   });
   const joinYmd = user?.joinDate ? toKstYmd(user.joinDate) : "";
 
-  if (!options?.skipAccrue) {
+  if (!options?.readOnly && !options?.skipAccrue) {
     await ensureAccrualsUpTo(userId, asOf);
   }
-  await ensureLegacyCarryAccrual(userId);
-  await ensureBalanceCarryAccrual(userId);
+  if (!options?.readOnly) {
+    await ensureLegacyCarryAccrual(userId);
+    await ensureBalanceCarryAccrual(userId);
+  }
 
   let leaveShortage = false;
   let shortageLeaveRequestIds: string[] = [];
-  if (!options?.skipAccrue) {
+  if (!options?.readOnly && !options?.skipAccrue) {
     const res = await ensureApprovedLeavesConsumedUpTo(userId, asOf, user?.name ?? null);
     shortageLeaveRequestIds = res.shortageRequestIds;
     leaveShortage = res.shortageRequestIds.length > 0;
@@ -173,6 +178,8 @@ export async function calculateLeavePool(
 
   return {
     ...merged,
+    storedAccrualCount: poolRows.length,
+    hasJoinDate: Boolean(joinYmd),
     /** 표시 사용계 = LeaveAccrual.consumedDays 합만 (이전 사용분·승인 이중 합산 금지) */
     totalConsumed: totalConsumedDaysFromAccruals,
     totalConsumedDaysFromAccruals,

@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const f=vi.hoisted(()=>({user:vi.fn(),balances:vi.fn(),rows:vi.fn(),accrue:vi.fn(),legacy:vi.fn(),carry:vi.fn(),consume:vi.fn()}));
+vi.mock('@/lib/prisma',()=>({default:{user:{findUnique:f.user},leaveBalance:{findMany:f.balances},leaveAccrual:{findMany:f.rows}}}));
+vi.mock('@/lib/leave/accrue',()=>({ensureAccrualsUpTo:f.accrue}));
+vi.mock('@/lib/leave/ensure-approved-consumption',()=>({ensureApprovedLeavesConsumedUpTo:f.consume}));
+vi.mock('@/lib/leave/ensure-carry-accrual',()=>({ensureBalanceCarryAccrual:f.carry}));
+vi.mock('@/lib/leave/legacy-carry-sync',()=>({ensureLegacyCarryAccrual:f.legacy,LEGACY_CARRY_ACCRUAL_YMD:'1900-01-01'}));
+import {calculateLeavePool} from '../src/lib/leave/calculate-pool';
+const asOf=new Date('2026-11-14T03:00:00Z');
+beforeEach(()=>{vi.resetAllMocks();f.user.mockResolvedValue({joinDate:new Date('2025-01-01Z'),name:'합성 직원'});f.balances.mockResolvedValue([]);f.consume.mockResolvedValue({shortageRequestIds:[]});f.rows.mockResolvedValue([{type:'ANNUAL_AFTER_ONE_YEAR',accrualDateYmd:'2026-01-01',days:15,consumedDays:1.25,accruedAt:new Date('2026-01-01Z'),expiresAt:new Date('2026-12-31T14:59:59Z'),isExpired:false,compensationOwed:false}]);});
+it('readOnly skips all four mutating helpers and preserves quarter-day projection',async()=>{const p=await calculateLeavePool('synthetic',asOf,{readOnly:true});for(const fn of [f.accrue,f.legacy,f.carry,f.consume])expect(fn).not.toHaveBeenCalled();expect(p.available).toBe(13.75);expect(p.storedAccrualCount).toBe(1);expect(p.hasJoinDate).toBe(true);});
+it('default behavior still invokes every existing helper',async()=>{await calculateLeavePool('synthetic',asOf);for(const fn of [f.accrue,f.legacy,f.carry,f.consume])expect(fn).toHaveBeenCalledTimes(1);});
+it('legacy skipAccrue behavior remains unchanged, not falsely read-only',async()=>{await calculateLeavePool('synthetic',asOf,{skipAccrue:true});expect(f.accrue).not.toHaveBeenCalled();expect(f.consume).not.toHaveBeenCalled();expect(f.legacy).toHaveBeenCalledTimes(1);expect(f.carry).toHaveBeenCalledTimes(1);});
+it('missing and only-legacy accrual rows are detectable rather than asserted current zero',async()=>{f.rows.mockResolvedValueOnce([]);expect((await calculateLeavePool('synthetic',asOf,{readOnly:true})).storedAccrualCount).toBe(0);f.rows.mockResolvedValueOnce([{type:'CARRY_OVER',accrualDateYmd:'1900-01-01',days:99,consumedDays:0}]);expect((await calculateLeavePool('synthetic',asOf,{readOnly:true})).storedAccrualCount).toBe(0);});

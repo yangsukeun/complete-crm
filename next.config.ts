@@ -103,6 +103,8 @@ const nextConfig: NextConfig = {
 /** Sentry가 최외곽 — authToken 없음 → 소스맵 업로드 스킵(의도). 빌드 실패 방지 옵션 포함 */
 export default withSentryConfig(withBundleAnalyzer(nextConfig), {
   silent: true,
+  // Opt out of build-plugin diagnostics without changing runtime Sentry capture.
+  telemetry: false,
   sourcemaps: {
     disable: true,
   },

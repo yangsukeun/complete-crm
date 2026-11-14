@@ -5,7 +5,7 @@ vi.mock('@/lib/prisma',()=>({default:{user:{findUnique:f.user}}}));
 vi.mock('@/lib/app-mode-server',()=>({resolveAppModeForUser:f.mode}));
 vi.mock('next/headers',()=>({cookies:async()=>({})}));
 vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw Error(`redirect:${p}`)},notFound:()=>{throw Error('NOT_FOUND')}}));
-vi.mock('../app/leave/leave-page-client',()=>({LeavePageClient:f.client}));
+vi.mock('../app/cs-tools/leave/cs-leave-client',()=>({CsLeavePageClient:f.client}));
 import Page from '../app/cs-tools/leave/page';
 beforeEach(()=>{vi.resetAllMocks();f.session.mockResolvedValue({user:{id:'synthetic-cs',role:'ADMIN',department:'경영지원'}});f.user.mockResolvedValue({role:'USER',department:'CS팀',accountDisabled:false});f.mode.mockResolvedValue('company');});
 it('renders the existing application with current USER flags, not stale ADMIN claims',async()=>{
