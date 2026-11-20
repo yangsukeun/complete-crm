@@ -3,6 +3,7 @@ import { getAppSession } from "@/auth";
 import { PageHeadline } from "@/components/page-headline";
 import { CsToolsPageClient } from "./cs-tools-page-client";
 import { DashboardAttendance } from "@/components/dashboard-attendance";
+import { canViewWorkspaceHelp } from "@/lib/workspace-help";
 import { CsScreen } from "@/components/cs-screen";
 import { ColorChip } from "@/components/ui/color-chip";
 import Link from "next/link";
@@ -27,7 +28,7 @@ export default async function CsToolsPage() {
     }),
     prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { role: true, department: true },
+      select: { id: true, role: true, department: true, accountDisabled: true },
     }),
     prisma.awayLog.findMany({
       where: { userId: session.user.id, startedAt: { gte: todayStart } },
@@ -72,6 +73,12 @@ export default async function CsToolsPage() {
         title="CS 링크 허브"
         description="CS 업무에 쓰는 외부 도구·링크를 한곳에서 엽니다."
       />
+      {canViewWorkspaceHelp(me, "cs") && (
+        <Link href="/workspaces/help/cs" prefetch={false}
+          className="inline-flex min-h-11 w-fit items-center rounded-lg border border-violet-200 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-50">
+          CS 사용 안내 →
+        </Link>
+      )}
       <DashboardAttendance
         emphasized
         showManagerLinks={showOverview}

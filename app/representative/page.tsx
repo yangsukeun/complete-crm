@@ -19,6 +19,10 @@ export default async function RepresentativePage() {
         <span className="block text-lg font-semibold text-violet-900">루와의 대화 →</span>
         <span className="mt-1 block text-sm text-muted-foreground">로그인하면 처음 열리는 대표님 개인 기록입니다.</span>
       </Link>
+      <Link href="/representative/blueprint" prefetch={false} className="block rounded-xl border bg-card p-5 hover:border-violet-400 hover:bg-violet-50">
+        <span className="block text-lg font-semibold">CRM 설계도 →</span>
+        <span className="mt-1 block text-sm text-muted-foreground">로그인부터 부서별 업무, 파일, 연동 범위까지 한눈에 확인합니다.</span>
+      </Link>
       <section className="space-y-2" aria-label="대표자 근태">
         <WorkspaceAttendance userId={id} />
         <Link href="/admin/attendance" prefetch={false} className="inline-flex min-h-11 items-center text-sm font-semibold">전체 근태 관리 →</Link>
