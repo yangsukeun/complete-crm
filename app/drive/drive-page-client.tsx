@@ -2189,7 +2189,7 @@ export function DrivePageClient({
 
       <div
         className={cn(
-          "overflow-hidden rounded-lg border bg-white transition-colors",
+          "drive-board-container overflow-hidden rounded-lg border bg-white transition-colors",
           dragOver && canUploadHere ? "border-sky-400 ring-2 ring-sky-200" : "border-gray-200",
           dropTargetId ? "ring-1 ring-amber-200" : null
         )}
@@ -2305,7 +2305,7 @@ export function DrivePageClient({
 
         {viewMode === "list" && (
           <>
-        <div className="grid grid-cols-[36px_minmax(0,2fr)_120px_100px_minmax(240px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
+        <div className="drive-board-header grid grid-cols-[36px_minmax(0,2fr)_120px_100px_minmax(240px,1.2fr)] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground">
           <span className="flex items-center justify-center">
             <Checkbox
               checked={allSelectableSelected ? true : selectedCount > 0 ? "indeterminate" : false}
@@ -2314,10 +2314,11 @@ export function DrivePageClient({
               disabled={selectableFiles.length === 0 || batchBusy}
             />
           </span>
-          <span>이름</span>
-          <span>수정일</span>
-          <span>크기</span>
-          <span>작업</span>
+          <span className="drive-board-mobile-label">전체 선택</span>
+          <span className="drive-board-column-label">이름</span>
+          <span className="drive-board-column-label">수정일</span>
+          <span className="drive-board-column-label">크기</span>
+          <span className="drive-board-column-label">작업</span>
         </div>
 
         {navReady &&
@@ -2376,7 +2377,7 @@ export function DrivePageClient({
               }
             }}
             className={cn(
-              "grid grid-cols-[36px_minmax(0,2fr)_120px_100px_minmax(240px,1.2fr)] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
+              "drive-board-row grid grid-cols-[36px_minmax(0,2fr)_120px_100px_minmax(240px,1.2fr)] items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm",
               file.uploading || file.creating
                 ? "bg-gray-50 text-muted-foreground"
                 : "hover:bg-gray-50",
@@ -2385,7 +2386,7 @@ export function DrivePageClient({
             )}
           >
             <div
-              className="flex items-center justify-center"
+              className="drive-board-select flex items-center justify-center"
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
             >
@@ -2396,7 +2397,7 @@ export function DrivePageClient({
                 aria-label={`${file.name} 선택`}
               />
             </div>
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="drive-board-name flex min-w-0 items-center gap-2">
               {file.uploading || file.creating ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-gray-400" />
               ) : (
@@ -2426,13 +2427,13 @@ export function DrivePageClient({
                       cancelRename();
                     }
                   }}
-                  className="h-8 max-w-full flex-1"
+                  className="drive-board-rename h-8 max-w-full flex-1"
                   aria-label="새 이름"
                 />
               ) : (
                 <span
                   className={cn(
-                    "truncate font-medium",
+                    "drive-board-title truncate font-medium",
                     file.uploading || file.creating ? "text-gray-500" : "text-gray-900"
                   )}
                 >
@@ -2463,17 +2464,19 @@ export function DrivePageClient({
                 </span>
               )}
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="drive-board-date text-xs text-muted-foreground">
+              <span className="drive-board-mobile-label">수정일 </span>
               {file.uploading || file.creating
                 ? "—"
                 : file.driveModifiedAt
                   ? new Date(file.driveModifiedAt).toLocaleDateString("ko")
                   : "—"}
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="drive-board-size text-xs text-muted-foreground">
+              <span className="drive-board-mobile-label">크기 </span>
               {file.isFolder ? "—" : formatSize(file.size)}
             </span>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="drive-board-actions flex flex-wrap items-center gap-1.5">
               {file.creating ? (
                 <span className="text-xs text-muted-foreground">생성 중</span>
               ) : file.uploading ? (

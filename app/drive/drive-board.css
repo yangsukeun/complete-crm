@@ -1,0 +1,79 @@
+.drive-board-mobile-label {
+  display: none;
+}
+
+[data-drive-board="enabled"] {
+  min-width: 0;
+}
+
+[data-drive-board="enabled"] .drive-board-container {
+  container: drive-board / inline-size;
+  min-width: 0;
+}
+
+@media (max-width: 639px) {
+  [data-drive-board="enabled"] {
+    padding-inline: 0.75rem;
+  }
+}
+
+/* Switch by the explorer's actual width, including when a sidebar is visible. */
+@container drive-board (max-width: 45rem) {
+  [data-drive-board="enabled"] .drive-board-header {
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+    align-items: center;
+    padding-inline: 0.625rem;
+  }
+
+  [data-drive-board="enabled"] .drive-board-column-label {
+    display: none;
+  }
+
+  [data-drive-board="enabled"] .drive-board-mobile-label {
+    display: inline;
+    font-weight: 600;
+  }
+
+  [data-drive-board="enabled"] .drive-board-row {
+    grid-template-columns: 1.75rem minmax(0, 1.3fr) minmax(0, 1fr);
+    grid-template-areas: "select name name" ". date size" "actions actions actions";
+    align-items: start;
+    margin: 0.625rem;
+    border: 1px solid var(--color-gray-200, #e5e7eb);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    row-gap: 0.65rem;
+  }
+
+  [data-drive-board="enabled"] .drive-board-select { grid-area: select; }
+  [data-drive-board="enabled"] .drive-board-name { grid-area: name; flex-wrap: wrap; }
+  [data-drive-board="enabled"] .drive-board-date { grid-area: date; }
+  [data-drive-board="enabled"] .drive-board-size { grid-area: size; }
+  [data-drive-board="enabled"] .drive-board-actions { grid-area: actions; }
+
+  [data-drive-board="enabled"] .drive-board-title {
+    flex: 1 1 7rem;
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  [data-drive-board="enabled"] .drive-board-rename,
+  [data-drive-board="enabled"] .drive-board-date,
+  [data-drive-board="enabled"] .drive-board-size,
+  [data-drive-board="enabled"] .drive-board-actions {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  [data-drive-board="enabled"] .drive-board-actions {
+    border-top: 1px solid var(--color-gray-100, #f3f4f6);
+    padding-top: 0.5rem;
+  }
+
+  [data-drive-board="enabled"] .drive-board-actions button {
+    min-height: 2.25rem;
+  }
+}

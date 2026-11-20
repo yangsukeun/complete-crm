@@ -209,10 +209,10 @@ export function NasDrivePageClient() {
         </nav>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="nas-board-container overflow-hidden rounded-lg border border-gray-200 bg-white">
         <div
           className={cn(
-            "grid gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground",
+            "nas-board-header grid gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-medium text-muted-foreground",
             gridCols
           )}
         >
@@ -258,23 +258,23 @@ export function NasDrivePageClient() {
                 if (e.key === "Enter") onRowActivate(file);
               }}
               className={cn(
-                "grid items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm hover:bg-gray-50",
+                "nas-board-row grid items-center gap-2 border-b border-gray-100 px-4 py-2.5 text-sm hover:bg-gray-50",
                 gridCols
               )}
             >
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="nas-board-name flex min-w-0 items-center gap-2">
                 {file.isDir ? (
                   <Folder className="size-4 shrink-0 text-amber-600" />
                 ) : (
                   <File className="size-4 shrink-0 text-gray-500" />
                 )}
-                <span className="truncate font-medium text-gray-900">{file.name}</span>
+                <span className="nas-board-title truncate font-medium text-gray-900">{file.name}</span>
               </div>
-              <span className="text-xs text-muted-foreground">{formatMtime(file.mtime)}</span>
-              <span className="text-xs text-muted-foreground">
-                {file.isDir ? "—" : formatSize(file.size)}
+              <span className="nas-board-date text-xs text-muted-foreground"><span className="nas-board-label">수정일 </span>{formatMtime(file.mtime)}</span>
+              <span className="nas-board-size text-xs text-muted-foreground">
+                <span className="nas-board-label">크기 </span>{file.isDir ? "—" : formatSize(file.size)}
               </span>
-              <div className="flex flex-wrap gap-1">
+              <div className="nas-board-actions flex flex-wrap gap-1">
                 {file.isDir ? (
                   <Button
                     type="button"

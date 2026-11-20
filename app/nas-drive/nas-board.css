@@ -1,0 +1,31 @@
+.nas-board-label { display: none; }
+[data-nas-board="enabled"], [data-nas-board="enabled"] .nas-board-container { min-width: 0; }
+[data-nas-board="enabled"] .nas-board-container { container: nas-board / inline-size; }
+@media (max-width: 639px) {
+  [data-nas-board="enabled"] { padding-inline: 0.75rem; }
+}
+@container nas-board (max-width: 45rem) {
+  [data-nas-board="enabled"] .nas-board-header { display: none; }
+  [data-nas-board="enabled"] .nas-board-row {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    grid-template-areas: "name name" "date size" "actions actions";
+    align-items: start;
+    row-gap: .65rem;
+    margin: .625rem;
+    padding: .75rem;
+    border: 1px solid var(--color-gray-200, #e5e7eb);
+    border-radius: .75rem;
+  }
+  [data-nas-board="enabled"] .nas-board-name { grid-area: name; align-items: start; }
+  [data-nas-board="enabled"] .nas-board-title { min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  [data-nas-board="enabled"] .nas-board-date { grid-area: date; }
+  [data-nas-board="enabled"] .nas-board-size { grid-area: size; }
+  [data-nas-board="enabled"] .nas-board-label { display: inline; font-weight: 600; }
+  [data-nas-board="enabled"] .nas-board-actions {
+    grid-area: actions;
+    min-width: 0;
+    border-top: 1px solid var(--color-gray-100, #f3f4f6);
+    padding-top: .5rem;
+  }
+  [data-nas-board="enabled"] .nas-board-actions button { min-height: 2.25rem; }
+}

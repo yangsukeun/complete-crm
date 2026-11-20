@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { workspaceAreas } from "@/lib/workspace-areas";
+import "./nas-board.css";
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/auth";
 import { PageHeadline } from "@/components/page-headline";
@@ -9,13 +12,22 @@ export default async function NasDrivePage() {
   if (!session?.user?.id) redirect("/login");
 
   const configured = isNasConfigured();
+  const boardLayout = workspaceAreas(session.user).some(
+    (area) => area === "management" || area === "marketing" || area === "logistics"
+  );
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
+    <div data-nas-board={boardLayout ? "enabled" : undefined} className="flex flex-col gap-6 p-6 md:p-8">
       <PageHeadline
         title="NAS 문서함"
         description="시놀로지 문서 공유 폴더 목록입니다. 실제 파일 열람은 NAS 로그인 후 진행됩니다."
       />
+      {boardLayout && (
+        <nav aria-label="문서함 종류" className="flex min-w-0 flex-wrap gap-2">
+          <Link href="/drive" prefetch={false} className="rounded-lg border px-3 py-2 text-sm font-medium">Google Drive</Link>
+          <span aria-current="page" className="rounded-lg bg-violet-100 px-3 py-2 text-sm font-semibold text-violet-900">NAS 문서함</span>
+        </nav>
+      )}
       {!configured ? (
         <div
           className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950"
