@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { FLOW_STAGES, localRulesV1, type DiaryNote, type DiaryView } from "./rua-diary";
+import { EVIDENCE_STATES, FLOW_STAGES, localRulesV1, type DiaryNote, type DiaryView } from "./rua-diary";
+import { canonicalTopicName } from "./rua-timeline";
 
 export const OWNER = "cmmitn4830000fc0jt8c1l2jf";
 export const DIRECTOR = "cmmius59l000ihlpo4a4cpfq2";
@@ -14,12 +15,54 @@ export function ownerOnly(actor: string | null) {
 const text = z.string().trim().min(1).max(4000);
 const link = z.string().url().refine(v => new URL(v).protocol === "https:");
 const projectInput = z.object({ name: text, status: text, lastProgress: text, blocker: text, nextStep: text, userAction: text, verifiedAt: z.string().datetime(), resultLinks: z.array(link).max(10) }).strict();
+const singleLine = (max: number) => z.string().trim().min(1).max(max).refine(value => !/[\r\n]/.test(value));
+const checkpointInput = z.object({
+  topic: singleLine(100).refine(value => canonicalTopicName(value).length > 0),
+  stage: z.enum(FLOW_STAGES),
+  summary: singleLine(160),
+  progress: text.optional(), decision: text.optional(), blocker: text.optional(), nextStep: text.optional(),
+  evidence: z.enum(EVIDENCE_STATES),
+  sources: z.array(z.object({ label: singleLine(120).optional(), url: z.string().max(2048).url().refine(value => {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password;
+  }) }).strict()).max(5),
+}).strict().refine(value => value.evidence !== "자료에서 확인" || value.sources.length > 0);
+const CHECKPOINT_MARKER = "RUA_CHECKPOINT_V1_";
+const checkpointBytes = (value: unknown) => Buffer.from(JSON.stringify(value), "utf8");
+
+/** Persist checkpoints as backwards-compatible diary commands. An older app can
+ * replay the row as a single opaque excerpt, so a rollback does not break the journal. */
+export function durableRuaCommand(input: unknown): unknown {
+  if (!input || typeof input !== "object" || (input as { action?: unknown }).action !== "checkpoint") return input;
+  const parsed = commandSchema.safeParse(input);
+  if (!parsed.success || !parsed.data.checkpoint || parsed.data.source !== "human")
+    throw new WorkError(400, "확인한 프로젝트 기록을 입력하세요.");
+  const raw = CHECKPOINT_MARKER + checkpointBytes(parsed.data.checkpoint).toString("base64url");
+  if (raw.length > 12000) throw new WorkError(413, "프로젝트 기록이 너무 깁니다. 세부 내용을 나눠서 저장해 주세요.");
+  return { action: "diary", key: parsed.data.key, raw, source: "human" };
+}
+
+function readCheckpoint(raw: string | undefined, source: "human" | "ai") {
+  if (!raw?.startsWith(CHECKPOINT_MARKER) || source !== "human") return;
+  const token = raw.slice(CHECKPOINT_MARKER.length);
+  if (!/^[A-Za-z0-9_-]+$/u.test(token)) return;
+  try {
+    const decoded = Buffer.from(token, "base64url");
+    if (decoded.toString("base64url") !== token) return;
+    const item = checkpointInput.safeParse(JSON.parse(decoded.toString("utf8")));
+    return item.success ? item.data : undefined;
+  } catch {
+    return;
+  }
+}
+
 const sharedInput = z.object({ instruction: text, deadline: z.string().datetime(), acceptance: text, materials: z.array(link).max(10) }).strict();
 export const commandSchema = z.object({
-  action: z.enum(["project", "draft", "assign", "acknowledge", "view", "start", "report", "review", "complete", "diary", "classify"]),
+  action: z.enum(["project", "draft", "assign", "acknowledge", "view", "start", "report", "review", "complete", "diary", "classify", "checkpoint"]),
   key: z.string().min(8).max(100), id: z.string().optional(), version: z.number().int().positive().optional(),
   source: z.enum(["human", "ai"]), confirmed: z.boolean().optional(),
   project: projectInput.optional(), shared: sharedInput.optional(), report: text.optional(),
+  checkpoint: checkpointInput.optional(),
   raw: z.string().max(12000).refine(v => v.trim().length > 0).optional(),
   classification: z.object({ index: z.number().int().nonnegative(), project: z.string().trim().min(1).max(100).nullable(), stage: z.enum(FLOW_STAGES) }).strict().optional(),
 }).strict();
@@ -55,7 +98,7 @@ export class RuaWorkStore {
     const parsed = commandSchema.safeParse(input);
     if (!parsed.success) throw new WorkError(400, "입력 형식이 올바르지 않습니다.");
     const c: Command = parsed.data;
-    const ownerAction = ["project", "draft", "assign", "review", "complete", "diary", "classify"].includes(c.action);
+    const ownerAction = ["project", "draft", "assign", "review", "complete", "diary", "classify", "checkpoint"].includes(c.action);
     if (ownerAction) ownerOnly(actor);
     else if (actor !== DIRECTOR) throw new WorkError(404, "찾을 수 없습니다.");
     const receiptKey = `${actor}:${c.key}`;
@@ -67,11 +110,24 @@ export class RuaWorkStore {
     }
     const now = this.clock();
     let result: WorkResult;
-    if (c.action === "diary") {
+    const checkpoint = c.action === "checkpoint" ? c.checkpoint
+      : c.action === "diary" ? readCheckpoint(c.raw, c.source) : undefined;
+    if (c.action === "diary" && !checkpoint) {
       if (!c.raw) throw new WorkError(400, "남길 이야기를 적어 주세요.");
       const links = localRulesV1.propose(c.raw);
       if (links.length === 0) links.push({ index: 0, excerpt: c.raw, project: null, stage: "진행 내용", reviewed: false });
       result = { id: `local-note-${++this.noteSequence}`, raw: c.raw, createdAt: now, version: 1, classifier: "local-rules-v1", links };
+      this.notes.set(result.id, result);
+    } else if (checkpoint || c.action === "checkpoint") {
+      if (!checkpoint || c.source !== "human") throw new WorkError(400, "확인한 프로젝트 기록을 입력하세요.");
+      const { topic, stage, ...fields } = checkpoint;
+      const raw = [
+        fields.summary,
+        ...([["결정", fields.decision], ["진행 내용", fields.progress], ["막힌 일", fields.blocker], ["다음 단계", fields.nextStep]] as const).flatMap(([label, value]) => value ? [`${label}: ${value}`] : []),
+        ...fields.sources.map(source => `${source.label ?? "자료"}: ${source.url}`),
+      ].join("\n");
+      result = { id: `local-note-${++this.noteSequence}`, raw, createdAt: now, version: 1, classifier: "owner-checkpoint-v1",
+        links: [{ index: 0, excerpt: fields.summary, project: topic, stage, reviewed: true }], checkpoint: fields };
       this.notes.set(result.id, result);
     } else if (c.action === "classify") {
       const note = this.notes.get(c.id ?? "");

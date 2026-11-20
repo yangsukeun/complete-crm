@@ -15,15 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
-function safeInternalCallbackUrl(raw: string | null): string {
-  if (!raw || typeof raw !== "string") return "/choose-mode";
-  if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")) return raw;
-  return "/choose-mode";
-}
+import { crmCallbackPath } from "@/lib/crm-login-landing";
 
 function LoginFormInner() {
   const searchParams = useSearchParams();
-  const callbackUrl = safeInternalCallbackUrl(searchParams.get("callbackUrl"));
+  const callbackUrl = crmCallbackPath(searchParams.get("callbackUrl"));
   const urlError = searchParams.get("error");
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string>("");
@@ -31,8 +27,10 @@ function LoginFormInner() {
   const displayError =
     urlError === "CredentialsSignin"
       ? "이메일 또는 비밀번호가 올바르지 않습니다."
+      : urlError === "AccountUnavailable"
+        ? "현재 이 계정으로 접속할 수 없습니다. 경영지원팀에 문의해 주세요."
       : urlError
-        ? decodeURIComponent(String(urlError))
+        ? urlError
         : submitError || "";
   const isCredentialError = urlError === "CredentialsSignin" || submitError.includes("이메일 또는 비밀번호");
 

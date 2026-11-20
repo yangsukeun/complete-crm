@@ -18,7 +18,7 @@ function setModeCookieClient(mode: "company" | "personal") {
   document.cookie = `${COOKIE_NAME}=${mode};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`;
 }
 
-export function ChooseModeClient({ homePath = "/dashboard" }: { homePath?: string }) {
+export function ChooseModeClient({ homePath = "/" }: { homePath?: string }) {
   const setWorkspace = useWorkspaceStore((s: any) => s.setWorkspace);
 
   const handleSelect = async (mode: "company" | "personal") => {
@@ -58,7 +58,7 @@ export function ChooseModeClient({ homePath = "/dashboard" }: { homePath?: strin
     }
 
     /* 전체 네비게이션으로 Set-Cookie·RSC가 확실히 반영되도록 */
-    window.location.assign(homePath);
+    window.location.assign(mode === "personal" ? "/my-project" : homePath);
   };
 
   return (

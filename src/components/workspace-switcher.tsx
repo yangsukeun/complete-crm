@@ -32,8 +32,7 @@ export function WorkspaceSwitcher() {
       } catch {
         // ignore
       }
-      const dashboardUrl = `/dashboard?mode=${workspace}`;
-      router.push(dashboardUrl);
+      router.push(workspace === "MY" ? "/my-project" : "/");
       router.refresh();
     },
     [setWorkspace, router]

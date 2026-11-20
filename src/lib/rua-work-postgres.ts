@@ -1,5 +1,5 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
-import { OWNER, DIRECTOR, RuaWorkStore, signedIn, ownerOnly, WorkError } from "./rua-work";
+import { OWNER, DIRECTOR, RuaWorkStore, durableRuaCommand, signedIn, ownerOnly, WorkError } from "./rua-work";
 
 /** Server-side journal. Never exports raw journal rows to clients/search/chat. */
 export class PostgresRuaWorkStore {
@@ -36,6 +36,8 @@ export class PostgresRuaWorkStore {
   async execute(actor: string | null, input: unknown) {
     signedIn(actor);
     if (actor !== OWNER && actor !== DIRECTOR) throw new WorkError(404, "Not found");
+    // Preserve a replay-compatible command across mixed deployments and rollback.
+    const command = durableRuaCommand(input);
     return this.db.$transaction(async tx => {
       // All writers use this transaction-scoped lock before reading the journal.
       // READ COMMITTED sees the previous writer after acquiring the lock.
@@ -43,10 +45,10 @@ export class PostgresRuaWorkStore {
       const { store, setTime } = await this.replay(tx);
       const count = store.audit(OWNER).length;
       const at = new Date().toISOString(); setTime(at);
-      const result = store.execute(actor, input);
+      const result = store.execute(actor, command);
       if (store.audit(OWNER).length !== count) {
         const key = store.audit(OWNER).at(-1)!.key;
-        const body = JSON.stringify(input);
+        const body = JSON.stringify(command);
         await tx.$executeRaw`INSERT INTO rua_private_commands(actor, request_key, body, at)
           VALUES (${actor}, ${key}, ${body}, ${at})`;
       }

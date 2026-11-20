@@ -49,7 +49,8 @@ import { cn } from "@/lib/utils";
 import { hasFinancePageAccess, userHasPermission } from "@/lib/permissions";
 import { hasDailyReportMenuAccess } from "@/lib/work-log-access";
 import { isMasterEmail } from "@/lib/master-account";
-import { homePathForOrg, navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
+import { isCompanyLandingPath } from "@/lib/crm-login-landing";
+import { navHrefAllowedForOrg, resolveOrgUnit } from "@/lib/org-access";
 import { canManageEmployeesSync } from "@/lib/employee-admin-access";
 import { canViewAwayOverview } from "@/lib/attendance-away-access";
 import { canViewEmployeeLeaveSummary } from "@/lib/leave-overview-access";
@@ -182,13 +183,11 @@ export function AppNav() {
   const urlMode = useWorkspaceStore((s: WorkspaceState) => s.urlSearchMode);
   /** [PERF-3차] 모드는 UrlSearchModeBridge·WorkspaceThemeSync·영속 스토어와 정렬 — /api/mode GET 제거 */
   const effectiveMode: "company" | "personal" =
-    urlMode === "MY"
-      ? "personal"
-      : urlMode === "TEAM"
-        ? "company"
-        : currentWorkspace === "MY"
-          ? "personal"
-          : "company";
+    isCompanyLandingPath(pathname) || urlMode === "TEAM"
+      ? "company"
+      : urlMode === "MY" || currentWorkspace === "MY"
+        ? "personal"
+        : "company";
 
   useEffect(() => {
     if (!session?.user || pathname === "/login" || pathname === "/choose-mode") return;
@@ -379,7 +378,7 @@ export function AppNav() {
     role: session?.user?.role,
     department: session?.user?.department,
   });
-  const homePath = homePathForOrg(orgUnit);
+  const homePath = "/";
   const isHqOrg = orgUnit === "HQ";
   const canManageEmployees = canManageEmployeesSync({
     role: session?.user?.role,
@@ -416,7 +415,6 @@ export function AppNav() {
 
 
   const workLinks = visibleNav(workGroupLinks);
-  if (session?.user?.id === "cmmitn4830000fc0jt8c1l2jf") workLinks.unshift({ href: "/rua-project", label: "루와의 프로젝트", icon: FolderKanban, hint: "대표 개인 기록" });
   workLinks.unshift({ href: "/workspaces", label: "업무영역", icon: FolderKanban, hint: "경영지원 · 마케팅 · CS · 3PL" });
   const resourceLinks = visibleNav(resourceGroupLinks);
   const commsLinks = visibleNav(commsGroupLinks);
@@ -625,9 +623,8 @@ export function AppNav() {
         </div>
       </div>
 
-      <UnifiedNavigation pathname={pathname} areas={session?.user?.id?workspacePageAreas({id:session.user.id,department:session.user.department}):[]} dashboard={isHqOrg} groups={[
+      <UnifiedNavigation pathname={pathname} areas={session?.user?.id?workspacePageAreas({id:session.user.id,department:session.user.department}):[]} representative={session?.user?.id===WORKSPACE_OWNER} groups={[
         {label:"프로젝트",links:workLinks.filter(l=>l.href!=="/rua-project"&&l.href!=="/workspaces").map(l=>({...l,count:l.href==="/tasks"?projectAssignBadgeCount:0}))},
-        {label:"내 업무",links:session?.user?.id===WORKSPACE_OWNER?[{href:"/rua-project",label:"루와의 프로젝트",hint:"대표 전용 개인 기록"}]:[]},
         {label:"자료",links:resourceLinks.map(l=>({...l,count:l.href==="/board"?boardNewCount:0}))},
         {label:"소통",links:commsLinks.map(l=>({...l,count:l.href==="/chat"?chatUnreadCount:0}))},
         {label:"AI",links:isHqOrg?aiGroupLinks:[]},

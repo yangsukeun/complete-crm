@@ -1001,9 +1001,9 @@ function FinanceRequestsContent() {
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/dashboard">
+          <Link href="/">
             <ArrowLeft className="mr-2 size-4" />
-            대시보드
+            업무 홈
           </Link>
         </Button>
         {!isRequesterStyleScope && (

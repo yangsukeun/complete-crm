@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { homePathForOrg, resolveOrgUnit } from "@/lib/org-access";
+import { crmLandingForUser } from "@/lib/crm-login-landing";
+import { resolveOrgUnit } from "@/lib/org-access";
 import { ChooseModeClient } from "./choose-mode-client";
 
 export default async function ChooseModePage() {
@@ -14,9 +15,8 @@ export default async function ChooseModePage() {
   });
   if (!me || me.accountDisabled) redirect("/login");
   const org = resolveOrgUnit(me);
-  if (org !== "HQ") {
-    redirect(homePathForOrg(org));
-  }
+  const homePath = crmLandingForUser({ id: session.user.id, department: me.department });
+  if (org !== "HQ") redirect(homePath);
 
-  return <ChooseModeClient homePath="/dashboard" />;
+  return <ChooseModeClient homePath={homePath} />;
 }

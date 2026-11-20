@@ -5,7 +5,7 @@ import { openRuaStore } from "@/lib/rua-store";
 import { DiaryPanel } from "./diary-panel";
 import "./diary.css";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "루와의 프로젝트", robots: { index: false, follow: false } };
+export const metadata = { title: "루와의 대화", robots: { index: false, follow: false } };
 export default async function Page() {
   const actor = (await getAppSession())?.user?.id;
   if (actor !== OWNER) notFound();
@@ -13,5 +13,5 @@ export default async function Page() {
   let diary;
   try { diary = await store.readDiary(actor); }
   finally { store.close(); }
-  return <main className="mx-auto max-w-4xl space-y-6 p-8"><DiaryPanel initial={diary} /></main>;
+  return <main className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:p-8"><DiaryPanel initial={diary} /></main>;
 }

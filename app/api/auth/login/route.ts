@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { signIn } from "@/auth";
+import { crmCallbackPath, startsCompanyMode } from "@/lib/crm-login-landing";
+import { setCompanyModeCookie } from "@/lib/crm-login-mode";
 import prisma from "@/lib/prisma";
 import { verifyLoginPassword } from "@/lib/verify-login-password";
 import { createLoginToken } from "@/lib/login-token-store";
@@ -26,19 +29,23 @@ export async function POST(req: Request) {
     }
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body?.password === "string" ? body.password.trim() : "";
-    const callbackUrl = typeof body?.callbackUrl === "string" && body.callbackUrl.startsWith("/")
-      ? body.callbackUrl
-      : "/choose-mode";
+    const callbackUrl = crmCallbackPath(body.callbackUrl);
+    const signInError = () => {
+      const url = new URL("/login", req.url);
+      url.searchParams.set("error", "CredentialsSignin");
+      if (callbackUrl !== "/") url.searchParams.set("callbackUrl", callbackUrl);
+      return NextResponse.redirect(url, 303);
+    };
 
     if (!email) {
       if (isForm) {
-        return NextResponse.redirect(new URL("/login?error=CredentialsSignin", req.url));
+        return signInError();
       }
       return NextResponse.json({ error: "이메일을 입력하세요." }, { status: 400 });
     }
     if (!password) {
       if (isForm) {
-        return NextResponse.redirect(new URL("/login?error=CredentialsSignin", req.url));
+        return signInError();
       }
       return NextResponse.json({ error: "비밀번호를 입력하세요." }, { status: 400 });
     }
@@ -50,7 +57,7 @@ export async function POST(req: Request) {
 
     if (!user) {
       if (isForm) {
-        return NextResponse.redirect(new URL("/login?error=CredentialsSignin", req.url));
+        return signInError();
       }
       return NextResponse.json({ error: "로그인에 실패했습니다." }, { status: 401 });
     }
@@ -59,28 +66,30 @@ export async function POST(req: Request) {
 
     if (!ok) {
       if (isForm) {
-        return NextResponse.redirect(new URL("/login?error=CredentialsSignin", req.url));
+        return signInError();
       }
       return NextResponse.json({ error: "로그인에 실패했습니다." }, { status: 401 });
     }
 
     const loginToken = createLoginToken(user.id);
     try {
-      await signIn("credentials", {
+      const destination = await signIn("credentials", {
         email: user.email,
         password: loginToken,
-        callbackUrl,
-        redirect: true,
+        redirectTo: callbackUrl,
+        redirect: false,
       });
+      if (typeof destination !== "string") throw new Error("Missing login redirect");
+      const landing = new URL(callbackUrl, req.url);
+      // A successful work login initializes the existing UI mode cookie, not account permissions.
+      // Keep explicit personal deep links in their existing mode.
+      if (startsCompanyMode(callbackUrl)) setCompanyModeCookie(await cookies(), landing.protocol === "https:");
+      if (isForm) return NextResponse.redirect(landing, 303);
     } catch (err: unknown) {
       if (err instanceof Response) return err;
-      const e = err as { url?: string; type?: string; digest?: string };
-      if (e?.url && (e?.type === "redirect" || e?.digest?.startsWith("NEXT_REDIRECT"))) {
-        return NextResponse.redirect(e.url);
-      }
       console.error("[auth/login] signIn throw", err);
       if (isForm) {
-        return NextResponse.redirect(new URL("/login?error=CredentialsSignin", req.url));
+        return signInError();
       }
       throw err;
     }

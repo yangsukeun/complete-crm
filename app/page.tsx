@@ -1,24 +1,15 @@
 import { redirect } from "next/navigation";
-import { authWithTimeout } from "@/lib/auth-safe";
+import { getAppSession } from "@/auth";
 import prisma from "@/lib/prisma";
-import { homePathForUser } from "@/lib/org-access";
+import { crmLandingForUser } from "@/lib/crm-login-landing";
 
 export default async function HomePage() {
-  const session = await authWithTimeout();
-  if (session?.user) {
-    let department = session.user.department ?? null;
-    if (department == null || department === "") {
-      try {
-        const row = await prisma.user.findUnique({
-          where: { id: session.user.id },
-          select: { department: true },
-        });
-        department = row?.department ?? null;
-      } catch {
-        /* JWT 부서만 사용 */
-      }
-    }
-    redirect(homePathForUser({ role: session.user.role, department }));
-  }
-  redirect("/login");
+  const session = await getAppSession();
+  if (!session?.user?.id) redirect("/login");
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, department: true, accountDisabled: true },
+  });
+  if (!user || user.accountDisabled) redirect("/login?error=AccountUnavailable");
+  redirect(crmLandingForUser(user));
 }

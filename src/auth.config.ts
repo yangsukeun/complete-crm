@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import { resolveEffectivePermissionsJson } from "@/lib/permissions-resolve";
-import { homePathForUser } from "@/lib/org-access";
+import { crmCallbackPath } from "@/lib/crm-login-landing";
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
@@ -14,20 +14,9 @@ export const authConfig: NextAuthConfig = {
       const isSignup = path.startsWith("/signup");
       if (isLogin) {
         if (!isLoggedIn) return true;
-        const raw = request.nextUrl.searchParams.get("callbackUrl");
-        if (
-          typeof raw === "string" &&
-          raw.startsWith("/") &&
-          !raw.startsWith("//") &&
-          !raw.includes("://")
-        ) {
-          return Response.redirect(new URL(raw, request.nextUrl));
-        }
-        const home = homePathForUser({
-          role: (auth?.user as { role?: string } | undefined)?.role,
-          department: (auth?.user as { department?: string | null } | undefined)?.department,
-        });
-        return Response.redirect(new URL(home, request.nextUrl));
+        if (request.nextUrl.searchParams.get("error") === "AccountUnavailable") return true;
+        const dest = crmCallbackPath(request.nextUrl.searchParams.get("callbackUrl"));
+        return Response.redirect(new URL(dest, request.nextUrl));
       }
       if (isSignup) return true; // 숨겨진 초기 관리자 가입용 (비로그인 허용)
       return isLoggedIn ? true : false;

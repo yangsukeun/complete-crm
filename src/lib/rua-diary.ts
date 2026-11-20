@@ -1,7 +1,18 @@
 export const FLOW_STAGES = ["요청", "진행 내용", "결정/대기", "다음 단계"] as const;
 export type FlowStage = typeof FLOW_STAGES[number];
 export type DiaryLink = { index: number; excerpt: string; project: string | null; stage: FlowStage; reviewed: boolean };
-export type DiaryNote = { id: string; raw: string; createdAt: string; version: number; classifier: "local-rules-v1"; links: DiaryLink[] };
+export const CHECKPOINT_STAGES = FLOW_STAGES;
+export const EVIDENCE_STATES = ["미확인", "대화에서 확인", "자료에서 확인"] as const;
+export type Checkpoint = {
+  summary: string;
+  decision?: string;
+  progress?: string;
+  blocker?: string;
+  nextStep?: string;
+  sources: { label?: string; url: string }[];
+  evidence: typeof EVIDENCE_STATES[number];
+};
+export type DiaryNote = { id: string; raw: string; createdAt: string; version: number; classifier: "local-rules-v1" | "owner-checkpoint-v1"; links: DiaryLink[]; checkpoint?: Checkpoint };
 export type DiaryView = { notes: DiaryNote[] };
 export interface DiaryClassificationAdapter { kind: "local-rules-v1"; propose(raw: string): DiaryLink[] }
 /** Versioned and deterministic; keep v1 unchanged so journal replay is stable.

@@ -128,9 +128,9 @@ export default async function TodayAttendancePage({
           description={`${dateLabelKst(dateStart)} 기준 출퇴근 기록입니다. 직원 ${employeeCount}명 중 출근 처리 ${attendedCount}명.`}
         />
         <Button variant="outline" size="sm" asChild className="shrink-0 gap-1 self-start sm:self-center">
-          <Link href="/dashboard" prefetch={false}>
+          <Link href="/" prefetch={false}>
             <ArrowLeft className="size-4" />
-            대시보드
+            업무 홈
           </Link>
         </Button>
       </div>
